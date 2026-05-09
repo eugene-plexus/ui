@@ -1,0 +1,38 @@
+# --- Node ---
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+*.tsbuildinfo
+
+# --- Next.js ---
+.next/
+out/
+build/
+dist/
+.swc/
+.vercel/
+
+# --- TypeScript ---
+*.log
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Local Claude state ---
+.claude/projects/
+.claude/settings.local.json
+CLAUDE.md
+
+# --- Local config / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Codegen working dirs ---
+.codegen-cache/

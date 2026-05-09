@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0c;
+  --foreground: #e8e8e8;
+  --panel: #131316;
+  --panel-soft: #1a1a1e;
+  --border: #2a2a30;
+  --accent-left: #4a9eff;
+  --accent-right: #ff7a4a;
+  --muted: #8a8a92;
+}
+
+html,
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}

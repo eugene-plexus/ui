@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-typecheck-build:
+    name: Lint, typecheck, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  codegen-freshness:
+    name: Codegen freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Regenerate from pinned specs
+        run: npm run codegen
+
+      - name: Assert no diff
+        shell: bash
+        run: |
+          if ! git diff --exit-code src/generated/; then
+            echo "::error::Generated TypeScript is out of sync with SPECS_REF."
+            echo "Run 'npm run codegen' locally and commit the result."
+            exit 1
+          fi
+
+  dco:
+    name: DCO sign-off check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check Signed-off-by lines on every PR commit
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          status=0
+          while IFS= read -r sha; do
+            [[ -z "$sha" ]] && continue
+            name=$(git log -1 --format=%an "$sha")
+            email=$(git log -1 --format=%ae "$sha")
+            expected="Signed-off-by: ${name} <${email}>"
+            msg=$(git log -1 --format=%B "$sha")
+            if ! grep -Fxq "$expected" <<<"$msg"; then
+              echo "::error::Commit $sha by ${name} <${email}> is missing a matching DCO sign-off."
+              echo "  Expected line: ${expected}"
+              echo "  Fix with: git commit --amend -s --no-edit  (or: git rebase --signoff main)"
+              status=1
+            fi
+          done < <(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}")
+          exit $status
