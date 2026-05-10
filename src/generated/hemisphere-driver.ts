@@ -268,6 +268,18 @@ export interface components {
         DriverInfo: {
             backend: components["schemas"]["BackendKind"];
             /**
+             * @description Operator-friendly provider key from the driver's
+             *     registry (e.g. `"openai"`, `"xai"`, `"openrouter"`,
+             *     `"claude_subscription"`). Reflects which subscription /
+             *     service this driver is wrapping — `backend` reflects the
+             *     *protocol* underneath, which can be shared across many
+             *     providers (e.g. xAI, OpenRouter, Ollama all report
+             *     `backend: openai_compat_http`). Optional; omitted when
+             *     the driver is in degraded mode and never finished
+             *     constructing.
+             */
+            provider?: string;
+            /**
              * @description Backend-specific model identifier (e.g. `"claude-opus-4-7"`).
              *     Optional — omitted when the driver is configured to use the
              *     adapter's built-in default rather than pinning a specific model.
@@ -455,7 +467,7 @@ export interface components {
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
-         *     equals the given value.
+         *     equals the given value (or matches one entry in the given list).
          */
         ConfigFieldShowWhen: {
             /**
@@ -465,10 +477,12 @@ export interface components {
             key: string;
             /**
              * @description Value the named field must equal for this field to render.
-             *     Untyped — JSON value matching the referenced field's
-             *     `valueType`. Only literal equality is supported in v0.1;
-             *     richer predicates (`oneOf`, `not`, etc.) deferred until a
-             *     real use case appears.
+             *     Untyped — when scalar, matches by literal equality against
+             *     the referenced field's `valueType`. When an array, matches
+             *     if the referenced field's current value equals any entry
+             *     (set-membership). Use the array form for a field that
+             *     applies to multiple entries of an enum (e.g. an `apiKey`
+             *     field shared across several OpenAI-compatible providers).
              */
             equals: unknown;
         };
@@ -497,6 +511,18 @@ export interface components {
             default?: unknown;
             /** @description Allowed values when `valueType == enum`. */
             enumValues?: string[];
+            /**
+             * @description Optional human-readable display labels paired one-to-one
+             *     with `enumValues`. UIs that render an enum as a dropdown
+             *     should show `enumLabels[i]` while still submitting
+             *     `enumValues[i]` as the saved value. When omitted (or
+             *     shorter than `enumValues`), UIs fall back to the raw
+             *     value as the label. Useful where the stored key is
+             *     machine-friendly but the user-facing label isn't —
+             *     e.g. `claude_subscription` saved, "Claude (Pro/Max)"
+             *     shown.
+             */
+            enumLabels?: string[];
             /**
              * @description If true, the value is redacted (`"<redacted>"`) in
              *     `ConfigDocument` responses but is accepted in

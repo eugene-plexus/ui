@@ -280,13 +280,22 @@ function groupByCategory(fields: ConfigFieldDef[]): Record<string, ConfigFieldDe
 
 /**
  * Honor `ConfigField.showWhen`: only render the field when another field's
- * current draft value equals the predicate. v0.1 supports literal equality
- * only (per the spec); deep equality via JSON.stringify covers strings,
- * numbers, booleans, and arrays uniformly.
+ * current draft value matches the predicate. The spec supports two forms:
+ *
+ *   - scalar `equals`: literal equality against the referenced field's value
+ *   - array  `equals`: set-membership — fires when the value matches any entry
+ *
+ * The array form is what lets a single `apiKey` field declare itself
+ * applicable to several enum entries (`provider` ∈ {openai, xai, …}).
  */
 function isFieldVisible(field: ConfigFieldDef, draft: Record<string, unknown>): boolean {
   if (!field.showWhen) return true;
-  return JSON.stringify(draft[field.showWhen.key]) === JSON.stringify(field.showWhen.equals);
+  const target = JSON.stringify(draft[field.showWhen.key]);
+  const equals = field.showWhen.equals as unknown;
+  if (Array.isArray(equals)) {
+    return equals.some((e) => JSON.stringify(e) === target);
+  }
+  return JSON.stringify(equals) === target;
 }
 
 function shallowEqual(a: unknown, b: unknown): boolean {

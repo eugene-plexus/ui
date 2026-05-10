@@ -45,6 +45,7 @@ export function ConfigFieldInput({
     }
 
     if (field.valueType === "enum" && field.enumValues) {
+      const labels = field.enumLabels ?? [];
       return (
         <select
           value={(value as string | undefined) ?? ""}
@@ -52,9 +53,11 @@ export function ConfigFieldInput({
           disabled={pending}
           className={baseInputClass}
         >
-          {field.enumValues.map((v) => (
+          {field.enumValues.map((v, i) => (
             <option key={v} value={v}>
-              {v}
+              {/* "" in enumValues is the "(use default)" sentinel for
+                  the modelId field; show it as a friendly label. */}
+              {v === "" ? "(use adapter default)" : (labels[i] ?? v)}
             </option>
           ))}
         </select>
