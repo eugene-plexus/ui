@@ -149,6 +149,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/config/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test the effective config without committing it.
+         * @description Builds a temporary adapter from the saved config merged with the
+         *     optional `overrides`, runs a minimal `generate()` round-trip
+         *     (single user message), and reports success / failure / latency.
+         *     The override values are NOT persisted — `PATCH /v1/config` is
+         *     still required to commit them. Use this from the UI's "Test
+         *     Connection" button so the operator can verify a new API key,
+         *     URL, or model identifier before saving.
+         */
+        post: operations["testConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -413,6 +439,26 @@ export interface components {
          * @enum {string}
          */
         ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "url" | "duration";
+        /**
+         * @description Predicate over another `ConfigField`'s current value. The UI
+         *     renders the field this is attached to only when the named field
+         *     equals the given value.
+         */
+        ConfigFieldShowWhen: {
+            /**
+             * @description `key` of another field in the same `ConfigSchema` to compare
+             *     against.
+             */
+            key: string;
+            /**
+             * @description Value the named field must equal for this field to render.
+             *     Untyped — JSON value matching the referenced field's
+             *     `valueType`. Only literal equality is supported in v0.1;
+             *     richer predicates (`oneOf`, `not`, etc.) deferred until a
+             *     real use case appears.
+             */
+            equals: unknown;
+        };
         /** @description UI-renderable description of a single editable config field. */
         ConfigField: {
             /**
@@ -464,6 +510,15 @@ export interface components {
              * @default false
              */
             requiresRestart: boolean;
+            /**
+             * @description Conditional-rendering hint. When set, the UI should only
+             *     render this field when another field's current value matches
+             *     the condition. Used to hide adapter-specific fields
+             *     (e.g. `openaiApiKey`) when a different adapter is selected.
+             *     The component still validates and stores the field
+             *     regardless of UI visibility.
+             */
+            showWhen?: components["schemas"]["ConfigFieldShowWhen"];
         };
         /**
          * @description UI-renderable description of every editable config field this
@@ -483,6 +538,55 @@ export interface components {
             categories?: {
                 [key: string]: string;
             };
+        };
+        /**
+         * @description Optional override for `POST /v1/config/test`. Same shape as
+         *     `ConfigUpdateRequest`: keys override the saved config for the
+         *     duration of the test only. Useful for "Test Connection" UIs where
+         *     the operator wants to verify a new API key, URL, or model
+         *     identifier before committing it. Send an empty body (`{}`) to
+         *     test the saved config as-is.
+         */
+        ConfigTestRequest: {
+            overrides?: components["schemas"]["ConfigUpdateRequest"];
+        };
+        /**
+         * @description Result of a `POST /v1/config/test` invocation. Components decide
+         *     what "test" means for their own surface: hemisphere-driver runs
+         *     a minimal `generate()` round-trip; orchestrator probes its
+         *     configured hemispheres + memory; memory verifies the store
+         *     backend is reachable.
+         */
+        ConfigTestResult: {
+            /** @description True iff the test invocation succeeded end-to-end. */
+            ok: boolean;
+            /**
+             * @description Component identifier (matches `ConfigSchema.component`).
+             *     Echoed for UI clarity when several /v1/config/test responses
+             *     land in the same view.
+             */
+            component: string;
+            /** @description Wall-clock time the test took, in milliseconds. */
+            latencyMs: number;
+            /**
+             * @description One-line human-readable result summary. Always set when
+             *     `ok` is true; may be set on failure to add context beyond
+             *     `error`.
+             */
+            summary?: string;
+            /**
+             * @description Brief sample of the data the test produced — e.g. assistant
+             *     text from a hemisphere-driver `generate()` round-trip. May be
+             *     truncated to keep the response small. Omitted when there's
+             *     nothing useful to show.
+             */
+            sampleOutput?: string;
+            /**
+             * @description Human-readable error message. Set when `ok` is false. Should
+             *     be specific enough that the operator can act on it (e.g.
+             *     `"openaiApiKey rejected: 401 Unauthorized"`).
+             */
+            error?: string;
         };
         /** @description Liveness / readiness response shape. */
         Health: {
@@ -658,6 +762,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigSchema"];
+                };
+            };
+        };
+    };
+    testConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ConfigTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Test result. Returned for both success and failure cases. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigTestResult"];
                 };
             };
         };

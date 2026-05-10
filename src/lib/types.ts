@@ -30,4 +30,7 @@ export type ConfigDocument = OrchComponents["schemas"]["ConfigDocument"];
 export type ConfigUpdateRequest = OrchComponents["schemas"]["ConfigUpdateRequest"];
 export type ConfigUpdateResult = OrchComponents["schemas"]["ConfigUpdateResult"];
 export type ConfigFieldError = OrchComponents["schemas"]["ConfigFieldError"];
+export type ConfigFieldShowWhen = OrchComponents["schemas"]["ConfigFieldShowWhen"];
+export type ConfigTestRequest = OrchComponents["schemas"]["ConfigTestRequest"];
+export type ConfigTestResult = OrchComponents["schemas"]["ConfigTestResult"];
 export type ConfigValueType = OrchComponents["schemas"]["ConfigValueType"];

@@ -9,6 +9,7 @@ import type {
   ConfigDocument,
   ConfigField as ConfigFieldDef,
   ConfigSchema,
+  ConfigTestResult,
   ConfigUpdateResult,
 } from "@/lib/types";
 
@@ -33,8 +34,10 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null);
+  const [testStatus, setTestStatus] = useState<ConfigTestResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +112,35 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
     }
   }
 
+  async function test() {
+    if (!schema) return;
+    setTesting(true);
+    setTestStatus(null);
+    try {
+      // Send only dirty fields as overrides — the backend merges them with
+      // the saved config server-side. An empty body tests the saved config
+      // as-is, which is what the user wants when nothing's changed yet.
+      const overrides: Record<string, unknown> = {};
+      for (const k of dirtyKeys) {
+        overrides[k] = draft[k];
+      }
+      const body = dirtyKeys.size > 0 ? { overrides } : {};
+      const result = await api.post<ConfigTestResult>(target, "/v1/config/test", body);
+      setTestStatus(result);
+    } catch (e) {
+      // Network / non-200 errors come through as ApiError; render as a
+      // synthetic ok=false result so the banner stays consistent.
+      setTestStatus({
+        ok: false,
+        component: schema.component,
+        latencyMs: 0,
+        error: formatError(e),
+      });
+    } finally {
+      setTesting(false);
+    }
+  }
+
   if (loading) {
     return <p className="p-4 text-sm text-[color:var(--muted)]">Loading {label}…</p>;
   }
@@ -139,6 +171,15 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
           </span>
           <button
             type="button"
+            onClick={test}
+            disabled={testing || saving}
+            title="Test the current draft against the running services without committing it."
+            className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+          >
+            {testing ? "Testing…" : "Test"}
+          </button>
+          <button
+            type="button"
             onClick={save}
             disabled={dirtyKeys.size === 0 || saving}
             className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
@@ -148,27 +189,32 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         </div>
       </header>
 
+      {testStatus && <TestStatusBanner status={testStatus} />}
       {saveStatus && <SaveStatusBanner status={saveStatus} />}
 
       <div className="flex-1 overflow-y-auto p-4">
-        {Object.entries(fieldsByCategory).map(([category, fields]) => (
-          <section key={category} className="mb-6">
-            <h3 className="mb-2 font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
-              {categories[category] ?? category}
-            </h3>
-            <div>
-              {fields.map((f) => (
-                <ConfigFieldInput
-                  key={f.key}
-                  field={f}
-                  value={draft[f.key]}
-                  pending={saving}
-                  onChange={(v) => setDraft((prev) => ({ ...prev, [f.key]: v }))}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+        {Object.entries(fieldsByCategory).map(([category, fields]) => {
+          const visibleFields = fields.filter((f) => isFieldVisible(f, draft));
+          if (visibleFields.length === 0) return null;
+          return (
+            <section key={category} className="mb-6">
+              <h3 className="mb-2 font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
+                {categories[category] ?? category}
+              </h3>
+              <div>
+                {visibleFields.map((f) => (
+                  <ConfigFieldInput
+                    key={f.key}
+                    field={f}
+                    value={draft[f.key]}
+                    pending={saving}
+                    onChange={(v) => setDraft((prev) => ({ ...prev, [f.key]: v }))}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </div>
   );
@@ -201,6 +247,28 @@ function SaveStatusBanner({ status }: { status: SaveStatus }) {
   );
 }
 
+function TestStatusBanner({ status }: { status: ConfigTestResult }) {
+  const tone = status.ok
+    ? "border-emerald-900 bg-emerald-950/30 text-emerald-300"
+    : "border-rose-900 bg-rose-950/30 text-rose-300";
+  return (
+    <div className={`border-b px-4 py-3 text-xs ${tone}`}>
+      <p>
+        <span className="font-mono">
+          {status.ok ? "ok" : "fail"} · {status.latencyMs}ms · {status.component}
+        </span>
+        {status.summary && <span> — {status.summary}</span>}
+        {status.error && <span> — {status.error}</span>}
+      </p>
+      {status.sampleOutput && (
+        <pre className="mt-2 max-h-40 overflow-auto rounded bg-[color:var(--panel-soft)] p-2 font-mono text-[11px] leading-relaxed text-[color:var(--foreground)]">
+          {status.sampleOutput}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function groupByCategory(fields: ConfigFieldDef[]): Record<string, ConfigFieldDef[]> {
   const out: Record<string, ConfigFieldDef[]> = {};
   for (const f of fields) {
@@ -208,6 +276,17 @@ function groupByCategory(fields: ConfigFieldDef[]): Record<string, ConfigFieldDe
     out[f.category]!.push(f);
   }
   return out;
+}
+
+/**
+ * Honor `ConfigField.showWhen`: only render the field when another field's
+ * current draft value equals the predicate. v0.1 supports literal equality
+ * only (per the spec); deep equality via JSON.stringify covers strings,
+ * numbers, booleans, and arrays uniformly.
+ */
+function isFieldVisible(field: ConfigFieldDef, draft: Record<string, unknown>): boolean {
+  if (!field.showWhen) return true;
+  return JSON.stringify(draft[field.showWhen.key]) === JSON.stringify(field.showWhen.equals);
 }
 
 function shallowEqual(a: unknown, b: unknown): boolean {
