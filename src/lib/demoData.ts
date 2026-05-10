@@ -69,14 +69,14 @@ export const DEMO_PASSES: PassRecord[] = [
     hemispheres: [
       {
         role: "hemisphere",
-        hemisphere: "left",
+        driverName: "left",
         content:
           "The Hobbit (1937) precedes LotR (1954-55) by 17 years. Originally standalone children's literature; the Ring in The Hobbit was a generic invisibility ring. Tolkien revised Chapter 5 in the 1951 second edition to make Gollum's behavior consistent with the One Ring of LotR. The relationship is best described as 'retroactive prequel' — The Hobbit drew Tolkien's pre-existing legendarium (the Silmarillion mythology, in development since 1917) into commercial print.",
         passIndex: 0,
       },
       {
         role: "hemisphere",
-        hemisphere: "right",
+        driverName: "right",
         content: `Key relationship points:
 
 - **Publication**: Hobbit 1937 → LotR 1954-55
@@ -98,14 +98,14 @@ So they're connected but the connection is partly post-hoc.`,
     hemispheres: [
       {
         role: "hemisphere",
-        hemisphere: "left",
+        driverName: "left",
         content:
           "Both passes converge on: 17-year publication gap, retroactive Chapter 5 revision in 1951, and the 'Hobbit success → sequel commission → legendarium publication' causal chain. The right hemisphere's framing ('retroactive prequel') is a cleaner one-line summary than my prose version.",
         passIndex: 1,
       },
       {
         role: "hemisphere",
-        hemisphere: "right",
+        driverName: "right",
         content:
           "Agreement seems high. Both passes hit the same load-bearing facts: 1937 vs 1954, the Ch. 5 revision, the commission-as-cover-for-legendarium. Suggest terminating with a blended response that leads with the temporal/structural relationship and uses the bullet form for the three causal steps.",
         passIndex: 1,

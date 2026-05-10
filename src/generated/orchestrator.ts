@@ -47,7 +47,7 @@ export interface paths {
          *     Event types (`event:` field):
          *
          *     - `pass_started`     — `data` = `{"passIndex": int}`
-         *     - `hemisphere_token` — `data` = `{"hemisphere": "left"|"right", "passIndex": int, "text": "..."}` — incremental tokens from one hemisphere
+         *     - `hemisphere_token` — `data` = `{"driverName": string, "passIndex": int, "text": "..."}` — incremental tokens from one driver
          *     - `hemisphere_done`  — `data` = `Message` with `role: "hemisphere"`
          *     - `callosum`         — `data` = `CallosumState` — blend / disagreement signal at end of pass
          *     - `final_token`      — `data` = `{"text": "..."}` — token of the chosen final response (some implementations may only emit this after `done`)
@@ -86,7 +86,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/hemispheres": {
+    "/v1/admin/drivers": {
         parameters: {
             query?: never;
             header?: never;
@@ -94,12 +94,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Report the two configured hemisphere-driver instances.
+         * Report the orchestrator's configured drivers.
          * @description Surfaces what the orchestrator sees when it queries each
-         *     driver's `/v1/info`. Used by the UI to label hemispheres and
-         *     by ops to confirm the bicameral pair is genuinely cross-vendor.
+         *     driver's `/v1/info`, in the order the operator configured
+         *     them. Used by the UI to render dynamic per-driver tabs and by
+         *     ops to confirm the topology.
          */
-        get: operations["listHemispheres"];
+        get: operations["listDrivers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -278,9 +279,9 @@ export interface components {
             conversationId: string;
             message: components["schemas"]["Message"];
             /**
-             * @description Per-pass record of what each hemisphere said and how the
-             *     corpus callosum scored agreement. `passes[N].hemispheres` has
-             *     two entries (left, right) when both succeeded.
+             * @description Per-pass record of what each driver said and how the corpus
+             *     callosum scored agreement. `passes[N].hemispheres` has one
+             *     entry per configured driver that responded — two in v0.1.
              */
             passes: components["schemas"]["PassRecord"][];
             ntStateAtStart?: components["schemas"]["NTState"];
@@ -290,6 +291,12 @@ export interface components {
         };
         PassRecord: {
             passIndex: number;
+            /**
+             * @description One `Message` per configured driver that responded on this
+             *     pass, in the order the orchestrator's `drivers` config
+             *     declares them. Each message carries `driverName`. v0.1
+             *     expects exactly two entries.
+             */
             hemispheres: components["schemas"]["Message"][];
             callosum: components["schemas"]["CallosumState"];
         };
@@ -313,15 +320,24 @@ export interface components {
             decision: "terminate" | "another_pass" | "cap_reached";
             blendedMessage?: components["schemas"]["Message"];
         };
-        HemispherePairInfo: {
-            left: components["schemas"]["HemisphereInfo"];
-            right: components["schemas"]["HemisphereInfo"];
+        DriversInfo: {
+            /**
+             * @description Per-driver health snapshot, ordered as the orchestrator's
+             *     `drivers` config declared them.
+             */
+            drivers: components["schemas"]["DriverHealth"][];
         };
         /**
          * @description What the orchestrator sees from one hemisphere-driver's `/v1/info`,
-         *     plus the orchestrator-side reachability status.
+         *     plus the orchestrator-side reachability status and the
+         *     operator-supplied `name`.
          */
-        HemisphereInfo: {
+        DriverHealth: {
+            /**
+             * @description Operator-supplied driver name from the orchestrator's
+             *     `drivers` config. UI uses this as the tab/column label.
+             */
+            name: string;
             reachable: boolean;
             /**
              * Format: uri
@@ -340,27 +356,26 @@ export interface components {
          */
         Role: "system" | "user" | "assistant" | "hemisphere";
         /**
-         * @description Which hemisphere of the bicameral pair.
-         * @enum {string}
-         */
-        Hemisphere: "left" | "right";
-        /**
          * @description A single message in an Eugene Plexus conversation. The shape is
          *     deliberately close to the OpenAI / Anthropic chat message format so
          *     that adapters don't have to re-shape on every hop, but `role` includes
-         *     `hemisphere` for messages emitted by an individual hemisphere during
-         *     the bicameral pass (visible to corpus callosum and UI debug views,
-         *     not normally to the end user).
+         *     `hemisphere` for messages emitted by one of the parallel drivers
+         *     during a bicameral pass (visible to corpus callosum and UI debug
+         *     views, not normally to the end user).
          */
         Message: {
             role: components["schemas"]["Role"];
             /** @description Message text. v0.1 is text-only; multimodal extensions deferred. */
             content: string;
             /**
-             * @description When `role == "hemisphere"`, identifies which hemisphere
-             *     produced this message. Omitted otherwise.
+             * @description When `role == "hemisphere"`, the operator-supplied name of
+             *     the driver that produced this message (e.g. `"left"`,
+             *     `"right"`, or any free-form label set by the orchestrator's
+             *     `drivers` config). Omitted otherwise. Identity is owned by
+             *     the orchestrator's topology config — drivers themselves do
+             *     not know their position in the pair.
              */
-            hemisphere?: components["schemas"]["Hemisphere"];
+            driverName?: string;
             /**
              * Format: date-time
              * @description When the message was produced. Server-assigned if omitted.
@@ -513,7 +528,7 @@ export interface components {
          *     a renderer (text input, dropdown, password field, etc.).
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "url" | "duration";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "url" | "duration" | "driver_list";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -779,7 +794,7 @@ export interface operations {
             404: components["responses"]["Problem"];
         };
     };
-    listHemispheres: {
+    listDrivers: {
         parameters: {
             query?: never;
             header?: never;
@@ -788,16 +803,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Hemisphere configuration snapshot. */
+            /** @description Driver topology snapshot. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HemispherePairInfo"];
+                    "application/json": components["schemas"]["DriversInfo"];
                 };
             };
-            /** @description One or both drivers unreachable. */
+            /** @description All configured drivers are unreachable. */
             503: {
                 headers: {
                     [name: string]: unknown;

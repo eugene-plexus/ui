@@ -8,7 +8,6 @@
 import type { components as OrchComponents } from "@/generated/orchestrator";
 
 export type Role = OrchComponents["schemas"]["Role"];
-export type Hemisphere = OrchComponents["schemas"]["Hemisphere"];
 // Decision isn't a top-level schema — it's inline on CallosumState.decision —
 // so derive it from there. TODO(specs): consider lifting it to a $ref so
 // codegen produces a named type.
@@ -19,8 +18,18 @@ export type ChatRequest = OrchComponents["schemas"]["ChatRequest"];
 export type ChatResponse = OrchComponents["schemas"]["ChatResponse"];
 export type CallosumState = OrchComponents["schemas"]["CallosumState"];
 export type PassRecord = OrchComponents["schemas"]["PassRecord"];
-export type HemispherePairInfo = OrchComponents["schemas"]["HemispherePairInfo"];
-export type HemisphereInfo = OrchComponents["schemas"]["HemisphereInfo"];
+export type DriversInfo = OrchComponents["schemas"]["DriversInfo"];
+export type DriverHealth = OrchComponents["schemas"]["DriverHealth"];
+
+// `DriverEntry` is defined in common.yaml but openapi-typescript only
+// inlines schemas reachable via $ref from the per-component spec file,
+// and orchestrator.yaml doesn't reference it directly. The shape is
+// trivial so we type it by hand here. If a future spec change adds a
+// $ref, drop this in favor of OrchComponents["schemas"]["DriverEntry"].
+export interface DriverEntry {
+  name: string;
+  url: string;
+}
 export type NTState = OrchComponents["schemas"]["NTState"];
 export type Problem = OrchComponents["schemas"]["Problem"];
 

@@ -259,6 +259,12 @@ export interface components {
             completionTokens?: number;
             totalTokens?: number;
         };
+        /**
+         * @description Driver self-description. Driver does not know its position in
+         *     any topology — identity (the operator-supplied name used for UI
+         *     labelling and message stamping) lives on the orchestrator's
+         *     `drivers` config and is never sourced from here.
+         */
         DriverInfo: {
             backend: components["schemas"]["BackendKind"];
             /**
@@ -267,7 +273,6 @@ export interface components {
              *     adapter's built-in default rather than pinning a specific model.
              */
             modelId?: string;
-            hemisphere: components["schemas"]["Hemisphere"];
             /** @description Optional backend capabilities the orchestrator may key off. */
             capabilities?: {
                 /** @description Whether `/v1/generate/stream` emits true incremental tokens. */
@@ -283,27 +288,26 @@ export interface components {
          */
         Role: "system" | "user" | "assistant" | "hemisphere";
         /**
-         * @description Which hemisphere of the bicameral pair.
-         * @enum {string}
-         */
-        Hemisphere: "left" | "right";
-        /**
          * @description A single message in an Eugene Plexus conversation. The shape is
          *     deliberately close to the OpenAI / Anthropic chat message format so
          *     that adapters don't have to re-shape on every hop, but `role` includes
-         *     `hemisphere` for messages emitted by an individual hemisphere during
-         *     the bicameral pass (visible to corpus callosum and UI debug views,
-         *     not normally to the end user).
+         *     `hemisphere` for messages emitted by one of the parallel drivers
+         *     during a bicameral pass (visible to corpus callosum and UI debug
+         *     views, not normally to the end user).
          */
         Message: {
             role: components["schemas"]["Role"];
             /** @description Message text. v0.1 is text-only; multimodal extensions deferred. */
             content: string;
             /**
-             * @description When `role == "hemisphere"`, identifies which hemisphere
-             *     produced this message. Omitted otherwise.
+             * @description When `role == "hemisphere"`, the operator-supplied name of
+             *     the driver that produced this message (e.g. `"left"`,
+             *     `"right"`, or any free-form label set by the orchestrator's
+             *     `drivers` config). Omitted otherwise. Identity is owned by
+             *     the orchestrator's topology config — drivers themselves do
+             *     not know their position in the pair.
              */
-            hemisphere?: components["schemas"]["Hemisphere"];
+            driverName?: string;
             /**
              * Format: date-time
              * @description When the message was produced. Server-assigned if omitted.
@@ -447,7 +451,7 @@ export interface components {
          *     a renderer (text input, dropdown, password field, etc.).
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "url" | "duration";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "url" | "duration" | "driver_list";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field

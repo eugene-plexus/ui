@@ -6,13 +6,15 @@
  * and body. This avoids CORS configuration on the components and keeps the
  * UI origin-restricted.
  *
- * `<target>` is one of `orchestrator`, `left`, `right`. Resolution is done
- * via `readProxyEndpoints()` from environment variables.
+ * `<target>` is `orchestrator` or any operator-supplied driver name from
+ * the orchestrator's `drivers` config. Resolution is dynamic: driver URLs
+ * come from the orchestrator at request time so the UI doesn't need its
+ * own env-var-per-driver bootstrap.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { isProxyTarget, readProxyEndpoints, resolveTarget } from "@/lib/config";
+import { isValidTargetName, resolveTarget } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -36,11 +38,11 @@ async function handle(
   ctx: { params: Promise<{ target: string; path: string[] }> },
 ) {
   const { target, path } = await ctx.params;
-  if (!isProxyTarget(target)) {
-    return NextResponse.json({ error: `unknown target: ${target}` }, { status: 400 });
+  if (!isValidTargetName(target)) {
+    return NextResponse.json({ error: `invalid target: ${target}` }, { status: 400 });
   }
 
-  const resolved = resolveTarget(target, readProxyEndpoints());
+  const resolved = await resolveTarget(target);
   if ("error" in resolved) {
     return NextResponse.json({ error: resolved.error }, { status: 503 });
   }

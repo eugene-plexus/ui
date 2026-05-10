@@ -1,6 +1,6 @@
 "use client";
 
-import type { ConfigField as ConfigFieldDef } from "@/lib/types";
+import type { ConfigField as ConfigFieldDef, DriverEntry } from "@/lib/types";
 
 /**
  * Render a single config field's input based on its `valueType`.
@@ -91,6 +91,78 @@ export function ConfigFieldInput({
           disabled={pending}
           className={baseInputClass}
         />
+      );
+    }
+
+    if (field.valueType === "driver_list") {
+      const entries: DriverEntry[] = Array.isArray(value)
+        ? (value as DriverEntry[]).map((d) => ({
+            name: typeof d?.name === "string" ? d.name : "",
+            // openapi-typescript types url as `string` even though the
+            // spec uses format: uri; coerce defensively.
+            url: typeof d?.url === "string" ? d.url : String(d?.url ?? ""),
+          }))
+        : [];
+
+      const update = (next: DriverEntry[]) => onChange(next);
+
+      return (
+        <div className="flex flex-col gap-2">
+          {entries.length === 0 && (
+            <p className="text-xs text-[color:var(--muted)]">
+              No drivers configured. Add one to dispatch bicameral passes.
+            </p>
+          )}
+          {entries.map((entry, i) => (
+            <div key={i} className="grid grid-cols-[1fr_2fr_auto] items-center gap-2">
+              <input
+                type="text"
+                value={entry.name}
+                placeholder="name (e.g. left)"
+                onChange={(e) => {
+                  const next = entries.slice();
+                  next[i] = { ...entry, name: e.target.value };
+                  update(next);
+                }}
+                disabled={pending}
+                className={baseInputClass}
+              />
+              <input
+                type="text"
+                value={entry.url}
+                placeholder="http://host:port"
+                onChange={(e) => {
+                  const next = entries.slice();
+                  next[i] = { ...entry, url: e.target.value };
+                  update(next);
+                }}
+                disabled={pending}
+                className={baseInputClass}
+              />
+              <button
+                type="button"
+                onClick={() => update(entries.filter((_, j) => j !== i))}
+                disabled={pending || entries.length <= 1}
+                title={
+                  entries.length <= 1
+                    ? "v0.1 requires at least one driver."
+                    : "Remove this driver."
+                }
+                className="font-ui rounded border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-rose-700 hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => update([...entries, { name: "", url: "" }])}
+            disabled={pending}
+            className="font-ui w-fit rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            + Add driver
+          </button>
+        </div>
       );
     }
 

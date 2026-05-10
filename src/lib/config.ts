@@ -6,45 +6,86 @@
  * goes through `/api/proxy/...`, which forwards server-side. This keeps
  * the UI origin-restricted (no CORS dance on the components) and lets us
  * keep the orchestrator on a private network without poking holes.
+ *
+ * v0.1 fixed-target set: `orchestrator`. Driver targets (any other
+ * name) are resolved at request time by fetching the orchestrator's
+ * `/v1/config` and looking up the operator-supplied driver name in
+ * its `drivers` list. The orchestrator is the source of truth for
+ * topology — env var overrides exist only as the bootstrap escape
+ * hatch (so the proxy can reach the orchestrator in the first place).
  */
 
-export type ProxyTarget = "orchestrator" | "left" | "right";
+export type ProxyTarget = string;
 
-export interface ProxyEndpoints {
-  orchestrator: string;
-  left: string | null;
-  right: string | null;
-}
+const FIXED_TARGETS = new Set(["orchestrator"]);
 
 const DEFAULT_ORCHESTRATOR = "http://127.0.0.1:8080";
 
-export function readProxyEndpoints(): ProxyEndpoints {
-  const orchestrator = process.env.ORCHESTRATOR_URL?.trim() || DEFAULT_ORCHESTRATOR;
-  const left = process.env.LEFT_DRIVER_URL?.trim() || null;
-  const right = process.env.RIGHT_DRIVER_URL?.trim() || null;
-  return { orchestrator, left, right };
+interface DriverEntry {
+  name: string;
+  url: string;
 }
 
-export function resolveTarget(
+export function orchestratorUrl(): string {
+  return process.env.ORCHESTRATOR_URL?.trim() || DEFAULT_ORCHESTRATOR;
+}
+
+export async function resolveTarget(
   target: ProxyTarget,
-  endpoints: ProxyEndpoints,
-): { url: string } | { error: string } {
-  switch (target) {
-    case "orchestrator":
-      return { url: endpoints.orchestrator };
-    case "left":
-      if (!endpoints.left) return { error: "LEFT_DRIVER_URL not configured" };
-      return { url: endpoints.left };
-    case "right":
-      if (!endpoints.right) return { error: "RIGHT_DRIVER_URL not configured" };
-      return { url: endpoints.right };
-    default:
-      return { error: `unknown target: ${target}` };
+): Promise<{ url: string } | { error: string }> {
+  if (target === "orchestrator") {
+    return { url: orchestratorUrl() };
+  }
+  // Anything else is interpreted as a driver name. Look it up in the
+  // orchestrator's `drivers` config — that's the single source of truth
+  // for topology. v0.1 fetches on every request; the volume is small
+  // (config-page edits only) so a cache is premature.
+  if (FIXED_TARGETS.has(target)) {
+    return { error: `unsupported fixed target: ${target}` };
+  }
+  try {
+    const response = await fetch(`${orchestratorUrl()}/v1/config`);
+    if (!response.ok) {
+      return {
+        error: `orchestrator /v1/config returned ${response.status} ${response.statusText}`,
+      };
+    }
+    const doc = (await response.json()) as Record<string, unknown>;
+    const drivers = doc.drivers;
+    if (!Array.isArray(drivers)) {
+      return { error: "orchestrator /v1/config has no drivers list" };
+    }
+    const entry = drivers.find(
+      (d): d is DriverEntry =>
+        typeof d === "object" &&
+        d !== null &&
+        typeof (d as DriverEntry).name === "string" &&
+        typeof (d as DriverEntry).url === "string" &&
+        (d as DriverEntry).name === target,
+    );
+    if (!entry) {
+      const known = drivers
+        .filter((d): d is DriverEntry => typeof d === "object" && d !== null && "name" in d)
+        .map((d) => d.name)
+        .join(", ");
+      return {
+        error: `unknown driver: ${target}. Known: [${known}]`,
+      };
+    }
+    return { url: entry.url };
+  } catch (e) {
+    return {
+      error: `failed to reach orchestrator at ${orchestratorUrl()}: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    };
   }
 }
 
-export const KNOWN_TARGETS: readonly ProxyTarget[] = ["orchestrator", "left", "right"] as const;
-
-export function isProxyTarget(value: string): value is ProxyTarget {
-  return (KNOWN_TARGETS as readonly string[]).includes(value);
+/** Validity check used by the route handler to short-circuit obvious garbage. */
+export function isValidTargetName(value: string): boolean {
+  // Driver names are operator-supplied strings; orchestrator config
+  // validates non-emptiness. The proxy only needs a basic sanity gate
+  // to reject path-traversal-shaped input.
+  return value.length > 0 && !value.includes("/") && !value.includes("..");
 }
