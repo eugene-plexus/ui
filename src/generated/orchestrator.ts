@@ -811,6 +811,19 @@ export interface components {
             version?: string;
             /** @description Component identifier (e.g. `"hemisphere-driver"`). */
             component?: string;
+            /**
+             * @description True when the component was started with the watchdog's
+             *     safe-mode env var set
+             *     (`EUGENE_PLEXUS_<KIND>_SAFE_MODE=1`) and is therefore
+             *     running on built-in defaults instead of its persisted
+             *     config. Components in safe mode are reachable for config
+             *     editing (`PATCH /v1/config` writes to disk normally) but
+             *     should be considered non-functional for their primary
+             *     purpose until restarted without the flag. `status` is
+             *     also reported as `degraded` while safe mode is in effect.
+             * @default false
+             */
+            safeMode: boolean;
             /** @description Optional component-specific health detail. */
             details?: {
                 [key: string]: unknown;
