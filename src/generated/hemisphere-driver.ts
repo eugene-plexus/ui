@@ -215,11 +215,20 @@ export interface components {
              *     tell which pass produced which hemisphere output.
              */
             passIndex?: number;
-            /** @description Maximum output tokens. Backend-clamped. */
+            /**
+             * @description Maximum output tokens. Backend-clamped. Owned by the caller
+             *     (typically the orchestrator) — the driver does not apply a
+             *     local default. Adapters whose backends don't expose this
+             *     knob (e.g. agentic CLIs) silently ignore it.
+             */
             maxTokens?: number;
             /**
              * Format: float
-             * @description Sampling temperature. Backend-clamped.
+             * @description Sampling temperature. Backend-clamped. Owned by the caller
+             *     (typically the orchestrator, where it will eventually be
+             *     modulated by the NT system) — the driver does not apply a
+             *     local default. Adapters whose backends don't expose this
+             *     knob (e.g. agentic CLIs) silently ignore it.
              */
             temperature?: number;
             /** @description Optional stop sequences. */

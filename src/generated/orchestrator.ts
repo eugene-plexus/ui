@@ -268,11 +268,6 @@ export interface components {
              */
             maxPasses: number;
             /**
-             * Format: float
-             * @description Optional override; otherwise driver defaults apply.
-             */
-            temperature?: number;
-            /**
              * Format: uuid
              * @description Caller-supplied id for log correlation.
              */
