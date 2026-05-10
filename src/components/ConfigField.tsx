@@ -22,7 +22,7 @@ export function ConfigFieldInput({
   onChange: (newValue: unknown) => void;
 }) {
   const baseInputClass =
-    "w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)] disabled:opacity-50";
+    "w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[color:var(--border)]";
 
   function renderInput() {
     if (field.valueType === "boolean") {

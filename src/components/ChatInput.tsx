@@ -48,12 +48,12 @@ export function ChatInput({
             : "Message Eugene… (Enter to send, Shift+Enter for newline)"
         }
         disabled={disabled}
-        className="flex-1 resize-none rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed outline-none focus:border-[color:var(--accent-left)] disabled:opacity-50"
+        className="flex-1 resize-none rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50"
       />
       <button
         type="submit"
         disabled={disabled || !value.trim()}
-        className="rounded bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-black transition-opacity disabled:opacity-30"
+        className="font-ui rounded bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
       >
         Send
       </button>

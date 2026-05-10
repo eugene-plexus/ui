@@ -1,29 +1,220 @@
 @import "tailwindcss";
 
-:root {
-  --background: #0a0a0c;
-  --foreground: #e8e8e8;
-  --panel: #131316;
-  --panel-soft: #1a1a1e;
-  --border: #2a2a30;
-  --accent-left: #4a9eff;
-  --accent-right: #ff7a4a;
-  --muted: #8a8a92;
+/* Default theme = cyberpunk. The selector is duplicated so a) :root has a
+   complete set of tokens even before the pre-hydration script sets
+   data-theme, and b) explicitly setting data-theme="cyberpunk" yields the
+   same values without relying on absence of the attribute. */
+:root,
+[data-theme="cyberpunk"] {
+  --background: #060109;
+  --foreground: #c8c5d4;
+  --panel: #0e0a14;
+  --panel-soft: #181222;
+  --panel-hover: #221a30;
+  --border: #2a1b3a;
+  --border-hover: #463260;
+  --accent-left: #00d9ff;
+  --accent-right: #ff3eb5;
+  --on-accent-left: #000;
+  --on-accent-right: #fff;
+  --muted: #7a7088;
+  --scrollbar-thumb: rgb(74 64 92 / 0.55);
+  --scrollbar-thumb-hover: rgb(0 217 255 / 0.6);
+
+  /* Chat bubbles overlay the bg icon in cyberpunk. */
+  --bubble-bg: rgb(14 10 20 / 0.65);
+  --bubble-soft-bg: rgb(24 18 34 / 0.7);
+  --bubble-blur: 18px;
+
+  /* Large iconic Eugene letterform behind the chat. */
+  --bg-icon-display: flex;
+  --bg-icon-opacity: 0.18;
+
+  /* Fonts. `--font-orbitron` and `--font-inter` are emitted by
+     `next/font/google` in layout.tsx. */
+  --font-ui: var(--font-orbitron), system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+}
+
+[data-theme="modern"] {
+  --background: #f4f4f7;
+  --foreground: #18181b;
+  --panel: #ffffff;
+  --panel-soft: #ececef;
+  --panel-hover: #e0e0e6;
+  --border: #d8d8de;
+  --border-hover: #a8a8b0;
+  --accent-left: #2563eb;
+  --accent-right: #db2777;
+  --on-accent-left: #fff;
+  --on-accent-right: #fff;
+  --muted: #6c6c74;
+  --scrollbar-thumb: rgb(108 108 116 / 0.45);
+  --scrollbar-thumb-hover: rgb(37 99 235 / 0.7);
+
+  --bubble-bg: #ffffff;
+  --bubble-soft-bg: #ececef;
+  --bubble-blur: 0;
+
+  --bg-icon-display: none;
+  --bg-icon-opacity: 0;
+
+  /* Modern keeps Inter for both UI chrome and body — no display font. */
+  --font-ui: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
 html,
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: var(--font-body);
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Theme-aware scrollbars. Firefox uses `scrollbar-color`; Chromium /
+   Safari use the WebKit pseudo-elements. Both reference the same theme
+   tokens so dark / light / future themes stay coherent. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+  transition: background-color 120ms ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Apply to interface chrome (buttons, headers, badges, the theme/font
+   pickers). In cyberpunk this is Orbitron; in modern it's Inter — same
+   selector works for both because the variable resolves per-theme.
+   Long-form content (chat messages, hemisphere outputs) inherits
+   `--font-body` from <body> and stays in Inter. */
+.font-ui {
+  font-family: var(--font-ui);
+}
+
+/* Tailwind's `font-mono` utility uses its own stack; this token is for
+   places where we want to force the configurable mono. */
+.font-mono-ui {
+  font-family: var(--font-mono);
+}
+
+/* Decorative letterform behind the chat. Hidden in themes that set
+   --bg-icon-display: none. Pointer events disabled so it can't intercept
+   clicks. */
+/* Decorative letterform centered in the chat section (not the viewport).
+   `right: 400px` matches `grid-cols-[1fr_400px]` in `page.tsx`; if the
+   rail width changes, change both. The element is sibling to <main> in
+   the body so it can sit at z-0 underneath main's z-10 stacking context
+   while still being visible through transparent regions of the chat
+   section. */
+.theme-bg-icon {
+  display: var(--bg-icon-display);
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 400px;
+  z-index: 0;
+  pointer-events: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.theme-bg-icon img {
+  height: 90vh;
+  width: auto;
+  opacity: var(--bg-icon-opacity);
+  filter: blur(1px) saturate(1.15);
+}
+
+/* "Eugene is thinking" — theme-specific implementations.
+   Each theme owns how the indicator looks: cyberpunk runs a neon pulse
+   around the perimeter of every block tagged `is-thinking`; modern shows
+   a centered spinner inside the block tagged `is-thinking-rail`. */
+
+@property --pulse-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+[data-theme="cyberpunk"] .is-thinking {
+  position: relative;
+}
+[data-theme="cyberpunk"] .is-thinking::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+  padding: 2px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--pulse-angle),
+    transparent 0deg,
+    var(--accent-left) 30deg,
+    transparent 75deg,
+    transparent 180deg,
+    var(--accent-right) 210deg,
+    transparent 255deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: cyberpunk-pulse 2.4s linear infinite;
+}
+@keyframes cyberpunk-pulse {
+  to {
+    --pulse-angle: 360deg;
+  }
+}
+
+[data-theme="modern"] .is-thinking-rail {
+  position: relative;
+}
+[data-theme="modern"] .is-thinking-rail::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent-left);
+  border-radius: 50%;
+  animation: modern-spin 0.9s linear infinite;
+  pointer-events: none;
+  z-index: 30;
+}
+@keyframes modern-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

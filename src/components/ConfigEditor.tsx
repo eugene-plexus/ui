@@ -141,7 +141,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
             type="button"
             onClick={save}
             disabled={dirtyKeys.size === 0 || saving}
-            className="rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-black disabled:opacity-30"
+            className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
           >
             {saving ? "Saving…" : "Save"}
           </button>

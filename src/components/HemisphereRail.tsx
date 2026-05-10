@@ -1,17 +1,24 @@
 "use client";
 
+import { JumpToBottomButton } from "@/components/JumpToBottomButton";
+import { useAutoScroll } from "@/lib/useAutoScroll";
 import type { PassRecord } from "@/lib/types";
 
 /**
  * Right-side panel showing every bicameral pass: each pass's two
- * hemisphere outputs side-by-side, plus the corpus-callosum agreement
- * and decision.
+ * hemisphere outputs stacked vertically — left-aligned for the left
+ * hemisphere, right-aligned for the right — plus the corpus-callosum
+ * agreement and decision.
  *
- * This is the load-bearing debugging surface in v0.1 — when the bicameral
- * loop produces an unexpected response, this rail tells you which
- * hemisphere said what and why the orchestrator decided the way it did.
+ * Force-pins to the bottom on every update — when a new turn lands, the
+ * latest pass is what the operator wants to see. The jump-to-bottom
+ * button still appears for manual scrollback.
  */
 export function HemisphereRail({ passes }: { passes: PassRecord[] }) {
+  const { scrollRef, isAtBottom, scrollToBottom } = useAutoScroll(passes, {
+    forceOnUpdate: true,
+  });
+
   if (passes.length === 0) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-sm text-[color:var(--muted)]">
@@ -21,10 +28,13 @@ export function HemisphereRail({ passes }: { passes: PassRecord[] }) {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-      {passes.map((p) => (
-        <PassCard key={p.passIndex} pass={p} />
-      ))}
+    <div className="relative h-full">
+      <div ref={scrollRef} className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+        {passes.map((p) => (
+          <PassCard key={p.passIndex} pass={p} />
+        ))}
+      </div>
+      {!isAtBottom && <JumpToBottomButton onClick={scrollToBottom} />}
     </div>
   );
 }
@@ -40,11 +50,17 @@ function PassCard({ pass }: { pass: PassRecord }) {
         <span className="font-mono text-[color:var(--muted)]">pass {pass.passIndex}</span>
         <DecisionBadge decision={callosum.decision} agreement={callosum.agreement} />
       </div>
-      <div className="grid grid-cols-2 divide-x divide-[color:var(--border)]">
-        <HemisphereOutput color="var(--accent-left)" label="left" content={left?.content ?? ""} />
+      <div className="flex flex-col gap-3 p-3">
+        <HemisphereOutput
+          color="var(--accent-left)"
+          label="left"
+          align="left"
+          content={left?.content ?? ""}
+        />
         <HemisphereOutput
           color="var(--accent-right)"
           label="right"
+          align="right"
           content={right?.content ?? ""}
         />
       </div>
@@ -55,15 +71,22 @@ function PassCard({ pass }: { pass: PassRecord }) {
 function HemisphereOutput({
   color,
   label,
+  align,
   content,
 }: {
   color: string;
   label: string;
+  align: "left" | "right";
   content: string;
 }) {
+  const sideClass =
+    align === "left" ? "self-start border-l-2 pl-3" : "self-end border-r-2 pr-3";
   return (
-    <div className="p-3">
-      <div className="mb-2 font-mono text-[10px] tracking-wider uppercase" style={{ color }}>
+    <div
+      className={`max-w-[92%] py-1 ${sideClass}`}
+      style={{ borderColor: color }}
+    >
+      <div className="mb-1 font-mono text-[10px] tracking-wider uppercase" style={{ color }}>
         {label}
       </div>
       <div className="text-sm leading-relaxed whitespace-pre-wrap">
