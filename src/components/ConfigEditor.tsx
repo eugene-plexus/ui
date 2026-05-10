@@ -342,7 +342,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
                 {visibleFields.map((f) => (
                   <ConfigFieldInput
                     key={f.key}
-                    field={f}
+                    field={fieldForRender(f, draft, serverDoc)}
                     value={draft[f.key]}
                     pending={saving}
                     onChange={(v) => handleFieldChange(f.key, v)}
@@ -552,6 +552,37 @@ function isFieldVisible(field: ConfigFieldDef, draft: Record<string, unknown>): 
     return equals.some((e) => JSON.stringify(e) === target);
   }
   return JSON.stringify(equals) === target;
+}
+
+/**
+ * When the draft Provider differs from the saved one, the model
+ * dropdown's enumValues are stale — they were populated from the SAVED
+ * provider's `/v1/models` and have no relationship to the new
+ * provider's catalog. Letting the operator pick from that list silently
+ * sets a model that doesn't exist on the chosen backend (e.g. picking
+ * "gpt-4o" from an OpenAI list while Provider is now MiniMax).
+ *
+ * Workaround: swap modelId to a free-text input until Save + Restart
+ * refreshes the schema with the new provider's actual model list. The
+ * operator can still type a model name they know is valid.
+ */
+function fieldForRender(
+  field: ConfigFieldDef,
+  draft: Record<string, unknown>,
+  serverDoc: ConfigDocument,
+): ConfigFieldDef {
+  if (field.key !== "modelId") return field;
+  const savedProvider = (serverDoc as Record<string, unknown>).provider;
+  if (draft.provider === savedProvider) return field;
+  return {
+    ...field,
+    valueType: "string",
+    enumValues: undefined,
+    enumLabels: undefined,
+    description:
+      (field.description ?? "") +
+      "\n\nProvider has changed; the dropdown can't refresh until Save + Restart. Type a model name or leave blank to use the new provider's default.",
+  };
 }
 
 /**
