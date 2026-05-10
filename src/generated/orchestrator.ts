@@ -109,6 +109,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/drivers/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test-connect to an arbitrary driver URL without persisting it.
+         * @description Used by the UI's per-row "Test" buttons in the drivers list
+         *     editor — same affordance Sonarr / Radarr expose next to each
+         *     indexer entry. Fetches `<url>/v1/info` once, reports
+         *     reachability + backend identity, and returns. Does not touch
+         *     the saved config; safe to call against unsaved form values.
+         */
+        post: operations["probeDriver"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/nt-state": {
         parameters: {
             query?: never;
@@ -475,6 +499,27 @@ export interface components {
          */
         BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http";
         /**
+         * @description One operator-configured hemisphere-driver in the orchestrator's
+         *     topology. The orchestrator owns the `name` (free-form, used for
+         *     labelling messages and UI tabs); drivers themselves are anonymous
+         *     and report only their backend / model identity. v0.1 expects two
+         *     entries; v0.2+ generalizes to N (with backup/failover semantics
+         *     layered on top).
+         */
+        DriverEntry: {
+            /**
+             * @description Operator-supplied label (e.g. `"left"`, `"right"`, or any
+             *     free-form string). Stamped onto every message this driver
+             *     produces and surfaced in the UI as the tab/column label.
+             */
+            name: string;
+            /**
+             * Format: uri
+             * @description Base URL where the driver's HTTP API is reachable.
+             */
+            url: string;
+        };
+        /**
          * @description Current effective config values, keyed by `ConfigField.key`.
          *     Values of fields with `sensitive: true` are returned as the
          *     literal string `"<redacted>"` regardless of whether they are
@@ -821,6 +866,35 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    probeDriver: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriverEntry"];
+            };
+        };
+        responses: {
+            /**
+             * @description Probe outcome. Returned for both reachable and unreachable
+             *     cases — `reachable` distinguishes them, `error` carries the
+             *     failure detail when set.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverHealth"];
+                };
+            };
+            400: components["responses"]["Problem"];
         };
     };
     getNTState: {
