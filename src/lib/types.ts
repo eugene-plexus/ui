@@ -43,3 +43,4 @@ export type ConfigFieldShowWhen = OrchComponents["schemas"]["ConfigFieldShowWhen
 export type ConfigTestRequest = OrchComponents["schemas"]["ConfigTestRequest"];
 export type ConfigTestResult = OrchComponents["schemas"]["ConfigTestResult"];
 export type ConfigValueType = OrchComponents["schemas"]["ConfigValueType"];
+export type RestartResult = OrchComponents["schemas"]["RestartResult"];

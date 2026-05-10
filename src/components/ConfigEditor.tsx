@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ApiError, api } from "@/lib/api";
@@ -11,6 +11,7 @@ import type {
   ConfigSchema,
   ConfigTestResult,
   ConfigUpdateResult,
+  RestartResult,
 } from "@/lib/types";
 
 interface SaveStatus {
@@ -18,6 +19,13 @@ interface SaveStatus {
   rejected: { key: string; message: string }[];
   requiresRestart: boolean;
   pendingRestart: string[];
+}
+
+type RestartPhase = "idle" | "scheduled" | "waiting" | "back" | "timeout" | "error";
+
+interface RestartState {
+  phase: RestartPhase;
+  message?: string;
 }
 
 /**
@@ -38,6 +46,16 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null);
   const [testStatus, setTestStatus] = useState<ConfigTestResult | null>(null);
+  const [restart, setRestart] = useState<RestartState>({ phase: "idle" });
+
+  // Per-provider draft cache: when the user switches Provider, we
+  // snapshot the current values of provider-dependent fields under the
+  // outgoing provider key and restore the new provider's snapshot if we
+  // have one. Lets the user explore Providers without losing typed
+  // credentials. Lives in a ref because it never needs to trigger a
+  // re-render — it's read inside the change handler and seeded from the
+  // initial server doc on load.
+  const draftCacheRef = useRef<Record<string, Record<string, unknown>>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +72,20 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         setSchema(schemaResp);
         setServerDoc(docResp);
         setDraft({ ...(docResp as Record<string, unknown>) });
+        // Seed the cache with the initial server values keyed under the
+        // current provider, so an immediate switch-and-back returns the
+        // user to exactly what they loaded with.
+        const initialProvider = (docResp as Record<string, unknown>).provider;
+        if (typeof initialProvider === "string") {
+          const dependentKeys = providerDependentKeys(schemaResp);
+          const snapshot: Record<string, unknown> = {};
+          for (const k of dependentKeys) {
+            snapshot[k] = (docResp as Record<string, unknown>)[k];
+          }
+          draftCacheRef.current = { [initialProvider]: snapshot };
+        } else {
+          draftCacheRef.current = {};
+        }
       } catch (e) {
         if (cancelled) return;
         setLoadError(formatError(e));
@@ -76,6 +108,49 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
     }
     return keys;
   }, [serverDoc, draft]);
+
+  /**
+   * Field-change handler. Most fields just merge into draft. The
+   * Provider field is special: its value gates which downstream fields
+   * the user even sees (via `showWhen`), and the Model dropdown's
+   * options are populated from the saved provider's `/v1/models` —
+   * stale the moment Provider changes. So a Provider change snapshots
+   * the current provider's dependent values to the cache and restores
+   * the new provider's snapshot (or clears, if there is none).
+   */
+  function handleFieldChange(fieldKey: string, value: unknown) {
+    if (fieldKey !== "provider" || !schema) {
+      setDraft((prev) => ({ ...prev, [fieldKey]: value }));
+      return;
+    }
+
+    setDraft((prev) => {
+      const oldProvider = prev.provider;
+      if (oldProvider === value) {
+        return { ...prev, provider: value };
+      }
+      const dependentKeys = providerDependentKeys(schema);
+
+      // Snapshot the current draft's provider-dependent values under
+      // the OUTGOING provider key, so we can restore them if the user
+      // ever switches back to it during this session.
+      if (typeof oldProvider === "string") {
+        const snapshot: Record<string, unknown> = {};
+        for (const k of dependentKeys) {
+          snapshot[k] = prev[k];
+        }
+        draftCacheRef.current[oldProvider] = snapshot;
+      }
+
+      const next: Record<string, unknown> = { ...prev, provider: value };
+      const restored =
+        typeof value === "string" ? draftCacheRef.current[value] : undefined;
+      for (const k of dependentKeys) {
+        next[k] = restored ? (restored[k] ?? null) : null;
+      }
+      return next;
+    });
+  }
 
   async function save() {
     if (!schema || dirtyKeys.size === 0) return;
@@ -105,6 +180,17 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         }
         return next;
       });
+      // Re-seed the per-provider cache from the freshly-saved doc, so
+      // post-save provider switches behave the same as a fresh load.
+      const newProvider = (fresh as Record<string, unknown>).provider;
+      if (typeof newProvider === "string") {
+        const dependentKeys = providerDependentKeys(schema);
+        const snapshot: Record<string, unknown> = {};
+        for (const k of dependentKeys) {
+          snapshot[k] = (fresh as Record<string, unknown>)[k];
+        }
+        draftCacheRef.current = { [newProvider]: snapshot };
+      }
     } catch (e) {
       setLoadError(formatError(e));
     } finally {
@@ -139,6 +225,57 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
     } finally {
       setTesting(false);
     }
+  }
+
+  /**
+   * Trigger the `POST /v1/admin/restart` endpoint and watch
+   * `/healthz` to confirm the process came back. The endpoint returns
+   * 202 immediately and exits a few hundred ms later, so we transition
+   * through `scheduled` → `waiting` → (`back` | `timeout`).
+   *
+   * v0.1 personal-use installs without a process supervisor will sit
+   * in `waiting` until the timeout — at which point the modal tells
+   * the operator to relaunch by hand.
+   */
+  async function performRestart() {
+    setRestart({ phase: "scheduled", message: "Asking the process to exit…" });
+    try {
+      const result = await api.post<RestartResult>(target, "/v1/admin/restart", {});
+      setRestart({
+        phase: "waiting",
+        message: `Process exiting in ~${result.delayMs}ms — waiting for it to come back…`,
+      });
+      const ok = await waitForHealthz(target, 30_000);
+      if (ok) {
+        setRestart({ phase: "back", message: `${label} is back online.` });
+        // Reload schema/doc from the freshly-restarted process.
+        try {
+          const [schemaResp, docResp] = await Promise.all([
+            api.get<ConfigSchema>(target, "/v1/config/schema"),
+            api.get<ConfigDocument>(target, "/v1/config"),
+          ]);
+          setSchema(schemaResp);
+          setServerDoc(docResp);
+          setDraft({ ...(docResp as Record<string, unknown>) });
+          setSaveStatus(null);
+        } catch {
+          // If the reload fails the modal still reports "back" — the
+          // operator can manually refresh the page.
+        }
+      } else {
+        setRestart({
+          phase: "timeout",
+          message:
+            "Didn't see the process come back within 30s. If you're running without a supervisor (systemd / docker / smoke-test launcher), relaunch it manually, then close this dialog.",
+        });
+      }
+    } catch (e) {
+      setRestart({ phase: "error", message: formatError(e) });
+    }
+  }
+
+  function dismissRestart() {
+    setRestart({ phase: "idle" });
   }
 
   if (loading) {
@@ -208,7 +345,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
                     field={f}
                     value={draft[f.key]}
                     pending={saving}
-                    onChange={(v) => setDraft((prev) => ({ ...prev, [f.key]: v }))}
+                    onChange={(v) => handleFieldChange(f.key, v)}
                   />
                 ))}
               </div>
@@ -216,6 +353,18 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
           );
         })}
       </div>
+
+      {saveStatus?.requiresRestart && restart.phase === "idle" && (
+        <RestartRequiredModal
+          label={label}
+          pendingRestart={saveStatus.pendingRestart}
+          onRestartNow={() => void performRestart()}
+          onLater={() => setSaveStatus({ ...saveStatus, requiresRestart: false })}
+        />
+      )}
+      {restart.phase !== "idle" && (
+        <RestartProgressModal phase={restart.phase} message={restart.message} onDismiss={dismissRestart} />
+      )}
     </div>
   );
 }
@@ -269,6 +418,113 @@ function TestStatusBanner({ status }: { status: ConfigTestResult }) {
   );
 }
 
+function RestartRequiredModal({
+  label,
+  pendingRestart,
+  onRestartNow,
+  onLater,
+}: {
+  label: string;
+  pendingRestart: string[];
+  onRestartNow: () => void;
+  onLater: () => void;
+}) {
+  return (
+    <ModalScrim>
+      <h3 className="text-sm font-semibold">Restart required</h3>
+      <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted)]">
+        Your changes were saved, but{" "}
+        <span className="font-mono text-amber-300">{label}</span> only re-reads
+        these fields at startup:
+      </p>
+      <ul className="mt-2 ml-4 list-disc text-xs text-[color:var(--foreground)]">
+        {pendingRestart.map((k) => (
+          <li key={k} className="font-mono">
+            {k}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs leading-relaxed text-[color:var(--muted)]">
+        &ldquo;Restart now&rdquo; tells the process to exit; an external
+        supervisor (systemd, docker, your launcher) brings it back. If
+        you&rsquo;re running without a supervisor, the process will stay down
+        until you relaunch it manually.
+      </p>
+      <div className="mt-4 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onLater}
+          className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+        >
+          Restart later
+        </button>
+        <button
+          type="button"
+          onClick={onRestartNow}
+          className="font-ui rounded bg-amber-700 px-3 py-1 text-xs font-medium text-amber-50 transition-[filter] hover:brightness-110"
+        >
+          Restart now
+        </button>
+      </div>
+    </ModalScrim>
+  );
+}
+
+function RestartProgressModal({
+  phase,
+  message,
+  onDismiss,
+}: {
+  phase: RestartPhase;
+  message?: string;
+  onDismiss: () => void;
+}) {
+  const heading =
+    phase === "back"
+      ? "Restart complete"
+      : phase === "timeout"
+        ? "Process didn't come back"
+        : phase === "error"
+          ? "Restart failed"
+          : "Restarting…";
+  const tone =
+    phase === "back"
+      ? "text-emerald-300"
+      : phase === "timeout" || phase === "error"
+        ? "text-rose-300"
+        : "text-amber-300";
+  const dismissable = phase === "back" || phase === "timeout" || phase === "error";
+  return (
+    <ModalScrim>
+      <h3 className={`text-sm font-semibold ${tone}`}>{heading}</h3>
+      {message && (
+        <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted)]">{message}</p>
+      )}
+      {dismissable && (
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+          >
+            Close
+          </button>
+        </div>
+      )}
+    </ModalScrim>
+  );
+}
+
+function ModalScrim({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-[28rem] max-w-[90vw] rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-xl">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function groupByCategory(fields: ConfigFieldDef[]): Record<string, ConfigFieldDef[]> {
   const out: Record<string, ConfigFieldDef[]> = {};
   for (const f of fields) {
@@ -296,6 +552,55 @@ function isFieldVisible(field: ConfigFieldDef, draft: Record<string, unknown>): 
     return equals.some((e) => JSON.stringify(e) === target);
   }
   return JSON.stringify(equals) === target;
+}
+
+/**
+ * Keys whose value is conceptually owned by the Provider selection:
+ *
+ *   - everything that gates its own visibility on `provider` (apiKey,
+ *     baseUrl, claudeCodeCliPath, codexCliPath, …)
+ *   - `modelId`, which has no `showWhen` but whose enumValues are
+ *     populated from the saved provider's `/v1/models` and become
+ *     stale the moment Provider changes
+ *
+ * Used by the provider-change handler to decide which fields to clear /
+ * restore from the per-provider draft cache.
+ */
+function providerDependentKeys(schema: ConfigSchema): string[] {
+  const keys = new Set<string>(["modelId"]);
+  for (const f of schema.fields) {
+    if (f.showWhen?.key === "provider") {
+      keys.add(f.key);
+    }
+  }
+  return Array.from(keys);
+}
+
+/**
+ * Poll `/healthz` until it returns 200 or the deadline passes. Used
+ * after a restart to know when the process is back. Starts polling
+ * after a brief delay so we don't catch the *outgoing* process before
+ * it's fully exited.
+ */
+async function waitForHealthz(target: ProxyTarget, timeoutMs: number): Promise<boolean> {
+  const start = Date.now();
+  // Give the process at least the response-flush delay before we start
+  // hitting /healthz, otherwise we'd see the about-to-exit process
+  // answer 200 once and conclude prematurely.
+  await sleep(750);
+  while (Date.now() - start < timeoutMs) {
+    try {
+      await api.get<unknown>(target, "/healthz");
+      return true;
+    } catch {
+      await sleep(500);
+    }
+  }
+  return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function shallowEqual(a: unknown, b: unknown): boolean {

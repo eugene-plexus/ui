@@ -175,6 +175,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Schedule a process restart so `requiresRestart` config takes effect.
+         * @description Some config keys (`port`, `provider`, `modelId`, etc.) carry
+         *     `requiresRestart: true` because the driver only reads them at
+         *     startup. Calling this endpoint tells the driver to exit shortly
+         *     after responding; an external supervisor (systemd, docker,
+         *     deploy launcher) brings it back up with the new config in
+         *     effect. The endpoint returns *before* the exit so the HTTP
+         *     response has time to flush.
+         *
+         *     v0.1 personal-use installations without a supervisor will
+         *     require a manual relaunch. The UI should make this clear in the
+         *     confirmation dialog.
+         *
+         *     ## Auth note (v0.1)
+         *
+         *     Unauthenticated, same as the rest of the v0.1 admin surface
+         *     (assumed Tailscale tailnet). Auth lands in v0.2.
+         */
+        post: operations["restart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -627,6 +662,37 @@ export interface components {
              */
             error?: string;
         };
+        /**
+         * @description Acknowledgement returned by `POST /v1/admin/restart`. The
+         *     component schedules its own process exit shortly after returning
+         *     this response (typically a few hundred ms — long enough for the
+         *     HTTP response to flush). The component does NOT bring itself
+         *     back up; a process supervisor (systemd, docker-compose, the
+         *     deploy launcher, etc.) is expected to relaunch it. In v0.1
+         *     personal-use deploys without a supervisor, the operator
+         *     relaunches manually.
+         */
+        RestartResult: {
+            /**
+             * @description True if the component accepted the restart and an exit is
+             *     queued. Always true in v0.1 — the endpoint has no reason to
+             *     refuse — but typed as a boolean so future versions can gate
+             *     on (e.g.) an in-flight long-running operation.
+             */
+            scheduled: boolean;
+            /**
+             * @description How long the component intends to wait before calling exit,
+             *     measured from the moment the response is sent. Lets clients
+             *     time their UI ("restarting in 0.5s…") and decide when to
+             *     start polling `/healthz` for the relaunched process.
+             */
+            delayMs: number;
+            /**
+             * @description Optional human-readable note (e.g. "logs flushed, exiting
+             *     now"). UI may display this in the restart-progress dialog.
+             */
+            message?: string;
+        };
         /** @description Liveness / readiness response shape. */
         Health: {
             /** @enum {string} */
@@ -825,6 +891,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigTestResult"];
+                };
+            };
+        };
+    };
+    restart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restart scheduled. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestartResult"];
                 };
             };
         };
