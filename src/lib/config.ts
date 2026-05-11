@@ -17,9 +17,10 @@
 
 export type ProxyTarget = string;
 
-const FIXED_TARGETS = new Set(["orchestrator"]);
+const FIXED_TARGETS = new Set(["orchestrator", "watchdog"]);
 
 const DEFAULT_ORCHESTRATOR = "http://127.0.0.1:8080";
+const DEFAULT_WATCHDOG = "http://127.0.0.1:8079";
 
 interface DriverEntry {
   name: string;
@@ -30,11 +31,18 @@ export function orchestratorUrl(): string {
   return process.env.ORCHESTRATOR_URL?.trim() || DEFAULT_ORCHESTRATOR;
 }
 
+export function watchdogUrl(): string {
+  return process.env.WATCHDOG_URL?.trim() || DEFAULT_WATCHDOG;
+}
+
 export async function resolveTarget(
   target: ProxyTarget,
 ): Promise<{ url: string } | { error: string }> {
   if (target === "orchestrator") {
     return { url: orchestratorUrl() };
+  }
+  if (target === "watchdog") {
+    return { url: watchdogUrl() };
   }
   // Anything else is interpreted as a driver name. Look it up in the
   // orchestrator's `drivers` config — that's the single source of truth

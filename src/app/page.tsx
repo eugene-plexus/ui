@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { ChatInput } from "@/components/ChatInput";
@@ -14,6 +15,7 @@ import {
   DEMO_PASSES,
 } from "@/lib/demoData";
 import type { ChatRequest, ChatResponse, Message, PassRecord } from "@/lib/types";
+import type { WatchdogConfigDocument } from "@/lib/watchdog";
 
 const STORAGE_KEY = "eugene-conversation";
 
@@ -24,6 +26,7 @@ interface PersistedConversation {
 }
 
 export default function ChatPage() {
+  const router = useRouter();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [latestPasses, setLatestPasses] = useState<PassRecord[]>([]);
@@ -32,6 +35,34 @@ export default function ChatPage() {
   // Don't persist before the initial hydration has run — otherwise the
   // first render's empty state would clobber whatever was in storage.
   const [hydrated, setHydrated] = useState(false);
+  const [setupGate, setSetupGate] = useState<"checking" | "ready">("checking");
+
+  // First-run gate: if watchdog says firstRunComplete is false, redirect
+  // to /setup. Watchdog unreachable falls through to the chat surface so
+  // standalone dev runs against just-the-orchestrator (legacy smoke
+  // test) still work.
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      try {
+        const doc = await api.get<WatchdogConfigDocument>("watchdog", "/v1/config");
+        if (cancelled) return;
+        if (doc.firstRunComplete === false) {
+          router.replace("/setup");
+          return;
+        }
+        setSetupGate("ready");
+      } catch {
+        if (cancelled) return;
+        // Watchdog absent / unreachable → behave as before (open chat).
+        setSetupGate("ready");
+      }
+    }
+    void check();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   // Hydrate conversation from sessionStorage so the chat survives
   // navigation to /config and back, plus F5 reloads within the tab.
@@ -126,6 +157,14 @@ export default function ChatPage() {
   const asideClass = "relative flex min-h-0 flex-col" + (pending ? " is-thinking" : "");
   const railContentClass =
     "relative min-h-0 flex-1 overflow-hidden" + (pending ? " is-thinking-rail" : "");
+
+  if (setupGate === "checking") {
+    return (
+      <main className="relative z-10 flex h-screen items-center justify-center">
+        <p className="font-ui text-xs text-[color:var(--muted)]">Checking setup state…</p>
+      </main>
+    );
+  }
 
   return (
     <main className="relative z-10 grid h-screen grid-cols-[1fr_400px] overflow-hidden">
