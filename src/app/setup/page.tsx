@@ -3,50 +3,70 @@
 /**
  * First-run wizard.
  *
- * Linear seven-screen flow per `project_wizard_first_run_design.md`:
+ * Linear eight-screen flow:
  *
  *   1. Look & feel      — local theme + font, live preview
- *   2. Welcome          — plain-language "body parts" framing
- *   3. Deployment       — all-local vs. networked
- *   4. Orchestrator     — host:port shown only in networked mode
- *   5. Driver 1         — provider + credential + model
- *   6. Driver 2         — same with a "pick a different vendor" hint
- *   7. Memory + Done    — stub explanation + Start button
+ *   2. Security         — passphrase + securityMode (v0.2)
+ *   3. Welcome          — plain-language "body parts" framing
+ *   4. Deployment       — all-local vs. networked
+ *   5. Orchestrator     — host:port shown only in networked mode
+ *   6. Driver 1         — provider + credential + model
+ *   7. Driver 2         — same with a "pick a different vendor" hint
+ *   8. Memory + Done    — stub explanation + Start button
  *
  * Navigation rules:
  *   - Screen 1: `Cancel` + `Continue →`
- *   - Screens 2–6: `← Back` + `Continue →`
- *   - Screen 7: `← Back` + `Start`
+ *   - Screens 2–7: `← Back` + `Continue →`
+ *   - Screen 8: `← Back` + `Start`
  *
  * State lives in React (with sessionStorage mirror so a tab refresh
  * doesn't lose progress). The actual write-to-watchdog happens only on
- * screen 7's Start button — the wizard treats the entire flow as one
+ * screen 8's Start button — the wizard treats the entire flow as one
  * transaction and either commits everything or commits nothing.
  *
- * v0.1 scope: this first cut PATCHes existing components' /v1/config
- * with the gathered values and flips firstRunComplete to true. The
- * "from scratch — no components in watchdog yet" flow (create entries
- * with safeMode=true, configure, flip safeMode=false) is a follow-up.
+ * v0.2 transactional order on Start:
+ *   1. POST /v1/auth/initialize with the wizard's passphrase → get a
+ *      session token, populate AuthState.master_key on the watchdog.
+ *   2. Patch the chosen securityMode (default is prompt_on_startup,
+ *      skip the patch if unchanged). Switching to os_keyring with the
+ *      session active persists the master key for auto-unlock.
+ *   3. Patch each driver's apiKey / provider config (encrypted at rest
+ *      now that a master key exists).
+ *   4. Flip firstRunComplete: true.
+ *
+ * If step 1 fails (e.g. install already initialized), surface the error
+ * and let the operator either log in or reset the install by hand.
+ *
+ * The wizard never persists the passphrase to sessionStorage — it lives
+ * only in component state and is dropped from the saved draft when the
+ * mirror writes. Refreshing mid-wizard re-prompts.
  */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, api } from "@/lib/api";
+import { setSessionToken } from "@/lib/session";
 import { useFontSize, FONT_SIZE_LABELS, type FontSize } from "@/lib/useFontSize";
 import { useTheme, type Theme } from "@/lib/useTheme";
 import {
   WIZARD_PROVIDERS,
   type Component,
   type ComponentList,
-  type WatchdogConfigDocument,
   type WizardCredential,
 } from "@/lib/watchdog";
 
 const DRAFT_KEY = "eugene-wizard-draft";
-const TOTAL_SCREENS = 7;
+const TOTAL_SCREENS = 8;
 
 type DeploymentMode = "local" | "networked";
+type SecurityMode = "prompt_on_startup" | "os_keyring";
+
+interface InitializeResponse {
+  sessionToken: string;
+  expiresAt: string;
+  operatorName?: string | null;
+}
 
 interface DriverDraft {
   name: string;
@@ -67,6 +87,7 @@ interface WizardDraft {
   drivers: [DriverDraft, DriverDraft];
   memoryHost: string;
   memoryPort: number;
+  securityMode: SecurityMode;
 }
 
 function blankDriver(name: string): DriverDraft {
@@ -91,6 +112,7 @@ function blankDraft(): WizardDraft {
     drivers: [blankDriver("left"), blankDriver("right")],
     memoryHost: "127.0.0.1",
     memoryPort: 8083,
+    securityMode: "prompt_on_startup",
   };
 }
 
@@ -103,6 +125,10 @@ export default function WizardPage() {
   const [startError, setStartError] = useState<string | null>(null);
   const [startMessage, setStartMessage] = useState<string | null>(null);
   const [knownComponents, setKnownComponents] = useState<Component[]>([]);
+  // Passphrase state lives OUTSIDE the persisted draft — never written
+  // to sessionStorage. A mid-wizard refresh re-prompts for it.
+  const [passphrase, setPassphrase] = useState("");
+  const [passphraseConfirm, setPassphraseConfirm] = useState("");
 
   // Hydrate from sessionStorage so a tab refresh mid-wizard doesn't
   // throw away typed values. The session-store key is separate from the
@@ -137,19 +163,26 @@ export default function WizardPage() {
     }
   }, [hydrated, draft, screen]);
 
-  // Pull the watchdog's current component list once. Screen 7 uses it
+  // Pull the watchdog's current component list once. Screen 8 uses it
   // to show the operator a final summary and to decide what to PATCH
-  // vs. what to skip.
+  // vs. what to skip. The endpoint is auth-protected in v0.2; the
+  // wizard hasn't initialized the install yet so we skip auth and
+  // tolerate a 401 (uninitialized installs return that for protected
+  // routes — empty list is fine, Start surfaces real errors later).
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const list = await api.get<ComponentList>("watchdog", "/v1/components");
+        const list = await api.get<ComponentList>(
+          "watchdog",
+          "/v1/components",
+          { skipAuth: true },
+        );
         if (cancelled) return;
         setKnownComponents(list.components ?? []);
       } catch {
-        // watchdog unreachable — leave empty; Start will surface the
-        // real error when it tries to PATCH.
+        // Watchdog unreachable or auth-required — leave empty; Start
+        // surfaces real errors when it tries to PATCH.
       }
     }
     void load();
@@ -193,11 +226,36 @@ export default function WizardPage() {
   async function start() {
     setStarting(true);
     setStartError(null);
-    setStartMessage("Saving driver and orchestrator configuration…");
     try {
-      // PATCH each existing driver component with the user's choices.
-      // Components must already exist in the watchdog topology for v0.1
-      // — the "create from scratch" path is a follow-on.
+      // Step 1: initialize the install. Sets the passphrase hash + master
+      // salt on the watchdog, derives the master key into memory, and
+      // returns a session token. After this call, the rest of the wizard's
+      // PATCHes are authenticated by the api client's auto-attach.
+      setStartMessage("Setting your passphrase and deriving keys…");
+      const initResp = await api.post<InitializeResponse>(
+        "watchdog",
+        "/v1/auth/initialize",
+        { passphrase },
+        { skipAuth: true },
+      );
+      setSessionToken(initResp.sessionToken);
+
+      // Step 2: persist the chosen securityMode. Default is
+      // prompt_on_startup; skip the patch if unchanged so we don't
+      // touch the keyring needlessly. Flipping to os_keyring with the
+      // session active triggers the watchdog's keyring write (see
+      // routes/config.py).
+      if (draft.securityMode !== "prompt_on_startup") {
+        setStartMessage("Applying security mode…");
+        await api.patch("watchdog", "/v1/config", {
+          securityMode: draft.securityMode,
+        });
+      }
+
+      // Step 3: PATCH each existing driver component with the user's
+      // choices. Components must already exist in the watchdog topology
+      // for v0.1 — the "create from scratch" path is a follow-on.
+      setStartMessage("Saving driver and orchestrator configuration…");
       const componentsByName = new Map(knownComponents.map((c) => [c.name, c]));
       const driverComponentNames = knownComponents
         .filter((c) => c.kind === "hemisphere-driver")
@@ -245,10 +303,33 @@ export default function WizardPage() {
       // Small delay so the operator sees the final message; not strictly required.
       setTimeout(() => router.replace("/"), 500);
     } catch (e) {
-      const detail = e instanceof ApiError ? `${e.status} ${e.statusText}` : e instanceof Error ? e.message : String(e);
+      const detail = formatStartError(e);
       setStartError(detail);
       setStarting(false);
     }
+  }
+
+  function formatStartError(e: unknown): string {
+    if (e instanceof ApiError) {
+      if (e.status === 409) {
+        return (
+          "This install already has a passphrase set. Use the login page " +
+          "to sign in, or reset the install by removing the auth block " +
+          "from watchdog.yaml by hand."
+        );
+      }
+      if (
+        typeof e.body === "object" &&
+        e.body !== null &&
+        "detail" in e.body &&
+        typeof (e.body as { detail?: unknown }).detail === "object"
+      ) {
+        const detail = (e.body as { detail: { title?: string; detail?: string } }).detail;
+        return detail.detail || detail.title || `${e.status} ${e.statusText}`;
+      }
+      return `${e.status} ${e.statusText}`;
+    }
+    return e instanceof Error ? e.message : String(e);
   }
 
   // Don't render screen content until hydration finishes, otherwise the
@@ -268,11 +349,21 @@ export default function WizardPage() {
       <div className="flex-1 overflow-y-auto px-6 py-8">
         <div className="mx-auto max-w-2xl">
           {screen === 1 && <ScreenLookFeel />}
-          {screen === 2 && <ScreenWelcome />}
-          {screen === 3 && (
+          {screen === 2 && (
+            <ScreenSecurity
+              passphrase={passphrase}
+              passphraseConfirm={passphraseConfirm}
+              securityMode={draft.securityMode}
+              onPassphrase={setPassphrase}
+              onPassphraseConfirm={setPassphraseConfirm}
+              onSecurityMode={(v) => patchDraft({ securityMode: v })}
+            />
+          )}
+          {screen === 3 && <ScreenWelcome />}
+          {screen === 4 && (
             <ScreenDeployment value={draft.deployment} onChange={(v) => patchDraft({ deployment: v })} />
           )}
-          {screen === 4 && (
+          {screen === 5 && (
             <ScreenOrchestrator
               mode={draft.deployment}
               host={draft.orchestratorHost}
@@ -280,7 +371,7 @@ export default function WizardPage() {
               onChange={(host, port) => patchDraft({ orchestratorHost: host, orchestratorPort: port })}
             />
           )}
-          {screen === 5 && (
+          {screen === 6 && (
             <ScreenDriver
               index={0}
               showHostHint={draft.deployment === "networked"}
@@ -288,7 +379,7 @@ export default function WizardPage() {
               onChange={(p) => patchDriver(0, p)}
             />
           )}
-          {screen === 6 && (
+          {screen === 7 && (
             <ScreenDriver
               index={1}
               showHostHint={draft.deployment === "networked"}
@@ -297,7 +388,7 @@ export default function WizardPage() {
               onChange={(p) => patchDriver(1, p)}
             />
           )}
-          {screen === 7 && (
+          {screen === 8 && (
             <ScreenStart
               draft={draft}
               knownComponents={knownComponents}
@@ -315,15 +406,27 @@ export default function WizardPage() {
         onNext={next}
         onStart={start}
         starting={starting}
-        canContinue={canContinue(screen, draft)}
+        canContinue={canContinue(screen, draft, passphrase, passphraseConfirm)}
       />
     </main>
   );
 }
 
-function canContinue(screen: number, draft: WizardDraft): boolean {
-  if (screen === 5 || screen === 6) {
-    const idx = (screen - 5) as 0 | 1;
+function canContinue(
+  screen: number,
+  draft: WizardDraft,
+  passphrase: string,
+  passphraseConfirm: string,
+): boolean {
+  // Screen 2 is Security — passphrase non-empty AND confirmation
+  // matches. Length validation lives server-side (Argon2 hash will
+  // accept anything non-empty); we only block the obvious typo.
+  if (screen === 2) {
+    return passphrase.length > 0 && passphrase === passphraseConfirm;
+  }
+  // Screens 6 + 7 are the two drivers (shifted from 5 + 6 in v0.1).
+  if (screen === 6 || screen === 7) {
+    const idx = (screen - 6) as 0 | 1;
     const d = draft.drivers[idx];
     if (!d.name.trim()) return false;
     const credentials = WIZARD_PROVIDERS.find((p) => p.key === d.provider)?.credentials ?? [];
@@ -475,6 +578,93 @@ function ScreenLookFeel() {
     </section>
   );
 }
+
+function ScreenSecurity({
+  passphrase,
+  passphraseConfirm,
+  securityMode,
+  onPassphrase,
+  onPassphraseConfirm,
+  onSecurityMode,
+}: {
+  passphrase: string;
+  passphraseConfirm: string;
+  securityMode: SecurityMode;
+  onPassphrase: (v: string) => void;
+  onPassphraseConfirm: (v: string) => void;
+  onSecurityMode: (v: SecurityMode) => void;
+}) {
+  const mismatch = passphraseConfirm.length > 0 && passphrase !== passphraseConfirm;
+  return (
+    <section>
+      <h2 className="font-ui mb-2 text-xl font-semibold">Security</h2>
+      <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
+        Eugene Plexus protects sensitive config (like provider API keys)
+        with an encryption key derived from a passphrase you set here.
+        You&rsquo;ll use the same passphrase to sign in from a fresh browser
+        tab. Pick something you can remember — Eugene can&rsquo;t reset it.
+      </p>
+      <Field
+        label="Passphrase"
+        description="Used to derive the encryption key. Anything non-empty works; a longer phrase is stronger."
+      >
+        <SecretInput
+          value={passphrase}
+          onChange={onPassphrase}
+          placeholder="A line of poetry, a sentence, a long phrase…"
+        />
+      </Field>
+      <Field
+        label="Confirm passphrase"
+        description="Same again — guard against typos."
+      >
+        <SecretInput
+          value={passphraseConfirm}
+          onChange={onPassphraseConfirm}
+          placeholder="(repeat the passphrase)"
+        />
+      </Field>
+      {mismatch && (
+        <p className="-mt-2 mb-4 text-xs text-rose-300">
+          Passphrases don&rsquo;t match yet.
+        </p>
+      )}
+      <hr className="my-6 border-[color:var(--border)]" />
+      <h3 className="font-ui mb-3 text-sm font-semibold">Auto-unlock</h3>
+      <p className="mb-4 text-xs leading-relaxed text-[color:var(--muted)]">
+        How Eugene should handle its encryption key between restarts.
+        You can change this later from the Config page.
+      </p>
+      <Radio
+        checked={securityMode === "os_keyring"}
+        onChange={() => onSecurityMode("os_keyring")}
+        label="OS keyring auto-unlock"
+        description={
+          "Best for: home / personal-use installs, AI hobbyists, anyone " +
+          "who wants Eugene to auto-recover after a power outage. " +
+          "Eugene's encryption key is stored in your OS's password " +
+          "manager (Windows Credential Manager / macOS Keychain / Linux " +
+          "Secret Service) and unlocked automatically when you log in. " +
+          "Anyone with access to your user account can also start Eugene."
+        }
+      />
+      <Radio
+        checked={securityMode === "prompt_on_startup"}
+        onChange={() => onSecurityMode("prompt_on_startup")}
+        label="Prompt on startup"
+        description={
+          "Best for: shared environments, sensitive conversations, " +
+          "security-conscious operators. Eugene's encryption key is " +
+          "never written to disk. You'll type the passphrase by hand " +
+          "every time the watchdog starts. A power outage means Eugene " +
+          "stays offline until you re-enter the passphrase. Stronger " +
+          "security; less convenience."
+        }
+      />
+    </section>
+  );
+}
+
 
 function ScreenWelcome() {
   return (

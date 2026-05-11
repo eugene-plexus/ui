@@ -14,6 +14,7 @@ import {
   DEMO_MESSAGES,
   DEMO_PASSES,
 } from "@/lib/demoData";
+import { clearSessionToken } from "@/lib/session";
 import type { ChatRequest, ChatResponse, Message, PassRecord } from "@/lib/types";
 import type { WatchdogConfigDocument } from "@/lib/watchdog";
 
@@ -151,6 +152,23 @@ export default function ChatPage() {
     setError(null);
   }
 
+  async function handleLogout() {
+    // Best-effort server-side revoke. The api client auto-attaches the
+    // current Bearer; on success the watchdog adds the token to its
+    // in-memory revocation set. Network/auth errors don't block the
+    // local clear — losing the cached token in this tab is the
+    // outcome users actually want when they click Sign out.
+    try {
+      await api.delete("watchdog", "/v1/auth/sessions/current");
+    } catch {
+      // ignore
+    }
+    clearSessionToken();
+    // Push to /login so the next render starts fresh. /login itself
+    // is auth-less so this won't redirect-loop.
+    router.push("/login");
+  }
+
   const sectionClass =
     "relative flex min-h-0 flex-col border-r border-[color:var(--border)]" +
     (pending ? " is-thinking" : "");
@@ -200,6 +218,14 @@ export default function ChatPage() {
             >
               Config
             </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)]"
+              title="Revoke this session and return to the login screen"
+            >
+              Sign out
+            </button>
           </div>
         </header>
 
