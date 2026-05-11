@@ -8,13 +8,14 @@ Web UI for [Eugene Plexus](https://github.com/eugene-plexus): chat with Eugene, 
 
 ## Status
 
-**v0.1, working chat + generic config editor.** Streaming and end-to-end testing against real components are next.
+**v0.1, working chat + generic config editor + first-run wizard.** Streaming and end-to-end testing against real components are next.
 
 ## What's in v0.1
 
-- **Chat page** (`/`) — message Eugene, see the assistant's final reply in the main column. The right rail shows every bicameral pass: each hemisphere's raw output, the corpus-callosum agreement score, and the decision (`terminate` / `another_pass` / `cap_reached`).
-- **Generic config editor** (`/config`) — reads `/v1/config/schema` from the selected component (orchestrator, left driver, right driver) and renders a typed form for every field. Driven entirely by the schema metadata; no per-component code. PATCHes the diff back, surfaces `applied` / `rejected` / `requiresRestart` from the response.
-- **Same-origin proxy** at `/api/proxy/<target>/<...path>` — the browser only talks to the Next.js server; the server forwards to the configured component URL. No CORS configuration on the components, no exposing private URLs to the browser.
+- **Chat page** (`/`) — message Eugene, see the assistant's final reply in the main column. The right rail shows every bicameral pass: each hemisphere's raw output, the corpus-callosum agreement score, and the decision (`terminate` / `another_pass` / `cap_reached`). On load, the page checks the watchdog's `firstRunComplete` flag and redirects to `/setup` if false.
+- **First-run wizard** (`/setup`) — seven-screen linear flow that walks the operator through theme/font, deployment topology, orchestrator settings, both drivers (provider + credentials + model), and a final summary. Auto-saves to sessionStorage so a tab refresh doesn't lose progress; commits to the watchdog on the Start button (PATCH driver configs, flip `firstRunComplete` to true, restart components).
+- **Generic config editor** (`/config`) — reads `/v1/config/schema` from the selected component (orchestrator, left driver, right driver) and renders a typed form for every field. Driven entirely by the schema metadata; no per-component code. PATCHes the diff back, surfaces `applied` / `rejected` / `requiresRestart` from the response, and offers a Restart Now modal that polls `/healthz` until the component is back.
+- **Same-origin proxy** at `/api/proxy/<target>/<...path>` — the browser only talks to the Next.js server; the server forwards to the configured component URL. `orchestrator` and `watchdog` are fixed targets; any other target is treated as a driver name and resolved against the orchestrator's `drivers` list at request time. No CORS configuration on the components, no exposing private URLs to the browser.
 
 ## What v0.1 doesn't do
 
@@ -31,16 +32,15 @@ npm run codegen       # produces src/generated/*.ts from pinned specs
 npm run dev
 ```
 
-By default the UI is served at `http://localhost:3000` and proxies API calls to `http://127.0.0.1:8080` (orchestrator). Override via env:
+By default the UI is served at `http://localhost:3000` and proxies API calls to `http://127.0.0.1:8080` (orchestrator) and `http://127.0.0.1:8079` (watchdog). Override the bootstrap targets via env:
 
 ```bash
 ORCHESTRATOR_URL=http://orch.tailnet:8080 \
-LEFT_DRIVER_URL=http://left.tailnet:8081 \
-RIGHT_DRIVER_URL=http://right.tailnet:8082 \
+WATCHDOG_URL=http://watchdog.tailnet:8079 \
 npm run dev
 ```
 
-`LEFT_DRIVER_URL` / `RIGHT_DRIVER_URL` are optional — only required if you want to manage driver config directly from the UI's config editor.
+Driver URLs are not configured here — the proxy resolves driver names by reading the orchestrator's `drivers` list at request time, so the orchestrator is the single source of truth for topology.
 
 > **v0.1 has no auth.** The proxy forwards anything the UI sends. Deploy behind a Tailscale tailnet or equivalent. Auth lands in v0.2.
 
