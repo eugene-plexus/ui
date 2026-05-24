@@ -52,7 +52,14 @@ async function handle(
     return NextResponse.json({ error: resolved.error }, { status: 503 });
   }
 
-  const upstreamUrl = new URL(`${resolved.url}/${(path ?? []).join("/")}`);
+  // Body-component URLs from the watchdog topology arrive with a
+  // trailing slash (e.g. `http://127.0.0.1:8083/`). Naive concatenation
+  // would produce `http://127.0.0.1:8083//v1/config/schema` — FastAPI
+  // treats the double slash as a different path and returns 404.
+  // Normalize once here so all resolved URLs join cleanly with any
+  // path shape.
+  const base = resolved.url.replace(/\/+$/, "");
+  const upstreamUrl = new URL(`${base}/${(path ?? []).join("/")}`);
   for (const [k, v] of req.nextUrl.searchParams.entries()) {
     upstreamUrl.searchParams.append(k, v);
   }
