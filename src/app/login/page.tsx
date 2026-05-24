@@ -74,10 +74,41 @@ function LoginForm() {
   const [passphrase, setPassphrase] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Detect whether the install is initialized at all — a 503 from the
-  // login attempt means it isn't, in which case we send the user to
-  // /setup to run the wizard.
+  // Probe init state on mount via the public /v1/auth/status endpoint
+  // so a fresh install lands directly on /setup without ever rendering
+  // the "Unlock — enter your install passphrase" form (which implies
+  // the operator has one when they don't). The form only renders once
+  // we've confirmed the install IS initialized.
+  const [probing, setProbing] = useState(true);
   const [setupRequired, setSetupRequired] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function probe() {
+      try {
+        const status = await api.get<{ initialized: boolean }>(
+          "watchdog",
+          "/v1/auth/status",
+          { skipAuth: true },
+        );
+        if (cancelled) return;
+        if (!status.initialized) {
+          setSetupRequired(true);
+          return;
+        }
+        setProbing(false);
+      } catch {
+        // If the probe fails (older watchdog without the endpoint, or
+        // watchdog down) fall through to showing the form. The submit
+        // path's existing 503 handling still covers the pre-init case.
+        if (!cancelled) setProbing(false);
+      }
+    }
+    void probe();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (setupRequired) {
@@ -125,6 +156,20 @@ function LoginForm() {
     }
   }
 
+  // Don't render the form (or "Unlock" header) until we've confirmed
+  // the install is initialized. Otherwise a fresh install shows
+  // "enter your install passphrase" misleadingly before the probe's
+  // redirect to /setup fires.
+  if (probing || setupRequired) {
+    return (
+      <main className="relative z-10 flex h-screen items-center justify-center">
+        <p className="font-ui text-xs text-[color:var(--muted)]">
+          {setupRequired ? "Redirecting to setup…" : "Loading…"}
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="relative z-10 flex h-screen items-center justify-center px-6">
       <div className="w-full max-w-sm">
@@ -155,7 +200,7 @@ function LoginForm() {
             className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)] disabled:opacity-50"
           />
           {error && (
-            <p className="mt-3 rounded border border-rose-700 bg-rose-950/30 px-3 py-2 text-xs text-rose-300">
+            <p className="status-error mt-3 rounded border px-3 py-2 text-xs">
               {error}
             </p>
           )}

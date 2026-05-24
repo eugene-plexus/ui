@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { ConfigEditor } from "@/components/ConfigEditor";
+import { ConnectorPanel } from "@/components/ConnectorPanel";
 import { UIPreferences } from "@/components/UIPreferences";
 import { ApiError, api } from "@/lib/api";
 import type { DriversInfo } from "@/lib/types";
@@ -13,10 +14,18 @@ interface DynamicTab {
   label: string;
 }
 
+// v0.2 body components (memory, identity, connector) are surfaced as
+// fixed tabs alongside UI + Orchestrator. Drivers stay dynamic since
+// their names are operator-supplied.
 const STATIC_TABS: DynamicTab[] = [
   { value: "ui", label: "UI" },
   { value: "orchestrator", label: "Orchestrator" },
+  { value: "memory", label: "Memory" },
+  { value: "identity", label: "Identity" },
+  { value: "connector", label: "Connector" },
 ];
+
+const CONNECTOR_TAB = "connector";
 
 export default function ConfigPage() {
   const [drivers, setDrivers] = useState<DynamicTab[]>([]);
@@ -112,13 +121,15 @@ export default function ConfigPage() {
         </nav>
       </header>
       {driversError && (
-        <div className="border-b border-rose-900 bg-rose-950/30 px-4 py-2 text-xs text-rose-300">
+        <div className="status-error border-b px-4 py-2 text-xs">
           Driver list could not be loaded — {driversError}. Driver tabs may be missing or stale.
         </div>
       )}
       <div className="flex-1 overflow-hidden">
         {tab === "ui" ? (
           <UIPreferences />
+        ) : tab === CONNECTOR_TAB ? (
+          <ConnectorPanel />
         ) : (
           <ConfigEditor
             key={tab}

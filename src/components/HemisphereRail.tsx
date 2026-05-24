@@ -103,10 +103,10 @@ function DecisionBadge({
   const label = decision.replaceAll("_", " ");
   const accent =
     decision === "terminate"
-      ? "bg-emerald-900/40 text-emerald-300"
+      ? "status-success"
       : decision === "another_pass"
-        ? "bg-amber-900/40 text-amber-300"
-        : "bg-rose-900/40 text-rose-300";
+        ? "status-warn"
+        : "status-error";
   return (
     <span
       className={`rounded px-2 py-0.5 font-mono text-[10px] uppercase ${accent}`}

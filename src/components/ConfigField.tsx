@@ -115,16 +115,32 @@ export function ConfigFieldInput({
       );
     }
 
-    // string, url, file_path
+    // string, url, file_path. When the field carries `suggestions`,
+    // render a combobox (text input + native datalist dropdown) so the
+    // operator can either pick a discovered value or paste an
+    // arbitrary one. `modelId` uses this for live-discovered model
+    // ids that may not include something the operator just pulled.
+    const suggestions = field.suggestions ?? [];
+    const datalistId = suggestions.length > 0 ? `cf-${field.key}-suggestions` : undefined;
     return (
-      <input
-        type="text"
-        value={(value as string | undefined) ?? ""}
-        pattern={field.pattern ?? undefined}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={pending}
-        className={baseInputClass}
-      />
+      <>
+        <input
+          type="text"
+          value={(value as string | undefined) ?? ""}
+          pattern={field.pattern ?? undefined}
+          list={datalistId}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={pending}
+          className={baseInputClass}
+        />
+        {datalistId && (
+          <datalist id={datalistId}>
+            {suggestions.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+        )}
+      </>
     );
   }
 
@@ -133,11 +149,11 @@ export function ConfigFieldInput({
       <div className="flex flex-col gap-1">
         <label className="text-sm font-medium">
           {field.label}
-          {field.required && <span className="ml-1 text-rose-400">*</span>}
+          {field.required && <span className="text-status-error ml-1">*</span>}
         </label>
         <code className="font-mono text-[10px] text-[color:var(--muted)]">{field.key}</code>
         {field.requiresRestart && (
-          <span className="w-fit rounded bg-amber-900/40 px-1.5 py-0.5 text-[9px] tracking-wider text-amber-300 uppercase">
+          <span className="status-warn w-fit rounded px-1.5 py-0.5 text-[9px] tracking-wider uppercase">
             restart required
           </span>
         )}
@@ -292,7 +308,7 @@ function DriverListInput({
                     ? "v0.1 requires at least one driver."
                     : "Remove this driver."
                 }
-                className="font-ui rounded border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-rose-700 hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+                className="font-ui rounded border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--status-error-border)] hover:bg-[color:var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
               >
                 Remove
               </button>
@@ -302,9 +318,9 @@ function DriverListInput({
                 className={
                   "ml-1 text-[11px] " +
                   (status.state === "ok"
-                    ? "text-emerald-300"
+                    ? "text-status-success"
                     : status.state === "fail"
-                      ? "text-rose-300"
+                      ? "text-status-error"
                       : "text-[color:var(--muted)]")
                 }
               >

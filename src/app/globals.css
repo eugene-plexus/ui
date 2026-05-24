@@ -66,6 +66,64 @@
   --font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
+/* ──────────────────────────── status banners ────────────────────────────
+   Three semantic banner classes (success / warn / error). Each pair of
+   themes overrides the underlying tokens so the same .status-warn renders
+   amber-on-dark in cyberpunk and amber-on-light in modern without any
+   per-component conditionals. Use as e.g.:
+       <p className="status-warn ...">missing topology</p>
+*/
+:root,
+[data-theme="cyberpunk"] {
+  --status-success-fg: #6ee7b7; /* emerald-300 */
+  --status-success-bg: rgb(6 78 59 / 0.30); /* emerald-900/30 */
+  --status-success-border: #047857; /* emerald-700 */
+  --status-warn-fg: #fcd34d; /* amber-300 */
+  --status-warn-bg: rgb(120 53 15 / 0.30); /* amber-900/30 */
+  --status-warn-border: #b45309; /* amber-700 */
+  --status-error-fg: #fda4af; /* rose-300 */
+  --status-error-bg: rgb(76 5 25 / 0.40); /* rose-900/40 */
+  --status-error-border: #be123c; /* rose-700 */
+}
+[data-theme="modern"] {
+  --status-success-fg: #065f46; /* emerald-800 */
+  --status-success-bg: #ecfdf5; /* emerald-50 */
+  --status-success-border: #6ee7b7; /* emerald-300 */
+  --status-warn-fg: #78350f; /* amber-900 */
+  --status-warn-bg: #fffbeb; /* amber-50 */
+  --status-warn-border: #fcd34d; /* amber-300 */
+  --status-error-fg: #9f1239; /* rose-800 */
+  --status-error-bg: #fff1f2; /* rose-50 */
+  --status-error-border: #fda4af; /* rose-300 */
+}
+.status-success {
+  color: var(--status-success-fg);
+  background-color: var(--status-success-bg);
+  border-color: var(--status-success-border);
+}
+.status-warn {
+  color: var(--status-warn-fg);
+  background-color: var(--status-warn-bg);
+  border-color: var(--status-warn-border);
+}
+.status-error {
+  color: var(--status-error-fg);
+  background-color: var(--status-error-bg);
+  border-color: var(--status-error-border);
+}
+/* Inline-text variants — colored text on the regular panel background.
+   Use for inline status callouts (passphrase-mismatch tip, save-applied
+   list, NT-state badges) that aren't full bordered banners. */
+.text-status-success {
+  color: var(--status-success-fg);
+}
+.text-status-warn {
+  color: var(--status-warn-fg);
+}
+.text-status-error {
+  color: var(--status-error-fg);
+}
+
 html,
 body {
   background-color: var(--background);

@@ -30,7 +30,7 @@ export default function ErrorPage({
           The Eugene UI hit an unhandled render error. Your conversation is
           still saved — refresh or try again to recover.
         </p>
-        <pre className="mb-4 max-h-48 overflow-auto rounded bg-[color:var(--panel-soft)] p-3 font-mono text-xs leading-relaxed text-rose-300">
+        <pre className="text-status-error mb-4 max-h-48 overflow-auto rounded bg-[color:var(--panel-soft)] p-3 font-mono text-xs leading-relaxed">
           {error.message}
           {error.digest ? `\n\ndigest: ${error.digest}` : ""}
         </pre>

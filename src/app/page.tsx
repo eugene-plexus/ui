@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { ChatInput } from "@/components/ChatInput";
 import { ChatLog } from "@/components/ChatLog";
+import { CopyTraceButton } from "@/components/CopyTraceButton";
 import { HemisphereRail } from "@/components/HemisphereRail";
 import { ApiError, api } from "@/lib/api";
 import {
@@ -20,10 +21,21 @@ import type { WatchdogConfigDocument } from "@/lib/watchdog";
 
 const STORAGE_KEY = "eugene-conversation";
 
+// v0.2.x VoicePassRecord shape — hand-typed because the orchestrator
+// generated types may lag the spec when codegen hasn't run since the
+// most recent pin. Mirrors openapi/orchestrator.yaml.
+interface VoicePassRecord {
+  driverName: string;
+  inputMessages: Message[];
+  output: Message;
+  latencyMs?: number;
+}
+
 interface PersistedConversation {
   conversationId: string | null;
   messages: Message[];
   latestPasses: PassRecord[];
+  latestVoicePass: VoicePassRecord | null;
 }
 
 export default function ChatPage() {
@@ -31,6 +43,8 @@ export default function ChatPage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [latestPasses, setLatestPasses] = useState<PassRecord[]>([]);
+  const [latestVoicePass, setLatestVoicePass] =
+    useState<VoicePassRecord | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Don't persist before the initial hydration has run — otherwise the
@@ -38,14 +52,28 @@ export default function ChatPage() {
   const [hydrated, setHydrated] = useState(false);
   const [setupGate, setSetupGate] = useState<"checking" | "ready">("checking");
 
-  // First-run gate: if watchdog says firstRunComplete is false, redirect
-  // to /setup. Watchdog unreachable falls through to the chat surface so
-  // standalone dev runs against just-the-orchestrator (legacy smoke
-  // test) still work.
+  // First-run gate: probe init state first (public endpoint, no auth
+  // needed) so we route to /setup on fresh installs without bouncing
+  // through /login. Then for initialized installs, fetch /v1/config to
+  // honor firstRunComplete (operator may have un-flipped it to redo
+  // setup). Watchdog unreachable falls through to the chat surface so
+  // standalone dev runs against just-the-orchestrator still work.
   useEffect(() => {
     let cancelled = false;
     async function check() {
       try {
+        const status = await api.get<{ initialized: boolean }>(
+          "watchdog",
+          "/v1/auth/status",
+          { skipAuth: true },
+        );
+        if (cancelled) return;
+        if (!status.initialized) {
+          router.replace("/setup");
+          return;
+        }
+        // Initialized — read firstRunComplete. Requires auth; if absent,
+        // bounce through login with our return path preserved.
         const doc = await api.get<WatchdogConfigDocument>("watchdog", "/v1/config");
         if (cancelled) return;
         if (doc.firstRunComplete === false) {
@@ -79,6 +107,7 @@ export default function ChatPage() {
         if (typeof parsed.conversationId === "string") setConversationId(parsed.conversationId);
         if (Array.isArray(parsed.messages)) setMessages(parsed.messages);
         if (Array.isArray(parsed.latestPasses)) setLatestPasses(parsed.latestPasses);
+        if (parsed.latestVoicePass != null) setLatestVoicePass(parsed.latestVoicePass);
       }
     } catch {
       // sessionStorage can throw in private modes; fall through to empty.
@@ -100,12 +129,17 @@ export default function ChatPage() {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      const payload: PersistedConversation = { conversationId, messages, latestPasses };
+      const payload: PersistedConversation = {
+        conversationId,
+        messages,
+        latestPasses,
+        latestVoicePass,
+      };
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // ignore
     }
-  }, [hydrated, conversationId, messages, latestPasses]);
+  }, [hydrated, conversationId, messages, latestPasses, latestVoicePass]);
 
   async function handleSend(text: string) {
     setError(null);
@@ -128,6 +162,11 @@ export default function ChatPage() {
       setConversationId(response.conversationId);
       setMessages((prev) => [...prev, response.message]);
       setLatestPasses(response.passes);
+      // v0.2.x ChatResponse carries voicePass — the LLM call that
+      // converted internal deliberation into Eugene's user-facing
+      // reply. Capture it for the copy-trace diagnostic.
+      const voicePass = (response as { voicePass?: VoicePassRecord }).voicePass;
+      setLatestVoicePass(voicePass ?? null);
     } catch (e) {
       const detail =
         e instanceof ApiError
@@ -148,6 +187,7 @@ export default function ChatPage() {
   function newConversation() {
     setConversationId(null);
     setMessages([]);
+    setLatestVoicePass(null);
     setLatestPasses([]);
     setError(null);
   }
@@ -234,7 +274,7 @@ export default function ChatPage() {
         </div>
 
         {error && (
-          <div className="border-t border-rose-900 bg-rose-950/40 px-4 py-2 text-xs text-rose-300">
+          <div className="status-error border-t px-4 py-2 text-xs">
             {error}
           </div>
         )}
@@ -243,8 +283,15 @@ export default function ChatPage() {
       </section>
 
       <aside className={asideClass}>
-        <header className="border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3 font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
-          hemispheres
+        <header className="flex items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
+          <span className="font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
+            hemispheres
+          </span>
+          <CopyTraceButton
+            messages={messages}
+            passes={latestPasses}
+            voicePass={latestVoicePass}
+          />
         </header>
         <div className={railContentClass}>
           <HemisphereRail passes={latestPasses} />

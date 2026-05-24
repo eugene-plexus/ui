@@ -42,7 +42,12 @@ async function handle(
     return NextResponse.json({ error: `invalid target: ${target}` }, { status: 400 });
   }
 
-  const resolved = await resolveTarget(target);
+  // v0.2: forward the incoming Authorization header into the target
+  // resolver. Watchdog's /v1/components and orchestrator's /v1/config
+  // (the resolver's lookup endpoints) are both bearer-auth-protected,
+  // so without this the resolver gets 401 on every logged-in request.
+  const authHeader = req.headers.get("authorization") ?? undefined;
+  const resolved = await resolveTarget(target, authHeader);
   if ("error" in resolved) {
     return NextResponse.json({ error: resolved.error }, { status: 503 });
   }

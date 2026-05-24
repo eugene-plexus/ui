@@ -119,6 +119,12 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
    * the new provider's snapshot (or clears, if there is none).
    */
   function handleFieldChange(fieldKey: string, value: unknown) {
+    // Any field edit invalidates the last test/save banners — they
+    // describe an older draft. Keeping them on screen after a change is
+    // misleading: a user who fixed the bad value still sees the stale
+    // failure. Per ops feedback, clear on every action.
+    setTestStatus(null);
+    setSaveStatus(null);
     if (fieldKey !== "provider" || !schema) {
       setDraft((prev) => ({ ...prev, [fieldKey]: value }));
       return;
@@ -156,6 +162,9 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
     if (!schema || dirtyKeys.size === 0) return;
     setSaving(true);
     setSaveStatus(null);
+    // The test banner reflects an older draft; clearing it avoids a
+    // stale "fail" sitting next to a successful save.
+    setTestStatus(null);
     try {
       const patch: Record<string, unknown> = {};
       for (const k of dirtyKeys) {
@@ -168,6 +177,15 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         requiresRestart: result.requiresRestart,
         pendingRestart: result.pendingRestart ?? [],
       });
+      // Auto-restart when the patch requires it. v0.2.x dropped the
+      // "Restart now? / Later" modal — the overwhelming common case is
+      // "I'm done editing, save and continue," not "I want to batch
+      // multiple restart-required edits before restarting once." The
+      // progress modal still surfaces so the operator sees what's
+      // happening, and on success it auto-dismisses (see performRestart).
+      if (result.requiresRestart) {
+        void performRestart();
+      }
       // Refresh from server so the editor reflects any server-side coercions.
       const fresh = await api.get<ConfigDocument>(target, "/v1/config");
       setServerDoc(fresh);
@@ -248,6 +266,13 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
       const ok = await waitForHealthz(target, 30_000);
       if (ok) {
         setRestart({ phase: "back", message: `${label} is back online.` });
+        // Auto-dismiss the success state — the operator didn't ask for
+        // a restart receipt, they just want to keep working. Timeout
+        // and error phases still require an explicit Close because
+        // they describe a real problem the operator needs to see.
+        window.setTimeout(() => {
+          setRestart((current) => (current.phase === "back" ? { phase: "idle" } : current));
+        }, 1500);
         // Reload schema/doc from the freshly-restarted process.
         try {
           const [schemaResp, docResp] = await Promise.all([
@@ -258,6 +283,10 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
           setServerDoc(docResp);
           setDraft({ ...(docResp as Record<string, unknown>) });
           setSaveStatus(null);
+          // Any test result that was visible before the restart described
+          // the OLD running process. Clearing avoids the post-restart UI
+          // showing a stale "fail" right next to a successful restart.
+          setTestStatus(null);
         } catch {
           // If the reload fails the modal still reports "back" — the
           // operator can manually refresh the page.
@@ -283,7 +312,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   }
   if (loadError) {
     return (
-      <div className="p-4 text-sm text-rose-300">
+      <div className="text-status-error p-4 text-sm">
         Failed to load <span className="font-mono">{label}</span>: {loadError}
       </div>
     );
@@ -354,14 +383,12 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         })}
       </div>
 
-      {saveStatus?.requiresRestart && restart.phase === "idle" && (
-        <RestartRequiredModal
-          label={label}
-          pendingRestart={saveStatus.pendingRestart}
-          onRestartNow={() => void performRestart()}
-          onLater={() => setSaveStatus({ ...saveStatus, requiresRestart: false })}
-        />
-      )}
+      {/* v0.2.x: RestartRequiredModal removed — save() auto-triggers
+          performRestart() when the patch requires it, and the progress
+          modal below renders the in-flight state. The Modal definition
+          stays in the file for the day we add a "restart later"
+          escape hatch back, but it's no longer reachable in normal
+          flow. */}
       {restart.phase !== "idle" && (
         <RestartProgressModal phase={restart.phase} message={restart.message} onDismiss={dismissRestart} />
       )}
@@ -373,12 +400,12 @@ function SaveStatusBanner({ status }: { status: SaveStatus }) {
   return (
     <div className="border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-3 text-xs">
       {status.applied.length > 0 && (
-        <p className="text-emerald-300">
+        <p className="text-status-success">
           applied: <span className="font-mono">{status.applied.join(", ")}</span>
         </p>
       )}
       {status.rejected.length > 0 && (
-        <ul className="mt-1 text-rose-300">
+        <ul className="text-status-error mt-1">
           {status.rejected.map((r) => (
             <li key={r.key}>
               <span className="font-mono">{r.key}</span>: {r.message}
@@ -387,7 +414,7 @@ function SaveStatusBanner({ status }: { status: SaveStatus }) {
         </ul>
       )}
       {status.requiresRestart && (
-        <p className="mt-1 text-amber-300">
+        <p className="text-status-warn mt-1">
           restart required for:{" "}
           <span className="font-mono">{status.pendingRestart.join(", ")}</span>
         </p>
@@ -397,11 +424,10 @@ function SaveStatusBanner({ status }: { status: SaveStatus }) {
 }
 
 function TestStatusBanner({ status }: { status: ConfigTestResult }) {
-  const tone = status.ok
-    ? "border-emerald-900 bg-emerald-950/30 text-emerald-300"
-    : "border-rose-900 bg-rose-950/30 text-rose-300";
   return (
-    <div className={`border-b px-4 py-3 text-xs ${tone}`}>
+    <div
+      className={`${status.ok ? "status-success" : "status-error"} border-b px-4 py-3 text-xs`}
+    >
       <p>
         <span className="font-mono">
           {status.ok ? "ok" : "fail"} · {status.latencyMs}ms · {status.component}
@@ -415,58 +441,6 @@ function TestStatusBanner({ status }: { status: ConfigTestResult }) {
         </pre>
       )}
     </div>
-  );
-}
-
-function RestartRequiredModal({
-  label,
-  pendingRestart,
-  onRestartNow,
-  onLater,
-}: {
-  label: string;
-  pendingRestart: string[];
-  onRestartNow: () => void;
-  onLater: () => void;
-}) {
-  return (
-    <ModalScrim>
-      <h3 className="text-sm font-semibold">Restart required</h3>
-      <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted)]">
-        Your changes were saved, but{" "}
-        <span className="font-mono text-amber-300">{label}</span> only re-reads
-        these fields at startup:
-      </p>
-      <ul className="mt-2 ml-4 list-disc text-xs text-[color:var(--foreground)]">
-        {pendingRestart.map((k) => (
-          <li key={k} className="font-mono">
-            {k}
-          </li>
-        ))}
-      </ul>
-      <p className="mt-3 text-xs leading-relaxed text-[color:var(--muted)]">
-        &ldquo;Restart now&rdquo; tells the process to exit; an external
-        supervisor (systemd, docker, your launcher) brings it back. If
-        you&rsquo;re running without a supervisor, the process will stay down
-        until you relaunch it manually.
-      </p>
-      <div className="mt-4 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onLater}
-          className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
-        >
-          Restart later
-        </button>
-        <button
-          type="button"
-          onClick={onRestartNow}
-          className="font-ui rounded bg-amber-700 px-3 py-1 text-xs font-medium text-amber-50 transition-[filter] hover:brightness-110"
-        >
-          Restart now
-        </button>
-      </div>
-    </ModalScrim>
   );
 }
 
@@ -489,10 +463,10 @@ function RestartProgressModal({
           : "Restarting…";
   const tone =
     phase === "back"
-      ? "text-emerald-300"
+      ? "text-status-success"
       : phase === "timeout" || phase === "error"
-        ? "text-rose-300"
-        : "text-amber-300";
+        ? "text-status-error"
+        : "text-status-warn";
   const dismissable = phase === "back" || phase === "timeout" || phase === "error";
   return (
     <ModalScrim>

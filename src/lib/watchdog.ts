@@ -7,7 +7,12 @@
  * `scripts/codegen`.
  */
 
-export type ComponentKind = "orchestrator" | "hemisphere-driver" | "memory";
+export type ComponentKind =
+  | "orchestrator"
+  | "hemisphere-driver"
+  | "memory"
+  | "identity"
+  | "connector";
 
 export type ComponentStatus =
   | "starting"

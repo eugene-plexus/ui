@@ -7,23 +7,40 @@
  * the UI origin-restricted (no CORS dance on the components) and lets us
  * keep the orchestrator on a private network without poking holes.
  *
- * v0.1 fixed-target set: `orchestrator`. Driver targets (any other
- * name) are resolved at request time by fetching the orchestrator's
- * `/v1/config` and looking up the operator-supplied driver name in
- * its `drivers` list. The orchestrator is the source of truth for
- * topology — env var overrides exist only as the bootstrap escape
- * hatch (so the proxy can reach the orchestrator in the first place).
+ * Fixed-target set: `orchestrator`, `watchdog`, plus the v0.2 body
+ * components (`memory`, `identity`, `connector`). Anything else is
+ * interpreted as a driver name and resolved at request time by fetching
+ * the orchestrator's `/v1/config` and looking up the operator-supplied
+ * driver name in its `drivers` list. The orchestrator is the source of
+ * truth for driver topology; the watchdog is the source of truth for
+ * body-component topology. Env var overrides exist as the bootstrap
+ * escape hatch (so the proxy can reach the watchdog in the first place).
  */
 
 export type ProxyTarget = string;
 
-const FIXED_TARGETS = new Set(["orchestrator", "watchdog"]);
+const FIXED_TARGETS = new Set([
+  "orchestrator",
+  "watchdog",
+  "memory",
+  "identity",
+  "connector",
+]);
 
 const DEFAULT_ORCHESTRATOR = "http://127.0.0.1:8080";
 const DEFAULT_WATCHDOG = "http://127.0.0.1:8079";
+const DEFAULT_MEMORY = "http://127.0.0.1:8083";
+const DEFAULT_IDENTITY = "http://127.0.0.1:8084";
+const DEFAULT_CONNECTOR = "http://127.0.0.1:8085";
 
 interface DriverEntry {
   name: string;
+  url: string;
+}
+
+interface WatchdogComponentEntry {
+  name: string;
+  kind: string;
   url: string;
 }
 
@@ -35,8 +52,47 @@ export function watchdogUrl(): string {
   return process.env.WATCHDOG_URL?.trim() || DEFAULT_WATCHDOG;
 }
 
+// Body components are looked up against the watchdog's topology at
+// request time so the proxy follows whatever URL the operator wired up
+// in `watchdog.yaml`. The env-var defaults below are the fallback when
+// the watchdog hasn't been asked yet OR the component isn't present in
+// topology — they match the v0.2 default ports so a stock install just
+// works.
+//
+// v0.2 note: watchdog's /v1/components is bearer-auth-protected. The
+// proxy threads the incoming request's `Authorization` header here so
+// the server-side lookup works for logged-in operators. Pre-login
+// (e.g. wizard) the header is absent and we fall back to defaults.
+async function fetchTopologyUrl(
+  kind: string,
+  fallback: string,
+  envOverride: string | undefined,
+  authHeader: string | undefined,
+): Promise<string> {
+  if (envOverride?.trim()) return envOverride.trim();
+  try {
+    const headers: HeadersInit = authHeader ? { Authorization: authHeader } : {};
+    const response = await fetch(`${watchdogUrl()}/v1/components`, { headers });
+    if (!response.ok) return fallback;
+    const doc = (await response.json()) as { components?: WatchdogComponentEntry[] };
+    const list = doc.components ?? [];
+    const entry = list.find(
+      (c) =>
+        c &&
+        typeof c.kind === "string" &&
+        c.kind === kind &&
+        typeof c.url === "string" &&
+        c.url.length > 0,
+    );
+    return entry?.url ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function resolveTarget(
   target: ProxyTarget,
+  authHeader?: string,
 ): Promise<{ url: string } | { error: string }> {
   if (target === "orchestrator") {
     return { url: orchestratorUrl() };
@@ -44,15 +100,47 @@ export async function resolveTarget(
   if (target === "watchdog") {
     return { url: watchdogUrl() };
   }
+  if (target === "memory") {
+    const url = await fetchTopologyUrl(
+      "memory",
+      DEFAULT_MEMORY,
+      process.env.MEMORY_URL,
+      authHeader,
+    );
+    return { url };
+  }
+  if (target === "identity") {
+    const url = await fetchTopologyUrl(
+      "identity",
+      DEFAULT_IDENTITY,
+      process.env.IDENTITY_URL,
+      authHeader,
+    );
+    return { url };
+  }
+  if (target === "connector") {
+    const url = await fetchTopologyUrl(
+      "connector",
+      DEFAULT_CONNECTOR,
+      process.env.CONNECTOR_URL,
+      authHeader,
+    );
+    return { url };
+  }
   // Anything else is interpreted as a driver name. Look it up in the
   // orchestrator's `drivers` config — that's the single source of truth
-  // for topology. v0.1 fetches on every request; the volume is small
-  // (config-page edits only) so a cache is premature.
+  // for driver topology. v0.1 fetches on every request; the volume is
+  // small (config-page edits only) so a cache is premature.
+  //
+  // v0.2: orchestrator's /v1/config is bearer-auth-protected. Forward
+  // the incoming Authorization header so the lookup succeeds for
+  // logged-in operators.
   if (FIXED_TARGETS.has(target)) {
     return { error: `unsupported fixed target: ${target}` };
   }
   try {
-    const response = await fetch(`${orchestratorUrl()}/v1/config`);
+    const headers: HeadersInit = authHeader ? { Authorization: authHeader } : {};
+    const response = await fetch(`${orchestratorUrl()}/v1/config`, { headers });
     if (!response.ok) {
       return {
         error: `orchestrator /v1/config returned ${response.status} ${response.statusText}`,
