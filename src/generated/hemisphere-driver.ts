@@ -368,44 +368,60 @@ export interface components {
             passIndex?: number;
         };
         /**
-         * @description A snapshot of Eugene's neurotransmitter state. v0.1 wires this through
-         *     the schemas but does not modulate behavior on it — the framework
-         *     passes a static neutral state. Drives, plasticity, and modulation
-         *     come in v0.2+.
+         * @description Per-NT level + its baseline + per-second decay rate. The level
+         *     decays toward baseline at `decay` units per second between
+         *     observations; observations push it up or down based on the
+         *     orchestrator's observation→NT mapping (see orchestrator spec).
+         */
+        NTLevel: {
+            /**
+             * Format: float
+             * @description Current instantaneous value.
+             */
+            level: number;
+            /**
+             * Format: float
+             * @description Resting-state target the level decays toward.
+             */
+            baseline: number;
+            /**
+             * Format: float
+             * @description Per-second decay rate toward baseline. Larger values =
+             *     faster return to baseline after a stimulus.
+             */
+            decay: number;
+        };
+        /**
+         * @description A snapshot of Eugene's neurotransmitter state. v0.2 introduces real
+         *     modulation: the orchestrator updates this from observations each
+         *     chat turn, and the bicameral loop reads it to set `max_passes`,
+         *     `temperature`, and blend weights. CLLM-inspired anxiety-driven
+         *     termination is the load-bearing behavior.
          *
-         *     Values are in [0, 1]. 0.5 represents a baseline / neutral level.
+         *     Six NTs in v0.2 (cortisol replaces v0.1's glutamate — cortisol is
+         *     directly observable from chat patterns like sustained divergence
+         *     and time pressure; glutamate's lower-level activation modeling
+         *     waits for v0.3). All values in [0, 1]; `level` carries the current
+         *     instantaneous value, `baseline` the resting state the field decays
+         *     toward, `decay` the per-second decay rate.
+         *
+         *     v0.3+ adds: full 12-NT shape (oxytocin, endorphins, melatonin,
+         *     adenosine, histamine, orexin), per-driver NT modulation, drives
+         *     feeding NT, NT-driven autonomous-thinking triggers.
          */
         NTState: {
             /**
-             * Format: float
-             * @description Mood / satiation tone. High = content / patient.
+             * Format: date-time
+             * @description When NT levels were last updated. Used by the orchestrator
+             *     to compute elapsed-time decay on the next tick.
              */
-            serotonin?: number;
-            /**
-             * Format: float
-             * @description Reward prediction / motivation. High = engaged / curious.
-             */
-            dopamine?: number;
-            /**
-             * Format: float
-             * @description Arousal / vigilance. High = alert / focused under load.
-             */
-            norepinephrine?: number;
-            /**
-             * Format: float
-             * @description Attention / encoding gain. High = sharp focus, fast learning.
-             */
-            acetylcholine?: number;
-            /**
-             * Format: float
-             * @description Inhibitory tone. High = calm / restrained.
-             */
-            gaba?: number;
-            /**
-             * Format: float
-             * @description Excitatory drive. High = active / responsive.
-             */
-            glutamate?: number;
+            lastUpdated: string;
+            dopamine: components["schemas"]["NTLevel"];
+            serotonin: components["schemas"]["NTLevel"];
+            norepinephrine: components["schemas"]["NTLevel"];
+            gaba: components["schemas"]["NTLevel"];
+            cortisol: components["schemas"]["NTLevel"];
+            acetylcholine: components["schemas"]["NTLevel"];
         };
         /**
          * @description Which adapter the hemisphere-driver instance is configured to use.
@@ -546,6 +562,19 @@ export interface components {
             default?: unknown;
             /** @description Allowed values when `valueType == enum`. */
             enumValues?: string[];
+            /**
+             * @description Discovery-time hints — values the operator might want
+             *     but which AREN'T enforced by validation. UIs render
+             *     string-typed fields with non-empty `suggestions` as a
+             *     combobox (free-text input with a dropdown of suggestions)
+             *     rather than a strict dropdown. Use when the set of
+             *     valid values is large, partially-discoverable, or
+             *     extends beyond what the component knows at the moment
+             *     (e.g. local LLM model lists that update when the operator
+             *     pulls a new model). Distinct from `enumValues`:
+             *     suggestions are advisory, enumValues are mandatory.
+             */
+            suggestions?: string[];
             /**
              * @description Optional human-readable display labels paired one-to-one
              *     with `enumValues`. UIs that render an enum as a dropdown

@@ -177,13 +177,51 @@ export interface paths {
         };
         /**
          * Read the current global NT state.
-         * @description v0.1 returns a static neutral state. The endpoint exists so the
-         *     UI and downstream components can begin consuming NT state now,
-         *     without code changes when modulation lands in v0.2.
+         * @description (v0.2) Returns the 6-NT state with level / baseline / decay per
+         *     NT and `lastUpdated`. The orchestrator updates NT each chat
+         *     turn from observable signals (hemisphere agreement, divergence
+         *     across passes, latency, time pressure) and the bicameral loop
+         *     reads NT state to set `max_passes`, `temperature`, and blend
+         *     weights.
+         *
+         *     v0.3 adds background tick from autonomous-thinking idle states;
+         *     v0.2 only ticks on chat-turn events.
          */
         get: operations["getNTState"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/memory-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactive memory search (proxies the memory component).
+         * @description (v0.2) Thin pass-through to the memory component's
+         *     `POST /v1/memory/search`. The orchestrator's topic-shift
+         *     detector calls this when the current conversation references
+         *     something outside the recent history window (e.g. user
+         *     mentions a name or topic not in the last N turns). The
+         *     detector itself ships in v0.3; this endpoint exists in v0.2
+         *     so the wire shape is stable.
+         *
+         *     Why proxy instead of letting the UI/connector hit memory
+         *     directly: the orchestrator is the only component that knows
+         *     the current conversation's full context, so it's positioned
+         *     to make the "this is a topic shift" judgment and to inject
+         *     the retrieved entries into the next hemisphere prompt.
+         */
+        post: operations["searchMemory"];
         delete?: never;
         options?: never;
         head?: never;
@@ -203,13 +241,10 @@ export interface paths {
          *     of fields with `sensitive: true` are redacted as the literal
          *     string `"<redacted>"`.
          *
-         *     ## Auth note (v0.1)
-         *
-         *     Eugene Plexus v0.1 ships with no application-level
-         *     authentication. Deployment assumption: behind a Tailscale
-         *     tailnet (or equivalent network boundary). **Anyone reachable
-         *     on the network can read and modify the orchestrator's config.**
-         *     Auth lands in v0.2.
+         *     (v0.2) Notable config additions: `identityUrl` for the
+         *     identity component, and an extended `defaultSystemPrompt`
+         *     that may be empty when the orchestrator should always
+         *     assemble prompts from identity-component data.
          */
         get: operations["getConfig"];
         put?: never;
@@ -312,21 +347,59 @@ export interface components {
             message: string;
             /**
              * Format: uuid
+             * @description (v0.2) Speaker's `personId` in the identity component. The
+             *     orchestrator pulls this person's relationship summary
+             *     from identity and injects it into each hemisphere's
+             *     prompt. When omitted, the orchestrator falls back to
+             *     the operator's personId (UI calls without an explicit
+             *     personId default to the operator).
+             *
+             *     Connector adapters MUST supply `personId` — they're
+             *     never the operator. If the adapter receives a message
+             *     from an unknown platform user, it MUST file a
+             *     `PendingIdentityLink` with the identity component
+             *     FIRST and not call this endpoint.
+             */
+            personId?: string;
+            /**
+             * Format: uuid
              * @description Continue an existing conversation. If omitted, the orchestrator
              *     mints a new id and returns it in the response.
              */
             conversationId?: string;
             /**
              * @description Optional caller-supplied system prompt. If omitted, the
-             *     orchestrator uses its configured default Eugene persona.
+             *     orchestrator assembles one from the identity component's
+             *     constitution + relevant self-model entries + the speaker's
+             *     relationship summary, plus a hemisphere-specific
+             *     "you are the left/right hemisphere" preamble per pass.
              */
             systemPrompt?: string;
             /**
              * @description Maximum number of bicameral passes before the orchestrator
              *     forces termination regardless of hemisphere disagreement.
+             *     (v0.2) NT state may lower the effective cap below this
+             *     value when cortisol / NE indicate Eugene should commit
+             *     rather than deliberate further.
              * @default 3
              */
             maxPasses: number;
+            /**
+             * @description (v0.2) For connector adapters bridging channel mentions
+             *     (Discord channels, Slack channels, Matrix rooms): recent
+             *     platform messages preceding the mention, for
+             *     conversational grounding. The orchestrator may surface
+             *     these to hemispheres as ambient context. NOT persisted
+             *     to memory — privacy default protects people who didn't
+             *     invoke Eugene.
+             */
+            channelContext?: components["schemas"]["ChannelContextEntry"][];
+            /**
+             * @description (v0.2) Where this message came from (platform / channel).
+             *     Defaults to `{platform: ui, isDirectMessage: true}` when
+             *     omitted (UI calls).
+             */
+            source?: components["schemas"]["MessageSource"];
             /**
              * Format: uuid
              * @description Caller-supplied id for log correlation.
@@ -343,10 +416,47 @@ export interface components {
              *     entry per configured driver that responded — two in v0.1.
              */
             passes: components["schemas"]["PassRecord"][];
+            voicePass?: components["schemas"]["VoicePassRecord"];
             ntStateAtStart?: components["schemas"]["NTState"];
             ntStateAtEnd?: components["schemas"]["NTState"];
             /** Format: uuid */
             requestId?: string;
+        };
+        /**
+         * @description After the deliberation loop terminates (agreement or
+         *     cap-reached), the orchestrator runs ONE additional LLM call
+         *     — the "voice pass" — whose job is to convert internal
+         *     deliberation into a user-facing reply. The deliberation
+         *     hemispheres talk to each other in the loop, often slipping
+         *     into inner-dialog register that doesn't actually address the
+         *     user. The voice pass takes the deliberated content and asks
+         *     for a clean reply addressed to the user.
+         *
+         *     This record carries the voice pass's input + output for
+         *     diagnostic transparency. The `message` field on the parent
+         *     `ChatResponse` is the voice pass's `output` — what Eugene
+         *     actually said to the user.
+         *
+         *     Optional so older orchestrators that don't run a voice pass
+         *     keep working; v0.2.x orchestrators always emit it.
+         */
+        VoicePassRecord: {
+            /**
+             * @description Which hemisphere driver performed the voice pass. Operator-
+             *     configurable via `voiceDriver` on the orchestrator config;
+             *     defaults to the first driver in the topology.
+             */
+            driverName: string;
+            /**
+             * @description The full message list sent to the voice driver — system
+             *     prompt + conversation history + user message + the
+             *     inline summary of what each hemisphere considered during
+             *     deliberation.
+             */
+            inputMessages: components["schemas"]["Message"][];
+            output: components["schemas"]["Message"];
+            /** @description Wall-clock duration of the voice pass call. */
+            latencyMs?: number;
         };
         PassRecord: {
             passIndex: number;
@@ -357,6 +467,26 @@ export interface components {
              *     expects exactly two entries.
              */
             hemispheres: components["schemas"]["Message"][];
+            /**
+             * @description Diagnostic-only mirror of `hemispheres`: each entry is the
+             *     exact message list the orchestrator built and sent to that
+             *     hemisphere driver for this pass — system prompt, conversation
+             *     history, and any cross-hemisphere intermediate content. The
+             *     UI's "copy trace" feature reads this so an operator can see
+             *     what each side actually saw, which is essential when one
+             *     backend (e.g. a CLI persona) appears to be ignoring its
+             *     briefing.
+             *
+             *     Same ordering as `hemispheres`. Length matches `hemispheres`
+             *     when present. Optional so older clients keep working —
+             *     v0.2 orchestrators emit it; pre-v0.2 do not.
+             */
+            hemisphereInputs?: {
+                /** @description Driver this snapshot belongs to. */
+                driverName: string;
+                /** @description The full message list sent to this driver. */
+                messages: components["schemas"]["Message"][];
+            }[];
             callosum: components["schemas"]["CallosumState"];
         };
         /**
@@ -410,6 +540,46 @@ export interface components {
             error?: string;
         };
         /**
+         * @description One message from the channel that precedes Eugene's
+         *     invocation. Used by adapters to provide grounding context
+         *     for channel mentions. Not persisted to memory.
+         */
+        ChannelContextEntry: {
+            /**
+             * @description Platform display name of the speaker. Free-form;
+             *     Eugene doesn't try to resolve to known persons (would
+             *     require trust-establishing flows that v0.2 doesn't
+             *     have for non-mention authors).
+             */
+            author: string;
+            content: string;
+            /** Format: date-time */
+            timestamp: string;
+        };
+        /**
+         * @description Where a message came from. Lets the orchestrator and UI
+         *     distinguish "operator typing in the local UI" from
+         *     "Discord channel mention" without needing
+         *     adapter-specific code paths.
+         */
+        MessageSource: {
+            /**
+             * @description Same identifiers used in `PlatformAlias.platform`
+             *     (`"ui"`, `"discord"`, etc.).
+             */
+            platform: string;
+            /**
+             * @description Platform channel identifier (Discord channel id,
+             *     Slack channel id, Matrix room id, etc.). Omitted for
+             *     DMs or where the platform doesn't expose channels.
+             */
+            channelId?: string;
+            /** @description Human-readable channel name (mutable). */
+            channelName?: string;
+            /** @default false */
+            isDirectMessage: boolean;
+        };
+        /**
          * @description The speaker of a single message in a conversation.
          * @enum {string}
          */
@@ -448,44 +618,60 @@ export interface components {
             passIndex?: number;
         };
         /**
-         * @description A snapshot of Eugene's neurotransmitter state. v0.1 wires this through
-         *     the schemas but does not modulate behavior on it — the framework
-         *     passes a static neutral state. Drives, plasticity, and modulation
-         *     come in v0.2+.
+         * @description Per-NT level + its baseline + per-second decay rate. The level
+         *     decays toward baseline at `decay` units per second between
+         *     observations; observations push it up or down based on the
+         *     orchestrator's observation→NT mapping (see orchestrator spec).
+         */
+        NTLevel: {
+            /**
+             * Format: float
+             * @description Current instantaneous value.
+             */
+            level: number;
+            /**
+             * Format: float
+             * @description Resting-state target the level decays toward.
+             */
+            baseline: number;
+            /**
+             * Format: float
+             * @description Per-second decay rate toward baseline. Larger values =
+             *     faster return to baseline after a stimulus.
+             */
+            decay: number;
+        };
+        /**
+         * @description A snapshot of Eugene's neurotransmitter state. v0.2 introduces real
+         *     modulation: the orchestrator updates this from observations each
+         *     chat turn, and the bicameral loop reads it to set `max_passes`,
+         *     `temperature`, and blend weights. CLLM-inspired anxiety-driven
+         *     termination is the load-bearing behavior.
          *
-         *     Values are in [0, 1]. 0.5 represents a baseline / neutral level.
+         *     Six NTs in v0.2 (cortisol replaces v0.1's glutamate — cortisol is
+         *     directly observable from chat patterns like sustained divergence
+         *     and time pressure; glutamate's lower-level activation modeling
+         *     waits for v0.3). All values in [0, 1]; `level` carries the current
+         *     instantaneous value, `baseline` the resting state the field decays
+         *     toward, `decay` the per-second decay rate.
+         *
+         *     v0.3+ adds: full 12-NT shape (oxytocin, endorphins, melatonin,
+         *     adenosine, histamine, orexin), per-driver NT modulation, drives
+         *     feeding NT, NT-driven autonomous-thinking triggers.
          */
         NTState: {
             /**
-             * Format: float
-             * @description Mood / satiation tone. High = content / patient.
+             * Format: date-time
+             * @description When NT levels were last updated. Used by the orchestrator
+             *     to compute elapsed-time decay on the next tick.
              */
-            serotonin?: number;
-            /**
-             * Format: float
-             * @description Reward prediction / motivation. High = engaged / curious.
-             */
-            dopamine?: number;
-            /**
-             * Format: float
-             * @description Arousal / vigilance. High = alert / focused under load.
-             */
-            norepinephrine?: number;
-            /**
-             * Format: float
-             * @description Attention / encoding gain. High = sharp focus, fast learning.
-             */
-            acetylcholine?: number;
-            /**
-             * Format: float
-             * @description Inhibitory tone. High = calm / restrained.
-             */
-            gaba?: number;
-            /**
-             * Format: float
-             * @description Excitatory drive. High = active / responsive.
-             */
-            glutamate?: number;
+            lastUpdated: string;
+            dopamine: components["schemas"]["NTLevel"];
+            serotonin: components["schemas"]["NTLevel"];
+            norepinephrine: components["schemas"]["NTLevel"];
+            gaba: components["schemas"]["NTLevel"];
+            cortisol: components["schemas"]["NTLevel"];
+            acetylcholine: components["schemas"]["NTLevel"];
         };
         /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
@@ -584,6 +770,88 @@ export interface components {
              *     now"). UI may display this in the restart-progress dialog.
              */
             message?: string;
+        };
+        /**
+         * @description Reactive memory search. Called by the orchestrator when its
+         *     topic-shift detector (v0.3) flags that the current
+         *     conversation references something outside recent history,
+         *     or when the operator explicitly requests retrieval. v0.2
+         *     ships the endpoint; the trigger is v0.3.
+         */
+        MemorySearchRequest: {
+            /** @description Free-form query text to embed and search. */
+            query: string;
+            /**
+             * Format: uuid
+             * @description Optionally restrict search to entries involving this
+             *     person.
+             */
+            personId?: string;
+            /**
+             * Format: uuid
+             * @description Optionally restrict search to a specific conversation.
+             */
+            conversationId?: string;
+            /** @default 10 */
+            limit: number;
+            /**
+             * Format: float
+             * @description Minimum similarity score to include. Backends define
+             *     their own scoring scale; 0.5 is a reasonable default
+             *     for cosine-similarity embedding backends.
+             */
+            minScore?: number;
+        };
+        /**
+         * @description One stored message + the cognitive metadata it was produced
+         *     with. Memory writes typically happen at the end of each
+         *     bicameral turn: the user's message and Eugene's final
+         *     response each become entries. Hemisphere intermediate
+         *     outputs are NOT persisted by default — they're debug
+         *     artifacts.
+         */
+        MemoryEntry: {
+            /** Format: uuid */
+            entryId: string;
+            /**
+             * Format: uuid
+             * @description The person this entry is *with* (the user side of the
+             *     exchange, even for Eugene's responses — they're
+             *     responses to that person).
+             */
+            personId: string;
+            /** Format: uuid */
+            conversationId: string;
+            role: components["schemas"]["Role"];
+            content: string;
+            /** Format: date-time */
+            timestamp: string;
+            /**
+             * @description Eugene's NT state at the time this entry was produced.
+             *     Lets later analysis correlate output style with NT
+             *     state. Optional — not all entries carry one.
+             */
+            ntStateSnapshot?: components["schemas"]["NTState"];
+            /**
+             * @description For Eugene's responses: which hemisphere(s) produced
+             *     this. Free-form (e.g. "left-only", "blended", or a
+             *     driver name). Omitted for user messages.
+             */
+            hemisphereAttribution?: string;
+        };
+        MemorySearchHit: {
+            entry: components["schemas"]["MemoryEntry"];
+            /**
+             * Format: float
+             * @description Backend-defined similarity score. Higher = more
+             *     relevant. Scale depends on the backend; for
+             *     `local_sqlite` it's cosine similarity in [0, 1].
+             */
+            score: number;
+        };
+        /** @description Ranked list of matching memory entries. */
+        MemorySearchResult: {
+            entries: components["schemas"]["MemorySearchHit"][];
         };
         /**
          * @description Current effective config values, keyed by `ConfigField.key`.
@@ -687,6 +955,19 @@ export interface components {
             default?: unknown;
             /** @description Allowed values when `valueType == enum`. */
             enumValues?: string[];
+            /**
+             * @description Discovery-time hints — values the operator might want
+             *     but which AREN'T enforced by validation. UIs render
+             *     string-typed fields with non-empty `suggestions` as a
+             *     combobox (free-text input with a dropdown of suggestions)
+             *     rather than a strict dropdown. Use when the set of
+             *     valid values is large, partially-discoverable, or
+             *     extends beyond what the component knows at the moment
+             *     (e.g. local LLM model lists that update when the operator
+             *     pulls a new model). Distinct from `enumValues`:
+             *     suggestions are advisory, enumValues are mandatory.
+             */
+            suggestions?: string[];
             /**
              * @description Optional human-readable display labels paired one-to-one
              *     with `enumValues`. UIs that render an enum as a dropdown
@@ -1026,6 +1307,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NTState"];
+                };
+            };
+        };
+    };
+    searchMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemorySearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Matched memory entries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemorySearchResult"];
+                };
+            };
+            /** @description Memory component unreachable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
