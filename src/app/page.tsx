@@ -51,6 +51,7 @@ export default function ChatPage() {
   // first render's empty state would clobber whatever was in storage.
   const [hydrated, setHydrated] = useState(false);
   const [setupGate, setSetupGate] = useState<"checking" | "ready">("checking");
+  const [operatorName, setOperatorName] = useState<string | null>(null);
 
   // First-run gate: probe init state first (public endpoint, no auth
   // needed) so we route to /setup on fresh installs without bouncing
@@ -92,6 +93,31 @@ export default function ChatPage() {
       cancelled = true;
     };
   }, [router]);
+
+  // Resolve the operator's display name so the chat header can show
+  // who Eugene is talking to. Fails silently when identity is absent
+  // or unreachable — the header just omits the badge.
+  useEffect(() => {
+    if (setupGate !== "ready") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const resp = await api.get<{ persons: { displayName: string; isOperator?: boolean }[] }>(
+          "identity",
+          "/v1/identity/persons",
+        );
+        if (cancelled) return;
+        const op = (resp.persons ?? []).find((p) => p.isOperator);
+        if (op) setOperatorName(op.displayName);
+      } catch {
+        // identity unavailable — header just shows no name. Operator
+        // can verify identity is up from the Config → Identity tab.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [setupGate]);
 
   // Hydrate conversation from sessionStorage so the chat survives
   // navigation to /config and back, plus F5 reloads within the tab.
@@ -237,11 +263,21 @@ export default function ChatPage() {
               priority
               className="shrink-0"
             />
-            <p className="font-ui text-[11px] text-[color:var(--muted)]">
-              {conversationId
-                ? `conversation ${conversationId.slice(0, 8)}…`
-                : "no conversation yet"}
-            </p>
+            <div className="flex flex-col gap-0.5">
+              {operatorName && (
+                <p className="font-ui text-[11px]">
+                  <span className="text-[color:var(--muted)]">talking to </span>
+                  <span className="font-medium text-[color:var(--foreground)]">
+                    {operatorName}
+                  </span>
+                </p>
+              )}
+              <p className="font-ui text-[11px] text-[color:var(--muted)]">
+                {conversationId
+                  ? `conversation ${conversationId.slice(0, 8)}…`
+                  : "no conversation yet"}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ConfigEditor } from "@/components/ConfigEditor";
 import { ConnectorPanel } from "@/components/ConnectorPanel";
+import { IdentityPanel } from "@/components/IdentityPanel";
 import { UIPreferences } from "@/components/UIPreferences";
 import { ApiError, api } from "@/lib/api";
 import type { DriversInfo } from "@/lib/types";
@@ -26,6 +27,7 @@ const STATIC_TABS: DynamicTab[] = [
 ];
 
 const CONNECTOR_TAB = "connector";
+const IDENTITY_TAB = "identity";
 
 export default function ConfigPage() {
   const [drivers, setDrivers] = useState<DynamicTab[]>([]);
@@ -130,6 +132,8 @@ export default function ConfigPage() {
           <UIPreferences />
         ) : tab === CONNECTOR_TAB ? (
           <ConnectorPanel />
+        ) : tab === IDENTITY_TAB ? (
+          <IdentityPanel />
         ) : (
           <ConfigEditor
             key={tab}
