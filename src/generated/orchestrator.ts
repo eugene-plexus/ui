@@ -909,6 +909,18 @@ export interface components {
          */
         ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "url" | "duration" | "driver_list";
         /**
+         * @description Which Eugene Plexus component class a topology entry represents.
+         *     Lives in `common.yaml` because multiple components reference it:
+         *     the watchdog's `/v1/components`, and (via `ConfigField.
+         *     componentKindHint`) any component declaring a config field that
+         *     points at a peer of a specific kind. v0.1 covered three body
+         *     parts (orchestrator, hemisphere-driver, memory); v0.2 adds
+         *     `identity` (Default Mode Network analogue) and `connector`
+         *     (external sense organs).
+         * @enum {string}
+         */
+        ComponentKind: "orchestrator" | "hemisphere-driver" | "memory" | "identity" | "connector";
+        /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
          *     equals the given value (or matches one entry in the given list).
@@ -968,6 +980,21 @@ export interface components {
              *     suggestions are advisory, enumValues are mandatory.
              */
             suggestions?: string[];
+            /**
+             * @description Declarative rendering hint: this field references a peer
+             *     component of the given kind. UIs render any kind-hinted
+             *     field as a dropdown sourced from the watchdog's
+             *     `/v1/components` (filtered by kind), with `(off)` as the
+             *     first option (saves an empty string). For single-instance
+             *     kinds (memory, identity, etc.) the dropdown UX collapses
+             *     to effectively a toggle; for multi-instance kinds
+             *     (hemisphere-driver) the operator picks one. Pairs with a
+             *     string/url `valueType` — the saved value is still the
+             *     peer's URL, the hint only changes how the UI looks it up.
+             *     Avoids the OpenClaw trap of duplicating topology into
+             *     free-text URL fields the operator has to type by hand.
+             */
+            componentKindHint?: components["schemas"]["ComponentKind"];
             /**
              * @description Optional human-readable display labels paired one-to-one
              *     with `enumValues`. UIs that render an enum as a dropdown

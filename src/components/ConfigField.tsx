@@ -7,6 +7,7 @@ import type {
   ConfigField as ConfigFieldDef,
   DriverEntry,
   DriverHealth,
+  TopologyComponent,
 } from "@/lib/types";
 
 /**
@@ -21,11 +22,18 @@ export function ConfigFieldInput({
   field,
   value,
   pending,
+  topology,
   onChange,
 }: {
   field: ConfigFieldDef;
   value: unknown;
   pending: boolean;
+  /** Current watchdog topology snapshot — used to render
+   * `componentKindHint`-bearing fields as dropdowns. Null while
+   * loading or when the parent decided not to fetch (e.g. the schema
+   * has no peer-reference fields). The dropdown falls back to a free-
+   * text URL input when topology is unavailable. */
+  topology?: TopologyComponent[] | null;
   onChange: (newValue: unknown) => void;
 }) {
   const baseInputClass =
@@ -112,6 +120,56 @@ export function ConfigFieldInput({
           onChange={onChange}
           baseInputClass={baseInputClass}
         />
+      );
+    }
+
+    // Peer-reference dropdown: a `componentKindHint` tells us this
+    // field points at a watchdog topology entry of the given kind.
+    // Render as a dropdown sourced from the live topology so the
+    // operator doesn't have to copy URLs by hand. The wire value is
+    // still the peer's URL — the hint only changes the input UX.
+    //
+    // For single-instance kinds (memory, identity, connector in stock
+    // topology) the dropdown effectively becomes an on/off toggle:
+    // `(off)` + the one peer. For multi-instance kinds (hemisphere-
+    // driver, typically `left` + `right`) the operator picks one.
+    //
+    // Falls back to a free-text URL input when topology is null —
+    // either still loading, or the watchdog fetch failed. Better to
+    // let the operator type a URL by hand than block them entirely.
+    if (field.componentKindHint && topology != null) {
+      const matches = topology.filter(
+        (c) => c.kind === field.componentKindHint && typeof c.url === "string",
+      );
+      const currentUrl = typeof value === "string" ? value : "";
+      const currentNorm = normalizeUrl(currentUrl);
+      const savedKnown =
+        currentNorm === "" ||
+        matches.some((m) => normalizeUrl(m.url) === currentNorm);
+      return (
+        <select
+          value={currentNorm}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={pending}
+          className={baseInputClass}
+        >
+          <option value="">(off)</option>
+          {matches.map((c) => (
+            <option key={c.name} value={normalizeUrl(c.url)}>
+              {c.name}
+            </option>
+          ))}
+          {!savedKnown && (
+            // The saved URL doesn't match any current topology entry —
+            // surface it as a synthetic option so the operator can see
+            // what's stored AND change it. Without this branch the
+            // dropdown would silently render with no selection while
+            // the saved value sits invisibly in state.
+            <option value={currentNorm}>
+              (unknown: {currentNorm})
+            </option>
+          )}
+        </select>
       );
     }
 
@@ -342,4 +400,14 @@ function DriverListInput({
       </button>
     </div>
   );
+}
+
+/**
+ * Match identity's server-side normalization: peer URLs are stored
+ * with no trailing slash (see `resolve_peer_url` in identity/app.py).
+ * Use this when comparing topology URLs to the saved value so
+ * "http://x:1/" and "http://x:1" don't show as different selections.
+ */
+function normalizeUrl(url: string): string {
+  return url.replace(/\/+$/, "");
 }

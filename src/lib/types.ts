@@ -34,6 +34,21 @@ export type NTState = OrchComponents["schemas"]["NTState"];
 export type Problem = OrchComponents["schemas"]["Problem"];
 
 export type ConfigField = OrchComponents["schemas"]["ConfigField"];
+export type ComponentKind = OrchComponents["schemas"]["ComponentKind"];
+
+// Watchdog topology entry — the shape returned by `GET /v1/components`.
+// We type just the fields the UI consumes (name, kind, url); the full
+// schema has many more (status, pid, lastRestart, lastError, spawn)
+// that are out of scope here. Watchdog spec lives in a different
+// codegen target, so we describe the shape locally.
+export interface TopologyComponent {
+  name: string;
+  kind: ComponentKind;
+  url: string;
+}
+export interface TopologyListResponse {
+  components: TopologyComponent[];
+}
 export type ConfigSchema = OrchComponents["schemas"]["ConfigSchema"];
 export type ConfigDocument = OrchComponents["schemas"]["ConfigDocument"];
 export type ConfigUpdateRequest = OrchComponents["schemas"]["ConfigUpdateRequest"];

@@ -12,6 +12,8 @@ import type {
   ConfigTestResult,
   ConfigUpdateResult,
   RestartResult,
+  TopologyComponent,
+  TopologyListResponse,
 } from "@/lib/types";
 
 interface SaveStatus {
@@ -47,6 +49,12 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null);
   const [testStatus, setTestStatus] = useState<ConfigTestResult | null>(null);
   const [restart, setRestart] = useState<RestartState>({ phase: "idle" });
+  // Topology snapshot. Populated when the loaded schema has any
+  // `componentKindHint` fields — those need to render as dropdowns
+  // sourced from the watchdog's current components. Null while
+  // unfetched / not applicable; the dropdown gracefully falls back
+  // to a free-text input when topology is null.
+  const [topology, setTopology] = useState<TopologyComponent[] | null>(null);
 
   // Per-provider draft cache: when the user switches Provider, we
   // snapshot the current values of provider-dependent fields under the
@@ -72,6 +80,28 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         setSchema(schemaResp);
         setServerDoc(docResp);
         setDraft({ ...(docResp as Record<string, unknown>) });
+        // If this schema has any peer-reference fields, fetch the
+        // watchdog topology so we can render them as dropdowns. Skip
+        // the fetch entirely when nothing on the schema needs it
+        // (orchestrator's config has no kind hints, no point pinging
+        // watchdog while loading it).
+        const hasKindHint = schemaResp.fields.some(
+          (f) => f.componentKindHint != null,
+        );
+        if (hasKindHint) {
+          try {
+            const topo = await api.get<TopologyListResponse>(
+              "watchdog",
+              "/v1/components",
+            );
+            if (!cancelled) setTopology(topo.components ?? []);
+          } catch {
+            // Topology fetch failing isn't fatal — the field falls
+            // back to its free-text URL renderer. The operator just
+            // loses the dropdown convenience this once.
+            if (!cancelled) setTopology(null);
+          }
+        }
         // Seed the cache with the initial server values keyed under the
         // current provider, so an immediate switch-and-back returns the
         // user to exactly what they loaded with.
@@ -374,6 +404,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
                     field={fieldForRender(f, draft, serverDoc)}
                     value={draft[f.key]}
                     pending={saving}
+                    topology={topology}
                     onChange={(v) => handleFieldChange(f.key, v)}
                   />
                 ))}
