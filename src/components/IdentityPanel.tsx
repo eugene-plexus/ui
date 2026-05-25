@@ -64,8 +64,25 @@ interface PendingLinksResponse {
   links: PendingLink[];
 }
 
+interface SelfModelEntry {
+  id: string;
+  topic: string;
+  content: string;
+  relatedPersonIds?: string[] | null;
+  sourceConversationIds?: string[] | null;
+  createdAt: string;
+}
+
+interface SelfModelResponse {
+  entries: SelfModelEntry[];
+}
+
+interface ReflectResponse {
+  entriesWritten: SelfModelEntry[];
+}
+
 export function IdentityPanel() {
-  const [view, setView] = useState<"settings" | "persons" | "pending">("settings");
+  const [view, setView] = useState<"settings" | "persons" | "pending" | "self">("settings");
   const [pendingCount, setPendingCount] = useState<number | null>(null);
 
   // Pre-fetch the pending count once so the operator sees a badge on
@@ -107,16 +124,21 @@ export function IdentityPanel() {
             )}
           </span>
         </SubTabButton>
+        <SubTabButton active={view === "self"} onClick={() => setView("self")}>
+          Self-model
+        </SubTabButton>
       </nav>
       <div className="flex-1 overflow-hidden">
         {view === "settings" ? (
           <ConfigEditor target="identity" label="Identity" />
         ) : view === "persons" ? (
           <PersonsPanel />
-        ) : (
+        ) : view === "pending" ? (
           <PendingLinksPanel
             onCountChange={(n) => setPendingCount(n)}
           />
+        ) : (
+          <SelfModelPanel />
         )}
       </div>
     </div>
@@ -756,6 +778,144 @@ function PendingLinkRow({
             </button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ───────────────────────────── self-model ─────────────────────────────── */
+
+function SelfModelPanel() {
+  const [entries, setEntries] = useState<SelfModelEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reflecting, setReflecting] = useState(false);
+  const [reflectStatus, setReflectStatus] = useState<string | null>(null);
+  const [reflectError, setReflectError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const resp = await api.get<SelfModelResponse>(
+        "identity",
+        "/v1/identity/self-model?limit=50",
+      );
+      setEntries(resp.entries ?? []);
+    } catch (e) {
+      setLoadError(formatError(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  async function reflect() {
+    setReflecting(true);
+    setReflectStatus(null);
+    setReflectError(null);
+    try {
+      // Default body — identity uses its own lookback defaults. v0.3
+      // will expose lookback / conversation-scoping inputs once we
+      // have data on what the operator actually wants to vary.
+      const resp = await api.post<ReflectResponse>(
+        "identity",
+        "/v1/identity/self-model/reflect",
+        {},
+      );
+      const n = resp.entriesWritten?.length ?? 0;
+      setReflectStatus(
+        n === 0
+          ? "Reflection ran but produced no new entries — nothing the model found worth noting in recent turns."
+          : `Reflection wrote ${n} new ${n === 1 ? "entry" : "entries"}.`,
+      );
+      await reload();
+    } catch (e) {
+      setReflectError(formatError(e));
+    } finally {
+      setReflecting(false);
+    }
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <header className="flex items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold">Self-model</h2>
+          <p className="text-[11px] text-[color:var(--muted)]">
+            What Eugene has noticed about himself. Written by the reflection process; queried into hemisphere prompts when topic-relevant.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void reload()}
+            disabled={loading || reflecting}
+            className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => void reflect()}
+            disabled={reflecting}
+            title="Trigger a reflection pass — identity reads recent memory turns, asks a hemisphere driver to extract self-model observations, and persists them."
+            className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {reflecting ? "Reflecting…" : "Reflect now"}
+          </button>
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        {reflectStatus && (
+          <p className="status-success mb-3 rounded border px-3 py-2 text-xs">{reflectStatus}</p>
+        )}
+        {reflectError && (
+          <p className="status-error mb-3 rounded border px-3 py-2 text-xs">
+            Reflect failed — {reflectError}
+          </p>
+        )}
+        {loadError && (
+          <p className="status-error mb-3 rounded border px-3 py-2 text-xs">{loadError}</p>
+        )}
+        {loading && entries.length === 0 && (
+          <p className="text-xs text-[color:var(--muted)]">Loading self-model…</p>
+        )}
+        {!loading && entries.length === 0 && (
+          <p className="text-xs text-[color:var(--muted)]">
+            No self-model entries yet. Have a few chat turns about something with personality (an opinion, a taste, a reaction), then click <span className="font-mono">Reflect now</span>. Identity reads the recent turns, asks a hemisphere driver to extract self-observations, and persists them here.
+          </p>
+        )}
+        {entries.map((entry) => (
+          <SelfModelEntryRow key={entry.id} entry={entry} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SelfModelEntryRow({ entry }: { entry: SelfModelEntry }) {
+  const createdAt = entry.createdAt ? new Date(entry.createdAt).toLocaleString() : null;
+  const sourceCount = entry.sourceConversationIds?.length ?? 0;
+  return (
+    <div className="mb-3 rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="font-mono text-[10px] tracking-wider text-[color:var(--muted)] uppercase">
+          {entry.topic}
+        </span>
+        {createdAt && (
+          <span className="font-mono text-[10px] text-[color:var(--muted)]">{createdAt}</span>
+        )}
+      </div>
+      <p className="font-ui text-sm leading-relaxed">{entry.content}</p>
+      {sourceCount > 0 && (
+        <p className="mt-2 font-mono text-[10px] text-[color:var(--muted)]">
+          derived from {sourceCount} conversation{sourceCount === 1 ? "" : "s"}
+        </p>
       )}
     </div>
   );
