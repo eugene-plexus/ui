@@ -4,8 +4,14 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { JumpToBottomButton } from "@/components/JumpToBottomButton";
+import { ThoughtForChip } from "@/components/ThoughtForChip";
 import { useAutoScroll } from "@/lib/useAutoScroll";
-import type { Message } from "@/lib/types";
+import type { Message, PassRecord } from "@/lib/types";
+
+interface VoicePassRecord {
+  driverName: string;
+  latencyMs?: number;
+}
 
 /**
  * The user-visible conversation transcript. Hemisphere/intermediate
@@ -14,10 +20,39 @@ import type { Message } from "@/lib/types";
  * Sticky-bottom scroll: stays pinned when the user is at the bottom and
  * a new message arrives, but doesn't yank them back if they've scrolled
  * up to re-read earlier content.
+ *
+ * v0.2.x: a "Thought for X.Xs ›" chip renders above the latest
+ * assistant message (ChatGPT-style). It expands to show pass count,
+ * final agreement, decision, voice driver. Metadata for past
+ * assistant messages isn't shown — only the most recent is held in
+ * state. Persisting per-message would let the chip survive scroll-
+ * back; that's a future polish item.
  */
-export function ChatLog({ messages }: { messages: Message[] }) {
+export function ChatLog({
+  messages,
+  latestPasses,
+  latestVoicePass,
+  latestTotalLatencyMs,
+}: {
+  messages: Message[];
+  latestPasses: PassRecord[];
+  latestVoicePass: VoicePassRecord | null;
+  latestTotalLatencyMs: number | null;
+}) {
   const visible = messages.filter((m) => m.role === "user" || m.role === "assistant");
   const { scrollRef, isAtBottom, scrollToBottom } = useAutoScroll(messages);
+
+  // Identify the LAST assistant message in the visible list so we can
+  // anchor the Thought-for chip directly above it. Indexing into the
+  // filtered list rather than the raw `messages` array keeps the
+  // anchor stable when the rail's intermediate messages are present.
+  let lastAssistantIdx = -1;
+  for (let i = visible.length - 1; i >= 0; i--) {
+    if (visible[i]?.role === "assistant") {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
 
   if (visible.length === 0) {
     return (
@@ -31,7 +66,16 @@ export function ChatLog({ messages }: { messages: Message[] }) {
     <div className="relative h-full">
       <div ref={scrollRef} className="flex h-full flex-col gap-4 overflow-y-auto p-4">
         {visible.map((msg, i) => (
-          <ChatBubble key={i} message={msg} />
+          <div key={i} className="flex flex-col">
+            {i === lastAssistantIdx && (
+              <ThoughtForChip
+                passes={latestPasses}
+                voicePass={latestVoicePass}
+                totalLatencyMs={latestTotalLatencyMs}
+              />
+            )}
+            <ChatBubble message={msg} />
+          </div>
         ))}
       </div>
       {!isAtBottom && <JumpToBottomButton onClick={scrollToBottom} />}

@@ -36,6 +36,10 @@ interface PersistedConversation {
   messages: Message[];
   latestPasses: PassRecord[];
   latestVoicePass: VoicePassRecord | null;
+  // Round-trip wall-clock time of the most recent /v1/chat call.
+  // Used by the ThoughtForChip to render "Thought for X.Xs". Persisted
+  // so a reload still shows the chip on the last assistant message.
+  latestTotalLatencyMs: number | null;
 }
 
 export default function ChatPage() {
@@ -45,6 +49,9 @@ export default function ChatPage() {
   const [latestPasses, setLatestPasses] = useState<PassRecord[]>([]);
   const [latestVoicePass, setLatestVoicePass] =
     useState<VoicePassRecord | null>(null);
+  const [latestTotalLatencyMs, setLatestTotalLatencyMs] = useState<
+    number | null
+  >(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Don't persist before the initial hydration has run — otherwise the
@@ -157,6 +164,8 @@ export default function ChatPage() {
         if (Array.isArray(parsed.messages)) setMessages(parsed.messages);
         if (Array.isArray(parsed.latestPasses)) setLatestPasses(parsed.latestPasses);
         if (parsed.latestVoicePass != null) setLatestVoicePass(parsed.latestVoicePass);
+        if (typeof parsed.latestTotalLatencyMs === "number")
+          setLatestTotalLatencyMs(parsed.latestTotalLatencyMs);
       }
     } catch {
       // sessionStorage can throw in private modes; fall through to empty.
@@ -183,12 +192,20 @@ export default function ChatPage() {
         messages,
         latestPasses,
         latestVoicePass,
+        latestTotalLatencyMs,
       };
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // ignore
     }
-  }, [hydrated, conversationId, messages, latestPasses, latestVoicePass]);
+  }, [
+    hydrated,
+    conversationId,
+    messages,
+    latestPasses,
+    latestVoicePass,
+    latestTotalLatencyMs,
+  ]);
 
   async function handleSend(text: string) {
     setError(null);
@@ -206,8 +223,15 @@ export default function ChatPage() {
       ...(conversationId ? { conversationId } : {}),
     };
 
+    // Wall-clock start. Captured here (before the await) so the
+    // duration reflects what the operator actually waited for —
+    // includes network, proxy, orchestrator + every bicameral pass.
+    // PassRecord doesn't carry per-pass latency in v0.2; round-trip
+    // is the most ChatGPT-like proxy for "Thought for X.Xs".
+    const startMs = performance.now();
     try {
       const response = await api.post<ChatResponse>("orchestrator", "/v1/chat", body);
+      setLatestTotalLatencyMs(Math.round(performance.now() - startMs));
       setConversationId(response.conversationId);
       setMessages((prev) => [...prev, response.message]);
       setLatestPasses(response.passes);
@@ -238,6 +262,7 @@ export default function ChatPage() {
     setMessages([]);
     setLatestVoicePass(null);
     setLatestPasses([]);
+    setLatestTotalLatencyMs(null);
     setError(null);
   }
 
@@ -329,7 +354,12 @@ export default function ChatPage() {
         </header>
 
         <div className="min-h-0 flex-1 overflow-hidden">
-          <ChatLog messages={messages} />
+          <ChatLog
+            messages={messages}
+            latestPasses={latestPasses}
+            latestVoicePass={latestVoicePass}
+            latestTotalLatencyMs={latestTotalLatencyMs}
+          />
         </div>
 
         {error && (
