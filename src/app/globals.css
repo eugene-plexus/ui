@@ -33,6 +33,15 @@
      scrollbar) deliberately bypass this and stay fully round. */
   --radius: 4px;
 
+  /* Spacing-density multiplier. Identity (1) on cyberpunk + modern;
+     a denser or airier theme can adjust. NOTE: only a handful of
+     chrome paddings consume this today — the bulk of component
+     spacing is still hardcoded Tailwind classes. The full
+     spacing-density rollout is v0.3 work; the token is in place so
+     future themes (Miami '26 uses 1.1) can opt in piecewise as we
+     refactor specific surfaces. */
+  --pad: 1;
+
   /* Large iconic Eugene letterform behind the chat. */
   --bg-icon-display: flex;
   --bg-icon-opacity: 0.18;
@@ -66,6 +75,7 @@
 
   /* Softer corner radius for the flat-UI / Inter aesthetic. */
   --radius: 6px;
+  --pad: 1;
 
   --bg-icon-display: none;
   --bg-icon-opacity: 0;
@@ -74,6 +84,56 @@
   --font-ui: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-body: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+}
+
+/* ──────────────────────────── Miami '26 ────────────────────────────
+   Dark-violet base with teal + pink accents. Designed by Claude
+   Design 2026-05-25; the operator's first third-party theme. Acts
+   as the proof-of-concept that "drop-in CSS variable block plus a
+   row in the theme selector" is sufficient for new themes — the
+   only non-token additions Miami needs are loading its two
+   webfonts (Space Grotesk, JetBrains Mono) in layout.tsx and
+   declaring an is-thinking pulse rule (the cyberpunk pulse uses
+   --accent-left / --accent-right so it adopts Miami's accents
+   automatically; we just need the selector match). */
+[data-theme="miami"] {
+  --background: #0c0820;
+  --foreground: #f5eff4;
+  --panel: #16102e;
+  --panel-soft: #221a44;
+  --panel-hover: #2f235c;
+  --border: #3e2e6e;
+  --border-hover: #604999;
+  --accent-left: #1bd9c2;
+  --accent-right: #ff7ac0;
+  --on-accent-left: #062824;
+  --on-accent-right: #2a0518;
+  --muted: #a094c4;
+  --scrollbar-thumb: rgb(94 78 132 / 0.55);
+  --scrollbar-thumb-hover: rgb(27 217 194 / 0.6);
+
+  /* Bubble — derived from panel + panel-soft at the cyberpunk-pattern
+     transparency. Design called for bubble-blur=8 (lighter than
+     cyberpunk's 18) so the bg-icon shows through more subtly. */
+  --bubble-bg: rgb(22 16 46 / 0.65);
+  --bubble-soft-bg: rgb(34 26 68 / 0.7);
+  --bubble-blur: 8px;
+
+  /* Faint Eugene letterform behind the chat; design set 0.08. */
+  --bg-icon-display: flex;
+  --bg-icon-opacity: 0.08;
+
+  --radius: 4px;
+  /* Design's 1.1 — gives ~10% more breathing room than identity
+     once the spacing-density refactor lands in v0.3. Today this is
+     a forward-compatible declaration. */
+  --pad: 1.1;
+
+  /* Design specified Space Grotesk for both UI + body and JetBrains
+     Mono for code. Both loaded in layout.tsx via next/font. */
+  --font-ui: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
 /* ──────────────────────────── status banners ────────────────────────────
@@ -105,6 +165,20 @@
   --status-error-fg: #9f1239; /* rose-800 */
   --status-error-bg: #fff1f2; /* rose-50 */
   --status-error-border: #fda4af; /* rose-300 */
+}
+[data-theme="miami"] {
+  /* Design specified fg + border; bg derived as a low-alpha tint
+     of the fg over the dark panel — mirrors the cyberpunk pattern
+     so banner contrast stays consistent across themes. */
+  --status-success-fg: #6ee0b5;
+  --status-success-bg: rgb(110 224 181 / 0.15);
+  --status-success-border: #1d9a78;
+  --status-warn-fg: #ffb88a;
+  --status-warn-bg: rgb(255 184 138 / 0.15);
+  --status-warn-border: #d76a2e;
+  --status-error-fg: #ff7a85;
+  --status-error-bg: rgb(255 122 133 / 0.18);
+  --status-error-border: #cc3a55;
 }
 .status-success {
   color: var(--status-success-fg);
@@ -229,10 +303,12 @@ body {
   inherits: false;
 }
 
-[data-theme="cyberpunk"] .is-thinking {
+[data-theme="cyberpunk"] .is-thinking,
+[data-theme="miami"] .is-thinking {
   position: relative;
 }
-[data-theme="cyberpunk"] .is-thinking::after {
+[data-theme="cyberpunk"] .is-thinking::after,
+[data-theme="miami"] .is-thinking::after {
   content: "";
   position: absolute;
   inset: 0;

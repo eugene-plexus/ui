@@ -32,6 +32,7 @@ export function UIPreferences() {
         >
           <option value="cyberpunk">Cyberpunk</option>
           <option value="modern">Modern</option>
+          <option value="miami">Miami &apos;26</option>
           <option value="system">System</option>
         </select>
       </Row>
