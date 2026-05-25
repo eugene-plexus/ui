@@ -797,9 +797,14 @@ function SelfModelPanel() {
     setLoading(true);
     setLoadError(null);
     try {
+      // 10s timeout — the GET is just a SQLite query. If identity is
+      // wedged (e.g. blocked on a previous reflect call against a slow
+      // / hung hemisphere-driver), failing fast is much better than
+      // hanging the loading state indefinitely.
       const resp = await api.get<SelfModelResponse>(
         "identity",
         "/v1/identity/self-model?limit=50",
+        { timeoutMs: 10_000 },
       );
       setEntries(resp.entries ?? []);
     } catch (e) {
@@ -818,6 +823,10 @@ function SelfModelPanel() {
     setReflectStatus(null);
     setReflectError(null);
     try {
+      // 3-minute client timeout to match identity's backend
+      // HemisphereClient timeout (180s). If a hemisphere-driver hangs
+      // beyond that, the backend will give up; the UI surfaces the
+      // failure instead of a forever-disabled button.
       // Default body — identity uses its own lookback defaults. v0.3
       // will expose lookback / conversation-scoping inputs once we
       // have data on what the operator actually wants to vary.
@@ -825,6 +834,7 @@ function SelfModelPanel() {
         "identity",
         "/v1/identity/self-model/reflect",
         {},
+        { timeoutMs: 180_000 },
       );
       const n = resp.entriesWritten?.length ?? 0;
       setReflectStatus(

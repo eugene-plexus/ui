@@ -32,6 +32,12 @@ interface RequestOptions {
    * Used by the login form and the wizard's `/v1/auth/initialize` call —
    * both expect to talk to the watchdog without an existing session. */
   skipAuth?: boolean;
+  /** Client-side timeout in milliseconds. When the request exceeds this,
+   * the fetch is aborted and a friendly `ApiError` (`status=0`,
+   * `statusText='request timed out'`) is thrown. Useful for endpoints
+   * whose upstream may hang (identity reflection waiting on a slow
+   * hemisphere-driver). Unset = no client-side timeout. */
+  timeoutMs?: number;
 }
 
 async function jsonRequest<T>(
@@ -54,7 +60,35 @@ async function jsonRequest<T>(
       headers.set("authorization", `Bearer ${token}`);
     }
   }
-  const response = await fetch(url, { ...init, headers });
+
+  // Per-call timeout via AbortController. Without this, a hung upstream
+  // component (e.g. identity reflection waiting on a stuck local LLM)
+  // can leave the UI's request pending indefinitely — disabled buttons,
+  // hung loading states, no way to recover except a hard page refresh.
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  if (options.timeoutMs != null && options.timeoutMs > 0) {
+    const controller = new AbortController();
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, options.timeoutMs);
+    init = { ...init, signal: controller.signal };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, headers });
+  } catch (e) {
+    if (timedOut) {
+      throw new ApiError(0, "request timed out", {
+        detail: `Request to ${target}${path} exceeded ${options.timeoutMs}ms — the upstream component is hung or unreachable.`,
+      });
+    }
+    throw e;
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
   const text = await response.text();
   let parsed: unknown = undefined;
   if (text) {
