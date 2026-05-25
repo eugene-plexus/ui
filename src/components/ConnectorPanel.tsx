@@ -62,7 +62,7 @@ function SubTabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`font-ui rounded px-3 py-1 text-xs transition-colors ${
+      className={`font-ui rounded-[var(--radius)] px-3 py-1 text-xs transition-colors ${
         active
           ? "bg-[color:var(--accent-left)] text-[color:var(--on-accent-left)] hover:brightness-110"
           : "border border-[color:var(--border)] text-[color:var(--foreground)] hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
@@ -165,14 +165,14 @@ function AdaptersPanel() {
             type="button"
             onClick={() => void reload()}
             disabled={loading}
-            className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Refresh
           </button>
           <button
             type="button"
             onClick={() => setCreating(true)}
-            className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110"
+            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110"
           >
             Add adapter
           </button>
@@ -181,7 +181,7 @@ function AdaptersPanel() {
 
       <div className="flex-1 overflow-y-auto p-4">
         {loadError && (
-          <p className="status-error mb-3 rounded border px-3 py-2 text-xs">
+          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
             {loadError}
           </p>
         )}
@@ -240,7 +240,7 @@ function AdapterRow({
   onDeleted: () => void;
 }) {
   return (
-    <div className="mb-3 rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)]">
+    <div className="mb-3 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)]">
       <button
         type="button"
         onClick={onToggle}
@@ -262,7 +262,7 @@ function AdapterRow({
             onDeleted={onDeleted}
           />
           {adapter.lastError && (
-            <p className="status-error mt-3 rounded border px-3 py-2 text-xs">
+            <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
               Last error: {adapter.lastError}
             </p>
           )}
@@ -282,7 +282,7 @@ function StatusBadge({ status }: { status: AdapterRuntimeStatus }) {
     disabled: "border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--muted)]",
   };
   return (
-    <span className={`rounded border px-2 py-0.5 font-mono text-[10px] ${palette[status]}`}>
+    <span className={`rounded-[var(--radius)] border px-2 py-0.5 font-mono text-[10px] ${palette[status]}`}>
       {status}
     </span>
   );
@@ -435,7 +435,7 @@ function AdapterEditor({
           type="button"
           onClick={() => void runTest()}
           disabled={testing || saving}
-          className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {testing ? "Testing…" : "Test connection"}
         </button>
@@ -443,7 +443,7 @@ function AdapterEditor({
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? "Saving…" : "Save"}
         </button>
@@ -453,7 +453,7 @@ function AdapterEditor({
               <button
                 type="button"
                 onClick={() => setDeleteConfirm(false)}
-                className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
               >
                 Cancel
               </button>
@@ -461,7 +461,7 @@ function AdapterEditor({
                 type="button"
                 onClick={() => void remove()}
                 disabled={saving}
-                className="font-ui status-error rounded border px-3 py-1 text-xs font-medium hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                className="font-ui status-error rounded-[var(--radius)] border px-3 py-1 text-xs font-medium hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Confirm delete
               </button>
@@ -471,7 +471,7 @@ function AdapterEditor({
               type="button"
               onClick={() => setDeleteConfirm(true)}
               disabled={saving}
-              className="font-ui text-status-error rounded border border-[color:var(--border)] px-3 py-1 text-xs hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="font-ui text-status-error rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Delete
             </button>
@@ -480,13 +480,13 @@ function AdapterEditor({
       </div>
 
       {error && (
-        <p className="status-error mt-3 rounded border px-3 py-2 text-xs">
+        <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
           {error}
         </p>
       )}
       {testStatus && (
         <p
-          className={`mt-3 rounded border px-3 py-2 text-xs ${
+          className={`mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs ${
             testStatus.ok ? "status-success" : "status-error"
           }`}
         >
@@ -544,14 +544,14 @@ function CreateAdapter({
   }
 
   return (
-    <div className="mb-4 rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
+    <div className="mb-4 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
       <h3 className="font-ui mb-3 text-sm font-semibold">Add adapter</h3>
       <Field label="Name" description="Used in logs and as the URL path segment.">
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
         />
       </Field>
       <Field label="Kind" description="Platform type. v0.2 ships Discord only.">
@@ -559,7 +559,7 @@ function CreateAdapter({
           type="text"
           value={kind}
           disabled
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm opacity-60"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm opacity-60"
         />
       </Field>
       <Field
@@ -572,7 +572,7 @@ function CreateAdapter({
           onChange={(e) => setBotToken(e.target.value)}
           autoComplete="off"
           spellCheck={false}
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
         />
       </Field>
       <Field
@@ -584,7 +584,7 @@ function CreateAdapter({
           value={channelAllowlist}
           onChange={(e) => setChannelAllowlist(e.target.value)}
           placeholder="123456789012345678, 234567890123456789"
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
         />
       </Field>
       <Field
@@ -597,7 +597,7 @@ function CreateAdapter({
           max={50}
           value={contextLimit}
           onChange={(e) => setContextLimit(parseInt(e.target.value, 10) || 0)}
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
         />
       </Field>
       <div className="mt-2 flex gap-2">
@@ -605,7 +605,7 @@ function CreateAdapter({
           type="button"
           onClick={onCancel}
           disabled={saving}
-          className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           Cancel
         </button>
@@ -613,13 +613,13 @@ function CreateAdapter({
           type="button"
           onClick={() => void save()}
           disabled={saving || !botToken.trim()}
-          className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? "Creating…" : "Create"}
         </button>
       </div>
       {error && (
-        <p className="status-error mt-3 rounded border px-3 py-2 text-xs">
+        <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
           {error}
         </p>
       )}

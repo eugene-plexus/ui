@@ -370,7 +370,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
             onClick={test}
             disabled={testing || saving}
             title="Test the current draft against the running services without committing it."
-            className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
           >
             {testing ? "Testing…" : "Test"}
           </button>
@@ -378,7 +378,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
             type="button"
             onClick={save}
             disabled={dirtyKeys.size === 0 || saving}
-            className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
+            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -467,7 +467,7 @@ function TestStatusBanner({ status }: { status: ConfigTestResult }) {
         {status.error && <span> — {status.error}</span>}
       </p>
       {status.sampleOutput && (
-        <pre className="mt-2 max-h-40 overflow-auto rounded bg-[color:var(--panel-soft)] p-2 font-mono text-[11px] leading-relaxed text-[color:var(--foreground)]">
+        <pre className="mt-2 max-h-40 overflow-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-2 font-mono text-[11px] leading-relaxed text-[color:var(--foreground)]">
           {status.sampleOutput}
         </pre>
       )}
@@ -510,7 +510,7 @@ function RestartProgressModal({
           <button
             type="button"
             onClick={onDismiss}
-            className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
             Close
           </button>

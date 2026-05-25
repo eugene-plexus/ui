@@ -56,7 +56,7 @@ export function ThoughtForChip({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="font-ui flex items-center gap-1.5 rounded px-2 py-1 text-[11px] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-soft)] hover:text-[color:var(--foreground)]"
+        className="font-ui flex items-center gap-1.5 rounded-[var(--radius)] px-2 py-1 text-[11px] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-soft)] hover:text-[color:var(--foreground)]"
         aria-expanded={expanded}
       >
         <span>
@@ -67,7 +67,7 @@ export function ThoughtForChip({
         </span>
       </button>
       {expanded && (
-        <div className="mt-1 ml-2 flex flex-col gap-1.5 rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-[11px] leading-relaxed text-[color:var(--muted)]">
+        <div className="mt-1 ml-2 flex flex-col gap-1.5 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-[11px] leading-relaxed text-[color:var(--muted)]">
           <div className="flex flex-wrap gap-x-3 gap-y-0.5">
             <span>
               <span className="text-[color:var(--foreground)]">{passCount}</span>{" "}

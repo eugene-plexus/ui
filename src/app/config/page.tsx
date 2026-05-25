@@ -112,7 +112,7 @@ export default function ConfigPage() {
               key={t.value}
               type="button"
               onClick={() => setTab(t.value)}
-              className={`font-ui rounded px-3 py-1 text-xs transition-colors ${
+              className={`font-ui rounded-[var(--radius)] px-3 py-1 text-xs transition-colors ${
                 tab === t.value
                   ? "bg-[color:var(--accent-left)] text-[color:var(--on-accent-left)] hover:brightness-110"
                   : "border border-[color:var(--border)] text-[color:var(--foreground)] hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"

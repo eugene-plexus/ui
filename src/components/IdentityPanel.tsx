@@ -118,7 +118,7 @@ export function IdentityPanel() {
           <span className="flex items-center gap-1.5">
             Pending links
             {pendingCount != null && pendingCount > 0 && (
-              <span className="status-warn rounded border px-1.5 py-0.5 font-mono text-[9px]">
+              <span className="status-warn rounded-[var(--radius)] border px-1.5 py-0.5 font-mono text-[9px]">
                 {pendingCount}
               </span>
             )}
@@ -158,7 +158,7 @@ function SubTabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`font-ui rounded px-3 py-1 text-xs transition-colors ${
+      className={`font-ui rounded-[var(--radius)] px-3 py-1 text-xs transition-colors ${
         active
           ? "bg-[color:var(--accent-left)] text-[color:var(--on-accent-left)] hover:brightness-110"
           : "border border-[color:var(--border)] text-[color:var(--foreground)] hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
@@ -209,14 +209,14 @@ function PersonsPanel() {
             type="button"
             onClick={() => void reload()}
             disabled={loading}
-            className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Refresh
           </button>
           <button
             type="button"
             onClick={() => setCreating(true)}
-            className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110"
+            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110"
           >
             Add person
           </button>
@@ -225,7 +225,7 @@ function PersonsPanel() {
 
       <div className="flex-1 overflow-y-auto p-4">
         {loadError && (
-          <p className="status-error mb-3 rounded border px-3 py-2 text-xs">{loadError}</p>
+          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{loadError}</p>
         )}
         {creating && (
           <CreatePerson
@@ -278,7 +278,7 @@ function PersonRow({
 }) {
   const aliasCount = person.aliases?.length ?? 0;
   return (
-    <div className="mb-3 rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)]">
+    <div className="mb-3 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)]">
       <button
         type="button"
         onClick={onToggle}
@@ -288,7 +288,7 @@ function PersonRow({
           <div className="flex items-center gap-2">
             <p className="font-ui text-sm font-medium">{person.displayName}</p>
             {person.isOperator && (
-              <span className="status-success rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase">
+              <span className="status-success rounded-[var(--radius)] border px-1.5 py-0.5 font-mono text-[9px] uppercase">
                 operator
               </span>
             )}
@@ -366,7 +366,7 @@ function PersonEditor({
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           disabled={saving}
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
         />
       </Field>
       <Field
@@ -378,14 +378,14 @@ function PersonEditor({
           onChange={(e) => setRelationshipNote(e.target.value)}
           disabled={saving}
           rows={2}
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
         />
       </Field>
 
       {person.aliases && person.aliases.length > 0 && (
         <div>
           <p className="font-ui mb-1 text-xs font-medium">Platform aliases</p>
-          <ul className="divide-y divide-[color:var(--border)] rounded border border-[color:var(--border)] bg-[color:var(--panel)]">
+          <ul className="divide-y divide-[color:var(--border)] rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)]">
             {person.aliases.map((a) => (
               <li key={`${a.platform}:${a.accountId}`} className="flex justify-between px-3 py-2 text-xs">
                 <span className="font-mono">{a.platform}</span>
@@ -398,7 +398,7 @@ function PersonEditor({
         </div>
       )}
 
-      {error && <p className="status-error rounded border px-3 py-2 text-xs">{error}</p>}
+      {error && <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>}
 
       <div className="flex items-center justify-between pt-1">
         <div>
@@ -410,7 +410,7 @@ function PersonEditor({
                   type="button"
                   onClick={() => void destroy()}
                   disabled={saving}
-                  className="font-ui status-error rounded border px-3 py-1 text-xs font-medium transition-[filter] hover:brightness-110 disabled:opacity-40"
+                  className="font-ui status-error rounded-[var(--radius)] border px-3 py-1 text-xs font-medium transition-[filter] hover:brightness-110 disabled:opacity-40"
                 >
                   Yes, delete
                 </button>
@@ -418,7 +418,7 @@ function PersonEditor({
                   type="button"
                   onClick={() => setDeleteConfirm(false)}
                   disabled={saving}
-                  className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+                  className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
                 >
                   Cancel
                 </button>
@@ -428,7 +428,7 @@ function PersonEditor({
                 type="button"
                 onClick={() => setDeleteConfirm(true)}
                 disabled={saving}
-                className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)] disabled:opacity-40"
+                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)] disabled:opacity-40"
               >
                 Delete person
               </button>
@@ -439,7 +439,7 @@ function PersonEditor({
           type="button"
           onClick={() => void save()}
           disabled={!dirty || saving}
-          className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
+          className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
         >
           {saving ? "Saving…" : "Save"}
         </button>
@@ -476,7 +476,7 @@ function CreatePerson({
   }
 
   return (
-    <div className="mb-3 rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
+    <div className="mb-3 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
       <p className="font-ui mb-3 text-sm font-medium">New person</p>
       <div className="flex flex-col gap-3">
         <Field label="Display name">
@@ -486,7 +486,7 @@ function CreatePerson({
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={saving}
             placeholder="Sarah"
-            className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
           />
         </Field>
         <Field label="Relationship note" hint="Optional.">
@@ -496,16 +496,16 @@ function CreatePerson({
             disabled={saving}
             rows={2}
             placeholder="my high school friend"
-            className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
           />
         </Field>
-        {error && <p className="status-error rounded border px-3 py-2 text-xs">{error}</p>}
+        {error && <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>}
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
             Cancel
           </button>
@@ -513,7 +513,7 @@ function CreatePerson({
             type="button"
             onClick={() => void create()}
             disabled={saving || !displayName.trim()}
-            className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
+            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
           >
             {saving ? "Creating…" : "Create"}
           </button>
@@ -572,7 +572,7 @@ function PendingLinksPanel({
           type="button"
           onClick={() => void reload()}
           disabled={loading}
-          className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           Refresh
         </button>
@@ -580,7 +580,7 @@ function PendingLinksPanel({
 
       <div className="flex-1 overflow-y-auto p-4">
         {loadError && (
-          <p className="status-error mb-3 rounded border px-3 py-2 text-xs">{loadError}</p>
+          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{loadError}</p>
         )}
         {loading && (
           <p className="text-xs text-[color:var(--muted)]">Loading pending links…</p>
@@ -670,7 +670,7 @@ function PendingLinkRow({
   }
 
   return (
-    <div className="mb-3 rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)]">
+    <div className="mb-3 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)]">
       <button
         type="button"
         onClick={() => onAct(!acting)}
@@ -720,7 +720,7 @@ function PendingLinkRow({
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   disabled={busy}
-                  className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
+                  className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
                 />
               </Field>
               <Field label="Relationship note" hint="Optional.">
@@ -729,7 +729,7 @@ function PendingLinkRow({
                   onChange={(e) => setRelationshipNote(e.target.value)}
                   disabled={busy}
                   rows={2}
-                  className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
+                  className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
                 />
               </Field>
             </div>
@@ -739,7 +739,7 @@ function PendingLinkRow({
                 value={linkAsPersonId}
                 onChange={(e) => setLinkAsPersonId(e.target.value)}
                 disabled={busy}
-                className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
+                className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
               >
                 {persons.map((p) => (
                   <option key={p.personId} value={p.personId}>
@@ -752,7 +752,7 @@ function PendingLinkRow({
           )}
 
           {error && (
-            <p className="status-error mt-3 rounded border px-3 py-2 text-xs">{error}</p>
+            <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>
           )}
 
           <div className="mt-4 flex items-center justify-between">
@@ -760,7 +760,7 @@ function PendingLinkRow({
               type="button"
               onClick={() => void reject()}
               disabled={busy}
-              className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)] disabled:opacity-40"
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)] disabled:opacity-40"
             >
               Reject
             </button>
@@ -772,7 +772,7 @@ function PendingLinkRow({
                 (mode === "new" && !displayName.trim()) ||
                 (mode === "existing" && !linkAsPersonId)
               }
-              className="font-ui rounded bg-[color:var(--accent-left)] px-4 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
+              className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
             >
               {busy ? "Approving…" : "Approve"}
             </button>
@@ -864,7 +864,7 @@ function SelfModelPanel() {
             type="button"
             onClick={() => void reload()}
             disabled={loading || reflecting}
-            className="font-ui rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Refresh
           </button>
@@ -873,7 +873,7 @@ function SelfModelPanel() {
             onClick={() => void reflect()}
             disabled={reflecting}
             title="Trigger a reflection pass — identity reads recent memory turns, asks a hemisphere driver to extract self-model observations, and persists them."
-            className="font-ui rounded bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {reflecting ? "Reflecting…" : "Reflect now"}
           </button>
@@ -882,15 +882,15 @@ function SelfModelPanel() {
 
       <div className="flex-1 overflow-y-auto p-4">
         {reflectStatus && (
-          <p className="status-success mb-3 rounded border px-3 py-2 text-xs">{reflectStatus}</p>
+          <p className="status-success mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{reflectStatus}</p>
         )}
         {reflectError && (
-          <p className="status-error mb-3 rounded border px-3 py-2 text-xs">
+          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
             Reflect failed — {reflectError}
           </p>
         )}
         {loadError && (
-          <p className="status-error mb-3 rounded border px-3 py-2 text-xs">{loadError}</p>
+          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{loadError}</p>
         )}
         {loading && entries.length === 0 && (
           <p className="text-xs text-[color:var(--muted)]">Loading self-model…</p>
@@ -912,7 +912,7 @@ function SelfModelEntryRow({ entry }: { entry: SelfModelEntry }) {
   const createdAt = entry.createdAt ? new Date(entry.createdAt).toLocaleString() : null;
   const sourceCount = entry.sourceConversationIds?.length ?? 0;
   return (
-    <div className="mb-3 rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
+    <div className="mb-3 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="font-mono text-[10px] tracking-wider text-[color:var(--muted)] uppercase">
           {entry.topic}

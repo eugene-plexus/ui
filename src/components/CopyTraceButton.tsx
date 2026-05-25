@@ -71,7 +71,7 @@ export function CopyTraceButton({
           ? "Send a chat turn first; the trace will appear here."
           : "Copy the most recent turn's bicameral trace as Markdown."
       }
-      className="font-ui rounded border border-[color:var(--border)] px-2 py-0.5 font-mono text-[10px] tracking-wider uppercase transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+      className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 font-mono text-[10px] tracking-wider uppercase transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
     >
       {label}
     </button>

@@ -49,7 +49,7 @@ function PassCard({ pass }: { pass: PassRecord }) {
   const callosum = pass.callosum;
 
   return (
-    <div className="rounded-md border border-[color:var(--border)] bg-[color:var(--panel)]">
+    <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)]">
       <div className="flex items-center justify-between border-b border-[color:var(--border)] px-3 py-2 text-xs">
         <span className="font-mono text-[color:var(--muted)]">pass {pass.passIndex}</span>
         <DecisionBadge decision={callosum.decision} agreement={callosum.agreement} />
@@ -109,7 +109,7 @@ function DecisionBadge({
         : "status-error";
   return (
     <span
-      className={`rounded px-2 py-0.5 font-mono text-[10px] uppercase ${accent}`}
+      className={`rounded-[var(--radius)] px-2 py-0.5 font-mono text-[10px] uppercase ${accent}`}
       title={`agreement: ${agreement.toFixed(2)}`}
     >
       {label} · {agreement.toFixed(2)}

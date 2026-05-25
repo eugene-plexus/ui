@@ -26,6 +26,13 @@
   --bubble-soft-bg: rgb(24 18 34 / 0.7);
   --bubble-blur: 18px;
 
+  /* Shared corner radius for bubbles, badges, buttons, pass-cards,
+     modals, form fields. Cyberpunk leans sharper (4px) for the
+     neon/circuit-board feel; modern overrides to 6px for the
+     softer flat-UI feel. `rounded-full` calls (pills, dots,
+     scrollbar) deliberately bypass this and stay fully round. */
+  --radius: 4px;
+
   /* Large iconic Eugene letterform behind the chat. */
   --bg-icon-display: flex;
   --bg-icon-opacity: 0.18;
@@ -56,6 +63,9 @@
   --bubble-bg: #ffffff;
   --bubble-soft-bg: #ececef;
   --bubble-blur: 0;
+
+  /* Softer corner radius for the flat-UI / Inter aesthetic. */
+  --radius: 6px;
 
   --bg-icon-display: none;
   --bg-icon-opacity: 0;

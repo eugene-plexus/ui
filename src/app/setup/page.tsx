@@ -757,7 +757,7 @@ function WizardFooter({
           <button
             type="button"
             onClick={onCancel}
-            className="font-ui rounded border border-[color:var(--border)] px-4 py-2 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
             Cancel
           </button>
@@ -766,7 +766,7 @@ function WizardFooter({
             type="button"
             onClick={onBack}
             disabled={starting}
-            className="font-ui rounded border border-[color:var(--border)] px-4 py-2 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             ← Back
           </button>
@@ -778,7 +778,7 @@ function WizardFooter({
             type="button"
             onClick={onStart}
             disabled={starting}
-            className="font-ui rounded bg-[color:var(--accent-left)] px-5 py-2 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {starting ? "Starting…" : "Start"}
           </button>
@@ -787,7 +787,7 @@ function WizardFooter({
             type="button"
             onClick={onNext}
             disabled={!canContinue}
-            className="font-ui rounded bg-[color:var(--accent-left)] px-5 py-2 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Continue →
           </button>
@@ -817,7 +817,7 @@ function ScreenLookFeel() {
           value={theme}
           onChange={(e) => setTheme(e.target.value as Theme)}
           aria-label="Theme"
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
         >
           <option value="cyberpunk">Cyberpunk (dark)</option>
           <option value="modern">Modern (light)</option>
@@ -829,7 +829,7 @@ function ScreenLookFeel() {
           value={fontSize}
           onChange={(e) => setFontSize(e.target.value as FontSize)}
           aria-label="Font size"
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
         >
           {(Object.keys(FONT_SIZE_LABELS) as FontSize[]).map((k) => (
             <option key={k} value={k}>
@@ -1049,7 +1049,7 @@ function ScreenDriver({
         One of the two language models Eugene consults on every message.
       </p>
       {hint && (
-        <p className="status-warn mb-4 rounded border px-3 py-2 text-xs">
+        <p className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">
           {hint}
         </p>
       )}
@@ -1058,7 +1058,7 @@ function ScreenDriver({
           type="text"
           value={driver.name}
           onChange={(e) => onChange({ name: e.target.value })}
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
         />
       </Field>
       {showHostHint && (
@@ -1075,7 +1075,7 @@ function ScreenDriver({
         <select
           value={driver.provider}
           onChange={(e) => onChange({ provider: e.target.value })}
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
         >
           {WIZARD_PROVIDERS.map((p) => (
             <option key={p.key} value={p.key}>
@@ -1094,7 +1094,7 @@ function ScreenDriver({
           value={driver.modelId}
           onChange={(e) => onChange({ modelId: e.target.value })}
           placeholder="(provider default)"
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
         />
       </Field>
     </section>
@@ -1134,7 +1134,7 @@ function CredentialFields({
             value={driver.baseUrl}
             onChange={(e) => onChange({ baseUrl: e.target.value })}
             placeholder="https://my-server.example.com"
-            className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
           />
         </Field>
       )}
@@ -1147,7 +1147,7 @@ function CredentialFields({
             type="text"
             value={driver.claudeCodeCliPath}
             onChange={(e) => onChange({ claudeCodeCliPath: e.target.value })}
-            className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
           />
         </Field>
       )}
@@ -1160,7 +1160,7 @@ function CredentialFields({
             type="text"
             value={driver.codexCliPath}
             onChange={(e) => onChange({ codexCliPath: e.target.value })}
-            className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
           />
         </Field>
       )}
@@ -1233,7 +1233,7 @@ function ScreenMemory({
             type="text"
             value={localSqlitePath}
             onChange={(e) => onLocalSqlitePath(e.target.value)}
-            className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
           />
         </Field>
       )}
@@ -1314,7 +1314,7 @@ function ScreenIdentity({
               value={displayName}
               onChange={(e) => onDisplayName(e.target.value)}
               placeholder="Eugene"
-              className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+              className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
             />
           </Field>
           <hr className="my-6 border-[color:var(--border)]" />
@@ -1356,7 +1356,7 @@ function ScreenIdentity({
               <select
                 value={reflectionDriverName}
                 onChange={(e) => onReflectionDriverName(e.target.value)}
-                className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+                className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
               >
                 {driverNames.map((name) => (
                   <option key={name} value={name}>
@@ -1488,7 +1488,7 @@ function ScreenConnectorsAndStart({
               value={draft.discordAdapterName}
               onChange={(e) => onDiscordAdapterName(e.target.value)}
               placeholder="discord"
-              className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+              className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
             />
           </Field>
           <Field
@@ -1514,14 +1514,14 @@ function ScreenConnectorsAndStart({
               value={draft.discordAllowedChannels}
               onChange={(e) => onDiscordAllowedChannels(e.target.value)}
               placeholder="123456789012345678, 234567890123456789"
-              className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+              className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
             />
           </Field>
         </>
       )}
       <hr className="my-6 border-[color:var(--border)]" />
       <h3 className="font-ui mb-3 text-sm font-semibold">Ready to start</h3>
-      <ul className="mb-4 divide-y divide-[color:var(--border)] rounded border border-[color:var(--border)]">
+      <ul className="mb-4 divide-y divide-[color:var(--border)] rounded-[var(--radius)] border border-[color:var(--border)]">
         {summary.map((row) => (
           <li key={row.label} className="flex justify-between px-3 py-2 text-sm">
             <span className="text-[color:var(--muted)]">{row.label}</span>
@@ -1536,12 +1536,12 @@ function ScreenConnectorsAndStart({
         missingConnector={missingConnector}
       />
       {starting && startMessage && (
-        <p className="rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--muted)]">
+        <p className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--muted)]">
           {startMessage}
         </p>
       )}
       {startError && (
-        <p className="status-error rounded border px-3 py-2 text-xs">
+        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">
           {startError}
         </p>
       )}
@@ -1571,7 +1571,7 @@ function MissingTopologyHints({
   if (missingConnector) lines.push("Connector component not in watchdog topology.");
   if (lines.length === 0) return null;
   return (
-    <div className="status-warn mb-4 rounded border px-3 py-2 text-xs">
+    <div className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">
       <p className="mb-1 font-medium">Heads-up — missing topology entries:</p>
       <ul className="ml-4 list-disc">
         {lines.map((line, i) => (
@@ -1628,7 +1628,7 @@ function HostPortRow({
           type="text"
           value={host}
           onChange={(e) => onChange(e.target.value, port)}
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
         />
       </Field>
       <Field label="Port">
@@ -1636,7 +1636,7 @@ function HostPortRow({
           type="number"
           value={port}
           onChange={(e) => onChange(host, parseInt(e.target.value, 10) || 0)}
-          className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
         />
       </Field>
     </div>
@@ -1656,7 +1656,7 @@ function Radio({
 }) {
   return (
     <label
-      className={`mb-3 flex cursor-pointer items-start gap-3 rounded border px-4 py-3 transition-colors ${
+      className={`mb-3 flex cursor-pointer items-start gap-3 rounded-[var(--radius)] border px-4 py-3 transition-colors ${
         checked
           ? "border-[color:var(--accent-left)] bg-[color:var(--panel-soft)]"
           : "border-[color:var(--border)] hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
@@ -1699,12 +1699,12 @@ function SecretInput({
         placeholder={placeholder}
         autoComplete="off"
         spellCheck={false}
-        className="font-ui flex-1 rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+        className="font-ui flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
       />
       <button
         type="button"
         onClick={() => setReveal((r) => !r)}
-        className="font-ui rounded border border-[color:var(--border)] px-3 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+        className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
       >
         {reveal ? "Hide" : "Show"}
       </button>

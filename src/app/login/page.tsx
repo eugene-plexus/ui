@@ -197,17 +197,17 @@ function LoginForm() {
             autoFocus
             autoComplete="current-password"
             spellCheck={false}
-            className="font-ui w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)] disabled:opacity-50"
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)] disabled:opacity-50"
           />
           {error && (
-            <p className="status-error mt-3 rounded border px-3 py-2 text-xs">
+            <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
               {error}
             </p>
           )}
           <button
             type="submit"
             disabled={submitting || !passphrase}
-            className="font-ui mt-4 w-full rounded bg-[color:var(--accent-left)] px-5 py-2 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            className="font-ui mt-4 w-full rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting ? "Unlocking…" : "Unlock"}
           </button>

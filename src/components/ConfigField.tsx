@@ -38,7 +38,7 @@ export function ConfigFieldInput({
   onChange: (newValue: unknown) => void;
 }) {
   const baseInputClass =
-    "w-full rounded border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[color:var(--border)]";
+    "w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[color:var(--border)]";
 
   function renderInput() {
     if (field.valueType === "boolean") {
@@ -214,7 +214,7 @@ export function ConfigFieldInput({
         </label>
         <code className="font-mono text-[10px] text-[color:var(--muted)]">{field.key}</code>
         {field.requiresRestart && (
-          <span className="status-warn w-fit rounded px-1.5 py-0.5 text-[9px] tracking-wider uppercase">
+          <span className="status-warn w-fit rounded-[var(--radius)] px-1.5 py-0.5 text-[9px] tracking-wider uppercase">
             restart required
           </span>
         )}
@@ -412,7 +412,7 @@ function DriverListInput({
                     ? "Probe this URL's /v1/info to verify the driver is reachable."
                     : "Enter a URL first."
                 }
-                className="font-ui rounded border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
               >
                 {status?.state === "testing" ? "Testing…" : "Test"}
               </button>
@@ -425,7 +425,7 @@ function DriverListInput({
                     ? "v0.1 requires at least one driver."
                     : "Remove this driver."
                 }
-                className="font-ui rounded border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--status-error-border)] hover:bg-[color:var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--status-error-border)] hover:bg-[color:var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
               >
                 Remove
               </button>
@@ -453,7 +453,7 @@ function DriverListInput({
         type="button"
         onClick={() => onChange([...entries, { name: "", url: "" }])}
         disabled={pending}
-        className="font-ui w-fit rounded border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+        className="font-ui w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
       >
         + Add driver
       </button>

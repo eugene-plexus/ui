@@ -88,7 +88,7 @@ function ChatBubble({ message }: { message: Message }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[80%] rounded-md px-4 py-2 text-sm leading-relaxed text-[color:var(--foreground)] backdrop-blur-[var(--bubble-blur)] ${
+        className={`max-w-[80%] rounded-[var(--radius)] px-4 py-2 text-sm leading-relaxed text-[color:var(--foreground)] backdrop-blur-[var(--bubble-blur)] ${
           isUser
             ? "bg-[color:var(--bubble-soft-bg)] whitespace-pre-wrap"
             : "border border-[color:var(--border)] bg-[color:var(--bubble-bg)]"
@@ -140,13 +140,13 @@ function Markdown({ children }: { children: string }) {
             );
           }
           return (
-            <code className="rounded bg-[color:var(--panel-soft)] px-1 py-0.5 font-mono text-[0.85em]">
+            <code className="rounded-[var(--radius)] bg-[color:var(--panel-soft)] px-1 py-0.5 font-mono text-[0.85em]">
               {children}
             </code>
           );
         },
         pre: ({ children }) => (
-          <pre className="my-2 overflow-x-auto rounded bg-[color:var(--panel-soft)] p-3 font-mono text-xs leading-snug">
+          <pre className="my-2 overflow-x-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-3 font-mono text-xs leading-snug">
             {children}
           </pre>
         ),
