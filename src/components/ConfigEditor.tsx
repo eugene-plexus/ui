@@ -523,7 +523,7 @@ function RestartProgressModal({
 function ModalScrim({ children }: { children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[28rem] max-w-[90vw] rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-xl">
+      <div className="w-[28rem] max-w-[90vw] rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-xl">
         {children}
       </div>
     </div>
