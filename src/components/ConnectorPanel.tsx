@@ -111,22 +111,45 @@ function AdaptersPanel() {
   const [editing, setEditing] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
-  async function reload() {
-    setLoading(true);
-    setLoadError(null);
+  async function reload(opts?: { silent?: boolean }) {
+    if (!opts?.silent) {
+      setLoading(true);
+      setLoadError(null);
+    }
     try {
       const resp = await api.get<AdaptersListResponse>("connector", "/v1/adapters");
       setList(resp.adapters ?? []);
     } catch (e) {
-      setLoadError(formatError(e));
+      if (!opts?.silent) {
+        setLoadError(formatError(e));
+      }
     } finally {
-      setLoading(false);
+      if (!opts?.silent) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
     void reload();
   }, []);
+
+  // Poll silently while ANY adapter is in a transient state. Catches
+  // the common case where a brand-new adapter is mid-connect (status
+  // moves "starting" → "connected" or "starting" → "error" over a
+  // few hundred ms, but the one-shot reload after save fires too
+  // fast to see the transition). Polling stops as soon as every
+  // adapter is settled, so this isn't a permanent background load.
+  useEffect(() => {
+    const hasTransient = list.some(
+      (a) => a.status === "starting" || a.status === "rate_limited",
+    );
+    if (!hasTransient) return;
+    const interval = setInterval(() => {
+      void reload({ silent: true });
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [list]);
 
   return (
     <div className="flex h-full flex-col">
