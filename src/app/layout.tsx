@@ -1,26 +1,19 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Orbitron, Space_Grotesk } from "next/font/google";
+import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 
 import "./globals.css";
 
+// Modern theme uses Inter for everything.
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
   display: "swap",
 });
 
-const orbitron = Orbitron({
-  subsets: ["latin"],
-  variable: "--font-orbitron",
-  display: "swap",
-});
-
-// Miami '26 fonts. Loaded unconditionally because next/font tree-shakes
-// per-route based on usage and the theme is operator-selectable at
-// runtime — we can't statically prove which fonts a given page will
-// reference. Bundle cost is two extra subsetted woff2s. Both expose
-// CSS variables (--font-space-grotesk, --font-jetbrains-mono) that the
-// `[data-theme="miami"]` block in globals.css resolves to.
+// Cyberpunk theme uses Space Grotesk for UI + body and JetBrains Mono
+// for code blocks (per Claude Design's "Miami '26" preset adopted
+// 2026-05-25). Both expose CSS variables consumed by the
+// `[data-theme="cyberpunk"]` block in globals.css.
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-space-grotesk",
@@ -48,7 +41,7 @@ const preferencesBootstrap = `
   var root = document.documentElement;
   try {
     var t = localStorage.getItem('eugene-theme');
-    if (t !== 'cyberpunk' && t !== 'modern' && t !== 'miami' && t !== 'system') t = 'cyberpunk';
+    if (t !== 'cyberpunk' && t !== 'modern' && t !== 'system') t = 'cyberpunk';
     var resolved = t;
     if (t === 'system') {
       resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -74,7 +67,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="en"
       data-theme="cyberpunk"
-      className={`${inter.variable} ${orbitron.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <head>

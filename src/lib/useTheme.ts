@@ -2,20 +2,12 @@
 
 import { useEffect, useState } from "react";
 
-export type Theme = "cyberpunk" | "modern" | "miami" | "system";
-export type ResolvedTheme = "cyberpunk" | "modern" | "miami";
+export type Theme = "cyberpunk" | "modern" | "system";
+export type ResolvedTheme = "cyberpunk" | "modern";
 
 const STORAGE_KEY = "eugene-theme";
 const DEFAULT_THEME: Theme = "cyberpunk";
-// `system` stays mapped to cyberpunk/modern only — it follows the OS
-// dark/light preference and Miami isn't an OS-level concept. Operators
-// pick Miami explicitly.
-const VALID_THEMES: ReadonlySet<Theme> = new Set([
-  "cyberpunk",
-  "modern",
-  "miami",
-  "system",
-]);
+const VALID_THEMES: ReadonlySet<Theme> = new Set(["cyberpunk", "modern", "system"]);
 
 /**
  * Resolve `system` to a concrete theme via `prefers-color-scheme`.

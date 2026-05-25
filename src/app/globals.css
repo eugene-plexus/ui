@@ -6,51 +6,54 @@
    same values without relying on absence of the attribute. */
 :root,
 [data-theme="cyberpunk"] {
-  --background: #060109;
-  --foreground: #c8c5d4;
-  --panel: #0e0a14;
-  --panel-soft: #181222;
-  --panel-hover: #221a30;
-  --border: #2a1b3a;
-  --border-hover: #463260;
-  --accent-left: #00d9ff;
-  --accent-right: #ff3eb5;
-  --on-accent-left: #000;
-  --on-accent-right: #fff;
-  --muted: #7a7088;
-  --scrollbar-thumb: rgb(74 64 92 / 0.55);
-  --scrollbar-thumb-hover: rgb(0 217 255 / 0.6);
+  /* Cyberpunk = the "Miami '26" preset designed by Claude Design,
+     adopted 2026-05-25. Dark-violet base with teal + pink accents.
+     The kebab-case name stays "cyberpunk" so all stored theme
+     preferences continue to resolve. */
+  --background: #0c0820;
+  --foreground: #f5eff4;
+  --panel: #16102e;
+  --panel-soft: #221a44;
+  --panel-hover: #2f235c;
+  --border: #3e2e6e;
+  --border-hover: #604999;
+  --accent-left: #1bd9c2;
+  --accent-right: #ff7ac0;
+  --on-accent-left: #062824;
+  --on-accent-right: #2a0518;
+  --muted: #a094c4;
+  --scrollbar-thumb: rgb(94 78 132 / 0.55);
+  --scrollbar-thumb-hover: rgb(27 217 194 / 0.6);
 
-  /* Chat bubbles overlay the bg icon in cyberpunk. */
-  --bubble-bg: rgb(14 10 20 / 0.65);
-  --bubble-soft-bg: rgb(24 18 34 / 0.7);
-  --bubble-blur: 18px;
+  /* Chat bubbles overlay the bg icon — same translucent pattern,
+     derived from panel + panel-soft. Bubble-blur dropped to 8
+     (was 18) so the Eugene letterform shows through more clearly. */
+  --bubble-bg: rgb(22 16 46 / 0.65);
+  --bubble-soft-bg: rgb(34 26 68 / 0.7);
+  --bubble-blur: 8px;
 
   /* Shared corner radius for bubbles, badges, buttons, pass-cards,
-     modals, form fields. Cyberpunk leans sharper (4px) for the
-     neon/circuit-board feel; modern overrides to 6px for the
-     softer flat-UI feel. `rounded-full` calls (pills, dots,
-     scrollbar) deliberately bypass this and stay fully round. */
+     modals, form fields. Cyberpunk leans sharper (4px); modern
+     overrides to 6px. `rounded-full` calls (pills, dots, scrollbar)
+     deliberately bypass this and stay fully round. */
   --radius: 4px;
 
-  /* Spacing-density multiplier. Identity (1) on cyberpunk + modern;
-     a denser or airier theme can adjust. NOTE: only a handful of
-     chrome paddings consume this today — the bulk of component
-     spacing is still hardcoded Tailwind classes. The full
-     spacing-density rollout is v0.3 work; the token is in place so
-     future themes (Miami '26 uses 1.1) can opt in piecewise as we
-     refactor specific surfaces. */
-  --pad: 1;
+  /* Spacing-density multiplier. NOTE: only a handful of chrome
+     paddings consume this today — the bulk of component spacing
+     is still hardcoded Tailwind classes. The full spacing-density
+     rollout is v0.3 work; the token is in place so future themes
+     can declare their preferred density forward-compatibly. */
+  --pad: 1.1;
 
-  /* Large iconic Eugene letterform behind the chat. */
+  /* Faint Eugene letterform behind the chat. */
   --bg-icon-display: flex;
-  --bg-icon-opacity: 0.18;
+  --bg-icon-opacity: 0.08;
 
-  /* Fonts. `--font-orbitron` and `--font-inter` are emitted by
-     `next/font/google` in layout.tsx. */
-  --font-ui: var(--font-orbitron), system-ui, -apple-system, sans-serif;
-  --font-body: var(--font-inter), system-ui, -apple-system, sans-serif;
-  --font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  /* Fonts. Space Grotesk for UI + body, JetBrains Mono for code.
+     Variables emitted by `next/font/google` in layout.tsx. */
+  --font-ui: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
 [data-theme="modern"] {
@@ -86,56 +89,6 @@
   --font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
-/* ──────────────────────────── Miami '26 ────────────────────────────
-   Dark-violet base with teal + pink accents. Designed by Claude
-   Design 2026-05-25; the operator's first third-party theme. Acts
-   as the proof-of-concept that "drop-in CSS variable block plus a
-   row in the theme selector" is sufficient for new themes — the
-   only non-token additions Miami needs are loading its two
-   webfonts (Space Grotesk, JetBrains Mono) in layout.tsx and
-   declaring an is-thinking pulse rule (the cyberpunk pulse uses
-   --accent-left / --accent-right so it adopts Miami's accents
-   automatically; we just need the selector match). */
-[data-theme="miami"] {
-  --background: #0c0820;
-  --foreground: #f5eff4;
-  --panel: #16102e;
-  --panel-soft: #221a44;
-  --panel-hover: #2f235c;
-  --border: #3e2e6e;
-  --border-hover: #604999;
-  --accent-left: #1bd9c2;
-  --accent-right: #ff7ac0;
-  --on-accent-left: #062824;
-  --on-accent-right: #2a0518;
-  --muted: #a094c4;
-  --scrollbar-thumb: rgb(94 78 132 / 0.55);
-  --scrollbar-thumb-hover: rgb(27 217 194 / 0.6);
-
-  /* Bubble — derived from panel + panel-soft at the cyberpunk-pattern
-     transparency. Design called for bubble-blur=8 (lighter than
-     cyberpunk's 18) so the bg-icon shows through more subtly. */
-  --bubble-bg: rgb(22 16 46 / 0.65);
-  --bubble-soft-bg: rgb(34 26 68 / 0.7);
-  --bubble-blur: 8px;
-
-  /* Faint Eugene letterform behind the chat; design set 0.08. */
-  --bg-icon-display: flex;
-  --bg-icon-opacity: 0.08;
-
-  --radius: 4px;
-  /* Design's 1.1 — gives ~10% more breathing room than identity
-     once the spacing-density refactor lands in v0.3. Today this is
-     a forward-compatible declaration. */
-  --pad: 1.1;
-
-  /* Design specified Space Grotesk for both UI + body and JetBrains
-     Mono for code. Both loaded in layout.tsx via next/font. */
-  --font-ui: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
-  --font-body: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
-}
-
 /* ──────────────────────────── status banners ────────────────────────────
    Three semantic banner classes (success / warn / error). Each pair of
    themes overrides the underlying tokens so the same .status-warn renders
@@ -145,15 +98,18 @@
 */
 :root,
 [data-theme="cyberpunk"] {
-  --status-success-fg: #6ee7b7; /* emerald-300 */
-  --status-success-bg: rgb(6 78 59 / 0.30); /* emerald-900/30 */
-  --status-success-border: #047857; /* emerald-700 */
-  --status-warn-fg: #fcd34d; /* amber-300 */
-  --status-warn-bg: rgb(120 53 15 / 0.30); /* amber-900/30 */
-  --status-warn-border: #b45309; /* amber-700 */
-  --status-error-fg: #fda4af; /* rose-300 */
-  --status-error-bg: rgb(76 5 25 / 0.40); /* rose-900/40 */
-  --status-error-border: #be123c; /* rose-700 */
+  /* Banner palette per Claude Design's Miami '26 preset. Design
+     specified fg + border; bg derived as a low-alpha tint of the fg
+     over the dark panel so banner contrast stays consistent. */
+  --status-success-fg: #6ee0b5;
+  --status-success-bg: rgb(110 224 181 / 0.15);
+  --status-success-border: #1d9a78;
+  --status-warn-fg: #ffb88a;
+  --status-warn-bg: rgb(255 184 138 / 0.15);
+  --status-warn-border: #d76a2e;
+  --status-error-fg: #ff7a85;
+  --status-error-bg: rgb(255 122 133 / 0.18);
+  --status-error-border: #cc3a55;
 }
 [data-theme="modern"] {
   --status-success-fg: #065f46; /* emerald-800 */
@@ -165,20 +121,6 @@
   --status-error-fg: #9f1239; /* rose-800 */
   --status-error-bg: #fff1f2; /* rose-50 */
   --status-error-border: #fda4af; /* rose-300 */
-}
-[data-theme="miami"] {
-  /* Design specified fg + border; bg derived as a low-alpha tint
-     of the fg over the dark panel — mirrors the cyberpunk pattern
-     so banner contrast stays consistent across themes. */
-  --status-success-fg: #6ee0b5;
-  --status-success-bg: rgb(110 224 181 / 0.15);
-  --status-success-border: #1d9a78;
-  --status-warn-fg: #ffb88a;
-  --status-warn-bg: rgb(255 184 138 / 0.15);
-  --status-warn-border: #d76a2e;
-  --status-error-fg: #ff7a85;
-  --status-error-bg: rgb(255 122 133 / 0.18);
-  --status-error-border: #cc3a55;
 }
 .status-success {
   color: var(--status-success-fg);
@@ -249,10 +191,10 @@ body {
 }
 
 /* Apply to interface chrome (buttons, headers, badges, the theme/font
-   pickers). In cyberpunk this is Orbitron; in modern it's Inter — same
-   selector works for both because the variable resolves per-theme.
-   Long-form content (chat messages, hemisphere outputs) inherits
-   `--font-body` from <body> and stays in Inter. */
+   pickers). In cyberpunk this is Space Grotesk; in modern it's Inter
+   — same selector works for both because the variable resolves
+   per-theme. Long-form content (chat messages, hemisphere outputs)
+   inherits `--font-body` from <body>. */
 .font-ui {
   font-family: var(--font-ui);
 }
@@ -303,12 +245,10 @@ body {
   inherits: false;
 }
 
-[data-theme="cyberpunk"] .is-thinking,
-[data-theme="miami"] .is-thinking {
+[data-theme="cyberpunk"] .is-thinking {
   position: relative;
 }
-[data-theme="cyberpunk"] .is-thinking::after,
-[data-theme="miami"] .is-thinking::after {
+[data-theme="cyberpunk"] .is-thinking::after {
   content: "";
   position: absolute;
   inset: 0;
