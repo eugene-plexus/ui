@@ -20,6 +20,7 @@ interface DynamicTab {
 // their names are operator-supplied.
 const STATIC_TABS: DynamicTab[] = [
   { value: "ui", label: "UI" },
+  { value: "watchdog", label: "Watchdog" },
   { value: "orchestrator", label: "Orchestrator" },
   { value: "memory", label: "Memory" },
   { value: "identity", label: "Identity" },
