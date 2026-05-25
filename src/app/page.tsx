@@ -15,7 +15,7 @@ import {
   DEMO_MESSAGES,
   DEMO_PASSES,
 } from "@/lib/demoData";
-import { clearSessionToken } from "@/lib/session";
+import { clearSessionToken, hasSessionToken } from "@/lib/session";
 import type { ChatRequest, ChatResponse, Message, PassRecord } from "@/lib/types";
 import type { WatchdogConfigDocument } from "@/lib/watchdog";
 
@@ -53,12 +53,22 @@ export default function ChatPage() {
   const [setupGate, setSetupGate] = useState<"checking" | "ready">("checking");
   const [operatorName, setOperatorName] = useState<string | null>(null);
 
-  // First-run gate: probe init state first (public endpoint, no auth
-  // needed) so we route to /setup on fresh installs without bouncing
-  // through /login. Then for initialized installs, fetch /v1/config to
-  // honor firstRunComplete (operator may have un-flipped it to redo
-  // setup). Watchdog unreachable falls through to the chat surface so
-  // standalone dev runs against just-the-orchestrator still work.
+  // Auth + first-run gate. Runs in order:
+  //   1. Probe init state (public endpoint, no auth) — route to /setup
+  //      if uninitialized.
+  //   2. Check for a session token BEFORE making any authed call. If
+  //      absent, redirect to /login immediately. This is the security-
+  //      relevant fix: without the preemptive check, the GET /v1/config
+  //      below would 401, api.ts would kick off the redirect, but React
+  //      would still render the chat surface for the few frames before
+  //      window.location.replace completes — flashing rendered DOM and
+  //      any data fetched alongside it. By short-circuiting here, the
+  //      chat UI never renders for an unauthenticated visitor.
+  //   3. Authed call to GET /v1/config to honor firstRunComplete (the
+  //      operator may have un-flipped it to redo setup).
+  //
+  // Watchdog unreachable falls through to the chat surface so standalone
+  // dev runs against just-the-orchestrator still work.
   useEffect(() => {
     let cancelled = false;
     async function check() {
@@ -73,8 +83,13 @@ export default function ChatPage() {
           router.replace("/setup");
           return;
         }
-        // Initialized — read firstRunComplete. Requires auth; if absent,
-        // bounce through login with our return path preserved.
+        if (!hasSessionToken()) {
+          const next = encodeURIComponent(
+            window.location.pathname + window.location.search,
+          );
+          router.replace(`/login?next=${next}`);
+          return;
+        }
         const doc = await api.get<WatchdogConfigDocument>("watchdog", "/v1/config");
         if (cancelled) return;
         if (doc.firstRunComplete === false) {
@@ -82,9 +97,17 @@ export default function ChatPage() {
           return;
         }
         setSetupGate("ready");
-      } catch {
+      } catch (e) {
         if (cancelled) return;
-        // Watchdog absent / unreachable → behave as before (open chat).
+        // 401 from the authed call above means the session token is
+        // expired/invalid; api.ts has already triggered the redirect
+        // to /login. Stay in "checking" so the chat UI doesn't render
+        // during the few frames before navigation completes.
+        if (e instanceof ApiError && e.status === 401) {
+          return;
+        }
+        // Other errors (watchdog unreachable in standalone dev runs)
+        // fall through to ready so the chat surface still works.
         setSetupGate("ready");
       }
     }

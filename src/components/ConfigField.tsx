@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ApiError, api } from "@/lib/api";
 import type {
+  ComponentKind,
   ConfigField as ConfigFieldDef,
   DriverEntry,
   DriverHealth,
@@ -119,6 +120,8 @@ export function ConfigFieldInput({
           pending={pending}
           onChange={onChange}
           baseInputClass={baseInputClass}
+          componentKindHint={field.componentKindHint}
+          topology={topology}
         />
       );
     }
@@ -243,12 +246,27 @@ function DriverListInput({
   pending,
   onChange,
   baseInputClass,
+  componentKindHint,
+  topology,
 }: {
   value: unknown;
   pending: boolean;
   onChange: (next: DriverEntry[]) => void;
   baseInputClass: string;
+  /** When set, each row's URL field renders as a dropdown of watchdog
+   * components of this kind instead of a free-text input. Mirrors the
+   * single-URL kind-hint dropdown above but applied per-row. Falls back
+   * to free-text input when `topology` is null (still loading / probe
+   * failed). */
+  componentKindHint?: ComponentKind;
+  topology?: TopologyComponent[] | null;
 }) {
+  const dropdownEntries =
+    componentKindHint && topology
+      ? topology.filter(
+          (c) => c.kind === componentKindHint && typeof c.url === "string",
+        )
+      : null;
   const entries: DriverEntry[] = Array.isArray(value)
     ? (value as DriverEntry[]).map((d) => ({
         name: typeof d?.name === "string" ? d.name : "",
@@ -325,25 +343,66 @@ function DriverListInput({
                 disabled={pending}
                 className={baseInputClass}
               />
-              <input
-                type="text"
-                value={entry.url}
-                placeholder="http://host:port"
-                onChange={(e) => {
-                  const next = entries.slice();
-                  next[i] = { ...entry, url: e.target.value };
-                  // URL changes invalidate any previous test result.
-                  setStatusByIndex((prev) => {
-                    if (!(i in prev)) return prev;
-                    const copy = { ...prev };
-                    delete copy[i];
-                    return copy;
-                  });
-                  onChange(next);
-                }}
-                disabled={pending}
-                className={baseInputClass}
-              />
+              {dropdownEntries ? (
+                <select
+                  value={normalizeUrl(entry.url)}
+                  onChange={(e) => {
+                    const next = entries.slice();
+                    next[i] = { ...entry, url: e.target.value };
+                    setStatusByIndex((prev) => {
+                      if (!(i in prev)) return prev;
+                      const copy = { ...prev };
+                      delete copy[i];
+                      return copy;
+                    });
+                    onChange(next);
+                  }}
+                  disabled={pending}
+                  className={baseInputClass}
+                >
+                  {/* Empty option lets a row exist in "no URL set yet"
+                      state — Test button is disabled until a real URL
+                      is picked, matching free-text-input behavior. */}
+                  <option value="">(pick a driver…)</option>
+                  {dropdownEntries.map((c) => (
+                    <option key={c.name} value={normalizeUrl(c.url)}>
+                      {c.name}
+                    </option>
+                  ))}
+                  {entry.url &&
+                    !dropdownEntries.some(
+                      (c) => normalizeUrl(c.url) === normalizeUrl(entry.url),
+                    ) && (
+                      // Saved URL doesn't match any current topology
+                      // entry — surface it so the operator sees what's
+                      // stored and can change it instead of a
+                      // mysteriously empty selection.
+                      <option value={normalizeUrl(entry.url)}>
+                        (unknown: {normalizeUrl(entry.url)})
+                      </option>
+                    )}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={entry.url}
+                  placeholder="http://host:port"
+                  onChange={(e) => {
+                    const next = entries.slice();
+                    next[i] = { ...entry, url: e.target.value };
+                    // URL changes invalidate any previous test result.
+                    setStatusByIndex((prev) => {
+                      if (!(i in prev)) return prev;
+                      const copy = { ...prev };
+                      delete copy[i];
+                      return copy;
+                    });
+                    onChange(next);
+                  }}
+                  disabled={pending}
+                  className={baseInputClass}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => void probe(i)}
