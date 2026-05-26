@@ -2,12 +2,19 @@
 
 import { useEffect, useState } from "react";
 
-export type Theme = "cyberpunk" | "modern" | "system";
-export type ResolvedTheme = "cyberpunk" | "modern";
+export type Theme = "cyberpunk" | "modern" | "editorial" | "system";
+export type ResolvedTheme = "cyberpunk" | "modern" | "editorial";
 
 const STORAGE_KEY = "eugene-theme";
 const DEFAULT_THEME: Theme = "cyberpunk";
-const VALID_THEMES: ReadonlySet<Theme> = new Set(["cyberpunk", "modern", "system"]);
+// `system` only maps to cyberpunk/modern — editorial is an explicit
+// operator pick, not an OS-level concept.
+const VALID_THEMES: ReadonlySet<Theme> = new Set([
+  "cyberpunk",
+  "modern",
+  "editorial",
+  "system",
+]);
 
 /**
  * Resolve `system` to a concrete theme via `prefers-color-scheme`.

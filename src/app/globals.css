@@ -101,6 +101,53 @@
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
+/* ──────────────────────────── Editorial ─────────────────────────────
+   Light cream base with deep forest green + rust accents, DM Sans
+   typeface. Designed by Claude Design 2026-05-25 — Eugene's third
+   theme, intentionally more newsprint-magazine than dark-future or
+   flat-UI. Light theme like Modern; follows Modern's
+   `.is-thinking-rail` spinner pattern rather than Cyberpunk's
+   perimeter pulse (the pulse is built for dark backgrounds). */
+[data-theme="editorial"] {
+  --background: #faf7f1;
+  --foreground: #1c1612;
+  --panel: #ffffff;
+  --panel-soft: #f1ece1;
+  --panel-hover: #e6dfcd;
+  --border: #ddd5c1;
+  --border-hover: #a5997d;
+  --accent-left: #2d6240;
+  --accent-right: #a23b29;
+  --on-accent-left: #ffffff;
+  --on-accent-right: #ffffff;
+  --muted: #7d7565;
+
+  /* Scrollbar — derived from panel + accent. */
+  --scrollbar-thumb: rgb(165 153 125 / 0.55);
+  --scrollbar-thumb-hover: rgb(45 98 64 / 0.6);
+
+  /* Solid bubbles, no bg-icon overlay. */
+  --bubble-bg: #ffffff;
+  --bubble-soft-bg: #f1ece1;
+  --bubble-blur: 0px;
+
+  --bg-icon-display: none;
+  --bg-icon-opacity: 0;
+
+  /* Radius + pad: design output didn't specify; defaulting to
+     modern's 6px corner with a hair more breathing room (1.05) to
+     match the editorial-spaciousness aesthetic. Both unwired-but-
+     declared until v0.3 spacing-density work. */
+  --radius: 6px;
+  --pad: 1.05;
+
+  /* DM Sans for UI + body. Mono falls through to the OS chain
+     (design left mono unspecified). */
+  --font-ui: var(--font-dm-sans), system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-dm-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+}
+
 /* ──────────────────────────── status banners ────────────────────────────
    Three semantic banner classes (success / warn / error). Each pair of
    themes overrides the underlying tokens so the same .status-warn renders
@@ -136,6 +183,17 @@
   --status-error-fg: #971838;
   --status-error-bg: rgb(242 154 169 / 0.18);
   --status-error-border: #f29aa9;
+}
+[data-theme="editorial"] {
+  --status-success-fg: #235638;
+  --status-success-bg: rgb(155 207 174 / 0.18);
+  --status-success-border: #9bcfae;
+  --status-warn-fg: #7c3f08;
+  --status-warn-bg: rgb(232 181 107 / 0.18);
+  --status-warn-border: #e8b56b;
+  --status-error-fg: #8d2018;
+  --status-error-bg: rgb(232 162 152 / 0.2);
+  --status-error-border: #e8a298;
 }
 .status-success {
   color: var(--status-success-fg);
@@ -294,10 +352,12 @@ body {
   }
 }
 
-[data-theme="modern"] .is-thinking-rail {
+[data-theme="modern"] .is-thinking-rail,
+[data-theme="editorial"] .is-thinking-rail {
   position: relative;
 }
-[data-theme="modern"] .is-thinking-rail::after {
+[data-theme="modern"] .is-thinking-rail::after,
+[data-theme="editorial"] .is-thinking-rail::after {
   content: "";
   position: absolute;
   top: 50%;

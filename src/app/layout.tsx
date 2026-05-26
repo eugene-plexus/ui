@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { DM_Sans, Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 
 import "./globals.css";
 
@@ -26,6 +26,14 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+// Editorial theme uses DM Sans for UI + body (mono falls through to
+// the OS chain per the design preset).
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Eugene Plexus",
   description: "Bicameral consciousness scaffold over LLMs.",
@@ -41,7 +49,7 @@ const preferencesBootstrap = `
   var root = document.documentElement;
   try {
     var t = localStorage.getItem('eugene-theme');
-    if (t !== 'cyberpunk' && t !== 'modern' && t !== 'system') t = 'cyberpunk';
+    if (t !== 'cyberpunk' && t !== 'modern' && t !== 'editorial' && t !== 'system') t = 'cyberpunk';
     var resolved = t;
     if (t === 'system') {
       resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -67,7 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="en"
       data-theme="cyberpunk"
-      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${dmSans.variable}`}
       suppressHydrationWarning
     >
       <head>
