@@ -57,36 +57,48 @@
 }
 
 [data-theme="modern"] {
-  --background: #f4f4f7;
-  --foreground: #18181b;
+  /* Modern = the "Modern" Claude Design preset adopted 2026-05-25.
+     Light, near-white base with deep-blue + magenta accents. Pairs
+     with the Cyberpunk dark theme as the OS-light-mode mapping
+     under the `system` choice. */
+  --background: #fafafb;
+  --foreground: #0d0d10;
   --panel: #ffffff;
-  --panel-soft: #ececef;
-  --panel-hover: #e0e0e6;
-  --border: #d8d8de;
-  --border-hover: #a8a8b0;
-  --accent-left: #2563eb;
-  --accent-right: #db2777;
-  --on-accent-left: #fff;
-  --on-accent-right: #fff;
-  --muted: #6c6c74;
-  --scrollbar-thumb: rgb(108 108 116 / 0.45);
-  --scrollbar-thumb-hover: rgb(37 99 235 / 0.7);
+  --panel-soft: #f3f3f5;
+  --panel-hover: #e7e7eb;
+  --border: #e3e3e8;
+  --border-hover: #8a8a93;
+  --accent-left: #2a55e6;
+  --accent-right: #cf3a85;
+  --on-accent-left: #ffffff;
+  --on-accent-right: #ffffff;
+  --muted: #6a6a73;
+  /* Scrollbar not in the design output — derived: muted at the
+     same translucency cyberpunk uses; hover at accent-left. */
+  --scrollbar-thumb: rgb(106 106 115 / 0.45);
+  --scrollbar-thumb-hover: rgb(42 85 230 / 0.7);
 
+  /* Bubbles sit flat on the panel — no blur. Derived from panel /
+     panel-soft so the bubble pattern stays consistent. */
   --bubble-bg: #ffffff;
-  --bubble-soft-bg: #ececef;
+  --bubble-soft-bg: #f3f3f5;
   --bubble-blur: 0;
 
-  /* Softer corner radius for the flat-UI / Inter aesthetic. */
+  /* Softer corner radius for the flat-UI aesthetic. */
   --radius: 6px;
-  --pad: 1;
+  /* Design's 1.05 — slight breathing-room bump over identity. Like
+     cyberpunk's 1.1, unwired until the v0.3 spacing-density pass. */
+  --pad: 1.05;
 
   --bg-icon-display: none;
   --bg-icon-opacity: 0;
 
-  /* Modern keeps Inter for both UI chrome and body — no display font. */
+  /* Modern keeps Inter for both UI chrome and body. Mono switches
+     to JetBrains Mono (loaded in layout.tsx alongside cyberpunk's
+     fonts) so code blocks match across themes. */
   --font-ui: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-body: var(--font-inter), system-ui, -apple-system, sans-serif;
-  --font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
 /* ──────────────────────────── status banners ────────────────────────────
@@ -112,15 +124,18 @@
   --status-error-border: #cc3a55;
 }
 [data-theme="modern"] {
-  --status-success-fg: #065f46; /* emerald-800 */
-  --status-success-bg: #ecfdf5; /* emerald-50 */
-  --status-success-border: #6ee7b7; /* emerald-300 */
-  --status-warn-fg: #78350f; /* amber-900 */
-  --status-warn-bg: #fffbeb; /* amber-50 */
-  --status-warn-border: #fcd34d; /* amber-300 */
-  --status-error-fg: #9f1239; /* rose-800 */
-  --status-error-bg: #fff1f2; /* rose-50 */
-  --status-error-border: #fda4af; /* rose-300 */
+  /* Banner palette per Claude Design's Modern preset. Design
+     specified fg + border; bg derived as a low-alpha tint of the
+     border over white so banners stay subtle in a light theme. */
+  --status-success-fg: #07664d;
+  --status-success-bg: rgb(122 220 176 / 0.18);
+  --status-success-border: #7adcb0;
+  --status-warn-fg: #7c3f08;
+  --status-warn-bg: rgb(243 194 90 / 0.18);
+  --status-warn-border: #f3c25a;
+  --status-error-fg: #971838;
+  --status-error-bg: rgb(242 154 169 / 0.18);
+  --status-error-border: #f29aa9;
 }
 .status-success {
   color: var(--status-success-fg);
