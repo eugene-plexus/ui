@@ -40,6 +40,11 @@ interface PersistedConversation {
   // Used by the ThoughtForChip to render "Thought for X.Xs". Persisted
   // so a reload still shows the chip on the last assistant message.
   latestTotalLatencyMs: number | null;
+  // v0.2.1 incognito mode. When true: the conversation lives in
+  // sessionStorage only and never reaches identity / memory on the
+  // backend. Survives F5 (sessionStorage), dies on tab close. Closing
+  // the tab is the operator's "delete this conversation" gesture.
+  incognito: boolean;
 }
 
 export default function ChatPage() {
@@ -52,6 +57,7 @@ export default function ChatPage() {
   const [latestTotalLatencyMs, setLatestTotalLatencyMs] = useState<
     number | null
   >(null);
+  const [incognito, setIncognito] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Don't persist before the initial hydration has run — otherwise the
@@ -166,6 +172,7 @@ export default function ChatPage() {
         if (parsed.latestVoicePass != null) setLatestVoicePass(parsed.latestVoicePass);
         if (typeof parsed.latestTotalLatencyMs === "number")
           setLatestTotalLatencyMs(parsed.latestTotalLatencyMs);
+        if (typeof parsed.incognito === "boolean") setIncognito(parsed.incognito);
       }
     } catch {
       // sessionStorage can throw in private modes; fall through to empty.
@@ -193,6 +200,7 @@ export default function ChatPage() {
         latestPasses,
         latestVoicePass,
         latestTotalLatencyMs,
+        incognito,
       };
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
@@ -205,6 +213,7 @@ export default function ChatPage() {
     latestPasses,
     latestVoicePass,
     latestTotalLatencyMs,
+    incognito,
   ]);
 
   async function handleSend(text: string) {
@@ -217,10 +226,18 @@ export default function ChatPage() {
     // openapi-typescript treats fields with `default:` as required, so we
     // have to send maxPasses even though the orchestrator would default
     // it server-side. Mirror the spec default (3) here.
+    //
+    // Incognito mode: the orchestrator does not read memory, so the UI
+    // carries history client-side and ships it with each turn.
+    // `messages` here is the pre-userMsg state (state updates are
+    // async), which is exactly the history-before-this-turn shape the
+    // server expects — it appends `body.message` to `history` itself.
     const body: ChatRequest = {
       message: text,
       maxPasses: 3,
+      incognito,
       ...(conversationId ? { conversationId } : {}),
+      ...(incognito ? { history: messages } : {}),
     };
 
     // Wall-clock start. Captured here (before the await) so the
@@ -258,6 +275,23 @@ export default function ChatPage() {
   }
 
   function newConversation() {
+    setConversationId(null);
+    setMessages([]);
+    setLatestVoicePass(null);
+    setLatestPasses([]);
+    setLatestTotalLatencyMs(null);
+    setError(null);
+    // "New" always exits incognito — the most common operator gesture
+    // is "start fresh, back to normal." Use the incognito toggle below
+    // to start a fresh incognito conversation instead.
+    setIncognito(false);
+  }
+
+  function toggleIncognito() {
+    // Toggling either direction resets the surface — mixing modes
+    // mid-conversation is ambiguous (which mode owns the prior turns?)
+    // so we treat the toggle as "start fresh in the other mode."
+    setIncognito((prev) => !prev);
     setConversationId(null);
     setMessages([]);
     setLatestVoicePass(null);
@@ -312,11 +346,19 @@ export default function ChatPage() {
               className="shrink-0"
             />
             <div className="flex flex-col gap-0.5">
-              {operatorName && (
+              {operatorName && !incognito && (
                 <p className="font-ui text-[11px]">
                   <span className="text-[color:var(--muted)]">talking to </span>
                   <span className="font-medium text-[color:var(--foreground)]">
                     {operatorName}
+                  </span>
+                </p>
+              )}
+              {incognito && (
+                <p className="font-ui text-[11px]">
+                  <span className="text-[color:var(--muted)]">talking to </span>
+                  <span className="font-medium text-[color:var(--foreground)]">
+                    a stranger
                   </span>
                 </p>
               )}
@@ -326,8 +368,29 @@ export default function ChatPage() {
                   : "no conversation yet"}
               </p>
             </div>
+            {incognito && (
+              <span
+                className="font-ui inline-flex items-center gap-1 rounded-full border border-[color:var(--border-hover)] bg-[color:var(--panel-soft)] px-2 py-0.5 text-[10px] font-medium tracking-wider uppercase text-[color:var(--foreground)]"
+                title="Incognito mode: no identity, no memory reads, no memory writes. Conversation lives in this tab only; closing the tab destroys it."
+              >
+                <span aria-hidden="true">◐</span>
+                Incognito
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleIncognito}
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+              title={
+                incognito
+                  ? "Exit incognito mode and start a fresh normal conversation"
+                  : "Start a fresh incognito conversation — no identity, no memory, no persistence. Lives only in this tab."
+              }
+            >
+              {incognito ? "Exit incognito" : "Incognito"}
+            </button>
             <button
               type="button"
               onClick={newConversation}

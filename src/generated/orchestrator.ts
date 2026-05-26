@@ -405,6 +405,35 @@ export interface components {
              * @description Caller-supplied id for log correlation.
              */
             requestId?: string;
+            /**
+             * @description (v0.2.1) Run this turn in incognito mode. When true:
+             *     - Eugene's full identity loads (constitution + self-model)
+             *       — Eugene remains himself.
+             *     - The speaker is treated as a stranger: no person lookup,
+             *       no relationship summary, no recent-turns retrieval from
+             *       memory.
+             *     - Neither the user message nor Eugene's reply is persisted
+             *       to memory.
+             *     - The running NT state is read for modulation but NOT
+             *       updated by this turn.
+             *     - The conversation history for the turn comes from
+             *       `history` (below) instead of memory. Callers (typically
+             *       the UI) hold the incognito session's history client-side.
+             *     Use for testing the inner-thought-process without identity
+             *     and memory feedback loops, or for transient conversations
+             *     an operator wants Eugene to forget.
+             * @default false
+             */
+            incognito: boolean;
+            /**
+             * @description (v0.2.1) Conversation history for this turn, supplied by
+             *     the caller. Honored only when `incognito` is true — in
+             *     that mode the orchestrator does not read memory, so the
+             *     caller must carry history forward. Ignored when
+             *     `incognito` is false (the orchestrator loads history from
+             *     memory by `conversationId` as in v0.2).
+             */
+            history?: components["schemas"]["Message"][];
         };
         ChatResponse: {
             /** Format: uuid */
