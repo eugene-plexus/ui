@@ -42,6 +42,17 @@ npm run dev
 
 Plus an orchestrator running locally (or env-var-pointed at a remote one) — see the [orchestrator repo](https://github.com/eugene-plexus/orchestrator).
 
+## Git hooks
+
+We use [pre-commit](https://pre-commit.com/) to auto-format staged files with Prettier before they reach CI. Enable it once per clone (requires Python):
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+After that, `git commit` runs Prettier on staged files; if it reformats anything, re-stage and commit again.
+
 ## Style
 
 - **Next.js 15+ App Router** with TypeScript strict mode
