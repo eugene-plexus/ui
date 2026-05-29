@@ -176,7 +176,11 @@ export default function WizardPage() {
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<WizardDraft> & { screen?: number };
         setDraft((prev) => ({ ...prev, ...parsed }));
-        if (typeof parsed.screen === "number" && parsed.screen >= 1 && parsed.screen <= TOTAL_SCREENS) {
+        if (
+          typeof parsed.screen === "number" &&
+          parsed.screen >= 1 &&
+          parsed.screen <= TOTAL_SCREENS
+        ) {
           setScreen(parsed.screen);
         }
       }
@@ -209,11 +213,7 @@ export default function WizardPage() {
     let cancelled = false;
     async function load() {
       try {
-        const list = await api.get<ComponentList>(
-          "watchdog",
-          "/v1/components",
-          { skipAuth: true },
-        );
+        const list = await api.get<ComponentList>("watchdog", "/v1/components", { skipAuth: true });
         if (cancelled) return;
         setKnownComponents(list.components ?? []);
       } catch {
@@ -295,8 +295,7 @@ export default function WizardPage() {
       // sees what didn't apply.
       setStartMessage("Saving driver and orchestrator configuration…");
       const componentsByName = new Map(knownComponents.map((c) => [c.name, c]));
-      const componentByKind = (kind: string) =>
-        knownComponents.find((c) => c.kind === kind);
+      const componentByKind = (kind: string) => knownComponents.find((c) => c.kind === kind);
       const driverComponentNames = knownComponents
         .filter((c) => c.kind === "hemisphere-driver")
         .map((c) => c.name);
@@ -348,10 +347,7 @@ export default function WizardPage() {
           // Use the resolved driver name's URL from the orchestrator's
           // current drivers list. Easiest: read orchestrator /v1/config
           // once and find the matching driver entry.
-          const orchConfig = await api.get<Record<string, unknown>>(
-            "orchestrator",
-            "/v1/config",
-          );
+          const orchConfig = await api.get<Record<string, unknown>>("orchestrator", "/v1/config");
           const driverList = orchConfig.drivers;
           let hemisphereUrl: string | undefined;
           if (Array.isArray(driverList)) {
@@ -457,11 +453,7 @@ export default function WizardPage() {
       for (const name of restartTargets) {
         if (componentsByName.has(name)) {
           try {
-            await api.post(
-              "watchdog",
-              `/v1/components/${encodeURIComponent(name)}/restart`,
-              {},
-            );
+            await api.post("watchdog", `/v1/components/${encodeURIComponent(name)}/restart`, {});
           } catch {
             // Best-effort — a failed restart isn't a wizard failure.
           }
@@ -535,14 +527,19 @@ export default function WizardPage() {
           )}
           {screen === 3 && <ScreenWelcome />}
           {screen === 4 && (
-            <ScreenDeployment value={draft.deployment} onChange={(v) => patchDraft({ deployment: v })} />
+            <ScreenDeployment
+              value={draft.deployment}
+              onChange={(v) => patchDraft({ deployment: v })}
+            />
           )}
           {screen === 5 && (
             <ScreenOrchestrator
               mode={draft.deployment}
               host={draft.orchestratorHost}
               port={draft.orchestratorPort}
-              onChange={(host, port) => patchDraft({ orchestratorHost: host, orchestratorPort: port })}
+              onChange={(host, port) =>
+                patchDraft({ orchestratorHost: host, orchestratorPort: port })
+              }
             />
           )}
           {screen === 6 && (
@@ -569,9 +566,7 @@ export default function WizardPage() {
               port={draft.memoryPort}
               backend={draft.memoryBackend}
               localSqlitePath={draft.memoryLocalSqlitePath}
-              onChangeHost={(host, port) =>
-                patchDraft({ memoryHost: host, memoryPort: port })
-              }
+              onChangeHost={(host, port) => patchDraft({ memoryHost: host, memoryPort: port })}
               onBackend={(v) => patchDraft({ memoryBackend: v })}
               onLocalSqlitePath={(v) => patchDraft({ memoryLocalSqlitePath: v })}
             />
@@ -586,15 +581,11 @@ export default function WizardPage() {
               enableReflection={draft.enableReflection}
               reflectionDriverName={draft.reflectionDriverName}
               driverNames={draft.drivers.map((d) => d.name)}
-              onChangeHost={(host, port) =>
-                patchDraft({ identityHost: host, identityPort: port })
-              }
+              onChangeHost={(host, port) => patchDraft({ identityHost: host, identityPort: port })}
               onEnabled={(v) => patchDraft({ identityEnabled: v })}
               onDisplayName={(v) => patchDraft({ identityDisplayName: v })}
               onEnableReflection={(v) => patchDraft({ enableReflection: v })}
-              onReflectionDriverName={(v) =>
-                patchDraft({ reflectionDriverName: v })
-              }
+              onReflectionDriverName={(v) => patchDraft({ reflectionDriverName: v })}
             />
           )}
           {screen === 10 && (
@@ -608,13 +599,9 @@ export default function WizardPage() {
               onChangeConnectorHost={(host, port) =>
                 patchDraft({ connectorHost: host, connectorPort: port })
               }
-              onDiscordAdapterName={(v) =>
-                patchDraft({ discordAdapterName: v })
-              }
+              onDiscordAdapterName={(v) => patchDraft({ discordAdapterName: v })}
               onDiscordBotToken={(v) => patchDraft({ discordBotToken: v })}
-              onDiscordAllowedChannels={(v) =>
-                patchDraft({ discordAllowedChannels: v })
-              }
+              onDiscordAllowedChannels={(v) => patchDraft({ discordAllowedChannels: v })}
             />
           )}
         </div>
@@ -806,8 +793,8 @@ function ScreenLookFeel() {
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Look &amp; feel</h2>
       <p className="mb-6 text-sm text-[color:var(--muted)]">
-        These choices apply immediately so the rest of setup is comfortable to read.
-        You can change them later from the Config page.
+        These choices apply immediately so the rest of setup is comfortable to read. You can change
+        them later from the Config page.
       </p>
       <Field
         label="Theme"
@@ -817,7 +804,7 @@ function ScreenLookFeel() {
           value={theme}
           onChange={(e) => setTheme(e.target.value as Theme)}
           aria-label="Theme"
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
         >
           <option value="cyberpunk">Cyberpunk (dark)</option>
           <option value="modern">Modern (light)</option>
@@ -829,7 +816,7 @@ function ScreenLookFeel() {
           value={fontSize}
           onChange={(e) => setFontSize(e.target.value as FontSize)}
           aria-label="Font size"
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
         >
           {(Object.keys(FONT_SIZE_LABELS) as FontSize[]).map((k) => (
             <option key={k} value={k}>
@@ -862,10 +849,9 @@ function ScreenSecurity({
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Security</h2>
       <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
-        Eugene Plexus protects sensitive config (like provider API keys)
-        with an encryption key derived from a passphrase you set here.
-        You&rsquo;ll use the same passphrase to sign in from a fresh browser
-        tab. Pick something you can remember — Eugene can&rsquo;t reset it.
+        Eugene Plexus protects sensitive config (like provider API keys) with an encryption key
+        derived from a passphrase you set here. You&rsquo;ll use the same passphrase to sign in from
+        a fresh browser tab. Pick something you can remember — Eugene can&rsquo;t reset it.
       </p>
       <Field
         label="Passphrase"
@@ -877,10 +863,7 @@ function ScreenSecurity({
           placeholder="A line of poetry, a sentence, a long phrase…"
         />
       </Field>
-      <Field
-        label="Confirm passphrase"
-        description="Same again — guard against typos."
-      >
+      <Field label="Confirm passphrase" description="Same again — guard against typos.">
         <SecretInput
           value={passphraseConfirm}
           onChange={onPassphraseConfirm}
@@ -888,15 +871,13 @@ function ScreenSecurity({
         />
       </Field>
       {mismatch && (
-        <p className="text-status-error -mt-2 mb-4 text-xs">
-          Passphrases don&rsquo;t match yet.
-        </p>
+        <p className="text-status-error -mt-2 mb-4 text-xs">Passphrases don&rsquo;t match yet.</p>
       )}
       <hr className="my-6 border-[color:var(--border)]" />
       <h3 className="font-ui mb-3 text-sm font-semibold">Auto-unlock</h3>
       <p className="mb-4 text-xs leading-relaxed text-[color:var(--muted)]">
-        How Eugene should handle its encryption key between restarts.
-        You can change this later from the Config page.
+        How Eugene should handle its encryption key between restarts. You can change this later from
+        the Config page.
       </p>
       <Radio
         checked={securityMode === "os_keyring"}
@@ -928,34 +909,31 @@ function ScreenSecurity({
   );
 }
 
-
 function ScreenWelcome() {
   return (
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Welcome</h2>
       <p className="mb-4 text-sm leading-relaxed">
-        Eugene Plexus models a thinking mind as a small system of parts that
-        each do one job. Setup walks through those parts in order:
+        Eugene Plexus models a thinking mind as a small system of parts that each do one job. Setup
+        walks through those parts in order:
       </p>
       <ul className="mb-4 ml-6 list-disc text-sm leading-relaxed text-[color:var(--muted)]">
         <li>
-          <span className="text-[color:var(--foreground)]">Orchestrator</span> —
-          coordinates the conversation and asks each driver in turn.
+          <span className="text-[color:var(--foreground)]">Orchestrator</span> — coordinates the
+          conversation and asks each driver in turn.
         </li>
         <li>
-          <span className="text-[color:var(--foreground)]">Drivers</span> — two
-          language models that consider every message side-by-side. Picking
-          different vendors for the two drivers creates the most interesting
-          behavior.
+          <span className="text-[color:var(--foreground)]">Drivers</span> — two language models that
+          consider every message side-by-side. Picking different vendors for the two drivers creates
+          the most interesting behavior.
         </li>
         <li>
-          <span className="text-[color:var(--foreground)]">Memory</span> — a
-          simple recent-history store for v0.1.
+          <span className="text-[color:var(--foreground)]">Memory</span> — a simple recent-history
+          store for v0.1.
         </li>
       </ul>
       <p className="text-sm leading-relaxed text-[color:var(--muted)]">
-        Each step has sensible defaults; you can change anything later from the
-        Config page.
+        Each step has sensible defaults; you can change anything later from the Config page.
       </p>
     </section>
   );
@@ -972,8 +950,8 @@ function ScreenDeployment({
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Deployment</h2>
       <p className="mb-6 text-sm text-[color:var(--muted)]">
-        Where do the parts of Eugene live? This determines whether the next
-        screens ask for host addresses.
+        Where do the parts of Eugene live? This determines whether the next screens ask for host
+        addresses.
       </p>
       <Radio
         checked={value === "local"}
@@ -1006,14 +984,11 @@ function ScreenOrchestrator({
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Orchestrator</h2>
       <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
-        The orchestrator runs the conversation loop, sends each prompt to both
-        drivers, and merges their responses. Defaults (system prompt, pass cap,
-        agreement threshold) are fine for v0.1 — you can tune them later in the
-        Config page.
+        The orchestrator runs the conversation loop, sends each prompt to both drivers, and merges
+        their responses. Defaults (system prompt, pass cap, agreement threshold) are fine for v0.1 —
+        you can tune them later in the Config page.
       </p>
-      {mode === "networked" && (
-        <HostPortRow host={host} port={port} onChange={onChange} />
-      )}
+      {mode === "networked" && <HostPortRow host={host} port={port} onChange={onChange} />}
     </section>
   );
 }
@@ -1042,16 +1017,12 @@ function ScreenDriver({
 
   return (
     <section>
-      <h2 className="font-ui mb-2 text-xl font-semibold">
-        Driver {index + 1}
-      </h2>
+      <h2 className="font-ui mb-2 text-xl font-semibold">Driver {index + 1}</h2>
       <p className="mb-2 text-sm text-[color:var(--muted)]">
         One of the two language models Eugene consults on every message.
       </p>
       {hint && (
-        <p className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">
-          {hint}
-        </p>
+        <p className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">{hint}</p>
       )}
       <Field label="Name" description="A label for this driver — defaults to “left” or “right”.">
         <input
@@ -1068,10 +1039,7 @@ function ScreenDriver({
           onChange={(host, port) => onChange({ host, port })}
         />
       )}
-      <Field
-        label="Provider"
-        description="Which LLM subscription or service this driver wraps."
-      >
+      <Field label="Provider" description="Which LLM subscription or service this driver wraps.">
         <select
           value={driver.provider}
           onChange={(e) => onChange({ provider: e.target.value })}
@@ -1196,9 +1164,9 @@ function ScreenMemory({
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Memory</h2>
       <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
-        Where Eugene stores conversation history. Each turn is tagged
-        with the person who said it, so Eugene can pull back the right
-        context when you (or a connected friend) talk to him again.
+        Where Eugene stores conversation history. Each turn is tagged with the person who said it,
+        so Eugene can pull back the right context when you (or a connected friend) talk to him
+        again.
       </p>
       {mode === "networked" && <HostPortRow host={host} port={port} onChange={onChangeHost} />}
       <h3 className="font-ui mb-3 text-sm font-semibold">Storage backend</h3>
@@ -1274,11 +1242,10 @@ function ScreenIdentity({
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Identity</h2>
       <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
-        Eugene&rsquo;s &ldquo;self&rdquo; — a constitution (declarative
-        facts about who he is) plus a self-model (patterns he notices
-        about himself over time). Each hemisphere is told who Eugene is
-        and who they&rsquo;re talking to before every turn, which gives
-        the two backends more interesting room to disagree.
+        Eugene&rsquo;s &ldquo;self&rdquo; — a constitution (declarative facts about who he is) plus
+        a self-model (patterns he notices about himself over time). Each hemisphere is told who
+        Eugene is and who they&rsquo;re talking to before every turn, which gives the two backends
+        more interesting room to disagree.
       </p>
       <Radio
         checked={enabled}
@@ -1302,9 +1269,7 @@ function ScreenIdentity({
       />
       {enabled && (
         <>
-          {mode === "networked" && (
-            <HostPortRow host={host} port={port} onChange={onChangeHost} />
-          )}
+          {mode === "networked" && <HostPortRow host={host} port={port} onChange={onChangeHost} />}
           <Field
             label="Display name"
             description="The name Eugene uses for himself. Saved into the identity constitution."
@@ -1320,10 +1285,10 @@ function ScreenIdentity({
           <hr className="my-6 border-[color:var(--border)]" />
           <h3 className="font-ui mb-3 text-sm font-semibold">Self-model reflection</h3>
           <p className="mb-4 text-xs leading-relaxed text-[color:var(--muted)]">
-            Reflection is Eugene looking at recent conversations and
-            writing autobiographical notes about himself. Manual-trigger
-            only in v0.2 — POST <span className="font-mono">/v1/identity/self-model/reflect</span>.
-            Needs a hemisphere driver to do the writing.
+            Reflection is Eugene looking at recent conversations and writing autobiographical notes
+            about himself. Manual-trigger only in v0.2 — POST{" "}
+            <span className="font-mono">/v1/identity/self-model/reflect</span>. Needs a hemisphere
+            driver to do the writing.
           </p>
           <Radio
             checked={!enableReflection}
@@ -1418,9 +1383,7 @@ function ScreenConnectorsAndStart({
       label: "Identity",
       value: draft.identityEnabled
         ? `enabled · ${draft.identityDisplayName.trim() || "Eugene"}${
-            draft.enableReflection
-              ? ` · reflection via ${draft.reflectionDriverName}`
-              : ""
+            draft.enableReflection ? ` · reflection via ${draft.reflectionDriverName}` : ""
           }`
         : "disabled (v0.1 shared prompt)",
     },
@@ -1437,7 +1400,8 @@ function ScreenConnectorsAndStart({
     (d) => !knownComponents.find((c) => c.name === d.name && c.kind === "hemisphere-driver"),
   );
   const missingMemory = !knownComponents.some((c) => c.kind === "memory");
-  const missingIdentity = draft.identityEnabled && !knownComponents.some((c) => c.kind === "identity");
+  const missingIdentity =
+    draft.identityEnabled && !knownComponents.some((c) => c.kind === "identity");
   const missingConnector =
     draft.connectorChoice === "discord" && !knownComponents.some((c) => c.kind === "connector");
 
@@ -1445,11 +1409,9 @@ function ScreenConnectorsAndStart({
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Connectors</h2>
       <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
-        Connectors bridge external chat platforms (Discord today; Slack /
-        Matrix / Gmail later) into Eugene&rsquo;s orchestrator. Optional
-        — you can use Eugene entirely through this web UI. Setting up
-        Discord here is the same as adding the adapter later from
-        Config.
+        Connectors bridge external chat platforms (Discord today; Slack / Matrix / Gmail later) into
+        Eugene&rsquo;s orchestrator. Optional — you can use Eugene entirely through this web UI.
+        Setting up Discord here is the same as adding the adapter later from Config.
       </p>
       <Radio
         checked={draft.connectorChoice === "skip"}
@@ -1562,9 +1524,7 @@ function MissingTopologyHints({
 }) {
   const lines: string[] = [];
   if (missingDrivers.length > 0) {
-    lines.push(
-      `Driver(s) not in watchdog topology: ${missingDrivers.join(", ")}.`,
-    );
+    lines.push(`Driver(s) not in watchdog topology: ${missingDrivers.join(", ")}.`);
   }
   if (missingMemory) lines.push("Memory component not in watchdog topology.");
   if (missingIdentity) lines.push("Identity component not in watchdog topology.");
@@ -1579,10 +1539,9 @@ function MissingTopologyHints({
         ))}
       </ul>
       <p className="mt-2">
-        The wizard configures existing components. Add the missing entries
-        from the Config page or hand-edit{" "}
-        <span className="font-mono">watchdog.yaml</span>, then re-run setup
-        or restart from the Config page.
+        The wizard configures existing components. Add the missing entries from the Config page or
+        hand-edit <span className="font-mono">watchdog.yaml</span>, then re-run setup or restart
+        from the Config page.
       </p>
     </div>
   );
@@ -1603,9 +1562,7 @@ function Field({
     <div className="mb-5">
       <label className="font-ui block text-sm font-medium">{label}</label>
       {description && (
-        <p className="mt-1 mb-2 text-xs leading-relaxed text-[color:var(--muted)]">
-          {description}
-        </p>
+        <p className="mt-1 mb-2 text-xs leading-relaxed text-[color:var(--muted)]">{description}</p>
       )}
       {children}
     </div>

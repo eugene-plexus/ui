@@ -57,10 +57,7 @@ export default function ConfigPage() {
         // and the user can edit them.
         if (e instanceof ApiError && e.status === 503) {
           try {
-            const config = await api.get<Record<string, unknown>>(
-              "orchestrator",
-              "/v1/config",
-            );
+            const config = await api.get<Record<string, unknown>>("orchestrator", "/v1/config");
             const list = config.drivers;
             if (Array.isArray(list)) {
               setDrivers(

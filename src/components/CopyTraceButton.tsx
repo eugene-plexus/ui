@@ -58,8 +58,7 @@ export function CopyTraceButton({
     }
   }
 
-  const label =
-    feedback === "copied" ? "copied" : feedback === "error" ? "failed" : "copy trace";
+  const label = feedback === "copied" ? "copied" : feedback === "error" ? "failed" : "copy trace";
 
   return (
     <button
@@ -107,8 +106,7 @@ function formatTrace(
     // side by side so anyone reading the trace can see exactly what
     // the driver saw and what it replied. Skip the section silently if
     // we're talking to a pre-v0.2 orchestrator that doesn't emit it.
-    const inputs = (p as { hemisphereInputs?: HemisphereInputSnapshot[] })
-      .hemisphereInputs;
+    const inputs = (p as { hemisphereInputs?: HemisphereInputSnapshot[] }).hemisphereInputs;
     if (inputs && inputs.length > 0) {
       for (const input of inputs) {
         out.push(`#### Pass ${p.passIndex} input → ${input.driverName}`);
@@ -158,9 +156,7 @@ function formatTrace(
   }
 
   // The final assistant message Eugene actually sent — what the user saw.
-  const lastAssistantMessage = [...messages]
-    .reverse()
-    .find((m) => m.role === "assistant");
+  const lastAssistantMessage = [...messages].reverse().find((m) => m.role === "assistant");
   if (lastAssistantMessage) {
     out.push("### Final response (shared with user)");
     out.push("");

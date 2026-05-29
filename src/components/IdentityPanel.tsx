@@ -134,9 +134,7 @@ export function IdentityPanel() {
         ) : view === "persons" ? (
           <PersonsPanel />
         ) : view === "pending" ? (
-          <PendingLinksPanel
-            onCountChange={(n) => setPendingCount(n)}
-          />
+          <PendingLinksPanel onCountChange={(n) => setPendingCount(n)} />
         ) : (
           <SelfModelPanel />
         )}
@@ -201,7 +199,8 @@ function PersonsPanel() {
         <div>
           <h2 className="text-sm font-semibold">Persons</h2>
           <p className="text-[11px] text-[color:var(--muted)]">
-            People Eugene knows. The operator is you; other persons get added when you approve a pending link or create one manually.
+            People Eugene knows. The operator is you; other persons get added when you approve a
+            pending link or create one manually.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -225,7 +224,9 @@ function PersonsPanel() {
 
       <div className="flex-1 overflow-y-auto p-4">
         {loadError && (
-          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{loadError}</p>
+          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            {loadError}
+          </p>
         )}
         {creating && (
           <CreatePerson
@@ -241,7 +242,8 @@ function PersonsPanel() {
         )}
         {!loading && list.length === 0 && !creating && (
           <p className="text-xs text-[color:var(--muted)]">
-            No persons configured. The operator should have been created at identity startup — if this list is empty after a restart, identity may have failed to initialize its store.
+            No persons configured. The operator should have been created at identity startup — if
+            this list is empty after a restart, identity may have failed to initialize its store.
           </p>
         )}
         {!loading &&
@@ -387,7 +389,10 @@ function PersonEditor({
           <p className="font-ui mb-1 text-xs font-medium">Platform aliases</p>
           <ul className="divide-y divide-[color:var(--border)] rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)]">
             {person.aliases.map((a) => (
-              <li key={`${a.platform}:${a.accountId}`} className="flex justify-between px-3 py-2 text-xs">
+              <li
+                key={`${a.platform}:${a.accountId}`}
+                className="flex justify-between px-3 py-2 text-xs"
+              >
                 <span className="font-mono">{a.platform}</span>
                 <span className="font-mono text-[color:var(--muted)]">
                   {a.handle ?? a.displayName ?? a.accountId}
@@ -398,12 +403,14 @@ function PersonEditor({
         </div>
       )}
 
-      {error && <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>}
+      {error && (
+        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>
+      )}
 
       <div className="flex items-center justify-between pt-1">
         <div>
-          {!person.isOperator && (
-            deleteConfirm ? (
+          {!person.isOperator &&
+            (deleteConfirm ? (
               <span className="flex items-center gap-2">
                 <span className="text-xs text-[color:var(--muted)]">Delete?</span>
                 <button
@@ -432,8 +439,7 @@ function PersonEditor({
               >
                 Delete person
               </button>
-            )
-          )}
+            ))}
         </div>
         <button
           type="button"
@@ -448,13 +454,7 @@ function PersonEditor({
   );
 }
 
-function CreatePerson({
-  onCancel,
-  onCreated,
-}: {
-  onCancel: () => void;
-  onCreated: () => void;
-}) {
+function CreatePerson({ onCancel, onCreated }: { onCancel: () => void; onCreated: () => void }) {
   const [displayName, setDisplayName] = useState("");
   const [relationshipNote, setRelationshipNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -499,7 +499,9 @@ function CreatePerson({
             className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent-left)]"
           />
         </Field>
-        {error && <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>}
+        {error && (
+          <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>
+        )}
         <div className="flex justify-end gap-2">
           <button
             type="button"
@@ -525,11 +527,7 @@ function CreatePerson({
 
 /* ───────────────────────────── pending links ─────────────────────────────── */
 
-function PendingLinksPanel({
-  onCountChange,
-}: {
-  onCountChange: (n: number) => void;
-}) {
+function PendingLinksPanel({ onCountChange }: { onCountChange: (n: number) => void }) {
   const [list, setList] = useState<PendingLink[]>([]);
   const [persons, setPersons] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
@@ -565,7 +563,8 @@ function PendingLinksPanel({
         <div>
           <h2 className="text-sm font-semibold">Pending identity links</h2>
           <p className="text-[11px] text-[color:var(--muted)]">
-            Platform users who want to talk to Eugene but aren&rsquo;t recognized yet. Approve to alias them onto an existing person or create a new one.
+            Platform users who want to talk to Eugene but aren&rsquo;t recognized yet. Approve to
+            alias them onto an existing person or create a new one.
           </p>
         </div>
         <button
@@ -580,14 +579,15 @@ function PendingLinksPanel({
 
       <div className="flex-1 overflow-y-auto p-4">
         {loadError && (
-          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{loadError}</p>
+          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            {loadError}
+          </p>
         )}
-        {loading && (
-          <p className="text-xs text-[color:var(--muted)]">Loading pending links…</p>
-        )}
+        {loading && <p className="text-xs text-[color:var(--muted)]">Loading pending links…</p>}
         {!loading && list.length === 0 && (
           <p className="text-xs text-[color:var(--muted)]">
-            No pending links. When a stranger DMs the Discord bot (or any future connector), they show up here.
+            No pending links. When a stranger DMs the Discord bot (or any future connector), they
+            show up here.
           </p>
         )}
         {!loading &&
@@ -623,12 +623,8 @@ function PendingLinkRow({
   onResolved: () => void;
 }) {
   const [mode, setMode] = useState<"existing" | "new">("new");
-  const [linkAsPersonId, setLinkAsPersonId] = useState<string>(
-    persons[0]?.personId ?? "",
-  );
-  const [displayName, setDisplayName] = useState(
-    link.displayName ?? link.handle ?? "",
-  );
+  const [linkAsPersonId, setLinkAsPersonId] = useState<string>(persons[0]?.personId ?? "");
+  const [displayName, setDisplayName] = useState(link.displayName ?? link.handle ?? "");
   const [relationshipNote, setRelationshipNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -678,7 +674,7 @@ function PendingLinkRow({
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--muted)]">
+            <span className="font-mono text-[10px] tracking-wider text-[color:var(--muted)] uppercase">
               {link.platform}
             </span>
             <p className="font-ui truncate text-sm font-medium">
@@ -752,7 +748,9 @@ function PendingLinkRow({
           )}
 
           {error && (
-            <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>
+            <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+              {error}
+            </p>
           )}
 
           <div className="mt-4 flex items-center justify-between">
@@ -856,7 +854,8 @@ function SelfModelPanel() {
         <div>
           <h2 className="text-sm font-semibold">Self-model</h2>
           <p className="text-[11px] text-[color:var(--muted)]">
-            What Eugene has noticed about himself. Written by the reflection process; queried into hemisphere prompts when topic-relevant.
+            What Eugene has noticed about himself. Written by the reflection process; queried into
+            hemisphere prompts when topic-relevant.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -882,7 +881,9 @@ function SelfModelPanel() {
 
       <div className="flex-1 overflow-y-auto p-4">
         {reflectStatus && (
-          <p className="status-success mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{reflectStatus}</p>
+          <p className="status-success mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            {reflectStatus}
+          </p>
         )}
         {reflectError && (
           <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
@@ -890,14 +891,19 @@ function SelfModelPanel() {
           </p>
         )}
         {loadError && (
-          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{loadError}</p>
+          <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            {loadError}
+          </p>
         )}
         {loading && entries.length === 0 && (
           <p className="text-xs text-[color:var(--muted)]">Loading self-model…</p>
         )}
         {!loading && entries.length === 0 && (
           <p className="text-xs text-[color:var(--muted)]">
-            No self-model entries yet. Have a few chat turns about something with personality (an opinion, a taste, a reaction), then click <span className="font-mono">Reflect now</span>. Identity reads the recent turns, asks a hemisphere driver to extract self-observations, and persists them here.
+            No self-model entries yet. Have a few chat turns about something with personality (an
+            opinion, a taste, a reaction), then click <span className="font-mono">Reflect now</span>
+            . Identity reads the recent turns, asks a hemisphere driver to extract
+            self-observations, and persists them here.
           </p>
         )}
         {entries.map((entry) => (

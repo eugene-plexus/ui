@@ -85,15 +85,10 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         // the fetch entirely when nothing on the schema needs it
         // (orchestrator's config has no kind hints, no point pinging
         // watchdog while loading it).
-        const hasKindHint = schemaResp.fields.some(
-          (f) => f.componentKindHint != null,
-        );
+        const hasKindHint = schemaResp.fields.some((f) => f.componentKindHint != null);
         if (hasKindHint) {
           try {
-            const topo = await api.get<TopologyListResponse>(
-              "watchdog",
-              "/v1/components",
-            );
+            const topo = await api.get<TopologyListResponse>("watchdog", "/v1/components");
             if (!cancelled) setTopology(topo.components ?? []);
           } catch {
             // Topology fetch failing isn't fatal — the field falls
@@ -179,8 +174,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
       }
 
       const next: Record<string, unknown> = { ...prev, provider: value };
-      const restored =
-        typeof value === "string" ? draftCacheRef.current[value] : undefined;
+      const restored = typeof value === "string" ? draftCacheRef.current[value] : undefined;
       for (const k of dependentKeys) {
         next[k] = restored ? (restored[k] ?? null) : null;
       }
@@ -421,7 +415,11 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
           escape hatch back, but it's no longer reachable in normal
           flow. */}
       {restart.phase !== "idle" && (
-        <RestartProgressModal phase={restart.phase} message={restart.message} onDismiss={dismissRestart} />
+        <RestartProgressModal
+          phase={restart.phase}
+          message={restart.message}
+          onDismiss={dismissRestart}
+        />
       )}
     </div>
   );
@@ -456,9 +454,7 @@ function SaveStatusBanner({ status }: { status: SaveStatus }) {
 
 function TestStatusBanner({ status }: { status: ConfigTestResult }) {
   return (
-    <div
-      className={`${status.ok ? "status-success" : "status-error"} border-b px-4 py-3 text-xs`}
-    >
+    <div className={`${status.ok ? "status-success" : "status-error"} border-b px-4 py-3 text-xs`}>
       <p>
         <span className="font-mono">
           {status.ok ? "ok" : "fail"} · {status.latencyMs}ms · {status.component}

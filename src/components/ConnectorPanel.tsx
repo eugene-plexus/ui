@@ -5,11 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ConfigEditor } from "@/components/ConfigEditor";
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ApiError, api } from "@/lib/api";
-import type {
-  ConfigField as ConfigFieldDef,
-  ConfigSchema,
-  ConfigTestResult,
-} from "@/lib/types";
+import type { ConfigField as ConfigFieldDef, ConfigSchema, ConfigTestResult } from "@/lib/types";
 
 /**
  * Connector tab — wraps two sub-views in one tab:
@@ -141,9 +137,7 @@ function AdaptersPanel() {
   // fast to see the transition). Polling stops as soon as every
   // adapter is settled, so this isn't a permanent background load.
   useEffect(() => {
-    const hasTransient = list.some(
-      (a) => a.status === "starting" || a.status === "rate_limited",
-    );
+    const hasTransient = list.some((a) => a.status === "starting" || a.status === "rate_limited");
     if (!hasTransient) return;
     const interval = setInterval(() => {
       void reload({ silent: true });
@@ -199,8 +193,8 @@ function AdaptersPanel() {
         )}
         {!loading && list.length === 0 && !creating && (
           <p className="text-xs text-[color:var(--muted)]">
-            No adapters configured. Use <span className="font-mono">Add adapter</span> to
-            wire up your first one (Discord is the only kind in v0.2).
+            No adapters configured. Use <span className="font-mono">Add adapter</span> to wire up
+            your first one (Discord is the only kind in v0.2).
           </p>
         )}
         {!loading &&
@@ -209,9 +203,7 @@ function AdaptersPanel() {
               key={a.entry.name}
               adapter={a}
               expanded={editing === a.entry.name}
-              onToggle={() =>
-                setEditing(editing === a.entry.name ? null : a.entry.name)
-              }
+              onToggle={() => setEditing(editing === a.entry.name ? null : a.entry.name)}
               onChanged={() => {
                 void reload();
               }}
@@ -248,19 +240,13 @@ function AdapterRow({
       >
         <div>
           <p className="font-ui text-sm font-medium">{adapter.entry.name}</p>
-          <p className="font-mono text-[11px] text-[color:var(--muted)]">
-            {adapter.entry.kind}
-          </p>
+          <p className="font-mono text-[11px] text-[color:var(--muted)]">{adapter.entry.kind}</p>
         </div>
         <StatusBadge status={adapter.status} />
       </button>
       {expanded && (
         <div className="border-t border-[color:var(--border)] p-4">
-          <AdapterEditor
-            adapter={adapter.entry}
-            onChanged={onChanged}
-            onDeleted={onDeleted}
-          />
+          <AdapterEditor adapter={adapter.entry} onChanged={onChanged} onDeleted={onDeleted} />
           {adapter.lastError && (
             <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
               Last error: {adapter.lastError}
@@ -276,13 +262,16 @@ function StatusBadge({ status }: { status: AdapterRuntimeStatus }) {
   const palette: Record<AdapterRuntimeStatus, string> = {
     starting: "status-warn",
     connected: "status-success",
-    disconnected: "border-[color:var(--border)] bg-[color:var(--panel-hover)] text-[color:var(--muted)]",
+    disconnected:
+      "border-[color:var(--border)] bg-[color:var(--panel-hover)] text-[color:var(--muted)]",
     rate_limited: "status-warn",
     error: "status-error",
     disabled: "border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--muted)]",
   };
   return (
-    <span className={`rounded-[var(--radius)] border px-2 py-0.5 font-mono text-[10px] ${palette[status]}`}>
+    <span
+      className={`rounded-[var(--radius)] border px-2 py-0.5 font-mono text-[10px] ${palette[status]}`}
+    >
       {status}
     </span>
   );
@@ -343,16 +332,12 @@ function AdapterEditor({
     setError(null);
     setTestStatus(null);
     try {
-      await api.patch(
-        "connector",
-        `/v1/adapters/${encodeURIComponent(adapter.name)}`,
-        {
-          name: adapter.name,
-          kind: adapter.kind,
-          enabled,
-          adapterConfig: draft,
-        },
-      );
+      await api.patch("connector", `/v1/adapters/${encodeURIComponent(adapter.name)}`, {
+        name: adapter.name,
+        kind: adapter.kind,
+        enabled,
+        adapterConfig: draft,
+      });
       onChanged();
     } catch (e) {
       setError(formatError(e));
@@ -387,10 +372,7 @@ function AdapterEditor({
     setSaving(true);
     setError(null);
     try {
-      await api.delete(
-        "connector",
-        `/v1/adapters/${encodeURIComponent(adapter.name)}`,
-      );
+      await api.delete("connector", `/v1/adapters/${encodeURIComponent(adapter.name)}`);
       onDeleted();
     } catch (e) {
       setError(formatError(e));
@@ -491,8 +473,7 @@ function AdapterEditor({
           }`}
         >
           <span className="font-mono">
-            {testStatus.ok ? "ok" : "fail"} · {testStatus.latencyMs}ms ·{" "}
-            {testStatus.component}
+            {testStatus.ok ? "ok" : "fail"} · {testStatus.latencyMs}ms · {testStatus.component}
           </span>
           {testStatus.summary ? ` — ${testStatus.summary}` : ""}
           {testStatus.error ? ` — ${testStatus.error}` : ""}
@@ -502,13 +483,7 @@ function AdapterEditor({
   );
 }
 
-function CreateAdapter({
-  onCancel,
-  onCreated,
-}: {
-  onCancel: () => void;
-  onCreated: () => void;
-}) {
+function CreateAdapter({ onCancel, onCreated }: { onCancel: () => void; onCreated: () => void }) {
   const [name, setName] = useState("discord");
   const [kind] = useState("discord");
   const [botToken, setBotToken] = useState("");
@@ -640,9 +615,7 @@ function Field({
     <div className="mb-4">
       <label className="font-ui block text-sm font-medium">{label}</label>
       {description && (
-        <p className="mt-1 mb-2 text-xs leading-relaxed text-[color:var(--muted)]">
-          {description}
-        </p>
+        <p className="mt-1 mb-2 text-xs leading-relaxed text-[color:var(--muted)]">{description}</p>
       )}
       {children}
     </div>

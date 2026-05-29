@@ -27,8 +27,8 @@ export default function ErrorPage({
       <div className="w-full max-w-lg rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
         <h1 className="font-ui mb-2 text-lg font-semibold">Something broke.</h1>
         <p className="mb-3 text-sm text-[color:var(--muted)]">
-          The Eugene UI hit an unhandled render error. Your conversation is
-          still saved — refresh or try again to recover.
+          The Eugene UI hit an unhandled render error. Your conversation is still saved — refresh or
+          try again to recover.
         </p>
         <pre className="text-status-error mb-4 max-h-48 overflow-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-3 font-mono text-xs leading-relaxed">
           {error.message}

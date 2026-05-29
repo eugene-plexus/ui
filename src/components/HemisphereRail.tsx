@@ -73,13 +73,8 @@ function HemisphereOutput({ message, position }: { message: Message; position: n
   const isFirst = position === 0;
   const isSecond = position === 1;
   const align = isSecond ? "right" : "left";
-  const color = isFirst
-    ? "var(--accent-left)"
-    : isSecond
-      ? "var(--accent-right)"
-      : "var(--muted)";
-  const sideClass =
-    align === "left" ? "self-start border-l-2 pl-3" : "self-end border-r-2 pr-3";
+  const color = isFirst ? "var(--accent-left)" : isSecond ? "var(--accent-right)" : "var(--muted)";
+  const sideClass = align === "left" ? "self-start border-l-2 pl-3" : "self-end border-r-2 pr-3";
   const label = message.driverName ?? `driver-${position}`;
   return (
     <div className={`max-w-[92%] py-1 ${sideClass}`} style={{ borderColor: color }}>

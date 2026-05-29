@@ -10,11 +10,7 @@ import { ChatLog } from "@/components/ChatLog";
 import { CopyTraceButton } from "@/components/CopyTraceButton";
 import { HemisphereRail } from "@/components/HemisphereRail";
 import { ApiError, api } from "@/lib/api";
-import {
-  DEMO_CONVERSATION_ID,
-  DEMO_MESSAGES,
-  DEMO_PASSES,
-} from "@/lib/demoData";
+import { DEMO_CONVERSATION_ID, DEMO_MESSAGES, DEMO_PASSES } from "@/lib/demoData";
 import { clearSessionToken, hasSessionToken } from "@/lib/session";
 import type { ChatRequest, ChatResponse, Message, PassRecord } from "@/lib/types";
 import type { WatchdogConfigDocument } from "@/lib/watchdog";
@@ -52,11 +48,8 @@ export default function ChatPage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [latestPasses, setLatestPasses] = useState<PassRecord[]>([]);
-  const [latestVoicePass, setLatestVoicePass] =
-    useState<VoicePassRecord | null>(null);
-  const [latestTotalLatencyMs, setLatestTotalLatencyMs] = useState<
-    number | null
-  >(null);
+  const [latestVoicePass, setLatestVoicePass] = useState<VoicePassRecord | null>(null);
+  const [latestTotalLatencyMs, setLatestTotalLatencyMs] = useState<number | null>(null);
   const [incognito, setIncognito] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,20 +79,16 @@ export default function ChatPage() {
     let cancelled = false;
     async function check() {
       try {
-        const status = await api.get<{ initialized: boolean }>(
-          "watchdog",
-          "/v1/auth/status",
-          { skipAuth: true },
-        );
+        const status = await api.get<{ initialized: boolean }>("watchdog", "/v1/auth/status", {
+          skipAuth: true,
+        });
         if (cancelled) return;
         if (!status.initialized) {
           router.replace("/setup");
           return;
         }
         if (!hasSessionToken()) {
-          const next = encodeURIComponent(
-            window.location.pathname + window.location.search,
-          );
+          const next = encodeURIComponent(window.location.pathname + window.location.search);
           router.replace(`/login?next=${next}`);
           return;
         }
@@ -349,17 +338,13 @@ export default function ChatPage() {
               {operatorName && !incognito && (
                 <p className="font-ui text-[11px]">
                   <span className="text-[color:var(--muted)]">talking to </span>
-                  <span className="font-medium text-[color:var(--foreground)]">
-                    {operatorName}
-                  </span>
+                  <span className="font-medium text-[color:var(--foreground)]">{operatorName}</span>
                 </p>
               )}
               {incognito && (
                 <p className="font-ui text-[11px]">
                   <span className="text-[color:var(--muted)]">talking to </span>
-                  <span className="font-medium text-[color:var(--foreground)]">
-                    a stranger
-                  </span>
+                  <span className="font-medium text-[color:var(--foreground)]">a stranger</span>
                 </p>
               )}
               <p className="font-ui text-[11px] text-[color:var(--muted)]">
@@ -370,7 +355,7 @@ export default function ChatPage() {
             </div>
             {incognito && (
               <span
-                className="font-ui inline-flex items-center gap-1 rounded-full border border-[color:var(--border-hover)] bg-[color:var(--panel-soft)] px-2 py-0.5 text-[10px] font-medium tracking-wider uppercase text-[color:var(--foreground)]"
+                className="font-ui inline-flex items-center gap-1 rounded-full border border-[color:var(--border-hover)] bg-[color:var(--panel-soft)] px-2 py-0.5 text-[10px] font-medium tracking-wider text-[color:var(--foreground)] uppercase"
                 title="Incognito mode: no identity, no memory reads, no memory writes. Conversation lives in this tab only; closing the tab destroys it."
               >
                 <span aria-hidden="true">◐</span>
@@ -425,11 +410,7 @@ export default function ChatPage() {
           />
         </div>
 
-        {error && (
-          <div className="status-error border-t px-4 py-2 text-xs">
-            {error}
-          </div>
-        )}
+        {error && <div className="status-error border-t px-4 py-2 text-xs">{error}</div>}
 
         <ChatInput onSend={handleSend} disabled={pending} />
       </section>
@@ -439,11 +420,7 @@ export default function ChatPage() {
           <span className="font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
             hemispheres
           </span>
-          <CopyTraceButton
-            messages={messages}
-            passes={latestPasses}
-            voicePass={latestVoicePass}
-          />
+          <CopyTraceButton messages={messages} passes={latestPasses} voicePass={latestVoicePass} />
         </header>
         <div className={railContentClass}>
           <HemisphereRail passes={latestPasses} />

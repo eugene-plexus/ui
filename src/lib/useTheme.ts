@@ -9,12 +9,7 @@ const STORAGE_KEY = "eugene-theme";
 const DEFAULT_THEME: Theme = "cyberpunk";
 // `system` only maps to cyberpunk/modern — editorial is an explicit
 // operator pick, not an OS-level concept.
-const VALID_THEMES: ReadonlySet<Theme> = new Set([
-  "cyberpunk",
-  "modern",
-  "editorial",
-  "system",
-]);
+const VALID_THEMES: ReadonlySet<Theme> = new Set(["cyberpunk", "modern", "editorial", "system"]);
 
 /**
  * Resolve `system` to a concrete theme via `prefers-color-scheme`.

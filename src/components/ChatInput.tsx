@@ -48,7 +48,7 @@ export function ChatInput({
             : "Message Eugene… (Enter to send, Shift+Enter for newline)"
         }
         disabled={disabled}
-        className="flex-1 resize-none rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50"
+        className="flex-1 resize-none rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50"
       />
       <button
         type="submit"

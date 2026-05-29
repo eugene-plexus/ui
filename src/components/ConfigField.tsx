@@ -147,8 +147,7 @@ export function ConfigFieldInput({
       const currentUrl = typeof value === "string" ? value : "";
       const currentNorm = normalizeUrl(currentUrl);
       const savedKnown =
-        currentNorm === "" ||
-        matches.some((m) => normalizeUrl(m.url) === currentNorm);
+        currentNorm === "" || matches.some((m) => normalizeUrl(m.url) === currentNorm);
       return (
         <select
           value={currentNorm}
@@ -168,9 +167,7 @@ export function ConfigFieldInput({
             // what's stored AND change it. Without this branch the
             // dropdown would silently render with no selection while
             // the saved value sits invisibly in state.
-            <option value={currentNorm}>
-              (unknown: {currentNorm})
-            </option>
+            <option value={currentNorm}>(unknown: {currentNorm})</option>
           )}
         </select>
       );
@@ -263,9 +260,7 @@ function DriverListInput({
 }) {
   const dropdownEntries =
     componentKindHint && topology
-      ? topology.filter(
-          (c) => c.kind === componentKindHint && typeof c.url === "string",
-        )
+      ? topology.filter((c) => c.kind === componentKindHint && typeof c.url === "string")
       : null;
   const entries: DriverEntry[] = Array.isArray(value)
     ? (value as DriverEntry[]).map((d) => ({
@@ -286,11 +281,10 @@ function DriverListInput({
       [i]: { state: "testing", message: "Probing…" },
     }));
     try {
-      const result = await api.post<DriverHealth>(
-        "orchestrator",
-        "/v1/admin/drivers/probe",
-        { name: entry.name || "<unnamed>", url: entry.url },
-      );
+      const result = await api.post<DriverHealth>("orchestrator", "/v1/admin/drivers/probe", {
+        name: entry.name || "<unnamed>",
+        url: entry.url,
+      });
       if (result.reachable) {
         const parts = [
           result.backend ? `backend: ${result.backend}` : null,
@@ -421,9 +415,7 @@ function DriverListInput({
                 onClick={() => onChange(entries.filter((_, j) => j !== i))}
                 disabled={pending || entries.length <= 1}
                 title={
-                  entries.length <= 1
-                    ? "v0.1 requires at least one driver."
-                    : "Remove this driver."
+                  entries.length <= 1 ? "v0.1 requires at least one driver." : "Remove this driver."
                 }
                 className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--status-error-border)] hover:bg-[color:var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
               >

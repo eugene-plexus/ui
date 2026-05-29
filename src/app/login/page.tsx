@@ -31,7 +31,9 @@ interface LoginResponse {
   operatorName?: string | null;
 }
 
-function isProblemDetail(value: unknown): value is { detail?: { detail?: string; title?: string } } {
+function isProblemDetail(
+  value: unknown,
+): value is { detail?: { detail?: string; title?: string } } {
   return typeof value === "object" && value !== null && "detail" in value;
 }
 
@@ -86,11 +88,9 @@ function LoginForm() {
     let cancelled = false;
     async function probe() {
       try {
-        const status = await api.get<{ initialized: boolean }>(
-          "watchdog",
-          "/v1/auth/status",
-          { skipAuth: true },
-        );
+        const status = await api.get<{ initialized: boolean }>("watchdog", "/v1/auth/status", {
+          skipAuth: true,
+        });
         if (cancelled) return;
         if (!status.initialized) {
           setSetupRequired(true);
@@ -179,9 +179,8 @@ function LoginForm() {
           </p>
           <h1 className="font-ui mt-1 text-xl font-semibold">Unlock</h1>
           <p className="mt-3 text-xs leading-relaxed text-[color:var(--muted)]">
-            Enter your install passphrase. It was set during the first-run
-            setup wizard and is used to decrypt at-rest secrets like
-            provider API keys.
+            Enter your install passphrase. It was set during the first-run setup wizard and is used
+            to decrypt at-rest secrets like provider API keys.
           </p>
         </header>
         <form onSubmit={handleSubmit} noValidate>
@@ -213,8 +212,7 @@ function LoginForm() {
           </button>
         </form>
         <p className="mt-6 text-center text-[10px] text-[color:var(--muted)]">
-          Sessions persist for the lifetime of this browser tab. Closing
-          the tab signs you out.
+          Sessions persist for the lifetime of this browser tab. Closing the tab signs you out.
         </p>
       </div>
     </main>

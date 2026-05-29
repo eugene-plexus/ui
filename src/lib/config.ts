@@ -19,13 +19,7 @@
 
 export type ProxyTarget = string;
 
-const FIXED_TARGETS = new Set([
-  "orchestrator",
-  "watchdog",
-  "memory",
-  "identity",
-  "connector",
-]);
+const FIXED_TARGETS = new Set(["orchestrator", "watchdog", "memory", "identity", "connector"]);
 
 const DEFAULT_ORCHESTRATOR = "http://127.0.0.1:8080";
 const DEFAULT_WATCHDOG = "http://127.0.0.1:8079";

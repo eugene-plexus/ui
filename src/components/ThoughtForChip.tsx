@@ -44,8 +44,7 @@ export function ThoughtForChip({
   // restored from localStorage) and on the empty-conversation state.
   if (passes.length === 0 && voicePass == null) return null;
 
-  const seconds =
-    totalLatencyMs != null ? (totalLatencyMs / 1000).toFixed(1) : null;
+  const seconds = totalLatencyMs != null ? (totalLatencyMs / 1000).toFixed(1) : null;
   const passCount = passes.length;
   const finalPass = passes[passes.length - 1];
   const finalDecision = finalPass?.callosum.decision;
@@ -59,10 +58,11 @@ export function ThoughtForChip({
         className="font-ui flex items-center gap-1.5 rounded-[var(--radius)] px-2 py-1 text-[11px] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-soft)] hover:text-[color:var(--foreground)]"
         aria-expanded={expanded}
       >
-        <span>
-          {seconds != null ? `Thought for ${seconds}s` : "Thought"}
-        </span>
-        <span className="inline-block transition-transform" style={{ transform: expanded ? "rotate(90deg)" : "none" }}>
+        <span>{seconds != null ? `Thought for ${seconds}s` : "Thought"}</span>
+        <span
+          className="inline-block transition-transform"
+          style={{ transform: expanded ? "rotate(90deg)" : "none" }}
+        >
           ›
         </span>
       </button>
@@ -76,15 +76,13 @@ export function ThoughtForChip({
             {finalDecision && (
               <span>
                 decision:{" "}
-                <span className="text-[color:var(--foreground)] font-mono">
-                  {finalDecision}
-                </span>
+                <span className="font-mono text-[color:var(--foreground)]">{finalDecision}</span>
               </span>
             )}
             {finalAgreement != null && (
               <span>
                 final agreement:{" "}
-                <span className="text-[color:var(--foreground)] font-mono">
+                <span className="font-mono text-[color:var(--foreground)]">
                   {finalAgreement.toFixed(2)}
                 </span>
               </span>
@@ -92,17 +90,13 @@ export function ThoughtForChip({
             {voicePass?.driverName && (
               <span>
                 voice:{" "}
-                <span className="text-[color:var(--foreground)] font-mono">
+                <span className="font-mono text-[color:var(--foreground)]">
                   {voicePass.driverName}
                 </span>
                 {voicePass.latencyMs != null && (
                   <>
                     {" "}
-                    (
-                    <span className="font-mono">
-                      {(voicePass.latencyMs / 1000).toFixed(1)}s
-                    </span>
-                    )
+                    (<span className="font-mono">{(voicePass.latencyMs / 1000).toFixed(1)}s</span>)
                   </>
                 )}
               </span>

@@ -28,7 +28,7 @@ export function UIPreferences() {
           value={theme}
           onChange={(e) => setTheme(e.target.value as Theme)}
           aria-label="Theme"
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
         >
           <option value="cyberpunk">Cyberpunk</option>
           <option value="modern">Modern</option>
@@ -45,7 +45,7 @@ export function UIPreferences() {
           value={fontSize}
           onChange={(e) => setFontSize(e.target.value as FontSize)}
           aria-label="Font size"
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
         >
           {(Object.keys(FONT_SIZE_LABELS) as FontSize[]).map((k) => (
             <option key={k} value={k}>
