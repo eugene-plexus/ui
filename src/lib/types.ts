@@ -26,9 +26,14 @@ export type DriverHealth = OrchComponents["schemas"]["DriverHealth"];
 // and orchestrator.yaml doesn't reference it directly. The shape is
 // trivial so we type it by hand here. If a future spec change adds a
 // $ref, drop this in favor of OrchComponents["schemas"]["DriverEntry"].
+//
+// A slot's `urls` is an ordered priority list of interchangeable
+// backends (v0.2.1 failover): the orchestrator tries them in order and
+// cascades on transport error / 5xx / timeout. Stock installs have one
+// URL per slot.
 export interface DriverEntry {
   name: string;
-  url: string;
+  urls: string[];
 }
 export type NTState = OrchComponents["schemas"]["NTState"];
 export type Problem = OrchComponents["schemas"]["Problem"];

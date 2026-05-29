@@ -352,12 +352,14 @@ export default function WizardPage() {
           let hemisphereUrl: string | undefined;
           if (Array.isArray(driverList)) {
             const match = driverList.find(
-              (d): d is { name: string; url: string } =>
+              (d): d is { name: string; urls: string[] } =>
                 typeof d === "object" &&
                 d !== null &&
                 (d as { name?: unknown }).name === draft.reflectionDriverName,
             );
-            hemisphereUrl = match?.url;
+            // Reflection points at the slot's primary backend; the
+            // orchestrator handles per-turn failover to the rest.
+            hemisphereUrl = match?.urls?.[0];
           }
           if (hemisphereUrl) {
             identityPatch.reflectionHemisphereUrl = hemisphereUrl;

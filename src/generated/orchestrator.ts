@@ -120,11 +120,16 @@ export interface paths {
         put?: never;
         /**
          * Test-connect to an arbitrary driver URL without persisting it.
-         * @description Used by the UI's per-row "Test" buttons in the drivers list
+         * @description Used by the UI's per-URL "Test" buttons in the drivers list
          *     editor — same affordance Sonarr / Radarr expose next to each
          *     indexer entry. Fetches `<url>/v1/info` once, reports
          *     reachability + backend identity, and returns. Does not touch
          *     the saved config; safe to call against unsaved form values.
+         *
+         *     Probes a *single* URL. A driver slot is a priority list of
+         *     URLs (see `DriverEntry.urls`); the UI calls this once per URL
+         *     in the slot so each fallback backend can be tested
+         *     independently.
          */
         post: operations["probeDriver"];
         delete?: never;
@@ -538,6 +543,26 @@ export interface components {
             decision: "terminate" | "another_pass" | "cap_reached";
             blendedMessage?: components["schemas"]["Message"];
         };
+        /**
+         * @description Request body for `POST /v1/admin/drivers/probe`. Tests a single
+         *     backend URL without persisting it. A driver slot may hold
+         *     several URLs (`DriverEntry.urls`); the UI probes each one
+         *     separately so an operator can verify every fallback before
+         *     saving.
+         */
+        DriverProbeRequest: {
+            /**
+             * Format: uri
+             * @description The single backend base URL to test-connect.
+             */
+            url: string;
+            /**
+             * @description Optional slot label, echoed into diagnostics. Not required
+             *     to probe; the operator may be testing a URL before naming
+             *     the slot.
+             */
+            name?: string;
+        };
         DriversInfo: {
             /**
              * @description Per-driver health snapshot, ordered as the orchestrator's
@@ -748,27 +773,6 @@ export interface components {
          * @enum {string}
          */
         BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http";
-        /**
-         * @description One operator-configured hemisphere-driver in the orchestrator's
-         *     topology. The orchestrator owns the `name` (free-form, used for
-         *     labelling messages and UI tabs); drivers themselves are anonymous
-         *     and report only their backend / model identity. v0.1 expects two
-         *     entries; v0.2+ generalizes to N (with backup/failover semantics
-         *     layered on top).
-         */
-        DriverEntry: {
-            /**
-             * @description Operator-supplied label (e.g. `"left"`, `"right"`, or any
-             *     free-form string). Stamped onto every message this driver
-             *     produces and surfaced in the UI as the tab/column label.
-             */
-            name: string;
-            /**
-             * Format: uri
-             * @description Base URL where the driver's HTTP API is reachable.
-             */
-            url: string;
-        };
         /**
          * @description Acknowledgement returned by `POST /v1/admin/restart`. The
          *     component schedules its own process exit shortly after returning
@@ -1307,7 +1311,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DriverEntry"];
+                "application/json": components["schemas"]["DriverProbeRequest"];
             };
         };
         responses: {

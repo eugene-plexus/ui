@@ -29,7 +29,10 @@ const DEFAULT_CONNECTOR = "http://127.0.0.1:8085";
 
 interface DriverEntry {
   name: string;
-  url: string;
+  // v0.2.1: a slot is a priority list of backends. The proxy resolves a
+  // driver name to its *primary* URL (`urls[0]`); per-turn failover to
+  // the rest happens server-side in the orchestrator, not here.
+  urls: string[];
 }
 
 interface WatchdogComponentEntry {
@@ -150,7 +153,8 @@ export async function resolveTarget(
         typeof d === "object" &&
         d !== null &&
         typeof (d as DriverEntry).name === "string" &&
-        typeof (d as DriverEntry).url === "string" &&
+        Array.isArray((d as DriverEntry).urls) &&
+        (d as DriverEntry).urls.length > 0 &&
         (d as DriverEntry).name === target,
     );
     if (!entry) {
@@ -162,7 +166,8 @@ export async function resolveTarget(
         error: `unknown driver: ${target}. Known: [${known}]`,
       };
     }
-    return { url: entry.url };
+    // Resolve to the slot's primary backend; failover is server-side.
+    return { url: entry.urls[0]! };
   } catch (e) {
     return {
       error: `failed to reach orchestrator at ${orchestratorUrl()}: ${

@@ -232,11 +232,16 @@ interface RowTestStatus {
 }
 
 /**
- * Driver-list editor: a row of {name, url} inputs with a per-row Test
+ * Driver-list editor. Each driver *slot* has a `name` and an ordered
+ * priority list of backend `urls` (v0.2.1 failover). Within a slot,
+ * every URL gets its own dropdown/free-text field + a per-URL Test
  * button (Sonarr/Radarr-style). Test posts to
- * `/v1/admin/drivers/probe` on the orchestrator, which probes the URL's
- * `/v1/info` and returns reachability + backend identity. Per-row
- * results render inline below the row so multiple tests stay legible.
+ * `/v1/admin/drivers/probe` on the orchestrator, which probes that one
+ * URL's `/v1/info` and returns reachability + backend identity.
+ *
+ * The orchestrator tries a slot's URLs in order on each turn and
+ * cascades to the next on transport error / 5xx / timeout, so the order
+ * here IS the failover order — `urls[0]` is the primary.
  */
 function DriverListInput({
   value,
@@ -250,10 +255,9 @@ function DriverListInput({
   pending: boolean;
   onChange: (next: DriverEntry[]) => void;
   baseInputClass: string;
-  /** When set, each row's URL field renders as a dropdown of watchdog
-   * components of this kind instead of a free-text input. Mirrors the
-   * single-URL kind-hint dropdown above but applied per-row. Falls back
-   * to free-text input when `topology` is null (still loading / probe
+  /** When set, each URL field renders as a dropdown of watchdog
+   * components of this kind instead of a free-text input. Falls back to
+   * free-text input when `topology` is null (still loading / probe
    * failed). */
   componentKindHint?: ComponentKind;
   topology?: TopologyComponent[] | null;
@@ -263,27 +267,53 @@ function DriverListInput({
       ? topology.filter((c) => c.kind === componentKindHint && typeof c.url === "string")
       : null;
   const entries: DriverEntry[] = Array.isArray(value)
-    ? (value as DriverEntry[]).map((d) => ({
+    ? (value as Array<Record<string, unknown>>).map((d) => ({
         name: typeof d?.name === "string" ? d.name : "",
-        // openapi-typescript types url as `string` even though the spec
-        // uses format: uri; coerce defensively.
-        url: typeof d?.url === "string" ? d.url : String(d?.url ?? ""),
+        // Canonical shape is `urls: string[]`. Tolerate the pre-v0.2.1
+        // single-`url` shape in case unsaved/loaded state predates the
+        // server-side migration. openapi-typescript types URLs as
+        // `string`; coerce defensively.
+        urls: Array.isArray(d?.urls)
+          ? (d.urls as unknown[]).map((u) => (typeof u === "string" ? u : String(u ?? "")))
+          : typeof d?.url === "string"
+            ? [d.url]
+            : [],
       }))
     : [];
 
-  const [statusByIndex, setStatusByIndex] = useState<Record<number, RowTestStatus>>({});
+  // Test status is keyed per (slot, url) so a slot with several backends
+  // shows an independent result line under each one.
+  const [statusByKey, setStatusByKey] = useState<Record<string, RowTestStatus>>({});
+  const keyOf = (si: number, ui: number) => `${si}:${ui}`;
 
-  async function probe(i: number) {
-    const entry = entries[i];
-    if (!entry) return;
-    setStatusByIndex((prev) => ({
-      ...prev,
-      [i]: { state: "testing", message: "Probing…" },
-    }));
+  function setStatus(si: number, ui: number, status: RowTestStatus | null) {
+    setStatusByKey((prev) => {
+      const key = keyOf(si, ui);
+      if (status === null) {
+        if (!(key in prev)) return prev;
+        const copy = { ...prev };
+        delete copy[key];
+        return copy;
+      }
+      return { ...prev, [key]: status };
+    });
+  }
+
+  function setSlotUrls(si: number, urls: string[]) {
+    const next = entries.slice();
+    next[si] = { ...entries[si]!, urls };
+    onChange(next);
+  }
+
+  async function probe(si: number, ui: number) {
+    const entry = entries[si];
+    const url = entry?.urls[ui];
+    if (!entry || !url) return;
+    setStatus(si, ui, { state: "testing", message: "Probing…" });
     try {
       const result = await api.post<DriverHealth>("orchestrator", "/v1/admin/drivers/probe", {
         name: entry.name || "<unnamed>",
-        url: entry.url,
+        url,
       });
       if (result.reachable) {
         const parts = [
@@ -291,15 +321,12 @@ function DriverListInput({
           result.modelId ? `model: ${result.modelId}` : null,
           result.version ? `v${result.version}` : null,
         ].filter(Boolean);
-        setStatusByIndex((prev) => ({
-          ...prev,
-          [i]: { state: "ok", message: parts.length > 0 ? parts.join(" · ") : "reachable" },
-        }));
+        setStatus(si, ui, {
+          state: "ok",
+          message: parts.length > 0 ? parts.join(" · ") : "reachable",
+        });
       } else {
-        setStatusByIndex((prev) => ({
-          ...prev,
-          [i]: { state: "fail", message: result.error ?? "unreachable" },
-        }));
+        setStatus(si, ui, { state: "fail", message: result.error ?? "unreachable" });
       }
     } catch (e) {
       const msg =
@@ -308,142 +335,165 @@ function DriverListInput({
           : e instanceof Error
             ? e.message
             : String(e);
-      setStatusByIndex((prev) => ({ ...prev, [i]: { state: "fail", message: msg } }));
+      setStatus(si, ui, { state: "fail", message: msg });
     }
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       {entries.length === 0 && (
         <p className="text-xs text-[color:var(--muted)]">
           No drivers configured. Add one to dispatch bicameral passes.
         </p>
       )}
-      {entries.map((entry, i) => {
-        const status = statusByIndex[i];
-        const canTest = entry.url.trim().length > 0 && !pending && status?.state !== "testing";
-        return (
-          <div key={i} className="flex flex-col gap-1">
-            <div className="grid grid-cols-[1fr_2fr_auto_auto] items-center gap-2">
-              <input
-                type="text"
-                value={entry.name}
-                placeholder="name (e.g. left)"
-                onChange={(e) => {
-                  const next = entries.slice();
-                  next[i] = { ...entry, name: e.target.value };
-                  onChange(next);
-                }}
-                disabled={pending}
-                className={baseInputClass}
-              />
-              {dropdownEntries ? (
-                <select
-                  value={normalizeUrl(entry.url)}
-                  onChange={(e) => {
-                    const next = entries.slice();
-                    next[i] = { ...entry, url: e.target.value };
-                    setStatusByIndex((prev) => {
-                      if (!(i in prev)) return prev;
-                      const copy = { ...prev };
-                      delete copy[i];
-                      return copy;
-                    });
-                    onChange(next);
-                  }}
-                  disabled={pending}
-                  className={baseInputClass}
-                >
-                  {/* Empty option lets a row exist in "no URL set yet"
-                      state — Test button is disabled until a real URL
-                      is picked, matching free-text-input behavior. */}
-                  <option value="">(pick a driver…)</option>
-                  {dropdownEntries.map((c) => (
-                    <option key={c.name} value={normalizeUrl(c.url)}>
-                      {c.name}
-                    </option>
-                  ))}
-                  {entry.url &&
-                    !dropdownEntries.some(
-                      (c) => normalizeUrl(c.url) === normalizeUrl(entry.url),
-                    ) && (
-                      // Saved URL doesn't match any current topology
-                      // entry — surface it so the operator sees what's
-                      // stored and can change it instead of a
-                      // mysteriously empty selection.
-                      <option value={normalizeUrl(entry.url)}>
-                        (unknown: {normalizeUrl(entry.url)})
-                      </option>
-                    )}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={entry.url}
-                  placeholder="http://host:port"
-                  onChange={(e) => {
-                    const next = entries.slice();
-                    next[i] = { ...entry, url: e.target.value };
-                    // URL changes invalidate any previous test result.
-                    setStatusByIndex((prev) => {
-                      if (!(i in prev)) return prev;
-                      const copy = { ...prev };
-                      delete copy[i];
-                      return copy;
-                    });
-                    onChange(next);
-                  }}
-                  disabled={pending}
-                  className={baseInputClass}
-                />
-              )}
-              <button
-                type="button"
-                onClick={() => void probe(i)}
-                disabled={!canTest}
-                title={
-                  canTest
-                    ? "Probe this URL's /v1/info to verify the driver is reachable."
-                    : "Enter a URL first."
-                }
-                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
-              >
-                {status?.state === "testing" ? "Testing…" : "Test"}
-              </button>
-              <button
-                type="button"
-                onClick={() => onChange(entries.filter((_, j) => j !== i))}
-                disabled={pending || entries.length <= 1}
-                title={
-                  entries.length <= 1 ? "v0.1 requires at least one driver." : "Remove this driver."
-                }
-                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--status-error-border)] hover:bg-[color:var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
-              >
-                Remove
-              </button>
-            </div>
-            {status && (
-              <p
-                className={
-                  "ml-1 text-[11px] " +
-                  (status.state === "ok"
-                    ? "text-status-success"
-                    : status.state === "fail"
-                      ? "text-status-error"
-                      : "text-[color:var(--muted)]")
-                }
-              >
-                {status.state === "ok" && "✓ "}
-                {status.state === "fail" && "✗ "}
-                {status.message}
-              </p>
-            )}
+      {entries.map((entry, si) => (
+        <div
+          key={si}
+          className="flex flex-col gap-2 rounded-[var(--radius)] border border-[color:var(--border)] p-2"
+        >
+          <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+            <input
+              type="text"
+              value={entry.name}
+              placeholder="name (e.g. left)"
+              onChange={(e) => {
+                const next = entries.slice();
+                next[si] = { ...entry, name: e.target.value };
+                onChange(next);
+              }}
+              disabled={pending}
+              className={baseInputClass}
+            />
+            <button
+              type="button"
+              onClick={() => onChange(entries.filter((_, j) => j !== si))}
+              disabled={pending || entries.length <= 1}
+              title={
+                entries.length <= 1
+                  ? "The bicameral loop requires at least one driver slot."
+                  : "Remove this driver slot."
+              }
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--status-error-border)] hover:bg-[color:var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+            >
+              Remove slot
+            </button>
           </div>
-        );
-      })}
+
+          {/* Priority list of backend URLs for this slot. urls[0] is the
+              primary; the rest are failover targets tried in order. */}
+          {entry.urls.map((url, ui) => {
+            const status = statusByKey[keyOf(si, ui)];
+            const canTest = url.trim().length > 0 && !pending && status?.state !== "testing";
+            const updateUrl = (newUrl: string) => {
+              const urls = entry.urls.slice();
+              urls[ui] = newUrl;
+              setStatus(si, ui, null); // URL change invalidates prior test
+              setSlotUrls(si, urls);
+            };
+            return (
+              <div key={ui} className="flex flex-col gap-1 pl-2">
+                <div className="grid grid-cols-[auto_2fr_auto_auto] items-center gap-2">
+                  <span
+                    className="font-ui text-[11px] text-[color:var(--muted)]"
+                    title={ui === 0 ? "Primary backend" : `Failover backend #${ui}`}
+                  >
+                    {ui === 0 ? "primary" : `#${ui}`}
+                  </span>
+                  {dropdownEntries ? (
+                    <select
+                      value={normalizeUrl(url)}
+                      onChange={(e) => updateUrl(e.target.value)}
+                      disabled={pending}
+                      className={baseInputClass}
+                    >
+                      <option value="">(pick a driver…)</option>
+                      {dropdownEntries.map((c) => (
+                        <option key={c.name} value={normalizeUrl(c.url)}>
+                          {c.name}
+                        </option>
+                      ))}
+                      {url &&
+                        !dropdownEntries.some((c) => normalizeUrl(c.url) === normalizeUrl(url)) && (
+                          <option value={normalizeUrl(url)}>(unknown: {normalizeUrl(url)})</option>
+                        )}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={url}
+                      placeholder="http://host:port"
+                      onChange={(e) => updateUrl(e.target.value)}
+                      disabled={pending}
+                      className={baseInputClass}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void probe(si, ui)}
+                    disabled={!canTest}
+                    title={
+                      canTest
+                        ? "Probe this URL's /v1/info to verify the backend is reachable."
+                        : "Enter a URL first."
+                    }
+                    className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+                  >
+                    {status?.state === "testing" ? "Testing…" : "Test"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatus(si, ui, null);
+                      setSlotUrls(
+                        si,
+                        entry.urls.filter((_, j) => j !== ui),
+                      );
+                    }}
+                    disabled={pending || entry.urls.length <= 1}
+                    title={
+                      entry.urls.length <= 1
+                        ? "A slot needs at least one backend URL."
+                        : "Remove this backend URL."
+                    }
+                    className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--status-error-border)] hover:bg-[color:var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {status && (
+                  <p
+                    className={
+                      "ml-1 text-[11px] " +
+                      (status.state === "ok"
+                        ? "text-status-success"
+                        : status.state === "fail"
+                          ? "text-status-error"
+                          : "text-[color:var(--muted)]")
+                    }
+                  >
+                    {status.state === "ok" && "✓ "}
+                    {status.state === "fail" && "✗ "}
+                    {status.message}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => setSlotUrls(si, [...entry.urls, ""])}
+            disabled={pending}
+            title="Add a failover backend tried after the ones above."
+            className="font-ui ml-2 w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            + Add failover URL
+          </button>
+        </div>
+      ))}
       <button
         type="button"
-        onClick={() => onChange([...entries, { name: "", url: "" }])}
+        onClick={() => onChange([...entries, { name: "", urls: [""] }])}
         disabled={pending}
         className="font-ui w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
       >
