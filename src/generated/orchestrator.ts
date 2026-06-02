@@ -127,9 +127,10 @@ export interface paths {
          *     the saved config; safe to call against unsaved form values.
          *
          *     Probes a *single* URL. A driver slot is a priority list of
-         *     URLs (see `DriverEntry.urls`); the UI calls this once per URL
-         *     in the slot so each fallback backend can be tested
-         *     independently.
+         *     backends (see `DriverEntry.backends`, which are topology entry
+         *     names); the UI resolves each name to a URL via the watchdog
+         *     topology and calls this once per backend so each fallback can
+         *     be tested independently.
          */
         post: operations["probeDriver"];
         delete?: never;
@@ -546,9 +547,9 @@ export interface components {
         /**
          * @description Request body for `POST /v1/admin/drivers/probe`. Tests a single
          *     backend URL without persisting it. A driver slot may hold
-         *     several URLs (`DriverEntry.urls`); the UI probes each one
-         *     separately so an operator can verify every fallback before
-         *     saving.
+         *     several backends (`DriverEntry.backends`, topology entry names);
+         *     the UI resolves each to a URL and probes them separately so an
+         *     operator can verify every fallback before saving.
          */
         DriverProbeRequest: {
             /**

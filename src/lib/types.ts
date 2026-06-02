@@ -27,13 +27,15 @@ export type DriverHealth = OrchComponents["schemas"]["DriverHealth"];
 // trivial so we type it by hand here. If a future spec change adds a
 // $ref, drop this in favor of OrchComponents["schemas"]["DriverEntry"].
 //
-// A slot's `urls` is an ordered priority list of interchangeable
-// backends (v0.2.1 failover): the orchestrator tries them in order and
-// cascades on transport error / 5xx / timeout. Stock installs have one
-// URL per slot.
+// A slot's `backends` is an ordered priority list of watchdog-topology
+// hemisphere-driver entry NAMES (v0.2.1 item 2). The orchestrator
+// resolves each name to a URL at startup and cascades through them on
+// transport error / 5xx / timeout. Backend URLs live only in the
+// watchdog topology, not duplicated here. Stock installs have one
+// backend per slot.
 export interface DriverEntry {
   name: string;
-  urls: string[];
+  backends: string[];
 }
 export type NTState = OrchComponents["schemas"]["NTState"];
 export type Problem = OrchComponents["schemas"]["Problem"];

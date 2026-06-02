@@ -344,23 +344,15 @@ export default function WizardPage() {
         setStartMessage("Saving identity configuration…");
         const identityPatch: Record<string, unknown> = {};
         if (draft.enableReflection) {
-          // Use the resolved driver name's URL from the orchestrator's
-          // current drivers list. Easiest: read orchestrator /v1/config
-          // once and find the matching driver entry.
-          const orchConfig = await api.get<Record<string, unknown>>("orchestrator", "/v1/config");
-          const driverList = orchConfig.drivers;
-          let hemisphereUrl: string | undefined;
-          if (Array.isArray(driverList)) {
-            const match = driverList.find(
-              (d): d is { name: string; urls: string[] } =>
-                typeof d === "object" &&
-                d !== null &&
-                (d as { name?: unknown }).name === draft.reflectionDriverName,
-            );
-            // Reflection points at the slot's primary backend; the
-            // orchestrator handles per-turn failover to the rest.
-            hemisphereUrl = match?.urls?.[0];
-          }
+          // Reflection runs a single hemisphere directly, so it needs a
+          // concrete URL. Drivers are watchdog-topology entries now
+          // (v0.2.1 item 2), so resolve the chosen driver name straight
+          // from the topology snapshot instead of via the orchestrator's
+          // config. `reflectionDriverName` is a hemisphere-driver
+          // component name (the wizard's driver names == topology names).
+          const driverComponent = componentsByName.get(draft.reflectionDriverName);
+          const hemisphereUrl =
+            driverComponent?.kind === "hemisphere-driver" ? driverComponent.url : undefined;
           if (hemisphereUrl) {
             identityPatch.reflectionHemisphereUrl = hemisphereUrl;
           }

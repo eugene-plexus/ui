@@ -8,13 +8,14 @@
  * keep the orchestrator on a private network without poking holes.
  *
  * Fixed-target set: `orchestrator`, `watchdog`, plus the v0.2 body
- * components (`memory`, `identity`, `connector`). Anything else is
- * interpreted as a driver name and resolved at request time by fetching
- * the orchestrator's `/v1/config` and looking up the operator-supplied
- * driver name in its `drivers` list. The orchestrator is the source of
- * truth for driver topology; the watchdog is the source of truth for
- * body-component topology. Env var overrides exist as the bootstrap
- * escape hatch (so the proxy can reach the watchdog in the first place).
+ * components (`memory`, `identity`, `connector`). Anything else is a
+ * driver SLOT name, resolved in two hops (v0.2.1 item 2): the
+ * orchestrator's `/v1/config` maps the slot to its primary backend
+ * NAME, and the watchdog's `/v1/components` maps that name to a URL.
+ * The watchdog is the single source of truth for every component URL
+ * (drivers included); the orchestrator config holds only names. Env var
+ * overrides exist as the bootstrap escape hatch (so the proxy can reach
+ * the watchdog in the first place).
  */
 
 export type ProxyTarget = string;
@@ -26,14 +27,6 @@ const DEFAULT_WATCHDOG = "http://127.0.0.1:8079";
 const DEFAULT_MEMORY = "http://127.0.0.1:8083";
 const DEFAULT_IDENTITY = "http://127.0.0.1:8084";
 const DEFAULT_CONNECTOR = "http://127.0.0.1:8085";
-
-interface DriverEntry {
-  name: string;
-  // v0.2.1: a slot is a priority list of backends. The proxy resolves a
-  // driver name to its *primary* URL (`urls[0]`); per-turn failover to
-  // the rest happens server-side in the orchestrator, not here.
-  urls: string[];
-}
 
 interface WatchdogComponentEntry {
   name: string;
@@ -87,6 +80,30 @@ async function fetchTopologyUrl(
   }
 }
 
+// Resolve a single watchdog-topology entry's URL by (kind, name). Used
+// for driver-slot backends, which are stored as topology names (v0.2.1
+// item 2) — the URL lives only in the watchdog topology. Returns null
+// when the watchdog is unreachable or has no matching entry.
+async function fetchTopologyUrlByName(
+  kind: string,
+  name: string,
+  authHeader: string | undefined,
+): Promise<string | null> {
+  try {
+    const headers: HeadersInit = authHeader ? { Authorization: authHeader } : {};
+    const response = await fetch(`${watchdogUrl()}/v1/components`, { headers });
+    if (!response.ok) return null;
+    const doc = (await response.json()) as { components?: WatchdogComponentEntry[] };
+    const entry = (doc.components ?? []).find(
+      (c) =>
+        c && c.kind === kind && c.name === name && typeof c.url === "string" && c.url.length > 0,
+    );
+    return entry?.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveTarget(
   target: ProxyTarget,
   authHeader?: string,
@@ -124,14 +141,14 @@ export async function resolveTarget(
     );
     return { url };
   }
-  // Anything else is interpreted as a driver name. Look it up in the
-  // orchestrator's `drivers` config — that's the single source of truth
-  // for driver topology. v0.1 fetches on every request; the volume is
-  // small (config-page edits only) so a cache is premature.
-  //
-  // v0.2: orchestrator's /v1/config is bearer-auth-protected. Forward
-  // the incoming Authorization header so the lookup succeeds for
-  // logged-in operators.
+  // Anything else is a driver SLOT name (the config-page driver tabs are
+  // sourced from /v1/admin/drivers, which reports slot names). Resolve it
+  // in two hops, mirroring the v0.2.1-item-2 split of ownership:
+  //   1. orchestrator /v1/config maps the slot → its primary backend NAME
+  //   2. watchdog /v1/components maps that name → a URL
+  // URLs live only in the watchdog topology; the orchestrator config holds
+  // names. Both endpoints are bearer-auth-protected, so forward the
+  // incoming Authorization header.
   if (FIXED_TARGETS.has(target)) {
     return { error: `unsupported fixed target: ${target}` };
   }
@@ -148,31 +165,45 @@ export async function resolveTarget(
     if (!Array.isArray(drivers)) {
       return { error: "orchestrator /v1/config has no drivers list" };
     }
-    const entry = drivers.find(
-      (d): d is DriverEntry =>
-        typeof d === "object" &&
-        d !== null &&
-        typeof (d as DriverEntry).name === "string" &&
-        Array.isArray((d as DriverEntry).urls) &&
-        (d as DriverEntry).urls.length > 0 &&
-        (d as DriverEntry).name === target,
+    const slot = drivers.find(
+      (d): d is Record<string, unknown> =>
+        typeof d === "object" && d !== null && (d as { name?: unknown }).name === target,
     );
-    if (!entry) {
+    if (!slot) {
       const known = drivers
-        .filter((d): d is DriverEntry => typeof d === "object" && d !== null && "name" in d)
+        .filter((d): d is { name: string } => typeof d === "object" && d !== null && "name" in d)
         .map((d) => d.name)
         .join(", ");
+      return { error: `unknown driver slot: ${target}. Known: [${known}]` };
+    }
+    // Primary backend name. Tolerate the legacy `urls`/`url` shapes in
+    // case the orchestrator config predates the item-2 migration.
+    const list = Array.isArray(slot.backends)
+      ? slot.backends
+      : Array.isArray(slot.urls)
+        ? slot.urls
+        : typeof slot.url === "string"
+          ? [slot.url]
+          : [];
+    const primary = typeof list[0] === "string" ? (list[0] as string) : "";
+    if (!primary) {
+      return { error: `driver slot '${target}' has no backends` };
+    }
+    // A URL-shaped backend (legacy/migrated) is used directly; otherwise
+    // it's a topology entry name resolved via the watchdog.
+    if (/^https?:\/\//.test(primary)) {
+      return { url: primary };
+    }
+    const url = await fetchTopologyUrlByName("hemisphere-driver", primary, authHeader);
+    if (!url) {
       return {
-        error: `unknown driver: ${target}. Known: [${known}]`,
+        error: `driver backend '${primary}' (slot '${target}') not found in watchdog topology`,
       };
     }
-    // Resolve to the slot's primary backend; failover is server-side.
-    return { url: entry.urls[0]! };
+    return { url };
   } catch (e) {
     return {
-      error: `failed to reach orchestrator at ${orchestratorUrl()}: ${
-        e instanceof Error ? e.message : String(e)
-      }`,
+      error: `failed to resolve driver '${target}': ${e instanceof Error ? e.message : String(e)}`,
     };
   }
 }

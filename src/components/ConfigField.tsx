@@ -233,15 +233,16 @@ interface RowTestStatus {
 
 /**
  * Driver-list editor. Each driver *slot* has a `name` and an ordered
- * priority list of backend `urls` (v0.2.1 failover). Within a slot,
- * every URL gets its own dropdown/free-text field + a per-URL Test
- * button (Sonarr/Radarr-style). Test posts to
- * `/v1/admin/drivers/probe` on the orchestrator, which probes that one
- * URL's `/v1/info` and returns reachability + backend identity.
+ * priority list of `backends` — watchdog-topology hemisphere-driver
+ * entry NAMES (v0.2.1 item 2). Each backend is a dropdown of topology
+ * entry names + a per-backend Test button. Test resolves the selected
+ * name to a URL via the topology snapshot, then posts it to
+ * `/v1/admin/drivers/probe`, which probes that URL's `/v1/info`.
  *
- * The orchestrator tries a slot's URLs in order on each turn and
+ * The orchestrator tries a slot's backends in order on each turn and
  * cascades to the next on transport error / 5xx / timeout, so the order
- * here IS the failover order — `urls[0]` is the primary.
+ * here IS the failover order — `backends[0]` is the primary. Backend
+ * URLs live only in the watchdog topology; this editor stores names.
  */
 function DriverListInput({
   value,
@@ -255,10 +256,9 @@ function DriverListInput({
   pending: boolean;
   onChange: (next: DriverEntry[]) => void;
   baseInputClass: string;
-  /** When set, each URL field renders as a dropdown of watchdog
-   * components of this kind instead of a free-text input. Falls back to
-   * free-text input when `topology` is null (still loading / probe
-   * failed). */
+  /** When set, each backend field renders as a dropdown of watchdog
+   * components of this kind (by name) instead of a free-text input.
+   * Falls back to free-text when `topology` is null (still loading). */
   componentKindHint?: ComponentKind;
   topology?: TopologyComponent[] | null;
 }) {
@@ -269,20 +269,23 @@ function DriverListInput({
   const entries: DriverEntry[] = Array.isArray(value)
     ? (value as Array<Record<string, unknown>>).map((d) => ({
         name: typeof d?.name === "string" ? d.name : "",
-        // Canonical shape is `urls: string[]`. Tolerate the pre-v0.2.1
-        // single-`url` shape in case unsaved/loaded state predates the
-        // server-side migration. openapi-typescript types URLs as
-        // `string`; coerce defensively.
-        urls: Array.isArray(d?.urls)
-          ? (d.urls as unknown[]).map((u) => (typeof u === "string" ? u : String(u ?? "")))
-          : typeof d?.url === "string"
-            ? [d.url]
-            : [],
+        // Canonical shape is `backends: string[]` (topology names).
+        // Tolerate the pre-item-2 `urls` list and the oldest single
+        // `url` in case unsaved/loaded state predates the server-side
+        // migration — those values are URLs, kept as-is and resolved
+        // directly server-side.
+        backends: Array.isArray(d?.backends)
+          ? (d.backends as unknown[]).map((b) => (typeof b === "string" ? b : String(b ?? "")))
+          : Array.isArray(d?.urls)
+            ? (d.urls as unknown[]).map((u) => (typeof u === "string" ? u : String(u ?? "")))
+            : typeof d?.url === "string"
+              ? [d.url]
+              : [],
       }))
     : [];
 
-  // Test status is keyed per (slot, url) so a slot with several backends
-  // shows an independent result line under each one.
+  // Test status is keyed per (slot, backend) so a slot with several
+  // backends shows an independent result line under each one.
   const [statusByKey, setStatusByKey] = useState<Record<string, RowTestStatus>>({});
   const keyOf = (si: number, ui: number) => `${si}:${ui}`;
 
@@ -299,16 +302,34 @@ function DriverListInput({
     });
   }
 
-  function setSlotUrls(si: number, urls: string[]) {
+  function setSlotBackends(si: number, backends: string[]) {
     const next = entries.slice();
-    next[si] = { ...entries[si]!, urls };
+    next[si] = { ...entries[si]!, backends };
     onChange(next);
+  }
+
+  // Resolve a backend (topology name) to its URL for probing. Mirrors the
+  // orchestrator's server-side resolution: topology name → its url;
+  // else a URL-shaped value (legacy/migrated) is used directly.
+  function resolveBackendUrl(backend: string): string | null {
+    const match = dropdownEntries?.find((c) => c.name === backend);
+    if (match?.url) return match.url;
+    if (/^https?:\/\//.test(backend)) return backend;
+    return null;
   }
 
   async function probe(si: number, ui: number) {
     const entry = entries[si];
-    const url = entry?.urls[ui];
-    if (!entry || !url) return;
+    const backend = entry?.backends[ui];
+    if (!entry || !backend) return;
+    const url = resolveBackendUrl(backend);
+    if (!url) {
+      setStatus(si, ui, {
+        state: "fail",
+        message: `'${backend}' is not a hemisphere-driver in the watchdog topology`,
+      });
+      return;
+    }
     setStatus(si, ui, { state: "testing", message: "Probing…" });
     try {
       const result = await api.post<DriverHealth>("orchestrator", "/v1/admin/drivers/probe", {
@@ -355,7 +376,7 @@ function DriverListInput({
             <input
               type="text"
               value={entry.name}
-              placeholder="name (e.g. left)"
+              placeholder="slot name (e.g. left)"
               onChange={(e) => {
                 const next = entries.slice();
                 next[si] = { ...entry, name: e.target.value };
@@ -379,16 +400,17 @@ function DriverListInput({
             </button>
           </div>
 
-          {/* Priority list of backend URLs for this slot. urls[0] is the
-              primary; the rest are failover targets tried in order. */}
-          {entry.urls.map((url, ui) => {
+          {/* Priority list of backends for this slot. backends[0] is the
+              primary; the rest are failover targets tried in order. Each
+              entry is a watchdog-topology hemisphere-driver NAME. */}
+          {entry.backends.map((backend, ui) => {
             const status = statusByKey[keyOf(si, ui)];
-            const canTest = url.trim().length > 0 && !pending && status?.state !== "testing";
-            const updateUrl = (newUrl: string) => {
-              const urls = entry.urls.slice();
-              urls[ui] = newUrl;
-              setStatus(si, ui, null); // URL change invalidates prior test
-              setSlotUrls(si, urls);
+            const canTest = backend.trim().length > 0 && !pending && status?.state !== "testing";
+            const updateBackend = (next: string) => {
+              const backends = entry.backends.slice();
+              backends[ui] = next;
+              setStatus(si, ui, null); // selection change invalidates prior test
+              setSlotBackends(si, backends);
             };
             return (
               <div key={ui} className="flex flex-col gap-1 pl-2">
@@ -401,28 +423,30 @@ function DriverListInput({
                   </span>
                   {dropdownEntries ? (
                     <select
-                      value={normalizeUrl(url)}
-                      onChange={(e) => updateUrl(e.target.value)}
+                      value={backend}
+                      onChange={(e) => updateBackend(e.target.value)}
                       disabled={pending}
                       className={baseInputClass}
                     >
                       <option value="">(pick a driver…)</option>
                       {dropdownEntries.map((c) => (
-                        <option key={c.name} value={normalizeUrl(c.url)}>
+                        <option key={c.name} value={c.name}>
                           {c.name}
                         </option>
                       ))}
-                      {url &&
-                        !dropdownEntries.some((c) => normalizeUrl(c.url) === normalizeUrl(url)) && (
-                          <option value={normalizeUrl(url)}>(unknown: {normalizeUrl(url)})</option>
-                        )}
+                      {backend && !dropdownEntries.some((c) => c.name === backend) && (
+                        // Saved backend isn't a current topology entry —
+                        // surface it (covers a renamed/removed driver or a
+                        // legacy URL-shaped value) so the operator sees it.
+                        <option value={backend}>(unknown: {backend})</option>
+                      )}
                     </select>
                   ) : (
                     <input
                       type="text"
-                      value={url}
-                      placeholder="http://host:port"
-                      onChange={(e) => updateUrl(e.target.value)}
+                      value={backend}
+                      placeholder="topology driver name (e.g. left)"
+                      onChange={(e) => updateBackend(e.target.value)}
                       disabled={pending}
                       className={baseInputClass}
                     />
@@ -433,8 +457,8 @@ function DriverListInput({
                     disabled={!canTest}
                     title={
                       canTest
-                        ? "Probe this URL's /v1/info to verify the backend is reachable."
-                        : "Enter a URL first."
+                        ? "Resolve this driver's URL from the topology and probe its /v1/info."
+                        : "Pick a driver first."
                     }
                     className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
                   >
@@ -444,16 +468,16 @@ function DriverListInput({
                     type="button"
                     onClick={() => {
                       setStatus(si, ui, null);
-                      setSlotUrls(
+                      setSlotBackends(
                         si,
-                        entry.urls.filter((_, j) => j !== ui),
+                        entry.backends.filter((_, j) => j !== ui),
                       );
                     }}
-                    disabled={pending || entry.urls.length <= 1}
+                    disabled={pending || entry.backends.length <= 1}
                     title={
-                      entry.urls.length <= 1
-                        ? "A slot needs at least one backend URL."
-                        : "Remove this backend URL."
+                      entry.backends.length <= 1
+                        ? "A slot needs at least one backend."
+                        : "Remove this backend."
                     }
                     className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--status-error-border)] hover:bg-[color:var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
                   >
@@ -482,18 +506,18 @@ function DriverListInput({
 
           <button
             type="button"
-            onClick={() => setSlotUrls(si, [...entry.urls, ""])}
+            onClick={() => setSlotBackends(si, [...entry.backends, ""])}
             disabled={pending}
             title="Add a failover backend tried after the ones above."
             className="font-ui ml-2 w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
           >
-            + Add failover URL
+            + Add failover backend
           </button>
         </div>
       ))}
       <button
         type="button"
-        onClick={() => onChange([...entries, { name: "", urls: [""] }])}
+        onClick={() => onChange([...entries, { name: "", backends: [""] }])}
         disabled={pending}
         className="font-ui w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
       >
