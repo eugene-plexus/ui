@@ -1,9 +1,13 @@
-import type { Message, PassRecord } from "@/lib/types";
+import type { ConsciousnessEvent, Message, NTState } from "@/lib/types";
 
 /**
  * Seed data loaded when the page mounts with `?demo=1`. Used to verify
- * layout, markdown rendering, and the hemisphere rail without standing
- * up the four-service backend stack.
+ * layout, markdown rendering, and the consciousness feed without standing
+ * up the backend stack.
+ *
+ * Under the M2 contract the right rail is a live stream, so the demo seeds
+ * a `ConsciousnessEvent[]` feed (the events the loop would publish for the
+ * second turn below) rather than a static pass array.
  */
 
 export const DEMO_CONVERSATION_ID = "demo-0000-0000-0000-0000-00000000";
@@ -63,57 +67,95 @@ So *The Hobbit* is best read as the prequel that forced its own backstory into e
   },
 ];
 
-export const DEMO_PASSES: PassRecord[] = [
+const DEMO_NT: NTState = {
+  lastUpdated: "2026-06-06T00:00:00Z",
+  dopamine: { level: 0.62, baseline: 0.5, decay: 0.02 },
+  serotonin: { level: 0.55, baseline: 0.5, decay: 0.02 },
+  norepinephrine: { level: 0.38, baseline: 0.4, decay: 0.03 },
+  acetylcholine: { level: 0.66, baseline: 0.5, decay: 0.02 },
+  gaba: { level: 0.48, baseline: 0.5, decay: 0.02 },
+  cortisol: { level: 0.21, baseline: 0.3, decay: 0.04 },
+};
+
+// The events the loop would publish for the second (Hobbit) turn, in order.
+export const DEMO_FEED: ConsciousnessEvent[] = [
+  { type: "focus_switch", data: { from: null, to: DEMO_CONVERSATION_ID } },
   {
-    passIndex: 0,
-    hemispheres: [
-      {
-        role: "hemisphere",
-        driverName: "left",
-        content:
-          "The Hobbit (1937) precedes LotR (1954-55) by 17 years. Originally standalone children's literature; the Ring in The Hobbit was a generic invisibility ring. Tolkien revised Chapter 5 in the 1951 second edition to make Gollum's behavior consistent with the One Ring of LotR. The relationship is best described as 'retroactive prequel' — The Hobbit drew Tolkien's pre-existing legendarium (the Silmarillion mythology, in development since 1917) into commercial print.",
-        passIndex: 0,
-      },
-      {
-        role: "hemisphere",
-        driverName: "right",
-        content: `Key relationship points:
-
-- **Publication**: Hobbit 1937 → LotR 1954-55
-- **Origin**: Hobbit was standalone children's lit, not part of the legendarium
-- **Continuity retrofit**: Ch. 5 ("Riddles in the Dark") rewritten in 1951 ed. so Bilbo's encounter with Gollum aligns with One Ring lore
-- **Causal chain**: Hobbit's commercial success → publisher requests sequel → Tolkien uses sequel slot to publish the legendarium he'd been building since WWI
-
-So they're connected but the connection is partly post-hoc.`,
-        passIndex: 0,
-      },
-    ],
-    callosum: {
-      agreement: 0.71,
-      decision: "another_pass",
+    type: "tool_call",
+    data: {
+      name: "memory.append_entry",
+      channel: "internal",
+      summary: "user turn stored",
+      isError: false,
     },
   },
   {
-    passIndex: 1,
-    hemispheres: [
-      {
-        role: "hemisphere",
-        driverName: "left",
-        content:
-          "Both passes converge on: 17-year publication gap, retroactive Chapter 5 revision in 1951, and the 'Hobbit success → sequel commission → legendarium publication' causal chain. The right hemisphere's framing ('retroactive prequel') is a cleaner one-line summary than my prose version.",
-        passIndex: 1,
-      },
-      {
-        role: "hemisphere",
-        driverName: "right",
-        content:
-          "Agreement seems high. Both passes hit the same load-bearing facts: 1937 vs 1954, the Ch. 5 revision, the commission-as-cover-for-legendarium. Suggest terminating with a blended response that leads with the temporal/structural relationship and uses the bullet form for the three causal steps.",
-        passIndex: 1,
-      },
-    ],
-    callosum: {
-      agreement: 0.93,
-      decision: "terminate",
+    type: "thought",
+    data: {
+      passIndex: 0,
+      hemispheres: [
+        {
+          role: "hemisphere",
+          driverName: "left",
+          content:
+            "The Hobbit (1937) precedes LotR (1954-55) by 17 years. Originally standalone children's literature; the Ring in The Hobbit was a generic invisibility ring. Tolkien revised Chapter 5 in the 1951 second edition to make Gollum's behavior consistent with the One Ring of LotR. The relationship is best described as 'retroactive prequel'.",
+          passIndex: 0,
+        },
+        {
+          role: "hemisphere",
+          driverName: "right",
+          content: `Key relationship points:
+
+- **Publication**: Hobbit 1937 → LotR 1954-55
+- **Origin**: Hobbit was standalone children's lit, not part of the legendarium
+- **Continuity retrofit**: Ch. 5 ("Riddles in the Dark") rewritten in 1951 ed.
+- **Causal chain**: Hobbit's success → publisher requests sequel → Tolkien uses the slot to publish the legendarium he'd been building since WWI`,
+          passIndex: 0,
+        },
+      ],
+      callosum: { agreement: 0.71, decision: "another_pass" },
+    },
+  },
+  {
+    type: "thought",
+    data: {
+      passIndex: 1,
+      hemispheres: [
+        {
+          role: "hemisphere",
+          driverName: "left",
+          content:
+            "Both passes converge: 17-year gap, the 1951 Chapter 5 revision, and the 'Hobbit success → sequel commission → legendarium publication' chain. The right side's 'retroactive prequel' framing is the cleaner one-liner.",
+          passIndex: 1,
+        },
+        {
+          role: "hemisphere",
+          driverName: "right",
+          content:
+            "Agreement high. Suggest terminating with a blended response that leads with the temporal/structural relationship and uses bullets for the three causal steps.",
+          passIndex: 1,
+        },
+      ],
+      callosum: { agreement: 0.93, decision: "terminate" },
+    },
+  },
+  {
+    type: "gate_decision",
+    data: { action: "speak", anticipatedValence: 0.74, focus: DEMO_CONVERSATION_ID },
+  },
+  { type: "nt_update", data: DEMO_NT },
+  {
+    type: "tool_call",
+    data: { name: "nt.observe", channel: "internal", summary: "nt state advanced", isError: false },
+  },
+  {
+    type: "speech",
+    data: {
+      destination: { platform: "ui", isDirectMessage: true },
+      content:
+        "(demo) The Hobbit is best read as the prequel that forced its own backstory into existence.",
+      conversationId: DEMO_CONVERSATION_ID,
+      timestamp: "2026-06-06T00:00:01Z",
     },
   },
 ];

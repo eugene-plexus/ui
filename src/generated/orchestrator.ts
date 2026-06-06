@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/v1/chat": {
+    "/v1/events": {
         parameters: {
             query?: never;
             header?: never;
@@ -14,49 +14,64 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Run one turn of the bicameral loop and return the final response.
-         * @description Non-streaming variant. The orchestrator runs the full bicameral
-         *     loop (one or more passes until corpus-callosum convergence or
-         *     a max-pass cap) and returns the final assistant message.
+         * Inject one afferent event into the continuous loop (fire-and-forget).
+         * @description The single door in. Accepts one `AfferentEvent` — a person's
+         *     message, a presence change, a future sensory input — enqueues it
+         *     for the continuous consciousness loop, and returns `202`
+         *     immediately. This call does NOT block for a reply and does NOT
+         *     guarantee one: whether, when, and how Eugene responds is the
+         *     loop's decision (speaking is an elected efferent action; silence
+         *     is valid).
          *
-         *     For interactive UIs, prefer `POST /v1/chat/stream` — the loop can
-         *     take seconds to tens of seconds when hemispheres disagree.
+         *     Eugene's replies leave asynchronously as `EfferentSpeechAct`s,
+         *     delivered to their destination by the speak effector (connector
+         *     outbound / UI) and mirrored on `GET /v1/stream/consciousness`
+         *     for observability. There is no synchronous chat endpoint — the
+         *     v0.2 request-response surface (`/v1/chat`, `/v1/chat/stream`) was
+         *     removed (no backwards compatibility; see the design doc
+         *     `docs/design/m1-continuous-runtime.md`).
          */
-        post: operations["chat"];
+        post: operations["injectEvent"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/chat/stream": {
+    "/v1/stream/consciousness": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Run the bicameral loop with progressive event streaming.
-         * @description Server-Sent Events stream. Each event surfaces the bicameral process
-         *     as it unfolds — the UI uses this to render the side-by-side hemisphere
-         *     view and the corpus-callosum blend.
+         * Subscribe to Eugene's live stream of consciousness (SSE).
+         * @description Server-Sent Events broadcast of the continuous loop's internal
+         *     activity — the observability window the UI renders as Eugene's
+         *     stream of consciousness (the direct evolution of the removed
+         *     `/v1/chat/stream`, generalized from per-turn passes to continuous
+         *     thoughts). External channels (Discord) only *hear speech*; this
+         *     stream is the fMRI.
          *
          *     Event types (`event:` field):
          *
-         *     - `pass_started`     — `data` = `{"passIndex": int}`
-         *     - `hemisphere_token` — `data` = `{"driverName": string, "passIndex": int, "text": "..."}` — incremental tokens from one driver
-         *     - `hemisphere_done`  — `data` = `Message` with `role: "hemisphere"`
-         *     - `callosum`         — `data` = `CallosumState` — blend / disagreement signal at end of pass
-         *     - `final_token`      — `data` = `{"text": "..."}` — token of the chosen final response (some implementations may only emit this after `done`)
-         *     - `done`             — `data` = full `ChatResponse`
-         *     - `error`            — `data` = `Problem`
+         *     - `thought`       — `data` = `PassRecord`. One unit of thinking. A
+         *       single-model thought has one `hemispheres` entry; a *deliberative*
+         *       thought (high stakes / uncertainty) runs the bicameral pair and has
+         *       two, with `callosum.agreement` carrying the settledness signal.
+         *     - `nt_update`     — `data` = `NTState`. The live NT snapshot after a tick.
+         *     - `gate_decision` — `data` = `GateDecision`. The action the gate elected and its anticipated valence.
+         *     - `tool_call`     — `data` = `ToolInvocationRecord`. An afferent / efferent / internal tool that ran.
+         *     - `speech`        — `data` = `EfferentSpeechAct`. What Eugene said (observability mirror of the delivered utterance).
+         *     - `focus_switch`  — `data` = an object with `from` and `to` focus labels (either may be null). Attention moved.
+         *     - `phase_change`  — `data` = an object with `phase` set to `awake` or `asleep`. Wake / sleep transition.
          *
          *     Clients should treat unknown event types as informational.
          */
-        post: operations["chatStream"];
+        get: operations["streamConsciousness"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -348,127 +363,38 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ChatRequest: {
-            /** @description The user's new message. */
-            message: string;
+        /**
+         * @description The action-selection gate's choice on one loop iteration. The
+         *     gate hill-climbs on anticipated net NT valence — it elects the
+         *     action with the highest expected reward (and lowest anticipated
+         *     aversive cost). There are no fixed step counts or termination
+         *     thresholds; "keep thinking vs. act vs. rest" is purely this
+         *     valence comparison. Emitted on `GET /v1/stream/consciousness` as
+         *     the `gate_decision` event.
+         */
+        GateDecision: {
             /**
-             * Format: uuid
-             * @description (v0.2) Speaker's `personId` in the identity component. The
-             *     orchestrator pulls this person's relationship summary
-             *     from identity and injects it into each hemisphere's
-             *     prompt. When omitted, the orchestrator falls back to
-             *     the operator's personId (UI calls without an explicit
-             *     personId default to the operator).
-             *
-             *     Connector adapters MUST supply `personId` — they're
-             *     never the operator. If the adapter receives a message
-             *     from an unknown platform user, it MUST file a
-             *     `PendingIdentityLink` with the identity component
-             *     FIRST and not call this endpoint.
+             * @description The elected action — take another `thought` on the current
+             *     focus, `switch` attention to a different focus, `speak` (emit
+             *     an `EfferentSpeechAct`), `idle` (nothing salient — a low-grade
+             *     seeking floor, not true rest), or `sleep` (adenosine high —
+             *     offline consolidation).
+             * @enum {string}
              */
-            personId?: string;
+            action: "think" | "switch" | "speak" | "idle" | "sleep";
             /**
-             * Format: uuid
-             * @description Continue an existing conversation. If omitted, the orchestrator
-             *     mints a new id and returns it in the response.
+             * Format: float
+             * @description The expected net NT reward that drove the choice, for
+             *     diagnostics. Higher = the gate expected this action to feel
+             *     better than the alternatives.
              */
-            conversationId?: string;
+            anticipatedValence?: number;
             /**
-             * @description Optional caller-supplied system prompt. If omitted, the
-             *     orchestrator assembles one from the identity component's
-             *     constitution + relevant self-model entries + the speaker's
-             *     relationship summary, plus a hemisphere-specific
-             *     "you are the left/right hemisphere" preamble per pass.
+             * @description Human-readable label of the current focus (a conversationId,
+             *     an internal topic, or absent when idle) — diagnostic context
+             *     for the decision.
              */
-            systemPrompt?: string;
-            /**
-             * @description Maximum number of bicameral passes before the orchestrator
-             *     forces termination regardless of hemisphere disagreement.
-             *     (v0.2) NT state may lower the effective cap below this
-             *     value when cortisol / NE indicate Eugene should commit
-             *     rather than deliberate further.
-             * @default 3
-             */
-            maxPasses: number;
-            /**
-             * @description (v0.2) For connector adapters bridging channel mentions
-             *     (Discord channels, Slack channels, Matrix rooms): recent
-             *     platform messages preceding the mention, for
-             *     conversational grounding. The orchestrator may surface
-             *     these to hemispheres as ambient context. NOT persisted
-             *     to memory — privacy default protects people who didn't
-             *     invoke Eugene.
-             */
-            channelContext?: components["schemas"]["ChannelContextEntry"][];
-            /**
-             * @description (v0.2) Where this message came from (platform / channel).
-             *     Defaults to `{platform: ui, isDirectMessage: true}` when
-             *     omitted (UI calls).
-             */
-            source?: components["schemas"]["MessageSource"];
-            /**
-             * Format: uuid
-             * @description Caller-supplied id for log correlation.
-             */
-            requestId?: string;
-            /**
-             * @description (v0.2.1) Run this turn in incognito mode. When true:
-             *     - Eugene's full identity loads (constitution + self-model)
-             *       — Eugene remains himself.
-             *     - The speaker is treated as a stranger: no person lookup,
-             *       no relationship summary, no recent-turns retrieval from
-             *       memory.
-             *     - Neither the user message nor Eugene's reply is persisted
-             *       to memory.
-             *     - The running NT state is read for modulation but NOT
-             *       updated by this turn.
-             *     - The conversation history for the turn comes from
-             *       `history` (below) instead of memory. Callers (typically
-             *       the UI) hold the incognito session's history client-side.
-             *     Use for testing the inner-thought-process without identity
-             *     and memory feedback loops, or for transient conversations
-             *     an operator wants Eugene to forget.
-             * @default false
-             */
-            incognito: boolean;
-            /**
-             * @description (v0.2.1) Conversation history for this turn, supplied by
-             *     the caller. Honored only when `incognito` is true — in
-             *     that mode the orchestrator does not read memory, so the
-             *     caller must carry history forward. Ignored when
-             *     `incognito` is false (the orchestrator loads history from
-             *     memory by `conversationId` as in v0.2).
-             */
-            history?: components["schemas"]["Message"][];
-        };
-        ChatResponse: {
-            /** Format: uuid */
-            conversationId: string;
-            message: components["schemas"]["Message"];
-            /**
-             * @description Per-pass record of what each driver said and how the corpus
-             *     callosum scored agreement. `passes[N].hemispheres` has one
-             *     entry per configured driver that responded — two in v0.1.
-             */
-            passes: components["schemas"]["PassRecord"][];
-            voicePass?: components["schemas"]["VoicePassRecord"];
-            /**
-             * @description Ordered diagnostic record of every tool the orchestrator
-             *     invoked during this turn — afferent reads (memory recall,
-             *     identity), efferent writes (memory persistence), and internal
-             *     regimented calls (NT observation). The primary debug surface
-             *     for the tool-calling substrate: the UI renders these alongside
-             *     the bicameral passes so an operator sees Eugene's
-             *     perception/action flow, not just deliberation. Phase-1 tools
-             *     are orchestrator-constructed (the model does not yet emit tool
-             *     calls); this trace shows what ran regardless. Optional —
-             *     orchestrators without the tool retrofit omit it.
-             */
-            toolInvocations?: components["schemas"]["ToolInvocationRecord"][];
-            ntStateAtStart?: components["schemas"]["NTState"];
-            ntStateAtEnd?: components["schemas"]["NTState"];
-            /** Format: uuid */
-            requestId?: string;
+            focus?: string;
         };
         /**
          * @description After the deliberation loop terminates (agreement or
@@ -637,23 +563,6 @@ export interface components {
             error?: string;
         };
         /**
-         * @description One message from the channel that precedes Eugene's
-         *     invocation. Used by adapters to provide grounding context
-         *     for channel mentions. Not persisted to memory.
-         */
-        ChannelContextEntry: {
-            /**
-             * @description Platform display name of the speaker. Free-form;
-             *     Eugene doesn't try to resolve to known persons (would
-             *     require trust-establishing flows that v0.2 doesn't
-             *     have for non-mention authors).
-             */
-            author: string;
-            content: string;
-            /** Format: date-time */
-            timestamp: string;
-        };
-        /**
          * @description Where a message came from. Lets the orchestrator and UI
          *     distinguish "operator typing in the local UI" from
          *     "Discord channel mention" without needing
@@ -675,6 +584,208 @@ export interface components {
             channelName?: string;
             /** @default false */
             isDirectMessage: boolean;
+        };
+        /**
+         * @description One message from the channel that precedes Eugene's
+         *     invocation. Used by adapters to provide grounding context
+         *     for channel mentions. Not persisted to memory.
+         */
+        ChannelContextEntry: {
+            /**
+             * @description Platform display name of the speaker. Free-form;
+             *     Eugene doesn't try to resolve to known persons (would
+             *     require trust-establishing flows that v0.2 doesn't
+             *     have for non-mention authors).
+             */
+            author: string;
+            content: string;
+            /** Format: date-time */
+            timestamp: string;
+        };
+        /**
+         * @description Normalized message shape an adapter posts to the
+         *     orchestrator, wrapped in an `AfferentEvent` (`kind: message`)
+         *     to `POST /v1/events`. Adapter-specific platform details
+         *     collapse to this universal shape; the orchestrator never sees
+         *     Discord-specific or Slack-specific fields.
+         */
+        IncomingMessage: {
+            /**
+             * Format: uuid
+             * @description Sender's `personId` in the identity component. If the
+             *     adapter received a message from an unrecognized
+             *     platform user, it MUST file a `PendingIdentityLink`
+             *     and not post the event — Eugene only responds to
+             *     known people.
+             */
+            personId: string;
+            /**
+             * Format: uuid
+             * @description Conversation thread id. Adapters maintain a stable
+             *     mapping from (platform_channel_id, platform_thread_id)
+             *     → conversationId. Omitted starts a new conversation.
+             */
+            conversationId?: string;
+            content: string;
+            source: components["schemas"]["MessageSource"];
+            /**
+             * @description For channel-mention adapters (Discord channel
+             *     mentions, Slack channels): recent platform messages
+             *     preceding the mention, included for conversational
+             *     grounding. The orchestrator may surface these to
+             *     hemispheres as ambient context, but only the actual
+             *     mention/reply gets persisted to memory (privacy
+             *     default: don't store messages from people who didn't
+             *     invoke Eugene).
+             */
+            channelContext?: components["schemas"]["ChannelContextEntry"][];
+        };
+        /**
+         * @description One external-platform identity that maps to a person. The
+         *     union of (platform, accountId) is globally unique. Created
+         *     when the operator approves a pending identity link.
+         */
+        PlatformAlias: {
+            /**
+             * @description Platform identifier (e.g. `"discord"`, `"slack"`,
+             *     `"matrix"`, `"ui"`). The `ui` platform is reserved for
+             *     the local UI session; the operator is always
+             *     `(platform=ui, accountId=operator)`.
+             */
+            platform: string;
+            /**
+             * @description Platform-stable account identifier (Discord user ID,
+             *     Matrix MXID, Slack member ID, etc.). MUST be the
+             *     platform's immutable id, not a mutable handle.
+             */
+            accountId: string;
+            /** @description Username / handle on the platform (mutable). */
+            handle?: string;
+            /** @description Platform display name (mutable). */
+            displayName?: string;
+            /**
+             * Format: uri
+             * @description Avatar image URL on the platform.
+             */
+            avatarUrl?: string;
+            /** Format: date-time */
+            linkedAt: string;
+        };
+        /**
+         * @description Afferent perception of the social environment's *occupancy* —
+         *     who entered or left an environment — distinct from message
+         *     content. This is the external trigger that lets Eugene
+         *     *initiate* (not just respond): the continuous loop + speak-as-a-
+         *     decision give the ability to start talking; presence gives the
+         *     social cue to.
+         *
+         *     Presence is a LOSSY, NT-modulated salience signal, NOT a queue:
+         *     most occupancy churn is low-salience and never attended (the
+         *     loop drops it), the same way a person doesn't consciously track
+         *     everyone's comings and goings. Salience is gated by NT state —
+         *     wary attends to strangers, relaxed attends to known persons.
+         *     Restraint about acting on presence is *learned*, not a policy
+         *     knob.
+         *
+         *     Actor resolution ties into identity: an enter/leave resolves to
+         *     a `personId` when known, otherwise to a `PlatformAlias` / the
+         *     pending-link flow. "X entered" only means something once X is a
+         *     known person.
+         */
+        PresenceEvent: {
+            /**
+             * @description The occupancy transition observed.
+             * @enum {string}
+             */
+            change: "entered" | "left";
+            /**
+             * @description The environment (platform / channel) whose occupancy
+             *     changed. Reuses `MessageSource` addressing.
+             */
+            environment: components["schemas"]["MessageSource"];
+            /**
+             * Format: uuid
+             * @description The actor, resolved to a known person. Omitted when the
+             *     actor is unknown — see `alias`.
+             */
+            personId?: string;
+            /**
+             * @description Set instead of `personId` when the actor is an unrecognized
+             *     platform user (routes to the pending-link flow rather than
+             *     to relationship-aware behavior).
+             */
+            alias?: components["schemas"]["PlatformAlias"];
+        };
+        /**
+         * @description A single afferent (perception-in) event injected into the
+         *     orchestrator's continuous loop via `POST /v1/events`. The
+         *     unified envelope for everything Eugene perceives — a person's
+         *     message, a presence change, and future sensory inputs all arrive
+         *     as one shape, differing only by `kind` and the typed payload.
+         *
+         *     Injection is fire-and-forget: the endpoint enqueues the event
+         *     and returns `202` immediately. Whether, when, and how Eugene
+         *     responds is the loop's decision, not this call's — there is no
+         *     synchronous reply (the request-response `/v1/chat` surface was
+         *     removed). Speech leaves asynchronously; see `EfferentSpeechAct`
+         *     and `GET /v1/stream/consciousness`.
+         *
+         *     An unsolicited event arriving keeps `role: user` semantics —
+         *     Eugene did not "call hear." Only Eugene's *interpretation* of it
+         *     (and any solicited perception) is an afferent tool cycle.
+         */
+        AfferentEvent: {
+            /**
+             * Format: uuid
+             * @description Caller-minted id. Echoed by any resulting `EfferentSpeechAct`
+             *     in `inResponseTo` when Eugene's reply is reactive to this
+             *     event, for correlation.
+             */
+            eventId: string;
+            /**
+             * @description Discriminates the payload. Extensible — future afferent
+             *     modalities (timer, sensor, …) add an enum value + a payload
+             *     field without changing the envelope.
+             * @enum {string}
+             */
+            kind: "message" | "presence";
+            /** @description Where the event came from (platform / channel). */
+            source: components["schemas"]["MessageSource"];
+            /** Format: date-time */
+            timestamp: string;
+            /** @description Present when `kind` is `message`. */
+            message?: components["schemas"]["IncomingMessage"];
+            /** @description Present when `kind` is `presence`. */
+            presence?: components["schemas"]["PresenceEvent"];
+        };
+        /**
+         * @description Error response shape, modeled on RFC 7807 (problem+json). Every
+         *     Eugene Plexus component returns this for 4xx / 5xx responses.
+         */
+        Problem: {
+            /**
+             * @description A URI reference identifying the problem type, per RFC 7807.
+             *     Modeled as a plain string rather than `format: uri` to keep
+             *     sentinel values like `about:blank` and ergonomic at call sites.
+             * @default about:blank
+             */
+            type: string;
+            /** @description Short human-readable summary. */
+            title: string;
+            /** @description HTTP status code. */
+            status: number;
+            /** @description Human-readable explanation specific to this occurrence. */
+            detail?: string;
+            /**
+             * @description A URI reference identifying the specific occurrence. Modeled
+             *     as a plain string for the same reason as `type`.
+             */
+            instance?: string;
+            /**
+             * @description Eugene Plexus component name that originated the error
+             *     (e.g. `"orchestrator"`, `"hemisphere-driver:left"`).
+             */
+            component?: string;
         };
         /**
          * @description The speaker of a single message in a conversation. `tool` carries
@@ -788,53 +899,54 @@ export interface components {
              */
             toolResults?: components["schemas"]["ToolResult"][];
         };
+        /** @description An ordered list of messages constituting a conversation history. */
+        Conversation: {
+            /**
+             * Format: uuid
+             * @description Server-assigned conversation id.
+             */
+            id?: string;
+            messages: components["schemas"]["Message"][];
+        };
         /**
-         * @description Direction a tool moves information relative to Eugene — the spine
-         *     of the perception/action model.
-         *
-         *     * `afferent` — brings world-state IN. Senses and reads: web
-         *       fetch, a connector delivering an inbound message, memory
-         *       recall, reading a file. Changes nothing in the world.
-         *     * `efferent` — acts ON the world. Send, write, delete, pay — and
-         *       notably *speaking to the user* (the Broca / voice-pass
-         *       effector; the user-facing reply is an efferent tool, not a
-         *       privileged final output). `effect` is consulted only for this
-         *       channel.
-         *     * `internal` — a regimented call to another region rather than
-         *       the outside world: emotion-read of an inbound message (feeds
-         *       NT), agreement scoring, summarization, topic-shift detection.
-         *       No external contact; the result typically updates internal
-         *       state. Reuses the same envelope so region-to-region cognition
-         *       threads through the identical `role: tool` machinery.
+         * @description Which adapter the hemisphere-driver instance is configured to use.
+         *     Reported by `/v1/info` so the orchestrator can log and the UI can
+         *     render a label. `claude_code_cli` and `codex_cli` shell out to the
+         *     respective CLIs (primary mode for personal installations).
          * @enum {string}
          */
-        ToolChannel: "afferent" | "efferent" | "internal";
+        BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http";
         /**
-         * @description Reversibility class of an `efferent` tool — drives the
-         *     System-1/System-2 escalation gate. Ignored for `afferent` /
-         *     `internal` tools, which commit nothing to the world (treat as
-         *     `read_only`).
-         *
-         *     * `read_only` — no world-effect (a pure read). Reflexive-eligible:
-         *       a single pre-deliberation stream may fire it without bicameral
-         *       agreement.
-         *     * `reversible` — an undoable side effect (compose a draft, write a
-         *       scratch file). The action taken *pre*-deliberation that produces
-         *       the artifact deliberation then edits — e.g. banging out an email
-         *       draft before studying it.
-         *     * `irreversible` — cannot be undone (send, delete, pay, post
-         *       publicly). Always *post*-deliberation: requires deliberation
-         *       plus bicameral agreement before the singular effector executes.
-         *
-         *     Reversibility is the static property; whether an action fires pre-
-         *     or post-deliberation is the runtime routing the gate derives from
-         *     it plus live NT state (anxiety can escalate even a read into
-         *     deliberation). Conservative default: anything not provably
-         *     reversible registers `irreversible`. Promotion is explicit, never
-         *     inferred.
-         * @enum {string}
+         * @description Acknowledgement returned by `POST /v1/admin/restart`. The
+         *     component schedules its own process exit shortly after returning
+         *     this response (typically a few hundred ms — long enough for the
+         *     HTTP response to flush). The component does NOT bring itself
+         *     back up; a process supervisor (systemd, docker-compose, the
+         *     deploy launcher, etc.) is expected to relaunch it. In v0.1
+         *     personal-use deploys without a supervisor, the operator
+         *     relaunches manually.
          */
-        ToolEffect: "read_only" | "reversible" | "irreversible";
+        RestartResult: {
+            /**
+             * @description True if the component accepted the restart and an exit is
+             *     queued. Always true in v0.1 — the endpoint has no reason to
+             *     refuse — but typed as a boolean so future versions can gate
+             *     on (e.g.) an in-flight long-running operation.
+             */
+            scheduled: boolean;
+            /**
+             * @description How long the component intends to wait before calling exit,
+             *     measured from the moment the response is sent. Lets clients
+             *     time their UI ("restarting in 0.5s…") and decide when to
+             *     start polling `/healthz` for the relaunched process.
+             */
+            delayMs: number;
+            /**
+             * @description Optional human-readable note (e.g. "logs flushed, exiting
+             *     now"). UI may display this in the restart-progress dialog.
+             */
+            message?: string;
+        };
         /**
          * @description Per-NT level + its baseline + per-second decay rate. The level
          *     decays toward baseline at `decay` units per second between
@@ -890,83 +1002,6 @@ export interface components {
             gaba: components["schemas"]["NTLevel"];
             cortisol: components["schemas"]["NTLevel"];
             acetylcholine: components["schemas"]["NTLevel"];
-        };
-        /**
-         * @description Error response shape, modeled on RFC 7807 (problem+json). Every
-         *     Eugene Plexus component returns this for 4xx / 5xx responses.
-         */
-        Problem: {
-            /**
-             * @description A URI reference identifying the problem type, per RFC 7807.
-             *     Modeled as a plain string rather than `format: uri` to keep
-             *     sentinel values like `about:blank` and ergonomic at call sites.
-             * @default about:blank
-             */
-            type: string;
-            /** @description Short human-readable summary. */
-            title: string;
-            /** @description HTTP status code. */
-            status: number;
-            /** @description Human-readable explanation specific to this occurrence. */
-            detail?: string;
-            /**
-             * @description A URI reference identifying the specific occurrence. Modeled
-             *     as a plain string for the same reason as `type`.
-             */
-            instance?: string;
-            /**
-             * @description Eugene Plexus component name that originated the error
-             *     (e.g. `"orchestrator"`, `"hemisphere-driver:left"`).
-             */
-            component?: string;
-        };
-        /** @description An ordered list of messages constituting a conversation history. */
-        Conversation: {
-            /**
-             * Format: uuid
-             * @description Server-assigned conversation id.
-             */
-            id?: string;
-            messages: components["schemas"]["Message"][];
-        };
-        /**
-         * @description Which adapter the hemisphere-driver instance is configured to use.
-         *     Reported by `/v1/info` so the orchestrator can log and the UI can
-         *     render a label. `claude_code_cli` and `codex_cli` shell out to the
-         *     respective CLIs (primary mode for personal installations).
-         * @enum {string}
-         */
-        BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http";
-        /**
-         * @description Acknowledgement returned by `POST /v1/admin/restart`. The
-         *     component schedules its own process exit shortly after returning
-         *     this response (typically a few hundred ms — long enough for the
-         *     HTTP response to flush). The component does NOT bring itself
-         *     back up; a process supervisor (systemd, docker-compose, the
-         *     deploy launcher, etc.) is expected to relaunch it. In v0.1
-         *     personal-use deploys without a supervisor, the operator
-         *     relaunches manually.
-         */
-        RestartResult: {
-            /**
-             * @description True if the component accepted the restart and an exit is
-             *     queued. Always true in v0.1 — the endpoint has no reason to
-             *     refuse — but typed as a boolean so future versions can gate
-             *     on (e.g.) an in-flight long-running operation.
-             */
-            scheduled: boolean;
-            /**
-             * @description How long the component intends to wait before calling exit,
-             *     measured from the moment the response is sent. Lets clients
-             *     time their UI ("restarting in 0.5s…") and decide when to
-             *     start polling `/healthz` for the relaunched process.
-             */
-            delayMs: number;
-            /**
-             * @description Optional human-readable note (e.g. "logs flushed, exiting
-             *     now"). UI may display this in the restart-progress dialog.
-             */
-            message?: string;
         };
         /**
          * @description Reactive memory search. Called by the orchestrator when its
@@ -1334,6 +1369,53 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * @description Direction a tool moves information relative to Eugene — the spine
+         *     of the perception/action model.
+         *
+         *     * `afferent` — brings world-state IN. Senses and reads: web
+         *       fetch, a connector delivering an inbound message, memory
+         *       recall, reading a file. Changes nothing in the world.
+         *     * `efferent` — acts ON the world. Send, write, delete, pay — and
+         *       notably *speaking to the user* (the Broca / voice-pass
+         *       effector; the user-facing reply is an efferent tool, not a
+         *       privileged final output). `effect` is consulted only for this
+         *       channel.
+         *     * `internal` — a regimented call to another region rather than
+         *       the outside world: emotion-read of an inbound message (feeds
+         *       NT), agreement scoring, summarization, topic-shift detection.
+         *       No external contact; the result typically updates internal
+         *       state. Reuses the same envelope so region-to-region cognition
+         *       threads through the identical `role: tool` machinery.
+         * @enum {string}
+         */
+        ToolChannel: "afferent" | "efferent" | "internal";
+        /**
+         * @description Reversibility class of an `efferent` tool — drives the
+         *     System-1/System-2 escalation gate. Ignored for `afferent` /
+         *     `internal` tools, which commit nothing to the world (treat as
+         *     `read_only`).
+         *
+         *     * `read_only` — no world-effect (a pure read). Reflexive-eligible:
+         *       a single pre-deliberation stream may fire it without bicameral
+         *       agreement.
+         *     * `reversible` — an undoable side effect (compose a draft, write a
+         *       scratch file). The action taken *pre*-deliberation that produces
+         *       the artifact deliberation then edits — e.g. banging out an email
+         *       draft before studying it.
+         *     * `irreversible` — cannot be undone (send, delete, pay, post
+         *       publicly). Always *post*-deliberation: requires deliberation
+         *       plus bicameral agreement before the singular effector executes.
+         *
+         *     Reversibility is the static property; whether an action fires pre-
+         *     or post-deliberation is the runtime routing the gate derives from
+         *     it plus live NT state (anxiety can escalate even a read into
+         *     deliberation). Conservative default: anything not provably
+         *     reversible registers `irreversible`. Promotion is explicit, never
+         *     inferred.
+         * @enum {string}
+         */
+        ToolEffect: "read_only" | "reversible" | "irreversible";
     };
     responses: {
         /** @description Error response in RFC 7807 problem+json format. */
@@ -1353,7 +1435,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    chat: {
+    injectEvent: {
         parameters: {
             query?: never;
             header?: never;
@@ -1362,23 +1444,33 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ChatRequest"];
+                "application/json": components["schemas"]["AfferentEvent"];
             };
         };
         responses: {
-            /** @description The final assistant message. */
-            200: {
+            /**
+             * @description Event accepted and enqueued. The body echoes the accepted
+             *     `eventId` for correlation. Acceptance is not a promise of a
+             *     reply.
+             */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChatResponse"];
+                    "application/json": {
+                        /** Format: uuid */
+                        eventId: string;
+                        accepted: boolean;
+                    };
                 };
             };
             400: components["responses"]["Problem"];
-            500: components["responses"]["Problem"];
-            /** @description Both hemispheres failed to produce a response. */
-            502: {
+            /**
+             * @description The loop is not accepting events (e.g. safe mode — no drivers
+             *     configured, so there is nothing to think with).
+             */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1388,18 +1480,14 @@ export interface operations {
             };
         };
     };
-    chatStream: {
+    streamConsciousness: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChatRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description SSE stream opened. */
             200: {
@@ -1410,8 +1498,6 @@ export interface operations {
                     "text/event-stream": string;
                 };
             };
-            400: components["responses"]["Problem"];
-            500: components["responses"]["Problem"];
         };
     };
     getConversation: {

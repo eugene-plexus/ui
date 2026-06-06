@@ -3,7 +3,7 @@
 /**
  * Floating button that appears when a scroll container is not pinned to
  * its bottom. Click to smooth-scroll back. Used by both `ChatLog` and
- * `HemisphereRail`.
+ * `ConsciousnessStream`.
  */
 export function JumpToBottomButton({ onClick }: { onClick: () => void }) {
   return (

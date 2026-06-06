@@ -3,62 +3,67 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ChatInput } from "@/components/ChatInput";
 import { ChatLog } from "@/components/ChatLog";
+import { ConsciousnessStream, type FeedItem } from "@/components/ConsciousnessStream";
 import { CopyTraceButton } from "@/components/CopyTraceButton";
-import { HemisphereRail } from "@/components/HemisphereRail";
 import { ApiError, api } from "@/lib/api";
-import { DEMO_CONVERSATION_ID, DEMO_MESSAGES, DEMO_PASSES } from "@/lib/demoData";
+import { DEMO_CONVERSATION_ID, DEMO_FEED, DEMO_MESSAGES } from "@/lib/demoData";
+import { sendMessageEvent } from "@/lib/events";
 import { clearSessionToken, hasSessionToken } from "@/lib/session";
 import type {
-  ChatRequest,
-  ChatResponse,
+  ConsciousnessEvent,
+  EfferentSpeechAct,
+  FocusSwitch,
   Message,
+  NTState,
   PassRecord,
-  ToolInvocationRecord,
+  PhaseChange,
 } from "@/lib/types";
+import { useConsciousnessStream } from "@/lib/useConsciousnessStream";
 import type { WatchdogConfigDocument } from "@/lib/watchdog";
 
 const STORAGE_KEY = "eugene-conversation";
 
-// v0.2.x VoicePassRecord shape — hand-typed because the orchestrator
-// generated types may lag the spec when codegen hasn't run since the
-// most recent pin. Mirrors openapi/orchestrator.yaml.
-interface VoicePassRecord {
-  driverName: string;
-  inputMessages: Message[];
-  output: Message;
-  latencyMs?: number;
-}
+// The consciousness feed grows for the life of the tab. Cap it so a long
+// session doesn't grow the DOM / state unboundedly — the most recent
+// activity is what matters, and the full record lives in memory + logs.
+const FEED_CAP = 300;
 
 interface PersistedConversation {
   conversationId: string | null;
   messages: Message[];
-  latestPasses: PassRecord[];
-  latestVoicePass: VoicePassRecord | null;
-  // Round-trip wall-clock time of the most recent /v1/chat call.
-  // Used by the ThoughtForChip to render "Thought for X.Xs". Persisted
-  // so a reload still shows the chip on the last assistant message.
-  latestTotalLatencyMs: number | null;
-  // v0.2.1 incognito mode. When true: the conversation lives in
-  // sessionStorage only and never reaches identity / memory on the
-  // backend. Survives F5 (sessionStorage), dies on tab close. Closing
-  // the tab is the operator's "delete this conversation" gesture.
-  incognito: boolean;
+  // Thoughts from the most recent turn — feeds the "Thought for X.Xs"
+  // chip + copy-trace. The live feed itself is ephemeral (it rebuilds
+  // from the stream on reload), so it isn't persisted.
+  latestTurnThoughts: PassRecord[];
+  latestTurnLatencyMs: number | null;
+  ntState: NTState | null;
 }
 
 export default function ChatPage() {
   const router = useRouter();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [latestPasses, setLatestPasses] = useState<PassRecord[]>([]);
-  const [latestVoicePass, setLatestVoicePass] = useState<VoicePassRecord | null>(null);
-  const [latestToolInvocations, setLatestToolInvocations] = useState<ToolInvocationRecord[]>([]);
-  const [latestTotalLatencyMs, setLatestTotalLatencyMs] = useState<number | null>(null);
-  const [incognito, setIncognito] = useState(false);
-  const [pending, setPending] = useState(false);
+
+  // Consciousness-stream state.
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [ntState, setNtState] = useState<NTState | null>(null);
+  const [phase, setPhase] = useState<"awake" | "asleep">("awake");
+  const [focus, setFocus] = useState<string | null>(null);
+
+  // Per-turn metadata for the chat-side chip / copy-trace.
+  const [latestTurnThoughts, setLatestTurnThoughts] = useState<PassRecord[]>([]);
+  const [latestTurnLatencyMs, setLatestTurnLatencyMs] = useState<number | null>(null);
+
+  // In-flight sends. `pendingCount` drives the thinking indicator;
+  // `pendingStartRef` maps an afferent eventId → its send timestamp so the
+  // matching `speech` (inResponseTo) can be timed and cleared.
+  const [pendingCount, setPendingCount] = useState(0);
+  const pendingStartRef = useRef<Map<string, number>>(new Map());
+
   const [error, setError] = useState<string | null>(null);
   // Don't persist before the initial hydration has run — otherwise the
   // first render's empty state would clobber whatever was in storage.
@@ -66,20 +71,16 @@ export default function ChatPage() {
   const [setupGate, setSetupGate] = useState<"checking" | "ready">("checking");
   const [operatorName, setOperatorName] = useState<string | null>(null);
 
+  // Monotonic key source for feed items (events carry no id of their own).
+  const seqRef = useRef(0);
+
   // Auth + first-run gate. Runs in order:
   //   1. Probe init state (public endpoint, no auth) — route to /setup
   //      if uninitialized.
   //   2. Check for a session token BEFORE making any authed call. If
-  //      absent, redirect to /login immediately. This is the security-
-  //      relevant fix: without the preemptive check, the GET /v1/config
-  //      below would 401, api.ts would kick off the redirect, but React
-  //      would still render the chat surface for the few frames before
-  //      window.location.replace completes — flashing rendered DOM and
-  //      any data fetched alongside it. By short-circuiting here, the
-  //      chat UI never renders for an unauthenticated visitor.
-  //   3. Authed call to GET /v1/config to honor firstRunComplete (the
-  //      operator may have un-flipped it to redo setup).
-  //
+  //      absent, redirect to /login immediately so the chat surface never
+  //      renders for an unauthenticated visitor.
+  //   3. Authed call to GET /v1/config to honor firstRunComplete.
   // Watchdog unreachable falls through to the chat surface so standalone
   // dev runs against just-the-orchestrator still work.
   useEffect(() => {
@@ -108,15 +109,9 @@ export default function ChatPage() {
         setSetupGate("ready");
       } catch (e) {
         if (cancelled) return;
-        // 401 from the authed call above means the session token is
-        // expired/invalid; api.ts has already triggered the redirect
-        // to /login. Stay in "checking" so the chat UI doesn't render
-        // during the few frames before navigation completes.
         if (e instanceof ApiError && e.status === 401) {
           return;
         }
-        // Other errors (watchdog unreachable in standalone dev runs)
-        // fall through to ready so the chat surface still works.
         setSetupGate("ready");
       }
     }
@@ -126,9 +121,8 @@ export default function ChatPage() {
     };
   }, [router]);
 
-  // Resolve the operator's display name so the chat header can show
-  // who Eugene is talking to. Fails silently when identity is absent
-  // or unreachable — the header just omits the badge.
+  // Resolve the operator's display name so the chat header can show who
+  // Eugene is talking to. Fails silently when identity is absent.
   useEffect(() => {
     if (setupGate !== "ready") return;
     let cancelled = false;
@@ -142,8 +136,7 @@ export default function ChatPage() {
         const op = (resp.persons ?? []).find((p) => p.isOperator);
         if (op) setOperatorName(op.displayName);
       } catch {
-        // identity unavailable — header just shows no name. Operator
-        // can verify identity is up from the Config → Identity tab.
+        // identity unavailable — header just shows no name.
       }
     })();
     return () => {
@@ -153,9 +146,6 @@ export default function ChatPage() {
 
   // Hydrate conversation from sessionStorage so the chat survives
   // navigation to /config and back, plus F5 reloads within the tab.
-  // Demo / thinking flags from the URL run after, intentionally
-  // overriding any persisted state when the user explicitly invokes
-  // those modes.
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -164,11 +154,11 @@ export default function ChatPage() {
         const parsed = JSON.parse(raw) as Partial<PersistedConversation>;
         if (typeof parsed.conversationId === "string") setConversationId(parsed.conversationId);
         if (Array.isArray(parsed.messages)) setMessages(parsed.messages);
-        if (Array.isArray(parsed.latestPasses)) setLatestPasses(parsed.latestPasses);
-        if (parsed.latestVoicePass != null) setLatestVoicePass(parsed.latestVoicePass);
-        if (typeof parsed.latestTotalLatencyMs === "number")
-          setLatestTotalLatencyMs(parsed.latestTotalLatencyMs);
-        if (typeof parsed.incognito === "boolean") setIncognito(parsed.incognito);
+        if (Array.isArray(parsed.latestTurnThoughts))
+          setLatestTurnThoughts(parsed.latestTurnThoughts);
+        if (typeof parsed.latestTurnLatencyMs === "number")
+          setLatestTurnLatencyMs(parsed.latestTurnLatencyMs);
+        if (parsed.ntState != null) setNtState(parsed.ntState);
       }
     } catch {
       // sessionStorage can throw in private modes; fall through to empty.
@@ -178,10 +168,10 @@ export default function ChatPage() {
     if (params.get("demo") === "1") {
       setConversationId(DEMO_CONVERSATION_ID);
       setMessages(DEMO_MESSAGES);
-      setLatestPasses(DEMO_PASSES);
+      setFeed(DEMO_FEED.map((event) => ({ seq: seqRef.current++, event })));
     }
     if (params.get("thinking") === "1") {
-      setPending(true);
+      setPendingCount(1);
     }
     setHydrated(true);
   }, []);
@@ -193,70 +183,77 @@ export default function ChatPage() {
       const payload: PersistedConversation = {
         conversationId,
         messages,
-        latestPasses,
-        latestVoicePass,
-        latestTotalLatencyMs,
-        incognito,
+        latestTurnThoughts,
+        latestTurnLatencyMs,
+        ntState,
       };
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // ignore
     }
-  }, [
-    hydrated,
-    conversationId,
-    messages,
-    latestPasses,
-    latestVoicePass,
-    latestTotalLatencyMs,
-    incognito,
-  ]);
+  }, [hydrated, conversationId, messages, latestTurnThoughts, latestTurnLatencyMs, ntState]);
+
+  // Single dispatch for every event on Eugene's consciousness stream.
+  // Stable (empty deps): reads mutable values through refs and writes
+  // through functional setters, so the stream subscription is never torn
+  // down by a re-render (which would drop in-flight thoughts).
+  const handleStreamEvent = useCallback((e: ConsciousnessEvent) => {
+    setFeed((prev) => {
+      const next = [...prev, { seq: seqRef.current++, event: e }];
+      return next.length > FEED_CAP ? next.slice(next.length - FEED_CAP) : next;
+    });
+
+    switch (e.type) {
+      case "thought":
+        setLatestTurnThoughts((prev) => [...prev, e.data as PassRecord]);
+        break;
+      case "nt_update":
+        setNtState(e.data as NTState);
+        break;
+      case "focus_switch":
+        setFocus((e.data as FocusSwitch).to);
+        break;
+      case "phase_change":
+        setPhase((e.data as PhaseChange).phase);
+        break;
+      case "speech": {
+        // Eugene elected to speak. The reply joins the transcript; if it's
+        // reactive to one of our sends (inResponseTo), time + clear it.
+        // Self-initiated speech (no/unknown inResponseTo) still appears —
+        // Eugene can speak unprompted under the continuous model.
+        const act = e.data as EfferentSpeechAct;
+        setMessages((prev) => [...prev, { role: "assistant", content: act.content }]);
+        if (act.conversationId) setConversationId(act.conversationId);
+        const rid = act.inResponseTo;
+        if (rid && pendingStartRef.current.has(rid)) {
+          const start = pendingStartRef.current.get(rid)!;
+          pendingStartRef.current.delete(rid);
+          setLatestTurnLatencyMs(Math.round(performance.now() - start));
+          setPendingCount((c) => Math.max(0, c - 1));
+        }
+        break;
+      }
+      // gate_decision / tool_call / unknown: feed-only (already appended).
+      default:
+        break;
+    }
+  }, []);
+
+  const { status: connection } = useConsciousnessStream(setupGate === "ready", handleStreamEvent);
 
   async function handleSend(text: string) {
     setError(null);
-    setPending(true);
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    // A new turn — reset the per-turn chip metadata. Thoughts for this turn
+    // accumulate from the stream into this freshly-cleared list.
+    setLatestTurnThoughts([]);
+    setLatestTurnLatencyMs(null);
 
-    const userMsg: Message = { role: "user", content: text };
-    setMessages((prev) => [...prev, userMsg]);
-
-    // openapi-typescript treats fields with `default:` as required, so we
-    // have to send maxPasses even though the orchestrator would default
-    // it server-side. Mirror the spec default (3) here.
-    //
-    // Incognito mode: the orchestrator does not read memory, so the UI
-    // carries history client-side and ships it with each turn.
-    // `messages` here is the pre-userMsg state (state updates are
-    // async), which is exactly the history-before-this-turn shape the
-    // server expects — it appends `body.message` to `history` itself.
-    const body: ChatRequest = {
-      message: text,
-      maxPasses: 3,
-      incognito,
-      ...(conversationId ? { conversationId } : {}),
-      ...(incognito ? { history: messages } : {}),
-    };
-
-    // Wall-clock start. Captured here (before the await) so the
-    // duration reflects what the operator actually waited for —
-    // includes network, proxy, orchestrator + every bicameral pass.
-    // PassRecord doesn't carry per-pass latency in v0.2; round-trip
-    // is the most ChatGPT-like proxy for "Thought for X.Xs".
     const startMs = performance.now();
     try {
-      const response = await api.post<ChatResponse>("orchestrator", "/v1/chat", body);
-      setLatestTotalLatencyMs(Math.round(performance.now() - startMs));
-      setConversationId(response.conversationId);
-      setMessages((prev) => [...prev, response.message]);
-      setLatestPasses(response.passes);
-      // v0.2.x ChatResponse carries voicePass — the LLM call that
-      // converted internal deliberation into Eugene's user-facing
-      // reply. Capture it for the copy-trace diagnostic.
-      const voicePass = (response as { voicePass?: VoicePassRecord }).voicePass;
-      setLatestVoicePass(voicePass ?? null);
-      // M0.5: per-turn tool-invocation trace — the perception/action
-      // layer (afferent reads, efferent writes, internal calls) rendered
-      // alongside the bicameral passes as the primary debug surface.
-      setLatestToolInvocations(response.toolInvocations ?? []);
+      const { eventId } = await sendMessageEvent({ content: text, conversationId });
+      pendingStartRef.current.set(eventId, startMs);
+      setPendingCount((c) => c + 1);
     } catch (e) {
       const detail =
         e instanceof ApiError
@@ -269,60 +266,45 @@ export default function ChatPage() {
             ? e.message
             : String(e);
       setError(detail);
-    } finally {
-      setPending(false);
     }
   }
 
   function newConversation() {
+    // A UI view reset, NOT a consciousness reset: the loop keeps running
+    // server-side. We clear the local transcript + the feed view; fresh
+    // stream events repopulate the feed as Eugene continues to think.
     setConversationId(null);
     setMessages([]);
-    setLatestVoicePass(null);
-    setLatestPasses([]);
-    setLatestTotalLatencyMs(null);
-    setError(null);
-    // "New" always exits incognito — the most common operator gesture
-    // is "start fresh, back to normal." Use the incognito toggle below
-    // to start a fresh incognito conversation instead.
-    setIncognito(false);
-  }
-
-  function toggleIncognito() {
-    // Toggling either direction resets the surface — mixing modes
-    // mid-conversation is ambiguous (which mode owns the prior turns?)
-    // so we treat the toggle as "start fresh in the other mode."
-    setIncognito((prev) => !prev);
-    setConversationId(null);
-    setMessages([]);
-    setLatestVoicePass(null);
-    setLatestPasses([]);
-    setLatestTotalLatencyMs(null);
+    setLatestTurnThoughts([]);
+    setLatestTurnLatencyMs(null);
+    setFeed([]);
     setError(null);
   }
 
   async function handleLogout() {
-    // Best-effort server-side revoke. The api client auto-attaches the
-    // current Bearer; on success the watchdog adds the token to its
-    // in-memory revocation set. Network/auth errors don't block the
-    // local clear — losing the cached token in this tab is the
-    // outcome users actually want when they click Sign out.
     try {
       await api.delete("watchdog", "/v1/auth/sessions/current");
     } catch {
       // ignore
     }
     clearSessionToken();
-    // Push to /login so the next render starts fresh. /login itself
-    // is auth-less so this won't redirect-loop.
     router.push("/login");
   }
 
+  const thinking = pendingCount > 0;
+  // Conservative first-turn guard: block a second send only while the very
+  // first reply is still pending and no conversationId exists yet —
+  // otherwise two no-conversationId sends would spawn two conversations
+  // server-side. Once a conversation exists, concurrent sends are fine (the
+  // loop queues them), which is the more faithful continuous-model UX.
+  const inputDisabled = thinking && conversationId == null;
+
   const sectionClass =
     "relative flex min-h-0 flex-col border-r border-[color:var(--border)]" +
-    (pending ? " is-thinking" : "");
-  const asideClass = "relative flex min-h-0 flex-col" + (pending ? " is-thinking" : "");
+    (thinking ? " is-thinking" : "");
+  const asideClass = "relative flex min-h-0 flex-col" + (thinking ? " is-thinking" : "");
   const railContentClass =
-    "relative min-h-0 flex-1 overflow-hidden" + (pending ? " is-thinking-rail" : "");
+    "relative min-h-0 flex-1 overflow-hidden" + (thinking ? " is-thinking-rail" : "");
 
   if (setupGate === "checking") {
     return (
@@ -346,16 +328,10 @@ export default function ChatPage() {
               className="shrink-0"
             />
             <div className="flex flex-col gap-0.5">
-              {operatorName && !incognito && (
+              {operatorName && (
                 <p className="font-ui text-[11px]">
                   <span className="text-[color:var(--muted)]">talking to </span>
                   <span className="font-medium text-[color:var(--foreground)]">{operatorName}</span>
-                </p>
-              )}
-              {incognito && (
-                <p className="font-ui text-[11px]">
-                  <span className="text-[color:var(--muted)]">talking to </span>
-                  <span className="font-medium text-[color:var(--foreground)]">a stranger</span>
                 </p>
               )}
               <p className="font-ui text-[11px] text-[color:var(--muted)]">
@@ -364,29 +340,8 @@ export default function ChatPage() {
                   : "no conversation yet"}
               </p>
             </div>
-            {incognito && (
-              <span
-                className="font-ui inline-flex items-center gap-1 rounded-full border border-[color:var(--border-hover)] bg-[color:var(--panel-soft)] px-2 py-0.5 text-[10px] font-medium tracking-wider text-[color:var(--foreground)] uppercase"
-                title="Incognito mode: no identity, no memory reads, no memory writes. Conversation lives in this tab only; closing the tab destroys it."
-              >
-                <span aria-hidden="true">◐</span>
-                Incognito
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleIncognito}
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
-              title={
-                incognito
-                  ? "Exit incognito mode and start a fresh normal conversation"
-                  : "Start a fresh incognito conversation — no identity, no memory, no persistence. Lives only in this tab."
-              }
-            >
-              {incognito ? "Exit incognito" : "Incognito"}
-            </button>
             <button
               type="button"
               onClick={newConversation}
@@ -415,26 +370,32 @@ export default function ChatPage() {
         <div className="min-h-0 flex-1 overflow-hidden">
           <ChatLog
             messages={messages}
-            latestPasses={latestPasses}
-            latestVoicePass={latestVoicePass}
-            latestTotalLatencyMs={latestTotalLatencyMs}
+            latestPasses={latestTurnThoughts}
+            latestVoicePass={null}
+            latestTotalLatencyMs={latestTurnLatencyMs}
           />
         </div>
 
         {error && <div className="status-error border-t px-4 py-2 text-xs">{error}</div>}
 
-        <ChatInput onSend={handleSend} disabled={pending} />
+        <ChatInput onSend={handleSend} disabled={inputDisabled} />
       </section>
 
       <aside className={asideClass}>
         <header className="flex items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
           <span className="font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
-            hemispheres
+            consciousness
           </span>
-          <CopyTraceButton messages={messages} passes={latestPasses} voicePass={latestVoicePass} />
+          <CopyTraceButton messages={messages} passes={latestTurnThoughts} voicePass={null} />
         </header>
         <div className={railContentClass}>
-          <HemisphereRail passes={latestPasses} toolInvocations={latestToolInvocations} />
+          <ConsciousnessStream
+            items={feed}
+            ntState={ntState}
+            phase={phase}
+            focus={focus}
+            connection={connection}
+          />
         </div>
       </aside>
     </main>
