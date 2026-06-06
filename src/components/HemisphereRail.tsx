@@ -2,7 +2,7 @@
 
 import { JumpToBottomButton } from "@/components/JumpToBottomButton";
 import { useAutoScroll } from "@/lib/useAutoScroll";
-import type { Message, PassRecord } from "@/lib/types";
+import type { Message, PassRecord, ToolInvocationRecord } from "@/lib/types";
 
 /**
  * Right-side panel showing every bicameral pass: each pass's hemisphere
@@ -20,7 +20,13 @@ import type { Message, PassRecord } from "@/lib/types";
  * latest pass is what the operator wants to see. The jump-to-bottom
  * button still appears for manual scrollback.
  */
-export function HemisphereRail({ passes }: { passes: PassRecord[] }) {
+export function HemisphereRail({
+  passes,
+  toolInvocations = [],
+}: {
+  passes: PassRecord[];
+  toolInvocations?: ToolInvocationRecord[];
+}) {
   const { scrollRef, isAtBottom, scrollToBottom } = useAutoScroll(passes, {
     forceOnUpdate: true,
   });
@@ -34,14 +40,72 @@ export function HemisphereRail({ passes }: { passes: PassRecord[] }) {
   }
 
   return (
-    <div className="relative h-full">
-      <div ref={scrollRef} className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-        {passes.map((p) => (
-          <PassCard key={p.passIndex} pass={p} />
+    <div className="relative flex h-full flex-col">
+      {/* Per-turn tool trace pinned above the scrolling passes: the
+          perception/action layer (afferent reads, efferent writes,
+          internal calls) that brackets deliberation. */}
+      {toolInvocations.length > 0 && <ToolStrip invocations={toolInvocations} />}
+      <div className="relative min-h-0 flex-1">
+        <div ref={scrollRef} className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+          {passes.map((p) => (
+            <PassCard key={p.passIndex} pass={p} />
+          ))}
+        </div>
+        {!isAtBottom && <JumpToBottomButton onClick={scrollToBottom} />}
+      </div>
+    </div>
+  );
+}
+
+// Afferent / efferent / internal reuse the existing bicameral accent
+// tokens for distinct, theme-aware channel coloring (no new theme vars).
+const CHANNEL_COLOR: Record<string, string> = {
+  afferent: "var(--accent-left)",
+  efferent: "var(--accent-right)",
+  internal: "var(--muted)",
+};
+
+function ToolStrip({ invocations }: { invocations: ToolInvocationRecord[] }) {
+  return (
+    <div className="border-b border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2">
+      <div className="mb-1.5 font-mono text-[10px] tracking-wider text-[color:var(--muted)] uppercase">
+        tools · {invocations.length}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {invocations.map((inv, i) => (
+          <ToolChip key={`${inv.name}-${i}`} invocation={inv} />
         ))}
       </div>
-      {!isAtBottom && <JumpToBottomButton onClick={scrollToBottom} />}
     </div>
+  );
+}
+
+function ToolChip({ invocation }: { invocation: ToolInvocationRecord }) {
+  const color = CHANNEL_COLOR[invocation.channel] ?? "var(--muted)";
+  const title = [
+    invocation.channel,
+    invocation.effect,
+    invocation.summary,
+    invocation.latencyMs != null ? `${invocation.latencyMs}ms` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-[var(--radius)] border px-2 py-0.5 font-mono text-[10px]"
+      style={{ borderColor: color, color }}
+      title={title}
+    >
+      <span
+        aria-hidden
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: color }}
+      />
+      {invocation.name}
+      {invocation.summary ? (
+        <span className="text-[color:var(--muted)]">· {invocation.summary}</span>
+      ) : null}
+    </span>
   );
 }
 

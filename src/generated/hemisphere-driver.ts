@@ -273,12 +273,30 @@ export interface components {
              * @description Caller-supplied id for log correlation. Echoed in the response.
              */
             requestId?: string;
+            /**
+             * @description Tool catalog available for this generation. The driver
+             *     translates each entry into its backend's native tool-calling
+             *     mechanism and passes it through; it does not choose which to
+             *     call or execute any. Omitted or empty = no tools this pass
+             *     (e.g. the voice / articulation pass, which emits speech rather
+             *     than tool calls). A `toolChoice` knob (auto/none/required) is
+             *     deferred — v0.3 leaves selection to the model.
+             */
+            tools?: components["schemas"]["ToolDefinition"][];
         };
         GenerateResponse: {
             /** @description The generated assistant text. */
             content: string;
             /** @enum {string} */
-            finishReason: "stop" | "length" | "stop_sequence" | "error";
+            finishReason: "stop" | "length" | "stop_sequence" | "tool_use" | "error";
+            /**
+             * @description Tool-invocation requests the model emitted this turn. Non-empty
+             *     iff `finishReason == tool_use`. The orchestrator decides
+             *     whether and which to execute (reflexive/deliberative gate, plus
+             *     bicameral agreement for irreversible efferent effects); the
+             *     driver only surfaces them.
+             */
+            toolCalls?: components["schemas"]["ToolCall"][];
             usage?: components["schemas"]["Usage"];
             /** Format: uuid */
             requestId?: string;
@@ -330,10 +348,72 @@ export interface components {
             version?: string;
         };
         /**
-         * @description The speaker of a single message in a conversation.
+         * @description The speaker of a single message in a conversation. `tool` carries
+         *     the result(s) of a tool / region call fed back into deliberation
+         *     (see ToolResult) — its own kind of utterance, distinct from the
+         *     `user` who originally spoke.
          * @enum {string}
          */
-        Role: "system" | "user" | "assistant" | "hemisphere";
+        Role: "system" | "user" | "assistant" | "hemisphere" | "tool";
+        /**
+         * @description A model's request to invoke a tool, surfaced in
+         *     `GenerateResponse.toolCalls` and carried back in `Message` for the
+         *     next pass. The driver only surfaces the request; the
+         *     orchestrator — never the driver — decides whether to execute it,
+         *     after the reflexive/deliberative gate and (for `irreversible`
+         *     efferent effects) bicameral agreement.
+         */
+        ToolCall: {
+            /**
+             * @description Call id, unique within a turn; correlates a `ToolResult` back
+             *     to this call. Adapters map their backend's native id
+             *     (Anthropic `tool_use.id`, OpenAI `tool_call.id`) to/from this.
+             */
+            id: string;
+            /** @description Tool name, matching a registered `ToolDefinition.name`. */
+            name: string;
+            /**
+             * @description Arguments object conforming to the tool's `inputSchema`.
+             *     Adapters parse the backend's argument representation (often a
+             *     JSON string) into this object before returning.
+             */
+            arguments: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description The outcome of executing a `ToolCall`, produced by the singular
+         *     tool-runner (one effector for the whole organism — two
+         *     hemispheres, one set of hands) and fed back into BOTH hemispheres
+         *     on the next pass as a `role: tool` message.
+         */
+        ToolResult: {
+            /** @description The `ToolCall.id` this result answers. */
+            callId: string;
+            /**
+             * @description Result as text — human-readable, or JSON rendered as a string
+             *     for models that only consume text. Large results may be
+             *     truncated by the runner before feeding back.
+             */
+            content?: string;
+            /**
+             * @description Typed result payload, for `internal` regimented calls and
+             *     structured tool outputs — e.g. an emotion-read returning
+             *     `{joy: 0.1, anger: 0.7, ...}` that the orchestrator routes
+             *     into the NT system. Mirrors MCP's `structuredContent`. When
+             *     both are present, `content` is the text rendering of this.
+             */
+            structuredContent?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description True if the tool failed; the error text goes in `content`. The
+             *     model sees the failure and can react (retry, pick another
+             *     tool, give up) — like a person whose action didn't work.
+             * @default false
+             */
+            isError: boolean;
+        };
         /**
          * @description A single message in an Eugene Plexus conversation. The shape is
          *     deliberately close to the OpenAI / Anthropic chat message format so
@@ -366,6 +446,18 @@ export interface components {
              *     re-prompts after corpus-callosum disagreement.
              */
             passIndex?: number;
+            /**
+             * @description Tool-invocation requests emitted by this message. Present on
+             *     `assistant` / `hemisphere` messages that asked for tools;
+             *     carried in history so the next pass sees what was requested.
+             */
+            toolCalls?: components["schemas"]["ToolCall"][];
+            /**
+             * @description Tool / region-call outcomes carried by a `role: tool` message
+             *     and fed back into the next pass. A single `tool` message
+             *     bundles the results of the calls from the preceding turn.
+             */
+            toolResults?: components["schemas"]["ToolResult"][];
         };
         /**
          * @description Per-NT level + its baseline + per-second decay rate. The level
@@ -422,6 +514,81 @@ export interface components {
             gaba: components["schemas"]["NTLevel"];
             cortisol: components["schemas"]["NTLevel"];
             acetylcholine: components["schemas"]["NTLevel"];
+        };
+        /**
+         * @description Direction a tool moves information relative to Eugene — the spine
+         *     of the perception/action model.
+         *
+         *     * `afferent` — brings world-state IN. Senses and reads: web
+         *       fetch, a connector delivering an inbound message, memory
+         *       recall, reading a file. Changes nothing in the world.
+         *     * `efferent` — acts ON the world. Send, write, delete, pay — and
+         *       notably *speaking to the user* (the Broca / voice-pass
+         *       effector; the user-facing reply is an efferent tool, not a
+         *       privileged final output). `effect` is consulted only for this
+         *       channel.
+         *     * `internal` — a regimented call to another region rather than
+         *       the outside world: emotion-read of an inbound message (feeds
+         *       NT), agreement scoring, summarization, topic-shift detection.
+         *       No external contact; the result typically updates internal
+         *       state. Reuses the same envelope so region-to-region cognition
+         *       threads through the identical `role: tool` machinery.
+         * @enum {string}
+         */
+        ToolChannel: "afferent" | "efferent" | "internal";
+        /**
+         * @description Reversibility class of an `efferent` tool — drives the
+         *     System-1/System-2 escalation gate. Ignored for `afferent` /
+         *     `internal` tools, which commit nothing to the world (treat as
+         *     `read_only`).
+         *
+         *     * `read_only` — no world-effect (a pure read). Reflexive-eligible:
+         *       a single pre-deliberation stream may fire it without bicameral
+         *       agreement.
+         *     * `reversible` — an undoable side effect (compose a draft, write a
+         *       scratch file). The action taken *pre*-deliberation that produces
+         *       the artifact deliberation then edits — e.g. banging out an email
+         *       draft before studying it.
+         *     * `irreversible` — cannot be undone (send, delete, pay, post
+         *       publicly). Always *post*-deliberation: requires deliberation
+         *       plus bicameral agreement before the singular effector executes.
+         *
+         *     Reversibility is the static property; whether an action fires pre-
+         *     or post-deliberation is the runtime routing the gate derives from
+         *     it plus live NT state (anxiety can escalate even a read into
+         *     deliberation). Conservative default: anything not provably
+         *     reversible registers `irreversible`. Promotion is explicit, never
+         *     inferred.
+         * @enum {string}
+         */
+        ToolEffect: "read_only" | "reversible" | "irreversible";
+        /**
+         * @description A capability Eugene can invoke, normalized across backends. The
+         *     orchestrator owns the catalog; each hemisphere-driver adapter
+         *     translates this into its backend's native mechanism (Anthropic
+         *     tool-use blocks, OpenAI function-calling, or Hermes-style
+         *     `<tool_call>` text for `openai_compat_http` models without native
+         *     support).
+         */
+        ToolDefinition: {
+            /** @description Stable tool identifier. Echoed in `ToolCall.name`. */
+            name: string;
+            /**
+             * @description What the tool does, in model-facing language. This is prompt
+             *     material — the model reads it to decide when to call.
+             */
+            description?: string;
+            /**
+             * @description JSON Schema (draft 2020-12) for the arguments. Passed to the
+             *     backend verbatim; adapters needing another dialect translate
+             *     it.
+             */
+            inputSchema: {
+                [key: string]: unknown;
+            };
+            channel: components["schemas"]["ToolChannel"];
+            /** @default read_only */
+            effect: components["schemas"]["ToolEffect"];
         };
         /**
          * @description Which adapter the hemisphere-driver instance is configured to use.

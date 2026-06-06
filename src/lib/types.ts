@@ -18,6 +18,7 @@ export type ChatRequest = OrchComponents["schemas"]["ChatRequest"];
 export type ChatResponse = OrchComponents["schemas"]["ChatResponse"];
 export type CallosumState = OrchComponents["schemas"]["CallosumState"];
 export type PassRecord = OrchComponents["schemas"]["PassRecord"];
+export type ToolInvocationRecord = OrchComponents["schemas"]["ToolInvocationRecord"];
 export type DriversInfo = OrchComponents["schemas"]["DriversInfo"];
 export type DriverHealth = OrchComponents["schemas"]["DriverHealth"];
 

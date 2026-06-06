@@ -12,7 +12,13 @@ import { HemisphereRail } from "@/components/HemisphereRail";
 import { ApiError, api } from "@/lib/api";
 import { DEMO_CONVERSATION_ID, DEMO_MESSAGES, DEMO_PASSES } from "@/lib/demoData";
 import { clearSessionToken, hasSessionToken } from "@/lib/session";
-import type { ChatRequest, ChatResponse, Message, PassRecord } from "@/lib/types";
+import type {
+  ChatRequest,
+  ChatResponse,
+  Message,
+  PassRecord,
+  ToolInvocationRecord,
+} from "@/lib/types";
 import type { WatchdogConfigDocument } from "@/lib/watchdog";
 
 const STORAGE_KEY = "eugene-conversation";
@@ -49,6 +55,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [latestPasses, setLatestPasses] = useState<PassRecord[]>([]);
   const [latestVoicePass, setLatestVoicePass] = useState<VoicePassRecord | null>(null);
+  const [latestToolInvocations, setLatestToolInvocations] = useState<ToolInvocationRecord[]>([]);
   const [latestTotalLatencyMs, setLatestTotalLatencyMs] = useState<number | null>(null);
   const [incognito, setIncognito] = useState(false);
   const [pending, setPending] = useState(false);
@@ -246,6 +253,10 @@ export default function ChatPage() {
       // reply. Capture it for the copy-trace diagnostic.
       const voicePass = (response as { voicePass?: VoicePassRecord }).voicePass;
       setLatestVoicePass(voicePass ?? null);
+      // M0.5: per-turn tool-invocation trace — the perception/action
+      // layer (afferent reads, efferent writes, internal calls) rendered
+      // alongside the bicameral passes as the primary debug surface.
+      setLatestToolInvocations(response.toolInvocations ?? []);
     } catch (e) {
       const detail =
         e instanceof ApiError
@@ -423,7 +434,7 @@ export default function ChatPage() {
           <CopyTraceButton messages={messages} passes={latestPasses} voicePass={latestVoicePass} />
         </header>
         <div className={railContentClass}>
-          <HemisphereRail passes={latestPasses} />
+          <HemisphereRail passes={latestPasses} toolInvocations={latestToolInvocations} />
         </div>
       </aside>
     </main>
