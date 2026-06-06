@@ -5,8 +5,20 @@ updates:
     schedule:
       interval: "weekly"
     groups:
+      # Group only minor/patch updates into one PR. Majors come as
+      # separate, individually-reviewable PRs — a grouped major sweep
+      # (Next 16 + ESLint 10 + TS 6 at once) is exactly what blocked an
+      # earlier grouped PR from installing.
       npm-dependencies:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # TypeScript majors are blocked until openapi-typescript (the
+      # spec->TS codegen tool) supports them — its peer is typescript@^5.x,
+      # so TS6 can't resolve. Remove this ignore once openapi-typescript
+      # ships TS6+ support.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
