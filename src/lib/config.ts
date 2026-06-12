@@ -20,13 +20,27 @@
 
 export type ProxyTarget = string;
 
-const FIXED_TARGETS = new Set(["orchestrator", "watchdog", "memory", "identity", "connector"]);
+const FIXED_TARGETS = new Set([
+  "orchestrator",
+  "watchdog",
+  "memory",
+  "identity",
+  "connector",
+  // v0.3 local-LLM-training-platform components the TrainingPanel talks to.
+  "coordinator",
+  "data",
+  "eval",
+]);
 
 const DEFAULT_ORCHESTRATOR = "http://127.0.0.1:8080";
 const DEFAULT_WATCHDOG = "http://127.0.0.1:8079";
 const DEFAULT_MEMORY = "http://127.0.0.1:8083";
 const DEFAULT_IDENTITY = "http://127.0.0.1:8084";
 const DEFAULT_CONNECTOR = "http://127.0.0.1:8085";
+// Platform component default ports (match the watchdog topology defaults).
+const DEFAULT_COORDINATOR = "http://127.0.0.1:8086";
+const DEFAULT_DATA = "http://127.0.0.1:8088";
+const DEFAULT_EVAL = "http://127.0.0.1:8089";
 
 interface WatchdogComponentEntry {
   name: string;
@@ -139,6 +153,23 @@ export async function resolveTarget(
       process.env.CONNECTOR_URL,
       authHeader,
     );
+    return { url };
+  }
+  if (target === "coordinator") {
+    const url = await fetchTopologyUrl(
+      "coordinator",
+      DEFAULT_COORDINATOR,
+      process.env.COORDINATOR_URL,
+      authHeader,
+    );
+    return { url };
+  }
+  if (target === "data") {
+    const url = await fetchTopologyUrl("data", DEFAULT_DATA, process.env.DATA_URL, authHeader);
+    return { url };
+  }
+  if (target === "eval") {
+    const url = await fetchTopologyUrl("eval", DEFAULT_EVAL, process.env.EVAL_URL, authHeader);
     return { url };
   }
   // Anything else is a driver SLOT name (the config-page driver tabs are

@@ -12,7 +12,14 @@ export type ComponentKind =
   | "hemisphere-driver"
   | "memory"
   | "identity"
-  | "connector";
+  | "connector"
+  // v0.3 local-LLM-training-platform components.
+  | "coordinator"
+  | "trainer"
+  | "data"
+  | "eval"
+  | "inference"
+  | "cluster";
 
 export type ComponentStatus =
   | "starting"
