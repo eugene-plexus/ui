@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import type {
   EngineDescriptor,
+  EngineInstall,
   EngineList,
   Runtime,
   RuntimeList,
@@ -21,13 +22,25 @@ import type {
  *   GET /v1/runtimes → the declared engine processes and their live state
  *
  * The engines panel is not decoration. Every "why won't my model start"
- * question begins with whether a binary was found at all, and until
- * engine acquisition lands (M1) that is a manual step the operator has
- * to have completed. Showing the resolved path and version answers it in
- * one glance.
+ * question begins with whether a binary was found at all, and this is
+ * where it gets answered — and, since M1, fixed: an engine with nothing
+ * installed offers to fetch the build that matches this host.
+ *
+ * A host with no installable build says so and why. On Linux with an
+ * NVIDIA GPU that is a permanent answer rather than a transient failure
+ * (upstream publishes no Linux CUDA binary), so it renders as
+ * explanation, not error.
+ *
+ * Updates are offered, never applied. An engine upgrade can change flag
+ * behaviour, and a working setup changing underneath someone is the
+ * failure this project exists to avoid.
  */
 
 const POLL_MS = 3000;
+
+// An install writes progress far faster than the dashboard's own cadence,
+// and a stalled download is exactly when someone stares at the number.
+const INSTALL_POLL_MS = 1000;
 
 // Status → CSS custom-property colour. `loading` deliberately reads as
 // in-progress rather than as an error: a large quant off a slow disk can
@@ -53,6 +66,7 @@ const STATUS_HELP: Record<RuntimeStatus, string> = {
 export default function RuntimesPage() {
   const [runtimes, setRuntimes] = useState<Runtime[] | null>(null);
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
+  const [installs, setInstalls] = useState<Record<string, EngineInstall | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -80,6 +94,86 @@ export default function RuntimesPage() {
     const id = setInterval(() => void load(), POLL_MS);
     return () => clearInterval(id);
   }, [load]);
+
+  // Poll install progress only while something is in flight. The endpoint
+  // 404s before the first install of a process, which is not an error —
+  // it means nothing has been started, so there is nothing to show.
+  const anyInstalling = Object.values(installs).some(
+    (i) =>
+      i != null &&
+      (i.state === "resolving" ||
+        i.state === "downloading" ||
+        i.state === "verifying" ||
+        i.state === "extracting"),
+  );
+
+  const loadInstall = useCallback(async (engine: string) => {
+    try {
+      const state = await api.get<EngineInstall>(
+        "watchdog",
+        `/v1/engines/${encodeURIComponent(engine)}/install`,
+      );
+      setInstalls((prev) => ({ ...prev, [engine]: state }));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setInstalls((prev) => ({ ...prev, [engine]: null }));
+        return;
+      }
+      if (err instanceof ApiError && err.status === 401) return;
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  // Depend on the engine NAMES, not the installs object. The object is
+  // rewritten by every poll, so depending on it would tear the interval
+  // down and rebuild it on each tick — a timer that never gets to run a
+  // full period.
+  const installKeys = Object.keys(installs).sort().join(",");
+
+  useEffect(() => {
+    if (!anyInstalling) return;
+    const names = installKeys ? installKeys.split(",") : [];
+    const id = setInterval(() => {
+      for (const engine of names) void loadInstall(engine);
+      // Refresh the engine list too: the moment an install finishes, the
+      // binary path, version and `available` all change.
+      void load();
+    }, INSTALL_POLL_MS);
+    return () => clearInterval(id);
+  }, [anyInstalling, installKeys, loadInstall, load]);
+
+  async function installEngine(engine: string) {
+    setBusy(`${engine}:install`);
+    setError(null);
+    try {
+      const started = await api.post<EngineInstall>(
+        "watchdog",
+        `/v1/engines/${encodeURIComponent(engine)}/install`,
+        {},
+      );
+      setInstalls((prev) => ({ ...prev, [engine]: started }));
+    } catch (err) {
+      // 422 is the honest "nothing installable for this host" answer; its
+      // detail is already rendered on the card, so don't duplicate it in
+      // the error bar.
+      if (err instanceof ApiError && err.status === 422) return;
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function cancelInstall(engine: string) {
+    try {
+      const state = await api.delete<EngineInstall>(
+        "watchdog",
+        `/v1/engines/${encodeURIComponent(engine)}/install`,
+      );
+      setInstalls((prev) => ({ ...prev, [engine]: state }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   async function act(name: string, action: "start" | "stop" | "restart") {
     setBusy(`${name}:${action}`);
@@ -116,14 +210,32 @@ export default function RuntimesPage() {
       {error && <div className="status-error border-b px-4 py-2 text-xs">{error}</div>}
 
       <div className="flex-1 overflow-y-auto p-4">
-        <EnginesPanel engines={engines} />
+        <EnginesPanel
+          engines={engines}
+          install={installs}
+          busy={busy}
+          onInstall={installEngine}
+          onCancel={cancelInstall}
+        />
         <RuntimesPanel runtimes={runtimes} busy={busy} onAct={act} />
       </div>
     </main>
   );
 }
 
-function EnginesPanel({ engines }: { engines: EngineDescriptor[] | null }) {
+function EnginesPanel({
+  engines,
+  install,
+  busy,
+  onInstall,
+  onCancel,
+}: {
+  engines: EngineDescriptor[] | null;
+  install: Record<string, EngineInstall | null>;
+  busy: string | null;
+  onInstall: (engine: string) => void;
+  onCancel: (engine: string) => void;
+}) {
   return (
     <section className="mb-6">
       <h2 className="mb-2 font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
@@ -136,38 +248,186 @@ function EnginesPanel({ engines }: { engines: EngineDescriptor[] | null }) {
       ) : (
         <div className="flex flex-col gap-2">
           {engines.map((e) => (
-            <div
+            <EngineCard
               key={e.engine}
-              className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs"
-            >
-              <span className="font-mono font-medium">{e.engine}</span>
-              <span
-                style={{
-                  color: e.available ? "var(--status-ok, #3fb950)" : "var(--status-error, #f85149)",
-                }}
-              >
-                {e.available ? "available" : "not found"}
-              </span>
-              {e.version && <span className="text-[color:var(--muted)]">v{e.version}</span>}
-              {e.origin && <span className="text-[color:var(--muted)]">via {e.origin}</span>}
-              {e.binaryPath && (
-                <span className="truncate font-mono text-[color:var(--muted)]" title={e.binaryPath}>
-                  {e.binaryPath}
-                </span>
-              )}
-              {e.error && <span className="status-error px-1">{e.error}</span>}
-            </div>
+              engine={e}
+              install={install[e.engine] ?? null}
+              busy={busy}
+              onInstall={onInstall}
+              onCancel={onCancel}
+            />
           ))}
         </div>
       )}
-      {engines?.some((e) => !e.available) && (
-        <p className="mt-2 text-xs text-[color:var(--muted)]">
-          An engine binary has to be on PATH or set explicitly on the runtime until managed engine
-          acquisition lands.
-        </p>
-      )}
     </section>
   );
+}
+
+function EngineCard({
+  engine: e,
+  install,
+  busy,
+  onInstall,
+  onCancel,
+}: {
+  engine: EngineDescriptor;
+  install: EngineInstall | null;
+  busy: string | null;
+  onInstall: (engine: string) => void;
+  onCancel: (engine: string) => void;
+}) {
+  const acq = e.acquisition;
+  const managed = e.managed;
+  const installing =
+    install != null &&
+    (install.state === "resolving" ||
+      install.state === "downloading" ||
+      install.state === "verifying" ||
+      install.state === "extracting");
+
+  // An update is offered, never applied. An engine upgrade can change
+  // flag behaviour, and a working local setup changing underneath
+  // someone is the failure this project exists to avoid.
+  const updateAvailable =
+    managed != null && acq?.latestVersion != null && acq.latestVersion !== managed.version;
+
+  return (
+    <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="font-mono font-medium">{e.engine}</span>
+          <span
+            style={{
+              color: e.available ? "var(--status-ok, #3fb950)" : "var(--status-error, #f85149)",
+            }}
+          >
+            {e.available ? "available" : "not installed"}
+          </span>
+          {e.version && <span className="text-[color:var(--muted)]">build {e.version}</span>}
+          {e.origin && <span className="text-[color:var(--muted)]">via {e.origin}</span>}
+          {managed?.variant && (
+            <span className="font-mono text-[color:var(--muted)]">{managed.variant}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          {installing ? (
+            <button
+              type="button"
+              onClick={() => onCancel(e.engine)}
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            >
+              cancel
+            </button>
+          ) : acq?.installable ? (
+            <button
+              type="button"
+              onClick={() => onInstall(e.engine)}
+              disabled={busy !== null}
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              {managed ? (updateAvailable ? "update" : "reinstall") : "install"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {e.binaryPath && (
+        <p className="mt-1 truncate font-mono text-[color:var(--muted)]" title={e.binaryPath}>
+          {e.binaryPath}
+        </p>
+      )}
+
+      {installing && install && <InstallProgress install={install} />}
+      {!installing && install?.state === "failed" && (
+        <p className="status-error mt-1 px-1">{install.error ?? "install failed"}</p>
+      )}
+
+      {/* Why we cannot install here. On Linux with an NVIDIA GPU this is
+          the permanent answer, not a transient one, so it reads as
+          explanation rather than error. */}
+      {acq && !acq.installable && acq.reason && (
+        <p className="status-warn mt-2 rounded-[var(--radius)] border px-2 py-1 leading-relaxed">
+          {acq.reason}
+        </p>
+      )}
+
+      {acq?.detected && (
+        <p className="mt-1 text-[color:var(--muted)]">
+          detected: {acq.detected.os ?? "?"}/{acq.detected.arch ?? "?"}
+          {acq.detected.accelerator && acq.detected.accelerator !== "none"
+            ? ` · ${acq.detected.accelerator}${
+                acq.detected.acceleratorVersion ? ` ${acq.detected.acceleratorVersion}` : ""
+              }`
+            : " · no GPU detected"}
+          {acq.variant && ` → would install ${acq.variant}`}
+        </p>
+      )}
+
+      {/* The age of the newest build, never a count of builds behind:
+          llama.cpp publishes several a day, so "1,021 behind" is noise
+          and "three weeks old" is information. */}
+      {updateAvailable && acq?.latestVersion && (
+        <p className="mt-1 text-[color:var(--muted)]">
+          newer build {acq.latestVersion} available
+          {acq.latestPublishedAt ? ` (${relativeAge(acq.latestPublishedAt)})` : ""} — you are on{" "}
+          {managed?.version}
+        </p>
+      )}
+
+      {managed?.sizeBytes != null && (
+        <p className="mt-1 text-[color:var(--muted)]">
+          {formatBytes(managed.sizeBytes)} on disk
+          {managed.previousVersion ? `, previous build ${managed.previousVersion} kept` : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function InstallProgress({ install }: { install: EngineInstall }) {
+  const done = install.bytesDownloaded ?? 0;
+  const total = install.bytesTotal ?? 0;
+  const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between gap-2">
+        {/* The phase, not just a bar. They fail differently: a stall in
+            downloading is the network, in extracting it is the disk, and
+            verifying failing means do not run this. */}
+        <span className="font-mono">{install.state}</span>
+        <span className="text-[color:var(--muted)]">
+          {total > 0 ? `${formatBytes(done)} / ${formatBytes(total)}` : formatBytes(done)}
+        </span>
+      </div>
+      <div className="mt-1 h-1 w-full overflow-hidden rounded bg-[color:var(--border)]">
+        <div
+          className="h-full bg-[color:var(--accent-left)] transition-[width] duration-500"
+          style={{ width: pct == null ? "100%" : `${pct}%`, opacity: pct == null ? 0.4 : 1 }}
+        />
+      </div>
+      {install.message && (
+        <p className="mt-1 truncate text-[color:var(--muted)]">{install.message}</p>
+      )}
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+function relativeAge(iso: string): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return iso;
+  const days = Math.floor((Date.now() - then) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "1 day old";
+  if (days < 30) return `${days} days old`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? "1 month old" : `${months} months old`;
 }
 
 function RuntimesPanel({

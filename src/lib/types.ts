@@ -81,3 +81,11 @@ export type RuntimeCapabilities = WatchdogComponents["schemas"]["RuntimeCapabili
 export type EngineKind = WatchdogComponents["schemas"]["EngineKind"];
 export type EngineList = WatchdogComponents["schemas"]["EngineList"];
 export type EngineDescriptor = WatchdogComponents["schemas"]["EngineDescriptor"];
+
+// --- Watchdog: engine acquisition (M1) --------------------------------
+
+export type ManagedEngine = WatchdogComponents["schemas"]["ManagedEngine"];
+export type EngineAcquisition = WatchdogComponents["schemas"]["EngineAcquisition"];
+export type HostAccelerator = WatchdogComponents["schemas"]["HostAccelerator"];
+export type EngineInstall = WatchdogComponents["schemas"]["EngineInstall"];
+export type EngineInstallRequest = WatchdogComponents["schemas"]["EngineInstallRequest"];

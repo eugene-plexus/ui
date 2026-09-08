@@ -4,6 +4,68 @@
  */
 
 export interface paths {
+    "/v1/auth/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Has a passphrase been set on this install?
+         * @description Public probe, deliberately. The UI calls it on every page load to
+         *     tell "fresh install, send them to the wizard" from "logged out,
+         *     send them to the login form" — a distinction it cannot make from
+         *     a 401, and which it must not burn a rate-limited login attempt to
+         *     discover.
+         *
+         *     One boolean, no secrets, no per-source behaviour, no rate limit.
+         *     Nothing here is worth protecting: an unconfigured install
+         *     announces itself by refusing every other endpoint anyway.
+         */
+        get: operations["authStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/initialize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * First-run passphrase setup.
+         * @description Sets the operator passphrase on an uninitialized install:
+         *     persists an Argon2id-PHC hash and the master-key salt, derives
+         *     the master key into memory so the supervisor can thread it to
+         *     children that decrypt at-rest secrets, and returns a session
+         *     token.
+         *
+         *     Returning a session — rather than making the caller log in
+         *     immediately afterwards — is what lets the wizard commit the rest
+         *     of its screens in the same transaction. Everything it writes
+         *     after this point is authenticated.
+         *
+         *     **Not** a change-passphrase endpoint. It refuses with 409 when a
+         *     passphrase already exists, because an endpoint that both creates
+         *     and replaces a credential, and is reachable without one, is a
+         *     reset endpoint by accident.
+         */
+        post: operations["initializeAuth"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/login": {
         parameters: {
             query?: never;
@@ -166,14 +228,73 @@ export interface paths {
          *     edits engine flags. No engine-specific UI code.
          *
          *     `available: false` means the adapter exists but no binary was
-         *     found. Until engine acquisition lands the fix is to set
-         *     `binary` on the runtime by hand; after it, the UI offers to
-         *     fetch the matching release.
+         *     found. `acquisition` then says whether one can be fetched for
+         *     this host and which build would be chosen — or, when it cannot,
+         *     why not, which is a real answer on Linux with an NVIDIA GPU
+         *     because upstream publishes no CUDA build for it.
+         *
+         *     Note what `available` does and does not mean: it answers "is a
+         *     binary discoverable on this host", by managed install or PATH. A
+         *     runtime carrying an explicit `binary` bypasses discovery
+         *     entirely and will run happily against an engine reported here as
+         *     unavailable.
          */
         get: operations["listEngines"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engines/{engine}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engine: components["schemas"]["EngineKind"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Progress of the current or most recent install.
+         * @description The terminal states (`done`, `failed`, `cancelled`) persist until
+         *     the next install starts, so a UI that reconnects after the fact
+         *     still learns how it ended rather than finding an empty slot and
+         *     assuming success.
+         */
+        get: operations["getEngineInstall"];
+        put?: never;
+        /**
+         * Fetch, verify and unpack an engine build.
+         * @description Starts an install and returns immediately — the download is
+         *     hundreds of megabytes and nothing useful comes of holding a
+         *     request open for it. Poll the GET on this path for progress.
+         *
+         *     One install runs per engine at a time, which is why this is a
+         *     singleton sub-resource and not a job collection: nobody is
+         *     installing two llama.cpp builds concurrently, and pretending
+         *     otherwise would mean inventing job ids for something that has
+         *     exactly one.
+         *
+         *     The build lands in its own versioned directory and only becomes
+         *     the engine's binary once it has verified and unpacked. An
+         *     install never overwrites a build in place — a runtime may be
+         *     executing one right now.
+         *
+         *     Returns 409 when an install is already running, and 422 when
+         *     this host has no installable build (see
+         *     `EngineAcquisition.reason`).
+         */
+        post: operations["installEngine"];
+        /**
+         * Cancel an install in flight.
+         * @description Stops the download and removes the partial directory. A build
+         *     that already finished is untouched — this cancels an install,
+         *     it does not uninstall an engine.
+         */
+        delete: operations["cancelEngineInstall"];
         options?: never;
         head?: never;
         patch?: never;
@@ -512,6 +633,184 @@ export interface components {
          * @enum {string}
          */
         EngineKind: "llama_cpp";
+        /** @description Whether this install has been through first-run setup. */
+        AuthStatus: {
+            /**
+             * @description True once a passphrase has been set. False means every
+             *     endpoint except this one, `/healthz` and
+             *     `POST /v1/auth/initialize` will refuse.
+             */
+            initialized: boolean;
+        };
+        AuthInitializeRequest: {
+            /**
+             * Format: password
+             * @description The operator passphrase. Hashed with Argon2id and used to
+             *     derive the master key that at-rest secrets are sealed
+             *     under, so losing it means losing every stored credential —
+             *     there is no recovery path by design.
+             */
+            passphrase: string;
+        };
+        /**
+         * @description A build this install fetched and owns, as opposed to one found on
+         *     PATH or pointed at by hand. Present only when we installed it.
+         */
+        ManagedEngine: {
+            /**
+             * @description Upstream build identifier - for llama.cpp a `bNNNN` tag, not
+             *     a semver. Copied verbatim from the release, because the only
+             *     useful thing to do with it is compare it to what upstream
+             *     has.
+             */
+            version: string;
+            /** @description Absolute path to the executable inside the managed directory. */
+            binaryPath: string;
+            /**
+             * @description Which asset was chosen, e.g. `win-cuda-13.3-x64`. Recorded
+             *     because it is the answer to "why is this slow" often enough
+             *     to be worth surfacing: a host that fell back to a CPU build
+             *     looks identical from the outside otherwise.
+             */
+            variant: string;
+            /** Format: date-time */
+            installedAt?: string;
+            /**
+             * Format: int64
+             * @description On-disk size of this build. A Windows CUDA install is roughly
+             *     half a gigabyte unpacked and we retain two, so this is worth
+             *     showing before someone asks where their disk went.
+             */
+            sizeBytes?: number;
+            /**
+             * @description The build retained alongside this one, if any. Retention is
+             *     current plus previous: keeping every build is not viable at
+             *     this size, and keeping only the newest leaves a bad upgrade
+             *     with no way back.
+             */
+            previousVersion?: string;
+        };
+        /**
+         * @description Whether this host can be given a build of this engine, and which
+         *     one. Answers the question before the operator commits to a
+         *     several-hundred-megabyte download.
+         */
+        EngineAcquisition: {
+            /**
+             * @description False means no published asset fits this host and `reason`
+             *     says why. This is a real outcome, not an error: upstream
+             *     publishes no CUDA build for Linux, so a Linux box with an
+             *     NVIDIA GPU cannot be served automatically and is told so
+             *     rather than quietly handed a slower Vulkan build it never
+             *     asked for.
+             */
+            installable: boolean;
+            /** @description The asset variant that would be fetched, when installable. */
+            variant?: string;
+            /**
+             * @description Why not, when `installable: false`. Written for the operator,
+             *     naming the way forward - build from source, use a container,
+             *     or point `binary` at an existing build.
+             */
+            reason?: string;
+            detected?: components["schemas"]["HostAccelerator"];
+            /** @description Newest upstream build we know of. */
+            latestVersion?: string;
+            /**
+             * Format: date-time
+             * @description When that build shipped. Deliberately the age of the newest
+             *     build rather than a count of builds behind: llama.cpp
+             *     publishes several a day, so "1,021 builds behind" is noise
+             *     and "your build is three weeks old" is information.
+             */
+            latestPublishedAt?: string;
+            /**
+             * Format: date-time
+             * @description When we last asked upstream. Checked at most daily and never
+             *     on the request path; a failed check leaves this stale rather
+             *     than raising anything.
+             */
+            checkedAt?: string;
+        };
+        /**
+         * @description What the watchdog detected about this machine, insofar as it
+         *     decides which engine build to fetch. Not a general hardware
+         *     inventory - the VRAM-and-quant-fit surface that M3 needs belongs
+         *     to the library component, not here.
+         */
+        HostAccelerator: {
+            /** @enum {string} */
+            os?: "windows" | "linux" | "macos";
+            /** @enum {string} */
+            arch?: "x64" | "arm64";
+            /**
+             * @description `metal` is reported on Apple silicon even though there is no
+             *     separate Metal asset - the plain macOS build has it compiled
+             *     in, and saying `none` there would read as "no GPU".
+             * @enum {string}
+             */
+            accelerator?: "none" | "cuda" | "rocm" | "metal" | "sycl";
+            /**
+             * @description For CUDA, the highest version the installed driver supports.
+             *     Selection takes the highest published build whose major
+             *     matches and whose minor is no greater than this; a higher
+             *     major is never chosen.
+             */
+            acceleratorVersion?: string;
+        };
+        EngineInstallRequest: {
+            /**
+             * @description A specific upstream build to install. Omit for the newest.
+             *     Present so an operator who found a regression can pin the
+             *     build that worked, which is the whole reason we record the
+             *     version rather than just "installed".
+             */
+            version?: string;
+        };
+        /**
+         * @description Progress of one install. Phases are named rather than reduced to
+         *     a percentage because they fail differently and the operator
+         *     needs to know which one they are in: a stall in `downloading` is
+         *     the network, a stall in `extracting` is the disk, and a failure
+         *     in `verifying` is the one that means do not run this.
+         */
+        EngineInstall: {
+            engine: components["schemas"]["EngineKind"];
+            /**
+             * @description * `resolving` - asking upstream which build and which asset.
+             *     * `downloading` - fetching. On Windows with CUDA this is two
+             *       assets, the binary and a separate CUDA runtime, and the
+             *       byte counters cover both.
+             *     * `verifying` - comparing the SHA-256 the releases API
+             *       reported for the asset. Upstream publishes no checksum
+             *       file; the digest arrives with the asset metadata, so
+             *       there is no excuse for skipping this.
+             *     * `extracting` - unpacking into a new versioned directory.
+             *     * `done` / `failed` / `cancelled` - terminal, and retained
+             *       until the next install starts.
+             * @enum {string}
+             */
+            state: "resolving" | "downloading" | "verifying" | "extracting" | "done" | "failed" | "cancelled";
+            /** @description The build being installed, once resolved. */
+            version?: string;
+            variant?: string;
+            /** Format: int64 */
+            bytesDownloaded?: number;
+            /**
+             * Format: int64
+             * @description Total across every asset this install needs. Absent until
+             *     `resolving` finishes.
+             */
+            bytesTotal?: number;
+            /** @description What is happening now, for a status line. */
+            message?: string;
+            /** @description Populated when `state: failed`. */
+            error?: string;
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            finishedAt?: string;
+        };
         EngineList: {
             engines: components["schemas"]["EngineDescriptor"][];
         };
@@ -559,6 +858,8 @@ export interface components {
             flagSchema?: components["schemas"]["ConfigSchema"];
             /** @description Populated when `available: false`. */
             error?: string;
+            managed?: components["schemas"]["ManagedEngine"];
+            acquisition?: components["schemas"]["EngineAcquisition"];
         };
         RuntimeList: {
             runtimes: components["schemas"]["Runtime"][];
@@ -780,15 +1081,6 @@ export interface components {
             multimodal?: boolean;
         };
         /**
-         * @description Login request body sent by the UI to `POST /v1/auth/login` on
-         *     the watchdog. The passphrase is the same one the operator set
-         *     in the wizard. The watchdog bcrypt-compares it; on match,
-         *     issues a session token.
-         */
-        AuthLoginRequest: {
-            passphrase: string;
-        };
-        /**
          * @description Issued on successful login. The UI stores `sessionToken` as a
          *     Secure / HttpOnly / SameSite=Strict cookie or in memory; every
          *     subsequent proxy request includes it as
@@ -838,6 +1130,15 @@ export interface components {
              *     (e.g. `"gateway"`, `"inference-driver:left"`).
              */
             component?: string;
+        };
+        /**
+         * @description Login request body sent by the UI to `POST /v1/auth/login` on
+         *     the watchdog. The passphrase is the same one the operator set
+         *     in the wizard. The watchdog bcrypt-compares it; on match,
+         *     issues a session token.
+         */
+        AuthLoginRequest: {
+            passphrase: string;
         };
         /**
          * @description Which Eugene Plexus component class a topology entry
@@ -1133,6 +1434,59 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    authStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Initialization state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+        };
+    };
+    initializeAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthInitializeRequest"];
+            };
+        };
+        responses: {
+            /** @description Initialized; an operator session comes back with it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthLoginResponse"];
+                };
+            };
+            /** @description Already initialized — log in instead. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -1371,6 +1725,115 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EngineList"];
+                };
+            };
+        };
+    };
+    getEngineInstall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engine: components["schemas"]["EngineKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Install state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineInstall"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description No install has ever been started for this engine. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    installEngine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engine: components["schemas"]["EngineKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EngineInstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Install accepted and running. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineInstall"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description An install is already in flight for this engine. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Nothing installable for this host. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    cancelEngineInstall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engine: components["schemas"]["EngineKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled; the state reflects it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineInstall"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description Nothing in flight to cancel. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
