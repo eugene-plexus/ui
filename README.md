@@ -4,25 +4,51 @@
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-000000.svg)](https://nextjs.org)
 
-Web UI for [Eugene Plexus](https://github.com/eugene-plexus): chat with Eugene, watch the bicameral process unfold side-by-side, and edit any component's config from one place.
+Web UI for [Eugene Plexus](https://github.com/eugene-plexus): a dashboard for the engine
+processes the supervisor runs, a schema-driven config editor for every component, and a chat
+playground over the gateway's OpenAI-compatible endpoint.
 
 ## Status
 
-**v0.1, working chat + generic config editor + first-run wizard.** Streaming and end-to-end testing against real components are next.
+**M0 of the local-inference control plane.** Runtime dashboard, config editor and playground are
+wired to the real contracts. The first-run wizard is a cut-down version of the old ten-screen flow,
+not the rewrite — that needs engine acquisition and the model library to exist, and lands at M6.
 
-## What's in v0.1
+## Pages
 
-- **Chat page** (`/`) — message Eugene, see the assistant's final reply in the main column. The right rail shows every bicameral pass: each hemisphere's raw output, the corpus-callosum agreement score, and the decision (`terminate` / `another_pass` / `cap_reached`). On load, the page checks the watchdog's `firstRunComplete` flag and redirects to `/setup` if false.
-- **First-run wizard** (`/setup`) — seven-screen linear flow that walks the operator through theme/font, deployment topology, orchestrator settings, both drivers (provider + credentials + model), and a final summary. Auto-saves to sessionStorage so a tab refresh doesn't lose progress; commits to the watchdog on the Start button (PATCH driver configs, flip `firstRunComplete` to true, restart components).
-- **Generic config editor** (`/config`) — reads `/v1/config/schema` from the selected component (orchestrator, left driver, right driver) and renders a typed form for every field. Driven entirely by the schema metadata; no per-component code. PATCHes the diff back, surfaces `applied` / `rejected` / `requiresRestart` from the response, and offers a Restart Now modal that polls `/healthz` until the component is back.
-- **Same-origin proxy** at `/api/proxy/<target>/<...path>` — the browser only talks to the Next.js server; the server forwards to the configured component URL. `orchestrator` and `watchdog` are fixed targets; any other target is treated as a driver name and resolved against the orchestrator's `drivers` list at request time. No CORS configuration on the components, no exposing private URLs to the browser.
+- **Playground** (`/`) — pick a model from `GET /v1/models` and talk to it through
+  `POST /v1/chat/completions`. Both are the gateway's OpenAI-compatible surface, unmodified: the
+  playground deliberately uses no private path, because an endpoint only a first-party client can
+  drive is not compatible with anything. A bar under the transcript reports which driver, runtime
+  and backend served the turn, how long it took, and how many backends were tried — `attempts > 1`
+  is the visible evidence the failover cascade fired.
+- **Runtimes** (`/runtimes`) — the engine processes the watchdog supervises (`GET /v1/runtimes`)
+  plus which engine adapters found a usable binary on this host (`GET /v1/engines`). Start / stop /
+  restart per runtime, the resolved context length and slot count read back from the running
+  engine, and the exact argv it was spawned with. `loading` is shown distinctly from `starting`,
+  because a large quant off a slow disk sits there for minutes and that is not a fault.
+- **Config** (`/config`) — reads `/v1/config/schema` from the selected component and renders a
+  typed form for every field. Tabs are the watchdog, the gateway, and one per inference-driver in
+  the watchdog topology. Driven entirely by schema metadata; no per-component UI code, which is the
+  point — a component that adds a knob gets a form field for free. PATCHes the diff back, surfaces
+  `applied` / `rejected` / `requiresRestart`, and offers a Restart Now modal that polls `/healthz`
+  until the component is back.
+- **First-run wizard** (`/setup`) — seven screens: theme/font, passphrase + security mode, welcome,
+  deployment topology, gateway address, one driver, summary. Auto-saves to sessionStorage; commits
+  to the watchdog on Start as a single transaction.
+- **Same-origin proxy** at `/api/proxy/<target>/<...path>` — the browser only talks to the Next.js
+  server; the server forwards to the component URL. `gateway` and `watchdog` are fixed targets;
+  anything else is the name of an `inference-driver` in the watchdog topology, resolved there at
+  request time. No CORS configuration on the components, no private URLs in the browser.
 
-## What v0.1 doesn't do
+## What M0 doesn't do
 
-- Streaming (`/v1/chat/stream` is still 501 on the orchestrator; the UI calls non-streaming chat)
-- NT state visualization
-- Hemisphere reachability panel (server-side errors propagate; explicit panel comes when the rest of the UI surface is settled)
-- Auth (per-org decision: v0.1 has none; deployment assumed behind a Tailscale tailnet)
+- **Token-by-token streaming.** The gateway ships correct OpenAI framing with a single content
+  chunk; real pass-through needs the driver's SSE plumbed through the failover cascade. The
+  playground would render the same text at the same moment either way, so it doesn't stream.
+- **Model library / discovery / download** — M2 and M3.
+- **Creating topology entries.** The config editor and wizard configure components that already
+  exist; adding one still means `POST /v1/components` or editing `watchdog.yaml`.
 
 ## Running
 
@@ -32,17 +58,17 @@ npm run codegen       # produces src/generated/*.ts from pinned specs
 npm run dev
 ```
 
-By default the UI is served at `http://localhost:3000` and proxies API calls to `http://127.0.0.1:8080` (orchestrator) and `http://127.0.0.1:8079` (watchdog). Override the bootstrap targets via env:
+By default the UI is served at `http://localhost:3000` and proxies API calls to
+`http://127.0.0.1:8080` (gateway) and `http://127.0.0.1:8079` (watchdog). Override the bootstrap
+targets via env:
 
 ```bash
-ORCHESTRATOR_URL=http://orch.tailnet:8080 \
-WATCHDOG_URL=http://watchdog.tailnet:8079 \
-npm run dev
+GATEWAY_URL=http://gateway.tailnet:8080 WATCHDOG_URL=http://watchdog.tailnet:8079 npm run dev
 ```
 
-Driver URLs are not configured here — the proxy resolves driver names by reading the orchestrator's `drivers` list at request time, so the orchestrator is the single source of truth for topology.
-
-> **v0.1 has no auth.** The proxy forwards anything the UI sends. Deploy behind a Tailscale tailnet or equivalent. Auth lands in v0.2.
+Driver URLs are not configured here. The proxy resolves a driver name against the watchdog
+topology at request time, which is also where the gateway reads it from — one place a driver's URL
+is written down, so the UI and the router cannot disagree about where it is.
 
 ## Codegen
 

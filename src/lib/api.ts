@@ -35,8 +35,8 @@ interface RequestOptions {
   /** Client-side timeout in milliseconds. When the request exceeds this,
    * the fetch is aborted and a friendly `ApiError` (`status=0`,
    * `statusText='request timed out'`) is thrown. Useful for endpoints
-   * whose upstream may hang (identity reflection waiting on a slow
-   * hemisphere-driver). Unset = no client-side timeout. */
+   * whose upstream may hang (a chat completion waiting on a wedged
+   * local engine). Unset = no client-side timeout. */
   timeoutMs?: number;
 }
 
@@ -62,7 +62,7 @@ async function jsonRequest<T>(
   }
 
   // Per-call timeout via AbortController. Without this, a hung upstream
-  // component (e.g. identity reflection waiting on a stuck local LLM)
+  // component (e.g. a completion waiting on a stuck local engine)
   // can leave the UI's request pending indefinitely — disabled buttons,
   // hung loading states, no way to recover except a hard page refresh.
   let timeoutId: ReturnType<typeof setTimeout> | undefined;

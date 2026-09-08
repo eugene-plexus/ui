@@ -4,55 +4,30 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { JumpToBottomButton } from "@/components/JumpToBottomButton";
-import { ThoughtForChip } from "@/components/ThoughtForChip";
 import { useAutoScroll } from "@/lib/useAutoScroll";
-import type { Message, PassRecord } from "@/lib/types";
-
-interface VoicePassRecord {
-  driverName: string;
-  latencyMs?: number;
-}
+import type { ChatCompletionMessage } from "@/lib/types";
 
 /**
- * The user-visible conversation transcript. Hemisphere/intermediate
- * messages are excluded — those live in the right rail.
+ * The playground transcript.
  *
  * Sticky-bottom scroll: stays pinned when the user is at the bottom and
  * a new message arrives, but doesn't yank them back if they've scrolled
  * up to re-read earlier content.
  *
- * v0.2.x: a "Thought for X.Xs ›" chip renders above the latest
- * assistant message (ChatGPT-style). It expands to show pass count,
- * final agreement, decision, voice driver. Metadata for past
- * assistant messages isn't shown — only the most recent is held in
- * state. Persisting per-message would let the chip survive scroll-
- * back; that's a future polish item.
+ * Where the turn was routed is rendered by the page, not here — it
+ * belongs to the request, not to a message.
  */
 export function ChatLog({
   messages,
-  latestPasses,
-  latestVoicePass,
-  latestTotalLatencyMs,
+  pending,
 }: {
-  messages: Message[];
-  latestPasses: PassRecord[];
-  latestVoicePass: VoicePassRecord | null;
-  latestTotalLatencyMs: number | null;
+  messages: ChatCompletionMessage[];
+  pending: boolean;
 }) {
+  // System messages are part of the request but not of the conversation
+  // a person is reading.
   const visible = messages.filter((m) => m.role === "user" || m.role === "assistant");
   const { scrollRef, isAtBottom, scrollToBottom } = useAutoScroll(messages);
-
-  // Identify the LAST assistant message in the visible list so we can
-  // anchor the Thought-for chip directly above it. Indexing into the
-  // filtered list rather than the raw `messages` array keeps the
-  // anchor stable when the rail's intermediate messages are present.
-  let lastAssistantIdx = -1;
-  for (let i = visible.length - 1; i >= 0; i--) {
-    if (visible[i]?.role === "assistant") {
-      lastAssistantIdx = i;
-      break;
-    }
-  }
 
   if (visible.length === 0) {
     return (
@@ -66,24 +41,18 @@ export function ChatLog({
     <div className="relative h-full">
       <div ref={scrollRef} className="flex h-full flex-col gap-4 overflow-y-auto p-4">
         {visible.map((msg, i) => (
-          <div key={i} className="flex flex-col">
-            {i === lastAssistantIdx && (
-              <ThoughtForChip
-                passes={latestPasses}
-                voicePass={latestVoicePass}
-                totalLatencyMs={latestTotalLatencyMs}
-              />
-            )}
-            <ChatBubble message={msg} />
-          </div>
+          <ChatBubble key={i} message={msg} />
         ))}
+        {pending && (
+          <p className="font-ui text-xs text-[color:var(--muted)]">Waiting on the backend…</p>
+        )}
       </div>
       {!isAtBottom && <JumpToBottomButton onClick={scrollToBottom} />}
     </div>
   );
 }
 
-function ChatBubble({ message }: { message: Message }) {
+function ChatBubble({ message }: { message: ChatCompletionMessage }) {
   const isUser = message.role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>

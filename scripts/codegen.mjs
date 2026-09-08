@@ -20,9 +20,19 @@ const SPECS_REF_FILE = join(REPO_ROOT, "SPECS_REF");
 const GENERATED_DIR = join(REPO_ROOT, "src", "generated");
 const WORKING_DIR = join(REPO_ROOT, ".codegen-cache");
 
+// Input paths are governed by SPECS_REF: specs f770f87 renamed
+// orchestrator.yaml -> gateway.yaml and hemisphere-driver.yaml ->
+// inference-driver.yaml, so these paths and the pin move together, in
+// one commit, or codegen 404s on the tarball.
+//
+// watchdog.yaml joined the list with the runtime dashboard. Its shapes
+// used to be hand-written in src/lib/watchdog.ts against a spec nobody
+// regenerated, which is exactly how a UI ends up rendering a status
+// enum the supervisor stopped emitting.
 const SPECS = [
-  { input: "openapi/orchestrator.yaml", output: "orchestrator.ts" },
-  { input: "openapi/hemisphere-driver.yaml", output: "hemisphere-driver.ts" },
+  { input: "openapi/gateway.yaml", output: "gateway.ts" },
+  { input: "openapi/inference-driver.yaml", output: "inference-driver.ts" },
+  { input: "openapi/watchdog.yaml", output: "watchdog.ts" },
 ];
 
 function fail(msg) {

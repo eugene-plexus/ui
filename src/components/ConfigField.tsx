@@ -1,23 +1,16 @@
 "use client";
 
-import { useState } from "react";
-
-import { ApiError, api } from "@/lib/api";
-import type {
-  ComponentKind,
-  ConfigField as ConfigFieldDef,
-  DriverEntry,
-  DriverHealth,
-  TopologyComponent,
-} from "@/lib/types";
+import type { Component, ConfigField as ConfigFieldDef } from "@/lib/types";
 
 /**
  * Render a single config field's input based on its `valueType`.
  *
- * The orchestrator's spec carries everything we need to drive the UI:
- * label, description, default, valueType, validation hints, sensitive
- * flag, restart-required flag. This is the OpenClaw-mistake fix made
- * concrete — no per-component UI code, the form follows the schema.
+ * A component's own `/v1/config/schema` carries everything needed to
+ * drive the UI: label, description, default, valueType, validation
+ * hints, sensitive flag, restart-required flag. This is the
+ * OpenClaw-mistake fix made concrete — no per-component UI code, the
+ * form follows the schema. Adding a knob to a component is a
+ * server-side change only.
  */
 export function ConfigFieldInput({
   field,
@@ -34,7 +27,7 @@ export function ConfigFieldInput({
    * loading or when the parent decided not to fetch (e.g. the schema
    * has no peer-reference fields). The dropdown falls back to a free-
    * text URL input when topology is unavailable. */
-  topology?: TopologyComponent[] | null;
+  topology?: Component[] | null;
   onChange: (newValue: unknown) => void;
 }) {
   const baseInputClass =
@@ -113,18 +106,13 @@ export function ConfigFieldInput({
       );
     }
 
-    if (field.valueType === "driver_list") {
-      return (
-        <DriverListInput
-          value={value}
-          pending={pending}
-          onChange={onChange}
-          baseInputClass={baseInputClass}
-          componentKindHint={field.componentKindHint}
-          topology={topology}
-        />
-      );
-    }
+    // `driver_list` is still in ConfigValueType but no component emits
+    // one: the gateway derives its routing table from the watchdog
+    // topology instead of holding a configured list. The bespoke editor
+    // for it is gone rather than kept warm — a renderer for a shape
+    // nothing produces is how a UI drifts away from the contract.
+    // Configured model->driver priority lists arrive with load
+    // balancing at M5; the renderer comes back with them.
 
     // Peer-reference dropdown: a `componentKindHint` tells us this
     // field points at a watchdog topology entry of the given kind.
@@ -132,10 +120,10 @@ export function ConfigFieldInput({
     // operator doesn't have to copy URLs by hand. The wire value is
     // still the peer's URL — the hint only changes the input UX.
     //
-    // For single-instance kinds (memory, identity, connector in stock
-    // topology) the dropdown effectively becomes an on/off toggle:
-    // `(off)` + the one peer. For multi-instance kinds (hemisphere-
-    // driver, typically `left` + `right`) the operator picks one.
+    // For a single-instance kind (the gateway) the dropdown is
+    // effectively an on/off toggle: `(off)` + the one peer. For a
+    // multi-instance kind (inference-driver, one per backend) the
+    // operator picks one.
     //
     // Falls back to a free-text URL input when topology is null —
     // either still loading, or the watchdog fetch failed. Better to
@@ -226,312 +214,11 @@ export function ConfigFieldInput({
   );
 }
 
-interface RowTestStatus {
-  state: "testing" | "ok" | "fail";
-  message: string;
-}
-
 /**
- * Driver-list editor. Each driver *slot* has a `name` and an ordered
- * priority list of `backends` — watchdog-topology hemisphere-driver
- * entry NAMES (v0.2.1 item 2). Each backend is a dropdown of topology
- * entry names + a per-backend Test button. Test resolves the selected
- * name to a URL via the topology snapshot, then posts it to
- * `/v1/admin/drivers/probe`, which probes that URL's `/v1/info`.
- *
- * The orchestrator tries a slot's backends in order on each turn and
- * cascades to the next on transport error / 5xx / timeout, so the order
- * here IS the failover order — `backends[0]` is the primary. Backend
- * URLs live only in the watchdog topology; this editor stores names.
- */
-function DriverListInput({
-  value,
-  pending,
-  onChange,
-  baseInputClass,
-  componentKindHint,
-  topology,
-}: {
-  value: unknown;
-  pending: boolean;
-  onChange: (next: DriverEntry[]) => void;
-  baseInputClass: string;
-  /** When set, each backend field renders as a dropdown of watchdog
-   * components of this kind (by name) instead of a free-text input.
-   * Falls back to free-text when `topology` is null (still loading). */
-  componentKindHint?: ComponentKind;
-  topology?: TopologyComponent[] | null;
-}) {
-  const dropdownEntries =
-    componentKindHint && topology
-      ? topology.filter((c) => c.kind === componentKindHint && typeof c.url === "string")
-      : null;
-  const entries: DriverEntry[] = Array.isArray(value)
-    ? (value as Array<Record<string, unknown>>).map((d) => ({
-        name: typeof d?.name === "string" ? d.name : "",
-        // Canonical shape is `backends: string[]` (topology names).
-        // Tolerate the pre-item-2 `urls` list and the oldest single
-        // `url` in case unsaved/loaded state predates the server-side
-        // migration — those values are URLs, kept as-is and resolved
-        // directly server-side.
-        backends: Array.isArray(d?.backends)
-          ? (d.backends as unknown[]).map((b) => (typeof b === "string" ? b : String(b ?? "")))
-          : Array.isArray(d?.urls)
-            ? (d.urls as unknown[]).map((u) => (typeof u === "string" ? u : String(u ?? "")))
-            : typeof d?.url === "string"
-              ? [d.url]
-              : [],
-      }))
-    : [];
-
-  // Test status is keyed per (slot, backend) so a slot with several
-  // backends shows an independent result line under each one.
-  const [statusByKey, setStatusByKey] = useState<Record<string, RowTestStatus>>({});
-  const keyOf = (si: number, ui: number) => `${si}:${ui}`;
-
-  function setStatus(si: number, ui: number, status: RowTestStatus | null) {
-    setStatusByKey((prev) => {
-      const key = keyOf(si, ui);
-      if (status === null) {
-        if (!(key in prev)) return prev;
-        const copy = { ...prev };
-        delete copy[key];
-        return copy;
-      }
-      return { ...prev, [key]: status };
-    });
-  }
-
-  function setSlotBackends(si: number, backends: string[]) {
-    const next = entries.slice();
-    next[si] = { ...entries[si]!, backends };
-    onChange(next);
-  }
-
-  // Resolve a backend (topology name) to its URL for probing. Mirrors the
-  // orchestrator's server-side resolution: topology name → its url;
-  // else a URL-shaped value (legacy/migrated) is used directly.
-  function resolveBackendUrl(backend: string): string | null {
-    const match = dropdownEntries?.find((c) => c.name === backend);
-    if (match?.url) return match.url;
-    if (/^https?:\/\//.test(backend)) return backend;
-    return null;
-  }
-
-  async function probe(si: number, ui: number) {
-    const entry = entries[si];
-    const backend = entry?.backends[ui];
-    if (!entry || !backend) return;
-    const url = resolveBackendUrl(backend);
-    if (!url) {
-      setStatus(si, ui, {
-        state: "fail",
-        message: `'${backend}' is not a hemisphere-driver in the watchdog topology`,
-      });
-      return;
-    }
-    setStatus(si, ui, { state: "testing", message: "Probing…" });
-    try {
-      const result = await api.post<DriverHealth>("orchestrator", "/v1/admin/drivers/probe", {
-        name: entry.name || "<unnamed>",
-        url,
-      });
-      if (result.reachable) {
-        const parts = [
-          result.backend ? `backend: ${result.backend}` : null,
-          result.modelId ? `model: ${result.modelId}` : null,
-          result.version ? `v${result.version}` : null,
-        ].filter(Boolean);
-        setStatus(si, ui, {
-          state: "ok",
-          message: parts.length > 0 ? parts.join(" · ") : "reachable",
-        });
-      } else {
-        setStatus(si, ui, { state: "fail", message: result.error ?? "unreachable" });
-      }
-    } catch (e) {
-      const msg =
-        e instanceof ApiError
-          ? `${e.status} ${e.statusText}`
-          : e instanceof Error
-            ? e.message
-            : String(e);
-      setStatus(si, ui, { state: "fail", message: msg });
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      {entries.length === 0 && (
-        <p className="text-xs text-[color:var(--muted)]">
-          No drivers configured. Add one to dispatch bicameral passes.
-        </p>
-      )}
-      {entries.map((entry, si) => (
-        <div
-          key={si}
-          className="flex flex-col gap-2 rounded-[var(--radius)] border border-[color:var(--border)] p-2"
-        >
-          <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-            <input
-              type="text"
-              value={entry.name}
-              placeholder="slot name (e.g. left)"
-              onChange={(e) => {
-                const next = entries.slice();
-                next[si] = { ...entry, name: e.target.value };
-                onChange(next);
-              }}
-              disabled={pending}
-              className={baseInputClass}
-            />
-            <button
-              type="button"
-              onClick={() => onChange(entries.filter((_, j) => j !== si))}
-              disabled={pending || entries.length <= 1}
-              title={
-                entries.length <= 1
-                  ? "The bicameral loop requires at least one driver slot."
-                  : "Remove this driver slot."
-              }
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--status-error-border)] hover:bg-[color:var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
-            >
-              Remove slot
-            </button>
-          </div>
-
-          {/* Priority list of backends for this slot. backends[0] is the
-              primary; the rest are failover targets tried in order. Each
-              entry is a watchdog-topology hemisphere-driver NAME. */}
-          {entry.backends.map((backend, ui) => {
-            const status = statusByKey[keyOf(si, ui)];
-            const canTest = backend.trim().length > 0 && !pending && status?.state !== "testing";
-            const updateBackend = (next: string) => {
-              const backends = entry.backends.slice();
-              backends[ui] = next;
-              setStatus(si, ui, null); // selection change invalidates prior test
-              setSlotBackends(si, backends);
-            };
-            return (
-              <div key={ui} className="flex flex-col gap-1 pl-2">
-                <div className="grid grid-cols-[auto_2fr_auto_auto] items-center gap-2">
-                  <span
-                    className="font-ui text-[11px] text-[color:var(--muted)]"
-                    title={ui === 0 ? "Primary backend" : `Failover backend #${ui}`}
-                  >
-                    {ui === 0 ? "primary" : `#${ui}`}
-                  </span>
-                  {dropdownEntries ? (
-                    <select
-                      value={backend}
-                      onChange={(e) => updateBackend(e.target.value)}
-                      disabled={pending}
-                      className={baseInputClass}
-                    >
-                      <option value="">(pick a driver…)</option>
-                      {dropdownEntries.map((c) => (
-                        <option key={c.name} value={c.name}>
-                          {c.name}
-                        </option>
-                      ))}
-                      {backend && !dropdownEntries.some((c) => c.name === backend) && (
-                        // Saved backend isn't a current topology entry —
-                        // surface it (covers a renamed/removed driver or a
-                        // legacy URL-shaped value) so the operator sees it.
-                        <option value={backend}>(unknown: {backend})</option>
-                      )}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={backend}
-                      placeholder="topology driver name (e.g. left)"
-                      onChange={(e) => updateBackend(e.target.value)}
-                      disabled={pending}
-                      className={baseInputClass}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => void probe(si, ui)}
-                    disabled={!canTest}
-                    title={
-                      canTest
-                        ? "Resolve this driver's URL from the topology and probe its /v1/info."
-                        : "Pick a driver first."
-                    }
-                    className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
-                  >
-                    {status?.state === "testing" ? "Testing…" : "Test"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStatus(si, ui, null);
-                      setSlotBackends(
-                        si,
-                        entry.backends.filter((_, j) => j !== ui),
-                      );
-                    }}
-                    disabled={pending || entry.backends.length <= 1}
-                    title={
-                      entry.backends.length <= 1
-                        ? "A slot needs at least one backend."
-                        : "Remove this backend."
-                    }
-                    className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--status-error-border)] hover:bg-[color:var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
-                  >
-                    ✕
-                  </button>
-                </div>
-                {status && (
-                  <p
-                    className={
-                      "ml-1 text-[11px] " +
-                      (status.state === "ok"
-                        ? "text-status-success"
-                        : status.state === "fail"
-                          ? "text-status-error"
-                          : "text-[color:var(--muted)]")
-                    }
-                  >
-                    {status.state === "ok" && "✓ "}
-                    {status.state === "fail" && "✗ "}
-                    {status.message}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-
-          <button
-            type="button"
-            onClick={() => setSlotBackends(si, [...entry.backends, ""])}
-            disabled={pending}
-            title="Add a failover backend tried after the ones above."
-            className="font-ui ml-2 w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            + Add failover backend
-          </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={() => onChange([...entries, { name: "", backends: [""] }])}
-        disabled={pending}
-        className="font-ui w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
-      >
-        + Add driver
-      </button>
-    </div>
-  );
-}
-
-/**
- * Match identity's server-side normalization: peer URLs are stored
- * with no trailing slash (see `resolve_peer_url` in identity/app.py).
- * Use this when comparing topology URLs to the saved value so
- * "http://x:1/" and "http://x:1" don't show as different selections.
+ * Topology URLs come back with a trailing slash (pydantic's AnyUrl
+ * normalises them that way) while a saved peer reference usually
+ * doesn't. Strip it on both sides so "http://x:1/" and "http://x:1"
+ * don't render as different selections.
  */
 function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, "");

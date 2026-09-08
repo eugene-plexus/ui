@@ -1,57 +1,15 @@
 /**
- * Type definitions and helpers for the watchdog API.
+ * Watchdog-specific helpers.
  *
- * Hand-typed in v0.1 — no codegen for the watchdog spec yet. The shapes
- * mirror `specs/openapi/watchdog.yaml` and the common-component config
- * schema. Drop these for generated types when watchdog gets added to
- * `scripts/codegen`.
+ * The wire shapes that used to be hand-typed here are generated now —
+ * `openapi/watchdog.yaml` joined `scripts/codegen.mjs` with the runtime
+ * dashboard, which is what the old TODO in this file asked for. Import
+ * `Component`, `ComponentList`, `Runtime`, `EngineDescriptor` and the
+ * rest from `@/lib/types`.
+ *
+ * What is left is the one thing codegen cannot give us: a provider list
+ * the wizard can render before any driver process exists to ask.
  */
-
-export type ComponentKind =
-  | "orchestrator"
-  | "hemisphere-driver"
-  | "memory"
-  | "identity"
-  | "connector"
-  // v0.3 local-LLM-training-platform components.
-  | "coordinator"
-  | "trainer"
-  | "data"
-  | "eval"
-  | "inference"
-  | "cluster";
-
-export type ComponentStatus =
-  | "starting"
-  | "running"
-  | "safe_mode"
-  | "exited"
-  | "crashed"
-  | "unreachable";
-
-export interface SpawnConfig {
-  configFile: string;
-  env?: Record<string, string>;
-}
-
-export interface ComponentEntry {
-  name: string;
-  kind: ComponentKind;
-  url: string;
-  spawn?: SpawnConfig;
-  safeMode?: boolean;
-}
-
-export interface Component extends ComponentEntry {
-  status: ComponentStatus;
-  pid?: number;
-  lastRestart?: string;
-  lastError?: string;
-}
-
-export interface ComponentList {
-  components: Component[];
-}
 
 export interface WatchdogConfigDocument extends Record<string, unknown> {
   firstRunComplete?: boolean;
@@ -61,11 +19,11 @@ export interface WatchdogConfigDocument extends Record<string, unknown> {
 
 /**
  * Hardcoded provider catalog mirroring
- * `hemisphere-driver/src/eugene_plexus_hemisphere_driver/providers.py`.
+ * `inference-driver/src/eugene_plexus_inference_driver/providers.py`.
  *
- * v0.1 wizard duplicates the keys / labels here so the provider dropdown
- * can render before any driver process exists. The full provider schema
- * (extra fields, deny patterns, default base URLs) stays server-side —
+ * The first-run wizard duplicates the keys / labels here so the provider
+ * dropdown can render before any driver process exists. The full
+ * provider schema (extra fields, default base URLs) stays server-side —
  * the wizard only needs key + label + which credential field to ask
  * for. Operators who want anything fancier go through the post-setup
  * Config tab against the live driver's schema.
@@ -90,6 +48,15 @@ export interface WizardProvider {
 }
 
 export const WIZARD_PROVIDERS: WizardProvider[] = [
+  // A local engine runtime the watchdog supervises is reached the same
+  // way as any other OpenAI-compatible endpoint — the driver points its
+  // `baseUrl` at the runtime's `url`. That is the whole integration:
+  // fronting a runtime is configuration, not a distinct provider kind.
+  {
+    key: "openai_compat_custom",
+    label: "Local engine runtime, or any OpenAI-compatible URL",
+    credentials: ["base_url", "api_key"],
+  },
   {
     key: "claude_subscription",
     label: "Claude (Pro/Max subscription via Claude Code CLI)",
@@ -106,11 +73,6 @@ export const WIZARD_PROVIDERS: WizardProvider[] = [
   { key: "minimax", label: "MiniMax", credentials: ["api_key"] },
   { key: "ollama_local", label: "Local — Ollama", credentials: ["none"] },
   { key: "lmstudio_local", label: "Local — LM Studio", credentials: ["none"] },
-  {
-    key: "openai_compat_custom",
-    label: "Custom OpenAI-compatible URL",
-    credentials: ["base_url", "api_key"],
-  },
 ];
 
 export function providerLabel(key: string): string {

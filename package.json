@@ -2,7 +2,7 @@
   "name": "@eugene-plexus/ui",
   "version": "0.1.0",
   "private": true,
-  "description": "Web UI for Eugene Plexus: chat with side-by-side hemisphere visualization and a generic config editor.",
+  "description": "Web UI for Eugene Plexus: runtime dashboard, schema-driven config editor, and a chat playground over the gateway.",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=20"

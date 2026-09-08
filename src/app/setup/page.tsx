@@ -3,37 +3,48 @@
 /**
  * First-run wizard.
  *
- * Linear ten-screen flow (v0.2 expansion of the original 8-screen flow):
+ * Linear seven-screen flow:
  *
- *   1. Look & feel       — local theme + font, live preview
- *   2. Security          — passphrase + securityMode (v0.2)
- *   3. Welcome           — plain-language "body parts" framing
- *   4. Deployment        — all-local vs. networked
- *   5. Orchestrator      — host:port shown only in networked mode
- *   6. Driver 1          — provider + credential + model
- *   7. Driver 2          — same with a "pick a different vendor" hint
- *   8. Memory            — backend choice (local_sqlite default vs. in_process)
- *   9. Identity          — display name override + reflection wiring
- *  10. Connectors + Done — optional Discord adapter, summary + Start button
+ *   1. Look & feel   — local theme + font, live preview
+ *   2. Security      — passphrase + securityMode
+ *   3. Welcome       — plain-language framing of what gets set up
+ *   4. Deployment    — all-local vs. networked
+ *   5. Gateway       — host:port shown only in networked mode
+ *   6. Driver        — provider + credential + model for one backend
+ *   7. Done          — summary + Start
+ *
+ * Was ten screens. Memory, Identity and Connectors were screens for
+ * components that no longer exist, and the second Driver screen existed
+ * because two hemispheres had to disagree with each other — a control
+ * plane's N drivers are all the same kind of thing, so one is the shape
+ * of the question and the rest get added from Config.
+ *
+ * This is a cut, not the rewrite. The wizard still assumes the operator
+ * has components in the watchdog topology already and cannot create
+ * them, and it has nothing to say about engine runtimes or a model
+ * library because neither is acquirable yet. The real first-run flow —
+ * fetch an engine, point at a model directory, launch a runtime, front
+ * it with a driver, none of it by hand-editing YAML — needs M1 and M2 to
+ * exist first, and lands at M6.
  *
  * Navigation rules:
  *   - Screen 1: `Cancel` + `Continue →`
- *   - Screens 2–9: `← Back` + `Continue →`
- *   - Screen 10: `← Back` + `Start`
+ *   - Screens 2–6: `← Back` + `Continue →`
+ *   - Screen 7: `← Back` + `Start`
  *
  * State lives in React (with sessionStorage mirror so a tab refresh
  * doesn't lose progress). The actual write-to-watchdog happens only on
- * screen 8's Start button — the wizard treats the entire flow as one
+ * the final Start button — the wizard treats the entire flow as one
  * transaction and either commits everything or commits nothing.
  *
- * v0.2 transactional order on Start:
+ * Transactional order on Start:
  *   1. POST /v1/auth/initialize with the wizard's passphrase → get a
  *      session token, populate AuthState.master_key on the watchdog.
  *   2. Patch the chosen securityMode (default is prompt_on_startup,
  *      skip the patch if unchanged). Switching to os_keyring with the
  *      session active persists the master key for auto-unlock.
- *   3. Patch each driver's apiKey / provider config (encrypted at rest
- *      now that a master key exists).
+ *   3. Patch the driver's provider / credential / model config
+ *      (encrypted at rest now that a master key exists).
  *   4. Flip firstRunComplete: true.
  *
  * If step 1 fails (e.g. install already initialized), surface the error
@@ -51,20 +62,14 @@ import { ApiError, api } from "@/lib/api";
 import { setSessionToken } from "@/lib/session";
 import { useFontSize, FONT_SIZE_LABELS, type FontSize } from "@/lib/useFontSize";
 import { useTheme, type Theme } from "@/lib/useTheme";
-import {
-  WIZARD_PROVIDERS,
-  type Component,
-  type ComponentList,
-  type WizardCredential,
-} from "@/lib/watchdog";
+import type { Component, ComponentList } from "@/lib/types";
+import { WIZARD_PROVIDERS, type WizardCredential } from "@/lib/watchdog";
 
 const DRAFT_KEY = "eugene-wizard-draft";
-const TOTAL_SCREENS = 10;
+const TOTAL_SCREENS = 7;
 
 type DeploymentMode = "local" | "networked";
 type SecurityMode = "prompt_on_startup" | "os_keyring";
-type MemoryBackend = "local_sqlite" | "in_process";
-type ConnectorChoice = "skip" | "discord";
 
 interface InitializeResponse {
   sessionToken: string;
@@ -86,38 +91,21 @@ interface DriverDraft {
 
 interface WizardDraft {
   deployment: DeploymentMode;
-  orchestratorHost: string;
-  orchestratorPort: number;
-  drivers: [DriverDraft, DriverDraft];
-  // Memory ------------------------------------------------------------
-  memoryHost: string;
-  memoryPort: number;
-  memoryBackend: MemoryBackend;
-  memoryLocalSqlitePath: string;
-  // Identity ----------------------------------------------------------
-  identityHost: string;
-  identityPort: number;
-  identityEnabled: boolean;
-  identityDisplayName: string;
-  enableReflection: boolean;
-  reflectionDriverName: string;
-  // Connector ---------------------------------------------------------
-  connectorChoice: ConnectorChoice;
-  connectorHost: string;
-  connectorPort: number;
-  discordAdapterName: string;
-  discordBotToken: string;
-  discordAllowedChannels: string;
-  // Security ----------------------------------------------------------
+  gatewayHost: string;
+  gatewayPort: number;
+  driver: DriverDraft;
   securityMode: SecurityMode;
 }
 
-function blankDriver(name: string): DriverDraft {
+function blankDriver(): DriverDraft {
   return {
-    name,
+    name: "driver-1",
     host: "127.0.0.1",
-    port: name === "left" ? 8081 : 8082,
-    provider: "claude_subscription",
+    port: 8081,
+    // A local engine runtime is reached over OpenAI-compatible HTTP like
+    // anything else, so the custom-URL provider is the right default for
+    // a control plane whose headline case is a model on this machine.
+    provider: "openai_compat_custom",
     apiKey: "",
     claudeCodeCliPath: "claude",
     codexCliPath: "codex",
@@ -129,25 +117,9 @@ function blankDriver(name: string): DriverDraft {
 function blankDraft(): WizardDraft {
   return {
     deployment: "local",
-    orchestratorHost: "127.0.0.1",
-    orchestratorPort: 8080,
-    drivers: [blankDriver("left"), blankDriver("right")],
-    memoryHost: "127.0.0.1",
-    memoryPort: 8083,
-    memoryBackend: "local_sqlite",
-    memoryLocalSqlitePath: "memory.sqlite3",
-    identityHost: "127.0.0.1",
-    identityPort: 8084,
-    identityEnabled: true,
-    identityDisplayName: "Eugene",
-    enableReflection: false,
-    reflectionDriverName: "left",
-    connectorChoice: "skip",
-    connectorHost: "127.0.0.1",
-    connectorPort: 8085,
-    discordAdapterName: "discord",
-    discordBotToken: "",
-    discordAllowedChannels: "",
+    gatewayHost: "127.0.0.1",
+    gatewayPort: 8080,
+    driver: blankDriver(),
     securityMode: "prompt_on_startup",
   };
 }
@@ -167,21 +139,25 @@ export default function WizardPage() {
   const [passphraseConfirm, setPassphraseConfirm] = useState("");
 
   // Hydrate from sessionStorage so a tab refresh mid-wizard doesn't
-  // throw away typed values. The session-store key is separate from the
-  // chat conversation key — a wizard refresh isn't a chat refresh.
+  // throw away typed values.
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<WizardDraft> & { screen?: number };
-        setDraft((prev) => ({ ...prev, ...parsed }));
-        if (
-          typeof parsed.screen === "number" &&
-          parsed.screen >= 1 &&
-          parsed.screen <= TOTAL_SCREENS
-        ) {
-          setScreen(parsed.screen);
+        // A draft saved by the ten-screen wizard has a `drivers` tuple
+        // and no `driver`. Merging one would produce a half-shaped draft
+        // that renders undefined fields, so ignore it and start clean.
+        if (parsed.driver && typeof parsed.driver === "object") {
+          setDraft((prev) => ({ ...prev, ...parsed }));
+          if (
+            typeof parsed.screen === "number" &&
+            parsed.screen >= 1 &&
+            parsed.screen <= TOTAL_SCREENS
+          ) {
+            setScreen(parsed.screen);
+          }
         }
       }
     } catch {
@@ -190,10 +166,9 @@ export default function WizardPage() {
     setHydrated(true);
   }, []);
 
-  // Auto-save: every draft change rewrites sessionStorage. The design
-  // calls for "auto-save on every input change so closing the browser
-  // mid-wizard never loses state". Browser storage covers the
-  // tab-reload case; durable cross-browser resume waits on v0.2.
+  // Auto-save: every draft change rewrites sessionStorage, so closing
+  // the tab mid-wizard doesn't lose state. Durable cross-browser resume
+  // is not attempted.
   useEffect(() => {
     if (!hydrated) return;
     try {
@@ -203,12 +178,11 @@ export default function WizardPage() {
     }
   }, [hydrated, draft, screen]);
 
-  // Pull the watchdog's current component list once. Screen 8 uses it
-  // to show the operator a final summary and to decide what to PATCH
-  // vs. what to skip. The endpoint is auth-protected in v0.2; the
-  // wizard hasn't initialized the install yet so we skip auth and
-  // tolerate a 401 (uninitialized installs return that for protected
-  // routes — empty list is fine, Start surfaces real errors later).
+  // Pull the watchdog's current component list once. The final screen
+  // uses it for the summary and to decide what to PATCH vs. skip. The
+  // endpoint is auth-protected; the wizard hasn't initialized the
+  // install yet so we skip auth and tolerate a 401 — an empty list is
+  // fine, Start surfaces real errors later.
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -217,8 +191,7 @@ export default function WizardPage() {
         if (cancelled) return;
         setKnownComponents(list.components ?? []);
       } catch {
-        // Watchdog unreachable or auth-required — leave empty; Start
-        // surfaces real errors when it tries to PATCH.
+        // Watchdog unreachable or auth-required — leave empty.
       }
     }
     void load();
@@ -230,12 +203,8 @@ export default function WizardPage() {
   function patchDraft(patch: Partial<WizardDraft>) {
     setDraft((prev) => ({ ...prev, ...patch }));
   }
-  function patchDriver(idx: 0 | 1, patch: Partial<DriverDraft>) {
-    setDraft((prev) => {
-      const next = { ...prev, drivers: [...prev.drivers] as [DriverDraft, DriverDraft] };
-      next.drivers[idx] = { ...next.drivers[idx], ...patch };
-      return next;
-    });
+  function patchDriver(patch: Partial<DriverDraft>) {
+    setDraft((prev) => ({ ...prev, driver: { ...prev.driver, ...patch } }));
   }
 
   function next() {
@@ -247,10 +216,9 @@ export default function WizardPage() {
 
   function cancel() {
     // Cancel only fires from screen 1; bail-out from later screens goes
-    // back to 1 first. Per the design memo: SIGTERM-children-and-exit
-    // semantics belong to a future watchdog endpoint; v0.1 just clears
-    // the draft and returns to /chat so the operator can decide what to
-    // do next.
+    // back to 1 first. Stopping already-spawned children belongs to a
+    // watchdog endpoint that doesn't exist; here we just clear the draft
+    // and return so the operator can decide what to do next.
     try {
       sessionStorage.removeItem(DRAFT_KEY);
     } catch {
@@ -265,8 +233,9 @@ export default function WizardPage() {
     try {
       // Step 1: initialize the install. Sets the passphrase hash + master
       // salt on the watchdog, derives the master key into memory, and
-      // returns a session token. After this call, the rest of the wizard's
-      // PATCHes are authenticated by the api client's auto-attach.
+      // returns a session token. After this call, the rest of the
+      // wizard's PATCHes are authenticated by the api client's
+      // auto-attach.
       setStartMessage("Setting your passphrase and deriving keys…");
       const initResp = await api.post<InitializeResponse>(
         "watchdog",
@@ -277,10 +246,9 @@ export default function WizardPage() {
       setSessionToken(initResp.sessionToken);
 
       // Step 2: persist the chosen securityMode. Default is
-      // prompt_on_startup; skip the patch if unchanged so we don't
-      // touch the keyring needlessly. Flipping to os_keyring with the
-      // session active triggers the watchdog's keyring write (see
-      // routes/config.py).
+      // prompt_on_startup; skip the patch if unchanged so we don't touch
+      // the keyring needlessly. Flipping to os_keyring with the session
+      // active triggers the watchdog's keyring write.
       if (draft.securityMode !== "prompt_on_startup") {
         setStartMessage("Applying security mode…");
         await api.patch("watchdog", "/v1/config", {
@@ -288,169 +256,30 @@ export default function WizardPage() {
         });
       }
 
-      // Step 3: PATCH each existing driver component with the user's
-      // choices. Components must already exist in the watchdog topology
-      // for v0.2 — the "create from scratch" path is a follow-on. We
-      // surface missing-component warnings on Screen 10 so the operator
-      // sees what didn't apply.
-      setStartMessage("Saving driver and orchestrator configuration…");
-      const componentsByName = new Map(knownComponents.map((c) => [c.name, c]));
-      const componentByKind = (kind: string) => knownComponents.find((c) => c.kind === kind);
-      const driverComponentNames = knownComponents
-        .filter((c) => c.kind === "hemisphere-driver")
+      // Step 3: PATCH the driver component. It must already exist in the
+      // watchdog topology — creating one from scratch is a follow-on.
+      // The final screen warns when it doesn't.
+      setStartMessage("Saving driver configuration…");
+      const driverNames = knownComponents
+        .filter((c) => c.kind === "inference-driver")
         .map((c) => c.name);
-
-      // Resolved driver names — fall back to the i-th driver if the
-      // wizard's chosen name doesn't exist in topology. Used by both
-      // the PATCH loop and the reflection URL derivation below.
-      const resolvedDriverNames: string[] = [];
-      for (let i = 0; i < draft.drivers.length; i++) {
-        const d = draft.drivers[i]!;
-        const direct = componentsByName.get(d.name);
-        const fallback = driverComponentNames[i];
-        const patch = buildDriverPatch(d);
-        if (direct) {
-          await api.patch(d.name, "/v1/config", patch);
-          resolvedDriverNames.push(d.name);
-        } else if (fallback) {
-          await api.patch(fallback, "/v1/config", patch);
-          resolvedDriverNames.push(fallback);
-        } else {
-          resolvedDriverNames.push(d.name); // no topology entry; record best guess
-        }
-      }
-
-      // Memory configuration — PATCH the memory component if it exists.
-      const memoryComponent = componentByKind("memory");
-      if (memoryComponent) {
-        setStartMessage("Saving memory configuration…");
-        const memoryPatch: Record<string, unknown> = {
-          backend: draft.memoryBackend,
-        };
-        if (draft.memoryBackend === "local_sqlite") {
-          memoryPatch.localSqlitePath = draft.memoryLocalSqlitePath;
-        }
-        await api.patch(memoryComponent.name, "/v1/config", memoryPatch);
-      }
-
-      // Identity configuration — PATCH the identity component if it
-      // exists AND the operator opted in. We also patch the orchestrator
-      // with identityUrl so chat-time prompt assembly kicks in. When
-      // identity is skipped we leave the orchestrator's identityUrl
-      // untouched (null / empty triggers the v0.1 fallback path).
-      const identityComponent = componentByKind("identity");
-      const identityUrl = identityComponent?.url ?? null;
-      if (draft.identityEnabled && identityComponent) {
-        setStartMessage("Saving identity configuration…");
-        const identityPatch: Record<string, unknown> = {};
-        if (draft.enableReflection) {
-          // Reflection runs a single hemisphere directly, so it needs a
-          // concrete URL. Drivers are watchdog-topology entries now
-          // (v0.2.1 item 2), so resolve the chosen driver name straight
-          // from the topology snapshot instead of via the orchestrator's
-          // config. `reflectionDriverName` is a hemisphere-driver
-          // component name (the wizard's driver names == topology names).
-          const driverComponent = componentsByName.get(draft.reflectionDriverName);
-          const hemisphereUrl =
-            driverComponent?.kind === "hemisphere-driver" ? driverComponent.url : undefined;
-          if (hemisphereUrl) {
-            identityPatch.reflectionHemisphereUrl = hemisphereUrl;
-          }
-          if (memoryComponent) {
-            identityPatch.reflectionMemoryUrl = memoryComponent.url;
-          }
-        }
-        if (Object.keys(identityPatch).length > 0) {
-          await api.patch(identityComponent.name, "/v1/config", identityPatch);
-        }
-
-        // Constitution rename — only when the operator changed it from the default.
-        const trimmedName = draft.identityDisplayName.trim();
-        if (trimmedName && trimmedName !== "Eugene") {
-          try {
-            await api.patch("identity", "/v1/identity/constitution", {
-              name: trimmedName,
-            });
-          } catch {
-            // Constitution PATCH can 503 if identity is in safe mode.
-            // Treat as best-effort — operator can rename later from Config.
-          }
-        }
-      }
-
-      // Orchestrator identityUrl — set if we have an identity component
-      // and the operator opted in; clear (null) if they opted out so an
-      // operator re-running the wizard can switch back to v0.1 path.
-      const orchestratorComponent = componentByKind("orchestrator");
-      if (orchestratorComponent) {
-        const orchPatch: Record<string, unknown> = {};
-        if (draft.identityEnabled && identityUrl) {
-          orchPatch.identityUrl = identityUrl;
-        } else {
-          orchPatch.identityUrl = null;
-        }
-        await api.patch(orchestratorComponent.name, "/v1/config", orchPatch);
-      }
-
-      // Connector + Discord adapter — only when the operator opted in.
-      if (draft.connectorChoice === "discord") {
-        const connectorComponent = componentByKind("connector");
-        if (connectorComponent) {
-          setStartMessage("Setting up the Discord adapter…");
-          // The Discord adapter accepts a comma/newline-separated
-          // string for `channelAllowlist`, NOT a list. See
-          // connector/src/.../adapters/discord_adapter.py field spec.
-          const channelAllowlist = draft.discordAllowedChannels
-            .split(/[,\s]+/u)
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0)
-            .join(",");
-          const adapterBody = {
-            name: draft.discordAdapterName.trim() || "discord",
-            kind: "discord",
-            enabled: true,
-            adapterConfig: {
-              botToken: draft.discordBotToken,
-              channelAllowlist,
-            },
-          };
-          try {
-            await api.post("connector", "/v1/adapters", adapterBody);
-          } catch (e) {
-            if (e instanceof ApiError && e.status === 409) {
-              // Adapter already exists — update it instead.
-              await api.patch(
-                "connector",
-                `/v1/adapters/${encodeURIComponent(adapterBody.name)}`,
-                adapterBody,
-              );
-            } else {
-              throw e;
-            }
-          }
-        }
+      const target = driverNames.includes(draft.driver.name) ? draft.driver.name : driverNames[0];
+      if (target) {
+        await api.patch(target, "/v1/config", buildDriverPatch(draft.driver));
       }
 
       setStartMessage("Finalizing setup…");
       await api.patch("watchdog", "/v1/config", { firstRunComplete: true });
 
-      setStartMessage("Restarting components with your new configuration…");
-      // Best-effort restart so each component picks up its new config.
-      // Each PATCH path set requiresRestart for the fields we touched;
-      // restarting here closes that loop.
-      const restartTargets = new Set<string>(resolvedDriverNames);
-      if (memoryComponent) restartTargets.add(memoryComponent.name);
-      if (draft.identityEnabled && identityComponent) {
-        restartTargets.add(identityComponent.name);
-      }
-      if (orchestratorComponent) restartTargets.add(orchestratorComponent.name);
-      for (const name of restartTargets) {
-        if (componentsByName.has(name)) {
-          try {
-            await api.post("watchdog", `/v1/components/${encodeURIComponent(name)}/restart`, {});
-          } catch {
-            // Best-effort — a failed restart isn't a wizard failure.
-          }
+      // Best-effort restart so the driver picks up its new config. The
+      // gateway needs none: its routing table refreshes on a timer and
+      // re-reads each driver's /v1/info.
+      if (target) {
+        setStartMessage("Restarting the driver with your new configuration…");
+        try {
+          await api.post("watchdog", `/v1/components/${encodeURIComponent(target)}/restart`, {});
+        } catch {
+          // A failed restart isn't a wizard failure.
         }
       }
 
@@ -459,8 +288,8 @@ export default function WizardPage() {
       } catch {
         // ignore
       }
-      setStartMessage("Done — opening chat…");
-      // Small delay so the operator sees the final message; not strictly required.
+      setStartMessage("Done — opening the playground…");
+      // Small delay so the operator sees the final message.
       setTimeout(() => router.replace("/"), 500);
     } catch (e) {
       const detail = formatStartError(e);
@@ -527,75 +356,27 @@ export default function WizardPage() {
             />
           )}
           {screen === 5 && (
-            <ScreenOrchestrator
+            <ScreenGateway
               mode={draft.deployment}
-              host={draft.orchestratorHost}
-              port={draft.orchestratorPort}
-              onChange={(host, port) =>
-                patchDraft({ orchestratorHost: host, orchestratorPort: port })
-              }
+              host={draft.gatewayHost}
+              port={draft.gatewayPort}
+              onChange={(host, port) => patchDraft({ gatewayHost: host, gatewayPort: port })}
             />
           )}
           {screen === 6 && (
             <ScreenDriver
-              index={0}
               showHostHint={draft.deployment === "networked"}
-              driver={draft.drivers[0]}
-              onChange={(p) => patchDriver(0, p)}
+              driver={draft.driver}
+              onChange={patchDriver}
             />
           )}
           {screen === 7 && (
-            <ScreenDriver
-              index={1}
-              showHostHint={draft.deployment === "networked"}
-              driver={draft.drivers[1]}
-              firstProviderKey={draft.drivers[0].provider}
-              onChange={(p) => patchDriver(1, p)}
-            />
-          )}
-          {screen === 8 && (
-            <ScreenMemory
-              mode={draft.deployment}
-              host={draft.memoryHost}
-              port={draft.memoryPort}
-              backend={draft.memoryBackend}
-              localSqlitePath={draft.memoryLocalSqlitePath}
-              onChangeHost={(host, port) => patchDraft({ memoryHost: host, memoryPort: port })}
-              onBackend={(v) => patchDraft({ memoryBackend: v })}
-              onLocalSqlitePath={(v) => patchDraft({ memoryLocalSqlitePath: v })}
-            />
-          )}
-          {screen === 9 && (
-            <ScreenIdentity
-              mode={draft.deployment}
-              host={draft.identityHost}
-              port={draft.identityPort}
-              enabled={draft.identityEnabled}
-              displayName={draft.identityDisplayName}
-              enableReflection={draft.enableReflection}
-              reflectionDriverName={draft.reflectionDriverName}
-              driverNames={draft.drivers.map((d) => d.name)}
-              onChangeHost={(host, port) => patchDraft({ identityHost: host, identityPort: port })}
-              onEnabled={(v) => patchDraft({ identityEnabled: v })}
-              onDisplayName={(v) => patchDraft({ identityDisplayName: v })}
-              onEnableReflection={(v) => patchDraft({ enableReflection: v })}
-              onReflectionDriverName={(v) => patchDraft({ reflectionDriverName: v })}
-            />
-          )}
-          {screen === 10 && (
-            <ScreenConnectorsAndStart
+            <ScreenDone
               draft={draft}
               knownComponents={knownComponents}
               starting={starting}
               startMessage={startMessage}
               startError={startError}
-              onConnectorChoice={(v) => patchDraft({ connectorChoice: v })}
-              onChangeConnectorHost={(host, port) =>
-                patchDraft({ connectorHost: host, connectorPort: port })
-              }
-              onDiscordAdapterName={(v) => patchDraft({ discordAdapterName: v })}
-              onDiscordBotToken={(v) => patchDraft({ discordBotToken: v })}
-              onDiscordAllowedChannels={(v) => patchDraft({ discordAllowedChannels: v })}
             />
           )}
         </div>
@@ -620,43 +401,18 @@ function canContinue(
   passphraseConfirm: string,
 ): boolean {
   // Screen 2 is Security — passphrase non-empty AND confirmation
-  // matches. Length validation lives server-side (Argon2 hash will
-  // accept anything non-empty); we only block the obvious typo.
+  // matches. Length validation lives server-side (Argon2 will accept
+  // anything non-empty); we only block the obvious typo.
   if (screen === 2) {
     return passphrase.length > 0 && passphrase === passphraseConfirm;
   }
-  // Screens 6 + 7 are the two drivers (shifted from 5 + 6 in v0.1).
-  if (screen === 6 || screen === 7) {
-    const idx = (screen - 6) as 0 | 1;
-    const d = draft.drivers[idx];
+  // Screen 6 is the driver.
+  if (screen === 6) {
+    const d = draft.driver;
     if (!d.name.trim()) return false;
     const credentials = WIZARD_PROVIDERS.find((p) => p.key === d.provider)?.credentials ?? [];
     if (credentials.includes("api_key") && !d.apiKey.trim()) return false;
     if (credentials.includes("base_url") && !d.baseUrl.trim()) return false;
-    return true;
-  }
-  // Screen 8 is Memory. local_sqlite requires a non-empty path.
-  if (screen === 8) {
-    if (draft.memoryBackend === "local_sqlite") {
-      return draft.memoryLocalSqlitePath.trim().length > 0;
-    }
-    return true;
-  }
-  // Screen 9 is Identity. Display name is required when identity is
-  // enabled; otherwise nothing to validate.
-  if (screen === 9) {
-    if (!draft.identityEnabled) return true;
-    if (!draft.identityDisplayName.trim()) return false;
-    if (draft.enableReflection && !draft.reflectionDriverName.trim()) return false;
-    return true;
-  }
-  // Screen 10 (final) — when Discord is chosen, a bot token + adapter
-  // name are required. Otherwise just Start.
-  if (screen === 10) {
-    if (draft.connectorChoice === "discord") {
-      if (!draft.discordAdapterName.trim()) return false;
-      if (!draft.discordBotToken.trim()) return false;
-    }
     return true;
   }
   return true;
@@ -908,27 +664,132 @@ function ScreenWelcome() {
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Welcome</h2>
       <p className="mb-4 text-sm leading-relaxed">
-        Eugene Plexus models a thinking mind as a small system of parts that each do one job. Setup
-        walks through those parts in order:
+        Eugene Plexus is a control plane for local inference. It doesn&rsquo;t run models itself —
+        it supervises the engines that do, and puts one endpoint in front of them. The pieces:
       </p>
       <ul className="mb-4 ml-6 list-disc text-sm leading-relaxed text-[color:var(--muted)]">
         <li>
-          <span className="text-[color:var(--foreground)]">Orchestrator</span> — coordinates the
-          conversation and asks each driver in turn.
+          <span className="text-[color:var(--foreground)]">Supervisor</span> — starts and watches
+          engine processes, holds the topology, serves this UI.
         </li>
         <li>
-          <span className="text-[color:var(--foreground)]">Drivers</span> — two language models that
-          consider every message side-by-side. Picking different vendors for the two drivers creates
-          the most interesting behavior.
+          <span className="text-[color:var(--foreground)]">Gateway</span> — one OpenAI-compatible
+          endpoint. It works out which backend serves which model from the topology, so there is no
+          routing table to maintain by hand.
         </li>
         <li>
-          <span className="text-[color:var(--foreground)]">Memory</span> — a simple recent-history
-          store for v0.1.
+          <span className="text-[color:var(--foreground)]">Drivers</span> — one per backend. A
+          driver knows how to talk to its own engine and nothing else. Setup configures one; add
+          more from Config whenever.
         </li>
       </ul>
       <p className="text-sm leading-relaxed text-[color:var(--muted)]">
-        Each step has sensible defaults; you can change anything later from the Config page.
+        Every step has a sensible default and nothing here is permanent — the Config page edits all
+        of it later.
       </p>
+    </section>
+  );
+}
+
+function ScreenGateway({
+  mode,
+  host,
+  port,
+  onChange,
+}: {
+  mode: DeploymentMode;
+  host: string;
+  port: number;
+  onChange: (host: string, port: number) => void;
+}) {
+  return (
+    <section>
+      <h2 className="font-ui mb-2 text-xl font-semibold">Gateway</h2>
+      <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
+        The gateway is the address you point a client at — anything that speaks the OpenAI API works
+        unmodified. It resolves a model name to whichever driver serves it and falls back to another
+        when one dies. Nothing to configure here beyond where it listens; defaults for temperature
+        and token limits are on the Config page.
+      </p>
+      {mode === "networked" && <HostPortRow host={host} port={port} onChange={onChange} />}
+    </section>
+  );
+}
+
+function ScreenDriver({
+  showHostHint,
+  driver,
+  onChange,
+}: {
+  showHostHint: boolean;
+  driver: DriverDraft;
+  onChange: (patch: Partial<DriverDraft>) => void;
+}) {
+  const credentials = useMemo(
+    () => WIZARD_PROVIDERS.find((p) => p.key === driver.provider)?.credentials ?? [],
+    [driver.provider],
+  );
+  const isLocalEngine = driver.provider === "openai_compat_custom";
+
+  return (
+    <section>
+      <h2 className="font-ui mb-2 text-xl font-semibold">Driver</h2>
+      <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
+        A driver fronts exactly one backend. Configure one now to get a working endpoint; every
+        further backend is another driver, added from Config.
+      </p>
+      <Field
+        label="Name"
+        description="A label for this driver. It's also the name the watchdog topology uses, so keep it short."
+      >
+        <input
+          type="text"
+          value={driver.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+        />
+      </Field>
+      {showHostHint && (
+        <HostPortRow
+          host={driver.host}
+          port={driver.port}
+          onChange={(host, port) => onChange({ host, port })}
+        />
+      )}
+      <Field label="Backend" description="What this driver talks to.">
+        <select
+          value={driver.provider}
+          onChange={(e) => onChange({ provider: e.target.value })}
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+        >
+          {WIZARD_PROVIDERS.map((p) => (
+            <option key={p.key} value={p.key}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {isLocalEngine && (
+        <p className="-mt-2 mb-4 text-xs text-[color:var(--muted)]">
+          For a local engine, the base URL is the runtime&rsquo;s own address — the Runtimes page
+          shows it once the engine is up. Until engine acquisition lands you have to start
+          <span className="font-mono"> llama-server </span>
+          yourself or declare a runtime on the watchdog.
+        </p>
+      )}
+      <CredentialFields credentials={credentials} driver={driver} onChange={onChange} />
+      <Field
+        label="Model"
+        description="The model id this backend serves. For a local runtime that's its model alias — by default the model's own filename. Leave blank for the provider default."
+      >
+        <input
+          type="text"
+          value={driver.modelId}
+          onChange={(e) => onChange({ modelId: e.target.value })}
+          placeholder="(provider default)"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+        />
+      </Field>
     </section>
   );
 }
@@ -959,106 +820,6 @@ function ScreenDeployment({
         label="Across a network"
         description="Some or all components run on other machines. You'll be asked for host:port for each one."
       />
-    </section>
-  );
-}
-
-function ScreenOrchestrator({
-  mode,
-  host,
-  port,
-  onChange,
-}: {
-  mode: DeploymentMode;
-  host: string;
-  port: number;
-  onChange: (host: string, port: number) => void;
-}) {
-  return (
-    <section>
-      <h2 className="font-ui mb-2 text-xl font-semibold">Orchestrator</h2>
-      <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
-        The orchestrator runs the conversation loop, sends each prompt to both drivers, and merges
-        their responses. Defaults (system prompt, pass cap, agreement threshold) are fine for v0.1 —
-        you can tune them later in the Config page.
-      </p>
-      {mode === "networked" && <HostPortRow host={host} port={port} onChange={onChange} />}
-    </section>
-  );
-}
-
-function ScreenDriver({
-  index,
-  showHostHint,
-  driver,
-  firstProviderKey,
-  onChange,
-}: {
-  index: 0 | 1;
-  showHostHint: boolean;
-  driver: DriverDraft;
-  firstProviderKey?: string;
-  onChange: (patch: Partial<DriverDraft>) => void;
-}) {
-  const credentials = useMemo(
-    () => WIZARD_PROVIDERS.find((p) => p.key === driver.provider)?.credentials ?? [],
-    [driver.provider],
-  );
-  const hint =
-    index === 1 && firstProviderKey && firstProviderKey === driver.provider
-      ? "For the most interesting behavior, pick a different vendor than your first driver."
-      : null;
-
-  return (
-    <section>
-      <h2 className="font-ui mb-2 text-xl font-semibold">Driver {index + 1}</h2>
-      <p className="mb-2 text-sm text-[color:var(--muted)]">
-        One of the two language models Eugene consults on every message.
-      </p>
-      {hint && (
-        <p className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">{hint}</p>
-      )}
-      <Field label="Name" description="A label for this driver — defaults to “left” or “right”.">
-        <input
-          type="text"
-          value={driver.name}
-          onChange={(e) => onChange({ name: e.target.value })}
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-        />
-      </Field>
-      {showHostHint && (
-        <HostPortRow
-          host={driver.host}
-          port={driver.port}
-          onChange={(host, port) => onChange({ host, port })}
-        />
-      )}
-      <Field label="Provider" description="Which LLM subscription or service this driver wraps.">
-        <select
-          value={driver.provider}
-          onChange={(e) => onChange({ provider: e.target.value })}
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-        >
-          {WIZARD_PROVIDERS.map((p) => (
-            <option key={p.key} value={p.key}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <CredentialFields credentials={credentials} driver={driver} onChange={onChange} />
-      <Field
-        label="Model"
-        description='Specific model id, e.g. "gpt-4o", "claude-opus-4-7", "grok-2". Leave blank for the provider default.'
-      >
-        <input
-          type="text"
-          value={driver.modelId}
-          onChange={(e) => onChange({ modelId: e.target.value })}
-          placeholder="(provider default)"
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-        />
-      </Field>
     </section>
   );
 }
@@ -1135,362 +896,68 @@ function CredentialFields({
   );
 }
 
-function ScreenMemory({
-  mode,
-  host,
-  port,
-  backend,
-  localSqlitePath,
-  onChangeHost,
-  onBackend,
-  onLocalSqlitePath,
-}: {
-  mode: DeploymentMode;
-  host: string;
-  port: number;
-  backend: MemoryBackend;
-  localSqlitePath: string;
-  onChangeHost: (host: string, port: number) => void;
-  onBackend: (v: MemoryBackend) => void;
-  onLocalSqlitePath: (v: string) => void;
-}) {
-  return (
-    <section>
-      <h2 className="font-ui mb-2 text-xl font-semibold">Memory</h2>
-      <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
-        Where Eugene stores conversation history. Each turn is tagged with the person who said it,
-        so Eugene can pull back the right context when you (or a connected friend) talk to him
-        again.
-      </p>
-      {mode === "networked" && <HostPortRow host={host} port={port} onChange={onChangeHost} />}
-      <h3 className="font-ui mb-3 text-sm font-semibold">Storage backend</h3>
-      <Radio
-        checked={backend === "local_sqlite"}
-        onChange={() => onBackend("local_sqlite")}
-        label="Local SQLite (recommended)"
-        description={
-          "A small SQLite file on disk. Survives restarts; supports " +
-          "per-person retrieval and (in a future release) semantic search."
-        }
-      />
-      <Radio
-        checked={backend === "in_process"}
-        onChange={() => onBackend("in_process")}
-        label="In-process (volatile)"
-        description={
-          "Keeps conversations in RAM only — lost on restart. Useful for " +
-          "short test drives or when you do not want anything written to disk."
-        }
-      />
-      {backend === "local_sqlite" && (
-        <Field
-          label="Database path"
-          description={
-            "Filesystem path of the SQLite database. Relative paths " +
-            "resolve next to the memory component's config file. The " +
-            "parent directory is created automatically."
-          }
-        >
-          <input
-            type="text"
-            value={localSqlitePath}
-            onChange={(e) => onLocalSqlitePath(e.target.value)}
-            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-          />
-        </Field>
-      )}
-    </section>
-  );
-}
-
-function ScreenIdentity({
-  mode,
-  host,
-  port,
-  enabled,
-  displayName,
-  enableReflection,
-  reflectionDriverName,
-  driverNames,
-  onChangeHost,
-  onEnabled,
-  onDisplayName,
-  onEnableReflection,
-  onReflectionDriverName,
-}: {
-  mode: DeploymentMode;
-  host: string;
-  port: number;
-  enabled: boolean;
-  displayName: string;
-  enableReflection: boolean;
-  reflectionDriverName: string;
-  driverNames: string[];
-  onChangeHost: (host: string, port: number) => void;
-  onEnabled: (v: boolean) => void;
-  onDisplayName: (v: string) => void;
-  onEnableReflection: (v: boolean) => void;
-  onReflectionDriverName: (v: string) => void;
-}) {
-  return (
-    <section>
-      <h2 className="font-ui mb-2 text-xl font-semibold">Identity</h2>
-      <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
-        Eugene&rsquo;s &ldquo;self&rdquo; — a constitution (declarative facts about who he is) plus
-        a self-model (patterns he notices about himself over time). Each hemisphere is told who
-        Eugene is and who they&rsquo;re talking to before every turn, which gives the two backends
-        more interesting room to disagree.
-      </p>
-      <Radio
-        checked={enabled}
-        onChange={() => onEnabled(true)}
-        label="Enable identity (recommended)"
-        description={
-          "Eugene runs with constitution + self-model + per-person " +
-          "relationship context. The orchestrator points at this " +
-          "component and assembles per-hemisphere prompts from it."
-        }
-      />
-      <Radio
-        checked={!enabled}
-        onChange={() => onEnabled(false)}
-        label="Skip — use the v0.1 shared system prompt"
-        description={
-          "No constitution, no self-model. Both hemispheres see the same " +
-          "system prompt (the orchestrator's defaultSystemPrompt). You " +
-          "can add identity later from the Config page."
-        }
-      />
-      {enabled && (
-        <>
-          {mode === "networked" && <HostPortRow host={host} port={port} onChange={onChangeHost} />}
-          <Field
-            label="Display name"
-            description="The name Eugene uses for himself. Saved into the identity constitution."
-          >
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => onDisplayName(e.target.value)}
-              placeholder="Eugene"
-              className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-            />
-          </Field>
-          <hr className="my-6 border-[color:var(--border)]" />
-          <h3 className="font-ui mb-3 text-sm font-semibold">Self-model reflection</h3>
-          <p className="mb-4 text-xs leading-relaxed text-[color:var(--muted)]">
-            Reflection is Eugene looking at recent conversations and writing autobiographical notes
-            about himself. Manual-trigger only in v0.2 — POST{" "}
-            <span className="font-mono">/v1/identity/self-model/reflect</span>. Needs a hemisphere
-            driver to do the writing.
-          </p>
-          <Radio
-            checked={!enableReflection}
-            onChange={() => onEnableReflection(false)}
-            label="Skip reflection for now"
-            description={
-              "Reflection endpoint returns 503 until configured. You can " +
-              "wire it up later from the identity tab in Config."
-            }
-          />
-          <Radio
-            checked={enableReflection}
-            onChange={() => onEnableReflection(true)}
-            label="Enable reflection"
-            description={
-              "Point identity at one of your hemisphere drivers + at the " +
-              "memory component so reflection can read recent turns and " +
-              "write self-model entries."
-            }
-          />
-          {enableReflection && (
-            <Field
-              label="Reflection driver"
-              description={
-                "Which driver runs the reflection prompt. Picking the " +
-                "slower / cheaper of your two is a fine default — " +
-                "reflection isn't latency-sensitive."
-              }
-            >
-              <select
-                value={reflectionDriverName}
-                onChange={(e) => onReflectionDriverName(e.target.value)}
-                className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-              >
-                {driverNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
-function ScreenConnectorsAndStart({
+function ScreenDone({
   draft,
   knownComponents,
   starting,
   startMessage,
   startError,
-  onConnectorChoice,
-  onChangeConnectorHost,
-  onDiscordAdapterName,
-  onDiscordBotToken,
-  onDiscordAllowedChannels,
 }: {
   draft: WizardDraft;
   knownComponents: Component[];
   starting: boolean;
   startMessage: string | null;
   startError: string | null;
-  onConnectorChoice: (v: ConnectorChoice) => void;
-  onChangeConnectorHost: (host: string, port: number) => void;
-  onDiscordAdapterName: (v: string) => void;
-  onDiscordBotToken: (v: string) => void;
-  onDiscordAllowedChannels: (v: string) => void;
 }) {
   const summary: { label: string; value: string }[] = [
     {
-      label: "Orchestrator",
+      label: "Gateway",
       value:
-        draft.deployment === "networked"
-          ? `${draft.orchestratorHost}:${draft.orchestratorPort}`
-          : "local",
-    },
-    ...draft.drivers.map((d) => ({
-      label: `Driver — ${d.name}`,
-      value: `${providerLabelFor(d.provider)}${d.modelId ? ` · ${d.modelId}` : ""}`,
-    })),
-    {
-      label: "Memory",
-      value:
-        draft.memoryBackend === "local_sqlite"
-          ? `local SQLite · ${draft.memoryLocalSqlitePath}`
-          : "in-process (volatile)",
+        draft.deployment === "networked" ? `${draft.gatewayHost}:${draft.gatewayPort}` : "local",
     },
     {
-      label: "Identity",
-      value: draft.identityEnabled
-        ? `enabled · ${draft.identityDisplayName.trim() || "Eugene"}${
-            draft.enableReflection ? ` · reflection via ${draft.reflectionDriverName}` : ""
-          }`
-        : "disabled (v0.1 shared prompt)",
+      label: `Driver — ${draft.driver.name}`,
+      value: `${providerLabelFor(draft.driver.provider)}${
+        draft.driver.modelId ? ` · ${draft.driver.modelId}` : ""
+      }`,
     },
     {
-      label: "Connector",
+      label: "Security",
       value:
-        draft.connectorChoice === "discord"
-          ? `Discord · ${draft.discordAdapterName || "discord"}`
-          : "skipped",
+        draft.securityMode === "os_keyring"
+          ? "master key in the OS keyring (auto-unlock)"
+          : "passphrase prompt on startup",
     },
   ];
 
-  const missingDrivers = draft.drivers.filter(
-    (d) => !knownComponents.find((c) => c.name === d.name && c.kind === "hemisphere-driver"),
-  );
-  const missingMemory = !knownComponents.some((c) => c.kind === "memory");
-  const missingIdentity =
-    draft.identityEnabled && !knownComponents.some((c) => c.kind === "identity");
-  const missingConnector =
-    draft.connectorChoice === "discord" && !knownComponents.some((c) => c.kind === "connector");
+  const driverEntries = knownComponents.filter((c) => c.kind === "inference-driver");
+  const missingDriver = !driverEntries.some((c) => c.name === draft.driver.name);
+  const missingGateway = !knownComponents.some((c) => c.kind === "gateway");
 
   return (
     <section>
-      <h2 className="font-ui mb-2 text-xl font-semibold">Connectors</h2>
+      <h2 className="font-ui mb-2 text-xl font-semibold">Ready</h2>
       <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
-        Connectors bridge external chat platforms (Discord today; Slack / Matrix / Gmail later) into
-        Eugene&rsquo;s orchestrator. Optional — you can use Eugene entirely through this web UI.
-        Setting up Discord here is the same as adding the adapter later from Config.
+        Start writes all of this at once. Nothing has been saved yet.
       </p>
-      <Radio
-        checked={draft.connectorChoice === "skip"}
-        onChange={() => onConnectorChoice("skip")}
-        label="Skip for now (recommended)"
-        description={
-          "Eugene runs without any external connectors. You'll talk to " +
-          "him through this web UI."
-        }
-      />
-      <Radio
-        checked={draft.connectorChoice === "discord"}
-        onChange={() => onConnectorChoice("discord")}
-        label="Set up a Discord bot"
-        description={
-          "Requires a Discord bot token (created at " +
-          "https://discord.com/developers/applications). Eugene replies " +
-          "in DMs and when @-mentioned in allowed channels."
-        }
-      />
-      {draft.connectorChoice === "discord" && (
-        <>
-          {draft.deployment === "networked" && (
-            <HostPortRow
-              host={draft.connectorHost}
-              port={draft.connectorPort}
-              onChange={onChangeConnectorHost}
-            />
-          )}
-          <Field
-            label="Adapter name"
-            description="Label shown in logs and on the Config page. Useful when you add multiple Discord adapters later."
-          >
-            <input
-              type="text"
-              value={draft.discordAdapterName}
-              onChange={(e) => onDiscordAdapterName(e.target.value)}
-              placeholder="discord"
-              className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-            />
-          </Field>
-          <Field
-            label="Bot token"
-            description="From the Bot page of your Discord application. Stored encrypted at rest."
-          >
-            <SecretInput
-              value={draft.discordBotToken}
-              onChange={onDiscordBotToken}
-              placeholder="MTI..."
-            />
-          </Field>
-          <Field
-            label="Allowed channel IDs"
-            description={
-              "Comma-separated Discord channel IDs Eugene will respond " +
-              "in when @-mentioned. DMs always work; channel mentions " +
-              "are restricted to this list. Leave empty to start in DM-only mode."
-            }
-          >
-            <input
-              type="text"
-              value={draft.discordAllowedChannels}
-              onChange={(e) => onDiscordAllowedChannels(e.target.value)}
-              placeholder="123456789012345678, 234567890123456789"
-              className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-            />
-          </Field>
-        </>
-      )}
-      <hr className="my-6 border-[color:var(--border)]" />
-      <h3 className="font-ui mb-3 text-sm font-semibold">Ready to start</h3>
-      <ul className="mb-4 divide-y divide-[color:var(--border)] rounded-[var(--radius)] border border-[color:var(--border)]">
+      <dl className="mb-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-3 text-sm">
         {summary.map((row) => (
-          <li key={row.label} className="flex justify-between px-3 py-2 text-sm">
-            <span className="text-[color:var(--muted)]">{row.label}</span>
-            <span className="font-mono text-xs">{row.value}</span>
-          </li>
+          <div key={row.label} className="contents">
+            <dt className="text-[color:var(--muted)]">{row.label}</dt>
+            <dd>{row.value}</dd>
+          </div>
         ))}
-      </ul>
+      </dl>
       <MissingTopologyHints
-        missingDrivers={missingDrivers.map((d) => d.name)}
-        missingMemory={missingMemory}
-        missingIdentity={missingIdentity}
-        missingConnector={missingConnector}
+        missingDriver={missingDriver ? draft.driver.name : null}
+        knownDriverNames={driverEntries.map((c) => c.name)}
+        missingGateway={missingGateway}
       />
+      <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
+        Afterwards: the Runtimes page is where you start an engine and confirm it reached{" "}
+        <span className="font-mono">ready</span>, and the playground picks up any model the gateway
+        can route to.
+      </p>
       {starting && startMessage && (
         <p className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--muted)]">
           {startMessage}
@@ -1505,24 +972,33 @@ function ScreenConnectorsAndStart({
   );
 }
 
+/**
+ * The wizard configures components that already exist; it cannot create
+ * topology entries. Say so before Start rather than after, and name what
+ * IS there — "driver-1 not found" is much less useful on its own than
+ * alongside the list of names that would have worked.
+ */
 function MissingTopologyHints({
-  missingDrivers,
-  missingMemory,
-  missingIdentity,
-  missingConnector,
+  missingDriver,
+  knownDriverNames,
+  missingGateway,
 }: {
-  missingDrivers: string[];
-  missingMemory: boolean;
-  missingIdentity: boolean;
-  missingConnector: boolean;
+  missingDriver: string | null;
+  knownDriverNames: string[];
+  missingGateway: boolean;
 }) {
   const lines: string[] = [];
-  if (missingDrivers.length > 0) {
-    lines.push(`Driver(s) not in watchdog topology: ${missingDrivers.join(", ")}.`);
+  if (missingDriver) {
+    lines.push(
+      knownDriverNames.length > 0
+        ? `No inference-driver named "${missingDriver}" in the watchdog topology. ` +
+            `Present: ${knownDriverNames.join(", ")} — your settings will be applied to ` +
+            `"${knownDriverNames[0]}".`
+        : `No inference-driver in the watchdog topology at all, so the driver ` +
+            `settings on the previous screen have nowhere to go.`,
+    );
   }
-  if (missingMemory) lines.push("Memory component not in watchdog topology.");
-  if (missingIdentity) lines.push("Identity component not in watchdog topology.");
-  if (missingConnector) lines.push("Connector component not in watchdog topology.");
+  if (missingGateway) lines.push("No gateway in the watchdog topology.");
   if (lines.length === 0) return null;
   return (
     <div className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">
@@ -1533,9 +1009,8 @@ function MissingTopologyHints({
         ))}
       </ul>
       <p className="mt-2">
-        The wizard configures existing components. Add the missing entries from the Config page or
-        hand-edit <span className="font-mono">watchdog.yaml</span>, then re-run setup or restart
-        from the Config page.
+        Add them with the watchdog&rsquo;s <span className="font-mono">POST /v1/components</span> or
+        by hand-editing <span className="font-mono">watchdog.yaml</span>, then re-run setup.
       </p>
     </div>
   );

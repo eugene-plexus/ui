@@ -36,7 +36,7 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: "Eugene Plexus",
-  description: "Bicameral consciousness scaffold over LLMs.",
+  description: "Self-hosted control plane for local LLM inference.",
 };
 
 // Inline script that runs before React hydrates so the saved theme +

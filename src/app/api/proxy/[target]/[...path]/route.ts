@@ -6,10 +6,11 @@
  * and body. This avoids CORS configuration on the components and keeps the
  * UI origin-restricted.
  *
- * `<target>` is `orchestrator` or any operator-supplied driver name from
- * the orchestrator's `drivers` config. Resolution is dynamic: driver URLs
- * come from the orchestrator at request time so the UI doesn't need its
- * own env-var-per-driver bootstrap.
+ * `<target>` is `gateway`, `watchdog`, or the name of an
+ * `inference-driver` entry in the watchdog topology. Driver resolution is
+ * dynamic — URLs are read from the watchdog at request time, so the UI
+ * needs no env-var-per-driver bootstrap and a driver added while the UI
+ * is running is reachable immediately.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -42,18 +43,18 @@ async function handle(
     return NextResponse.json({ error: `invalid target: ${target}` }, { status: 400 });
   }
 
-  // v0.2: forward the incoming Authorization header into the target
-  // resolver. Watchdog's /v1/components and orchestrator's /v1/config
-  // (the resolver's lookup endpoints) are both bearer-auth-protected,
-  // so without this the resolver gets 401 on every logged-in request.
+  // Forward the incoming Authorization header into the target resolver.
+  // Watchdog's /v1/components (the resolver's lookup endpoint) is
+  // bearer-auth-protected, so without this the resolver gets 401 on
+  // every logged-in request.
   const authHeader = req.headers.get("authorization") ?? undefined;
   const resolved = await resolveTarget(target, authHeader);
   if ("error" in resolved) {
     return NextResponse.json({ error: resolved.error }, { status: 503 });
   }
 
-  // Body-component URLs from the watchdog topology arrive with a
-  // trailing slash (e.g. `http://127.0.0.1:8083/`). Naive concatenation
+  // Component URLs from the watchdog topology arrive with a trailing
+  // slash (e.g. `http://127.0.0.1:8081/`). Naive concatenation
   // would produce `http://127.0.0.1:8083//v1/config/schema` — FastAPI
   // treats the double slash as a different path and returns 404.
   // Normalize once here so all resolved URLs join cleanly with any

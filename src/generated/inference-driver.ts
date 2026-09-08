@@ -15,10 +15,10 @@ export interface paths {
         put?: never;
         /**
          * Run inference on the configured backend.
-         * @description Single-turn request/response. The orchestrator builds the full prompt
-         *     (system, conversation history, current user turn, NT-conditioning
-         *     prefix) and the driver passes it through to the backend. The driver
-         *     does not own conversation memory.
+         * @description Single-turn request/response. The caller builds the full prompt
+         *     and the driver passes it through to its backend, translating into
+         *     whatever wire protocol that backend speaks. The driver owns no
+         *     conversation state.
          */
         post: operations["generate"];
         delete?: never;
@@ -64,10 +64,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Report which backend and model this driver is configured to use.
-         * @description Used by the orchestrator at startup to log the bicameral pairing
-         *     ("left=claude-opus-4-7, right=gpt-5") and by the UI to label
-         *     hemisphere outputs.
+         * Report which backend and model this driver serves.
+         * @description The gateway polls this to build its routing table: `modelId` is
+         *     the key it routes on, `capabilities` says what the backend can
+         *     do, and `backend` / `provider` are what the UI labels. A driver
+         *     reports only what it serves — never where it sits.
          */
         get: operations["info"];
         put?: never;
@@ -238,32 +239,25 @@ export interface components {
     schemas: {
         GenerateRequest: {
             /**
-             * @description Full prompt as an ordered conversation. The orchestrator is
-             *     responsible for inserting any NT-conditioning system message,
-             *     persona, etc. The driver does not modify this.
+             * @description Full prompt as an ordered conversation. Whatever system
+             *     message the caller wants is already in here; the driver does
+             *     not modify, prepend to, or reorder it.
              */
             messages: components["schemas"]["Message"][];
-            ntState?: components["schemas"]["NTState"];
-            /**
-             * @description Zero-based bicameral pass index. The driver itself does not
-             *     condition on this; it's logged for observability so a UI can
-             *     tell which pass produced which hemisphere output.
-             */
-            passIndex?: number;
             /**
              * @description Maximum output tokens. Backend-clamped. Owned by the caller
-             *     (typically the orchestrator) — the driver does not apply a
-             *     local default. Adapters whose backends don't expose this
-             *     knob (e.g. agentic CLIs) silently ignore it.
+             *     (the gateway) — the driver applies no local default. Adapters
+             *     whose backends don't expose this knob (agentic CLIs) ignore
+             *     it silently.
              */
             maxTokens?: number;
             /**
              * Format: float
              * @description Sampling temperature. Backend-clamped. Owned by the caller
-             *     (typically the orchestrator, where it will eventually be
-             *     modulated by the NT system) — the driver does not apply a
-             *     local default. Adapters whose backends don't expose this
-             *     knob (e.g. agentic CLIs) silently ignore it.
+             *     (the gateway, which resolves it from the model's settings
+             *     profile) — the driver applies no local default. Backends that
+             *     reject the parameter outright, as some reasoning models do,
+             *     have it dropped with a warning rather than erroring.
              */
             temperature?: number;
             /** @description Optional stop sequences. */
@@ -273,30 +267,12 @@ export interface components {
              * @description Caller-supplied id for log correlation. Echoed in the response.
              */
             requestId?: string;
-            /**
-             * @description Tool catalog available for this generation. The driver
-             *     translates each entry into its backend's native tool-calling
-             *     mechanism and passes it through; it does not choose which to
-             *     call or execute any. Omitted or empty = no tools this pass
-             *     (e.g. the voice / articulation pass, which emits speech rather
-             *     than tool calls). A `toolChoice` knob (auto/none/required) is
-             *     deferred — v0.3 leaves selection to the model.
-             */
-            tools?: components["schemas"]["ToolDefinition"][];
         };
         GenerateResponse: {
             /** @description The generated assistant text. */
             content: string;
             /** @enum {string} */
-            finishReason: "stop" | "length" | "stop_sequence" | "tool_use" | "error";
-            /**
-             * @description Tool-invocation requests the model emitted this turn. Non-empty
-             *     iff `finishReason == tool_use`. The orchestrator decides
-             *     whether and which to execute (reflexive/deliberative gate, plus
-             *     bicameral agreement for irreversible efferent effects); the
-             *     driver only surfaces them.
-             */
-            toolCalls?: components["schemas"]["ToolCall"][];
+            finishReason: "stop" | "length" | "stop_sequence" | "error";
             usage?: components["schemas"]["Usage"];
             /** Format: uuid */
             requestId?: string;
@@ -313,10 +289,10 @@ export interface components {
             totalTokens?: number;
         };
         /**
-         * @description Driver self-description. Driver does not know its position in
-         *     any topology — identity (the operator-supplied name used for UI
-         *     labelling and message stamping) lives on the orchestrator's
-         *     `drivers` config and is never sourced from here.
+         * @description Driver self-description, and the gateway's only source of truth
+         *     for what this backend serves. A driver does not know its position
+         *     in any topology: its operator-supplied name lives in the watchdog
+         *     topology, not here.
          */
         DriverInfo: {
             backend: components["schemas"]["BackendKind"];
@@ -338,263 +314,48 @@ export interface components {
              *     adapter's built-in default rather than pinning a specific model.
              */
             modelId?: string;
-            /** @description Optional backend capabilities the orchestrator may key off. */
+            /** @description Backend capabilities the gateway keys off when routing. */
             capabilities?: {
                 /** @description Whether `/v1/generate/stream` emits true incremental tokens. */
                 streaming?: boolean;
                 maxContextTokens?: number;
             };
-            /** @description hemisphere-driver semver. */
+            /** @description inference-driver semver. */
             version?: string;
         };
         /**
-         * @description The speaker of a single message in a conversation. `tool` carries
-         *     the result(s) of a tool / region call fed back into deliberation
-         *     (see ToolResult) — its own kind of utterance, distinct from the
-         *     `user` who originally spoke.
+         * @description The speaker of a single message in a conversation. Matches the
+         *     OpenAI / Anthropic chat roles so adapters never re-shape on a hop.
          * @enum {string}
          */
-        Role: "system" | "user" | "assistant" | "hemisphere" | "tool";
+        Role: "system" | "user" | "assistant";
         /**
-         * @description A model's request to invoke a tool, surfaced in
-         *     `GenerateResponse.toolCalls` and carried back in `Message` for the
-         *     next pass. The driver only surfaces the request; the
-         *     orchestrator — never the driver — decides whether to execute it,
-         *     after the reflexive/deliberative gate and (for `irreversible`
-         *     efferent effects) bicameral agreement.
-         */
-        ToolCall: {
-            /**
-             * @description Call id, unique within a turn; correlates a `ToolResult` back
-             *     to this call. Adapters map their backend's native id
-             *     (Anthropic `tool_use.id`, OpenAI `tool_call.id`) to/from this.
-             */
-            id: string;
-            /** @description Tool name, matching a registered `ToolDefinition.name`. */
-            name: string;
-            /**
-             * @description Arguments object conforming to the tool's `inputSchema`.
-             *     Adapters parse the backend's argument representation (often a
-             *     JSON string) into this object before returning.
-             */
-            arguments: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * @description The outcome of executing a `ToolCall`, produced by the singular
-         *     tool-runner (one effector for the whole organism — two
-         *     hemispheres, one set of hands) and fed back into BOTH hemispheres
-         *     on the next pass as a `role: tool` message.
-         */
-        ToolResult: {
-            /** @description The `ToolCall.id` this result answers. */
-            callId: string;
-            /**
-             * @description Result as text — human-readable, or JSON rendered as a string
-             *     for models that only consume text. Large results may be
-             *     truncated by the runner before feeding back.
-             */
-            content?: string;
-            /**
-             * @description Typed result payload, for `internal` regimented calls and
-             *     structured tool outputs — e.g. an emotion-read returning
-             *     `{joy: 0.1, anger: 0.7, ...}` that the orchestrator routes
-             *     into the NT system. Mirrors MCP's `structuredContent`. When
-             *     both are present, `content` is the text rendering of this.
-             */
-            structuredContent?: {
-                [key: string]: unknown;
-            };
-            /**
-             * @description True if the tool failed; the error text goes in `content`. The
-             *     model sees the failure and can react (retry, pick another
-             *     tool, give up) — like a person whose action didn't work.
-             * @default false
-             */
-            isError: boolean;
-        };
-        /**
-         * @description A single message in an Eugene Plexus conversation. The shape is
-         *     deliberately close to the OpenAI / Anthropic chat message format so
-         *     that adapters don't have to re-shape on every hop, but `role` includes
-         *     `hemisphere` for messages emitted by one of the parallel drivers
-         *     during a bicameral pass (visible to corpus callosum and UI debug
-         *     views, not normally to the end user).
+         * @description A single message in a conversation. Deliberately close to the
+         *     OpenAI / Anthropic chat message format so drivers don't have to
+         *     re-shape on every hop.
          */
         Message: {
             role: components["schemas"]["Role"];
-            /** @description Message text. v0.1 is text-only; multimodal extensions deferred. */
+            /** @description Message text. Text-only for now; multimodal extensions deferred. */
             content: string;
-            /**
-             * @description When `role == "hemisphere"`, the operator-supplied name of
-             *     the driver that produced this message (e.g. `"left"`,
-             *     `"right"`, or any free-form label set by the orchestrator's
-             *     `drivers` config). Omitted otherwise. Identity is owned by
-             *     the orchestrator's topology config — drivers themselves do
-             *     not know their position in the pair.
-             */
-            driverName?: string;
             /**
              * Format: date-time
              * @description When the message was produced. Server-assigned if omitted.
              */
             timestamp?: string;
-            /**
-             * @description Zero-based index of the bicameral pass that produced this message.
-             *     Pass 0 is the initial hemisphere response; subsequent passes are
-             *     re-prompts after corpus-callosum disagreement.
-             */
-            passIndex?: number;
-            /**
-             * @description Tool-invocation requests emitted by this message. Present on
-             *     `assistant` / `hemisphere` messages that asked for tools;
-             *     carried in history so the next pass sees what was requested.
-             */
-            toolCalls?: components["schemas"]["ToolCall"][];
-            /**
-             * @description Tool / region-call outcomes carried by a `role: tool` message
-             *     and fed back into the next pass. A single `tool` message
-             *     bundles the results of the calls from the preceding turn.
-             */
-            toolResults?: components["schemas"]["ToolResult"][];
         };
         /**
-         * @description Per-NT level + its baseline + per-second decay rate. The level
-         *     decays toward baseline at `decay` units per second between
-         *     observations; observations push it up or down based on the
-         *     orchestrator's observation→NT mapping (see orchestrator spec).
-         */
-        NTLevel: {
-            /**
-             * Format: float
-             * @description Current instantaneous value.
-             */
-            level: number;
-            /**
-             * Format: float
-             * @description Resting-state target the level decays toward.
-             */
-            baseline: number;
-            /**
-             * Format: float
-             * @description Per-second decay rate toward baseline. Larger values =
-             *     faster return to baseline after a stimulus.
-             */
-            decay: number;
-        };
-        /**
-         * @description A snapshot of Eugene's neurotransmitter state. v0.2 introduces real
-         *     modulation: the orchestrator updates this from observations each
-         *     chat turn, and the bicameral loop reads it to set `max_passes`,
-         *     `temperature`, and blend weights. CLLM-inspired anxiety-driven
-         *     termination is the load-bearing behavior.
+         * @description Which wire protocol an inference-driver instance speaks to its
+         *     backend. Reported by the driver's `/v1/info` so the gateway can
+         *     log it and the UI can render a label.
          *
-         *     Six NTs in v0.2 (cortisol replaces v0.1's glutamate — cortisol is
-         *     directly observable from chat patterns like sustained divergence
-         *     and time pressure; glutamate's lower-level activation modeling
-         *     waits for v0.3). All values in [0, 1]; `level` carries the current
-         *     instantaneous value, `baseline` the resting state the field decays
-         *     toward, `decay` the per-second decay rate.
-         *
-         *     v0.3+ adds: full 12-NT shape (oxytocin, endorphins, melatonin,
-         *     adenosine, histamine, orexin), per-driver NT modulation, drives
-         *     feeding NT, NT-driven autonomous-thinking triggers.
-         */
-        NTState: {
-            /**
-             * Format: date-time
-             * @description When NT levels were last updated. Used by the orchestrator
-             *     to compute elapsed-time decay on the next tick.
-             */
-            lastUpdated: string;
-            dopamine: components["schemas"]["NTLevel"];
-            serotonin: components["schemas"]["NTLevel"];
-            norepinephrine: components["schemas"]["NTLevel"];
-            gaba: components["schemas"]["NTLevel"];
-            cortisol: components["schemas"]["NTLevel"];
-            acetylcholine: components["schemas"]["NTLevel"];
-        };
-        /**
-         * @description Direction a tool moves information relative to Eugene — the spine
-         *     of the perception/action model.
-         *
-         *     * `afferent` — brings world-state IN. Senses and reads: web
-         *       fetch, a connector delivering an inbound message, memory
-         *       recall, reading a file. Changes nothing in the world.
-         *     * `efferent` — acts ON the world. Send, write, delete, pay — and
-         *       notably *speaking to the user* (the Broca / voice-pass
-         *       effector; the user-facing reply is an efferent tool, not a
-         *       privileged final output). `effect` is consulted only for this
-         *       channel.
-         *     * `internal` — a regimented call to another region rather than
-         *       the outside world: emotion-read of an inbound message (feeds
-         *       NT), agreement scoring, summarization, topic-shift detection.
-         *       No external contact; the result typically updates internal
-         *       state. Reuses the same envelope so region-to-region cognition
-         *       threads through the identical `role: tool` machinery.
-         * @enum {string}
-         */
-        ToolChannel: "afferent" | "efferent" | "internal";
-        /**
-         * @description Reversibility class of an `efferent` tool — drives the
-         *     System-1/System-2 escalation gate. Ignored for `afferent` /
-         *     `internal` tools, which commit nothing to the world (treat as
-         *     `read_only`).
-         *
-         *     * `read_only` — no world-effect (a pure read). Reflexive-eligible:
-         *       a single pre-deliberation stream may fire it without bicameral
-         *       agreement.
-         *     * `reversible` — an undoable side effect (compose a draft, write a
-         *       scratch file). The action taken *pre*-deliberation that produces
-         *       the artifact deliberation then edits — e.g. banging out an email
-         *       draft before studying it.
-         *     * `irreversible` — cannot be undone (send, delete, pay, post
-         *       publicly). Always *post*-deliberation: requires deliberation
-         *       plus bicameral agreement before the singular effector executes.
-         *
-         *     Reversibility is the static property; whether an action fires pre-
-         *     or post-deliberation is the runtime routing the gate derives from
-         *     it plus live NT state (anxiety can escalate even a read into
-         *     deliberation). Conservative default: anything not provably
-         *     reversible registers `irreversible`. Promotion is explicit, never
-         *     inferred.
-         * @enum {string}
-         */
-        ToolEffect: "read_only" | "reversible" | "irreversible";
-        /**
-         * @description A capability Eugene can invoke, normalized across backends. The
-         *     orchestrator owns the catalog; each hemisphere-driver adapter
-         *     translates this into its backend's native mechanism (Anthropic
-         *     tool-use blocks, OpenAI function-calling, or Hermes-style
-         *     `<tool_call>` text for `openai_compat_http` models without native
-         *     support).
-         */
-        ToolDefinition: {
-            /** @description Stable tool identifier. Echoed in `ToolCall.name`. */
-            name: string;
-            /**
-             * @description What the tool does, in model-facing language. This is prompt
-             *     material — the model reads it to decide when to call.
-             */
-            description?: string;
-            /**
-             * @description JSON Schema (draft 2020-12) for the arguments. Passed to the
-             *     backend verbatim; adapters needing another dialect translate
-             *     it.
-             */
-            inputSchema: {
-                [key: string]: unknown;
-            };
-            channel: components["schemas"]["ToolChannel"];
-            /** @default read_only */
-            effect: components["schemas"]["ToolEffect"];
-        };
-        /**
-         * @description Which adapter the hemisphere-driver instance is configured to use.
-         *     Reported by `/v1/info` so the orchestrator can log and the UI can
-         *     render a label. `claude_code_cli` and `codex_cli` shell out to the
-         *     respective CLIs (primary mode for personal installations).
+         *     `openai_compat_http` covers every local engine we care about
+         *     (llama.cpp's `llama-server`, vLLM, LM Studio, Ollama) as well as
+         *     hosted OpenAI-compatible services — the protocol is shared even
+         *     though the providers are not, so `DriverInfo.provider` is what
+         *     distinguishes them. `claude_code_cli` and `codex_cli` shell out
+         *     to the respective CLIs, which is how a subscription the operator
+         *     already pays for becomes just another backend.
          * @enum {string}
          */
         BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http";
@@ -623,7 +384,7 @@ export interface components {
             instance?: string;
             /**
              * @description Eugene Plexus component name that originated the error
-             *     (e.g. `"orchestrator"`, `"hemisphere-driver:left"`).
+             *     (e.g. `"gateway"`, `"inference-driver:left"`).
              */
             component?: string;
         };
@@ -683,17 +444,26 @@ export interface components {
          */
         ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "url" | "duration" | "driver_list";
         /**
-         * @description Which Eugene Plexus component class a topology entry represents.
-         *     Lives in `common.yaml` because multiple components reference it:
-         *     the watchdog's `/v1/components`, and (via `ConfigField.
-         *     componentKindHint`) any component declaring a config field that
-         *     points at a peer of a specific kind. v0.1 covered three body
-         *     parts (orchestrator, hemisphere-driver, memory); v0.2 adds
-         *     `identity` (Default Mode Network analogue) and `connector`
-         *     (external sense organs).
+         * @description Which Eugene Plexus component class a topology entry
+         *     represents. Lives in `common.yaml` because more than one
+         *     component references it: the watchdog's `/v1/components`, and
+         *     (via `ConfigField.componentKindHint`) any component declaring
+         *     a config field that points at a peer of a specific kind.
+         *
+         *     A component is a **Eugene Plexus process**. Engine processes
+         *     are not components and are not named here — they are runtimes,
+         *     declared separately on the watchdog, because a third-party
+         *     binary shares none of a component's declarative shape (no
+         *     module, no config trio, no service token). See the watchdog's
+         *     `GET /v1/runtimes`.
+         *
+         *     `gateway` is the one OpenAI-compatible front door and there is
+         *     exactly one. `inference-driver` instances are the per-backend
+         *     wrappers and there are N — one per backend, wherever that
+         *     backend lives.
          * @enum {string}
          */
-        ComponentKind: "orchestrator" | "hemisphere-driver" | "memory" | "identity" | "connector";
+        ComponentKind: "gateway" | "inference-driver";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -762,7 +532,7 @@ export interface components {
              *     first option (saves an empty string). For single-instance
              *     kinds (memory, identity, etc.) the dropdown UX collapses
              *     to effectively a toggle; for multi-instance kinds
-             *     (hemisphere-driver) the operator picks one. Pairs with a
+             *     (inference-driver) the operator picks one. Pairs with a
              *     string/url `valueType` — the saved value is still the
              *     peer's URL, the hint only changes how the UI looks it up.
              *     Avoids the OpenClaw trap of duplicating topology into
@@ -824,7 +594,7 @@ export interface components {
          *     code.
          */
         ConfigSchema: {
-            /** @description Component identifier (e.g. `"hemisphere-driver"`). */
+            /** @description Component identifier (e.g. `"inference-driver"`). */
             component: string;
             fields: components["schemas"]["ConfigField"][];
             /**
@@ -849,10 +619,10 @@ export interface components {
         };
         /**
          * @description Result of a `POST /v1/config/test` invocation. Components decide
-         *     what "test" means for their own surface: hemisphere-driver runs
-         *     a minimal `generate()` round-trip; orchestrator probes its
-         *     configured hemispheres + memory; memory verifies the store
-         *     backend is reachable.
+         *     what "test" means for their own surface: an inference-driver runs
+         *     a minimal `generate()` round-trip against its backend; the
+         *     gateway probes every driver it can route to; the library checks
+         *     that its configured model directories are readable.
          */
         ConfigTestResult: {
             /** @description True iff the test invocation succeeded end-to-end. */
@@ -873,7 +643,7 @@ export interface components {
             summary?: string;
             /**
              * @description Brief sample of the data the test produced — e.g. assistant
-             *     text from a hemisphere-driver `generate()` round-trip. May be
+             *     text from an inference-driver `generate()` round-trip. May be
              *     truncated to keep the response small. Omitted when there's
              *     nothing useful to show.
              */
@@ -922,7 +692,7 @@ export interface components {
             status: "ok" | "degraded" | "error";
             /** @description Component version (semver). */
             version?: string;
-            /** @description Component identifier (e.g. `"hemisphere-driver"`). */
+            /** @description Component identifier (e.g. `"inference-driver"`). */
             component?: string;
             /**
              * @description True when the component was started with the watchdog's

@@ -6,7 +6,7 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
  * Bottom-anchored composer.
  *
  * Enter sends. Shift+Enter inserts a newline. Disabled while a turn is
- * in flight to prevent racing the bicameral loop.
+ * in flight, and while no model is routable.
  */
 export function ChatInput({
   onSend,
@@ -43,9 +43,7 @@ export function ChatInput({
         onKeyDown={onKeyDown}
         rows={2}
         placeholder={
-          disabled
-            ? "Eugene is thinking…"
-            : "Message Eugene… (Enter to send, Shift+Enter for newline)"
+          disabled ? "Waiting…" : "Send a message… (Enter to send, Shift+Enter for newline)"
         }
         disabled={disabled}
         className="flex-1 resize-none rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50"

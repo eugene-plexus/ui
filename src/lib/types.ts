@@ -3,132 +3,81 @@
  *
  * The generated `components["schemas"]["X"]` form is precise but unwieldy
  * at call sites. Pull the handful we use into named exports here.
+ *
+ * Three generated modules now, one per component the UI talks to. The
+ * config-editor shapes (`ConfigSchema` and friends) live in
+ * `components/common.yaml` and are therefore identical in all three; we
+ * source them from the gateway arbitrarily, because the editor is
+ * deliberately component-agnostic.
  */
 
-import type { components as OrchComponents } from "@/generated/orchestrator";
+import type { components as DriverComponents } from "@/generated/inference-driver";
+import type { components as GatewayComponents } from "@/generated/gateway";
+import type { components as WatchdogComponents } from "@/generated/watchdog";
 
-export type Role = OrchComponents["schemas"]["Role"];
-// Decision isn't a top-level schema — it's inline on CallosumState.decision —
-// so derive it from there. TODO(specs): consider lifting it to a $ref so
-// codegen produces a named type.
-export type Decision = OrchComponents["schemas"]["CallosumState"]["decision"];
-export type Message = OrchComponents["schemas"]["Message"];
-export type Conversation = OrchComponents["schemas"]["Conversation"];
-export type CallosumState = OrchComponents["schemas"]["CallosumState"];
-export type PassRecord = OrchComponents["schemas"]["PassRecord"];
-export type ToolInvocationRecord = OrchComponents["schemas"]["ToolInvocationRecord"];
-export type DriversInfo = OrchComponents["schemas"]["DriversInfo"];
-export type DriverHealth = OrchComponents["schemas"]["DriverHealth"];
+// --- Shared -----------------------------------------------------------
 
-// --- M2 continuous-runtime wire shapes ------------------------------------
+// `Role` / `Message` are the house chat shapes, which only the driver's
+// surface still uses — the gateway's own wire format is OpenAI's, and
+// `ChatCompletionMessage` is deliberately a separate schema so a house
+// field can't leak into a payload a client parses.
+export type Role = DriverComponents["schemas"]["Role"];
+export type Message = DriverComponents["schemas"]["Message"];
+export type Problem = GatewayComponents["schemas"]["Problem"];
+export type BackendKind = GatewayComponents["schemas"]["BackendKind"];
+export type ComponentKind = GatewayComponents["schemas"]["ComponentKind"];
+export type RestartResult = GatewayComponents["schemas"]["RestartResult"];
+
+// --- The config trio, rendered generically by ConfigEditor ------------
+
+export type ConfigField = GatewayComponents["schemas"]["ConfigField"];
+export type ConfigSchema = GatewayComponents["schemas"]["ConfigSchema"];
+export type ConfigDocument = GatewayComponents["schemas"]["ConfigDocument"];
+export type ConfigUpdateRequest = GatewayComponents["schemas"]["ConfigUpdateRequest"];
+export type ConfigUpdateResult = GatewayComponents["schemas"]["ConfigUpdateResult"];
+export type ConfigFieldError = GatewayComponents["schemas"]["ConfigFieldError"];
+export type ConfigFieldShowWhen = GatewayComponents["schemas"]["ConfigFieldShowWhen"];
+export type ConfigTestRequest = GatewayComponents["schemas"]["ConfigTestRequest"];
+export type ConfigTestResult = GatewayComponents["schemas"]["ConfigTestResult"];
+export type ConfigValueType = GatewayComponents["schemas"]["ConfigValueType"];
+
+// --- Gateway: the OpenAI-compatible surface ---------------------------
 //
-// The v0.2 request-response surface (ChatRequest / ChatResponse / POST
-// /v1/chat) is gone. The UI now speaks the continuous-loop contract:
-//   - send  → POST /v1/events with an AfferentEvent (fire-and-forget, 202)
-//   - render ← GET /v1/stream/consciousness (SSE), the live stream of
-//              Eugene's inner activity. Replies arrive as `speech` events.
-export type AfferentEvent = OrchComponents["schemas"]["AfferentEvent"];
-export type IncomingMessage = OrchComponents["schemas"]["IncomingMessage"];
-export type MessageSource = OrchComponents["schemas"]["MessageSource"];
-export type PresenceEvent = OrchComponents["schemas"]["PresenceEvent"];
-export type GateDecision = OrchComponents["schemas"]["GateDecision"];
+// snake_case on purpose. This is the one contract in Eugene Plexus we
+// don't own the shape of, and "OpenAI-compatible" is worth nothing if a
+// field name differs. Don't camelCase these on the way through.
 
-// `EfferentSpeechAct` lives in common.yaml but the orchestrator spec only
-// references it in prose (the SSE event descriptions), never via a $ref
-// from a schema/response — so openapi-typescript doesn't emit a named
-// type for it (same situation as `DriverEntry` below). Hand-typed to
-// mirror common.yaml#/components/schemas/EfferentSpeechAct.
-export interface EfferentSpeechAct {
-  destination: MessageSource;
-  content: string;
-  /** AfferentEvent.eventId this reacts to; absent for self-initiated speech. */
-  inResponseTo?: string;
-  conversationId?: string;
-  timestamp: string;
-}
+export type ModelList = GatewayComponents["schemas"]["ModelList"];
+export type Model = GatewayComponents["schemas"]["Model"];
+export type ModelRoutingInfo = GatewayComponents["schemas"]["ModelRoutingInfo"];
+export type ChatCompletionRequest = GatewayComponents["schemas"]["ChatCompletionRequest"];
+export type ChatCompletionResponse = GatewayComponents["schemas"]["ChatCompletionResponse"];
+export type ChatCompletionMessage = GatewayComponents["schemas"]["ChatCompletionMessage"];
+export type CompletionUsage = GatewayComponents["schemas"]["CompletionUsage"];
+export type CompletionRoutingInfo = GatewayComponents["schemas"]["CompletionRoutingInfo"];
 
-// The two SSE event types whose `data` is an inline object in the spec
-// (documented in the /v1/stream/consciousness description, not as named
-// schemas). Hand-typed to match what the loop publishes.
-export interface FocusSwitch {
-  from: string | null;
-  to: string | null;
-}
-export interface PhaseChange {
-  phase: "awake" | "asleep";
-}
+// The OpenAI error envelope, which the gateway returns instead of RFC
+// 7807 on `/v1/chat/completions` and `/v1/models` — SDKs parse this
+// shape to build their exception types.
+export type OpenAIErrorResponse = GatewayComponents["schemas"]["OpenAIErrorResponse"];
 
-// Discriminated union of everything that arrives on the consciousness
-// stream. `event:` field → `type`; `data:` JSON → `data`. Unknown event
-// types fall through to the `unknown` arm (the spec says treat them as
-// informational), so a forward-compatible orchestrator can add events
-// without breaking the UI.
-export type ConsciousnessEvent =
-  | { type: "thought"; data: PassRecord }
-  | { type: "nt_update"; data: NTState }
-  | { type: "gate_decision"; data: GateDecision }
-  | { type: "tool_call"; data: ToolInvocationRecord }
-  | { type: "speech"; data: EfferentSpeechAct }
-  | { type: "focus_switch"; data: FocusSwitch }
-  | { type: "phase_change"; data: PhaseChange }
-  | { type: string; data: unknown };
+// --- Gateway: admin view over the derived routing table ---------------
 
-// `DriverEntry` is defined in common.yaml but openapi-typescript only
-// inlines schemas reachable via $ref from the per-component spec file,
-// and orchestrator.yaml doesn't reference it directly. The shape is
-// trivial so we type it by hand here. If a future spec change adds a
-// $ref, drop this in favor of OrchComponents["schemas"]["DriverEntry"].
-//
-// A slot's `backends` is an ordered priority list of watchdog-topology
-// hemisphere-driver entry NAMES (v0.2.1 item 2). The orchestrator
-// resolves each name to a URL at startup and cascades through them on
-// transport error / 5xx / timeout. Backend URLs live only in the
-// watchdog topology, not duplicated here. Stock installs have one
-// backend per slot.
-export interface DriverEntry {
-  name: string;
-  backends: string[];
-}
-export type NTState = OrchComponents["schemas"]["NTState"];
-export type NTLevel = OrchComponents["schemas"]["NTLevel"];
-export type Problem = OrchComponents["schemas"]["Problem"];
+export type DriversInfo = GatewayComponents["schemas"]["DriversInfo"];
+export type DriverHealth = GatewayComponents["schemas"]["DriverHealth"];
 
-// The six v0.2 neurotransmitters, in display order (energizing → calming →
-// stress). The NTState schema has one NTLevel field per NT; this list lets
-// the UI iterate without hardcoding the order at each call site.
-export const NT_KEYS = [
-  "dopamine",
-  "serotonin",
-  "norepinephrine",
-  "acetylcholine",
-  "gaba",
-  "cortisol",
-] as const;
-export type NTKey = (typeof NT_KEYS)[number];
+// --- Watchdog: topology + engine runtimes -----------------------------
 
-export type ConfigField = OrchComponents["schemas"]["ConfigField"];
-export type ComponentKind = OrchComponents["schemas"]["ComponentKind"];
+export type Component = WatchdogComponents["schemas"]["Component"];
+export type ComponentEntry = WatchdogComponents["schemas"]["ComponentEntry"];
+export type ComponentList = WatchdogComponents["schemas"]["ComponentList"];
+export type ComponentStatus = WatchdogComponents["schemas"]["ComponentStatus"];
 
-// Watchdog topology entry — the shape returned by `GET /v1/components`.
-// We type just the fields the UI consumes (name, kind, url); the full
-// schema has many more (status, pid, lastRestart, lastError, spawn)
-// that are out of scope here. Watchdog spec lives in a different
-// codegen target, so we describe the shape locally.
-export interface TopologyComponent {
-  name: string;
-  kind: ComponentKind;
-  url: string;
-}
-export interface TopologyListResponse {
-  components: TopologyComponent[];
-}
-export type ConfigSchema = OrchComponents["schemas"]["ConfigSchema"];
-export type ConfigDocument = OrchComponents["schemas"]["ConfigDocument"];
-export type ConfigUpdateRequest = OrchComponents["schemas"]["ConfigUpdateRequest"];
-export type ConfigUpdateResult = OrchComponents["schemas"]["ConfigUpdateResult"];
-export type ConfigFieldError = OrchComponents["schemas"]["ConfigFieldError"];
-export type ConfigFieldShowWhen = OrchComponents["schemas"]["ConfigFieldShowWhen"];
-export type ConfigTestRequest = OrchComponents["schemas"]["ConfigTestRequest"];
-export type ConfigTestResult = OrchComponents["schemas"]["ConfigTestResult"];
-export type ConfigValueType = OrchComponents["schemas"]["ConfigValueType"];
-export type RestartResult = OrchComponents["schemas"]["RestartResult"];
+export type Runtime = WatchdogComponents["schemas"]["Runtime"];
+export type RuntimeSpec = WatchdogComponents["schemas"]["RuntimeSpec"];
+export type RuntimeList = WatchdogComponents["schemas"]["RuntimeList"];
+export type RuntimeStatus = WatchdogComponents["schemas"]["RuntimeStatus"];
+export type RuntimeCapabilities = WatchdogComponents["schemas"]["RuntimeCapabilities"];
+export type EngineKind = WatchdogComponents["schemas"]["EngineKind"];
+export type EngineList = WatchdogComponents["schemas"]["EngineList"];
+export type EngineDescriptor = WatchdogComponents["schemas"]["EngineDescriptor"];

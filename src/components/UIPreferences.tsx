@@ -39,7 +39,7 @@ export function UIPreferences() {
 
       <Row
         label="Font size"
-        description="Scales chat content, hemisphere output, and most chrome. Independent of theme."
+        description="Scales chat content, config forms, and most chrome. Independent of theme."
       >
         <select
           value={fontSize}
