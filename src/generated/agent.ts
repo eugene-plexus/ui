@@ -106,7 +106,7 @@ export interface paths {
         /**
          * Invalidate the current session token.
          * @description The token presented in `Authorization` is added to the
-         *     watchdog's revocation list. UI uses this for explicit
+         *     agent's revocation list. UI uses this for explicit
          *     logout; expired sessions are cleaned up server-side
          *     without an explicit call.
          */
@@ -125,9 +125,9 @@ export interface paths {
         };
         /**
          * List supervised components with their declared topology and live status.
-         * @description Returns one entry per component the watchdog knows about,
+         * @description Returns one entry per component the agent knows about,
          *     combining the declarative topology (what the operator asked
-         *     for) with operational state (what the watchdog observes
+         *     for) with operational state (what the agent observes
          *     right now).
          */
         get: operations["listComponents"];
@@ -135,10 +135,10 @@ export interface paths {
         /**
          * Add a new component to the topology.
          * @description Used by the first-run wizard's "+ Add another driver" flow and
-         *     by the post-setup Components tab. The watchdog scaffolds the
+         *     by the post-setup Components tab. The agent scaffolds the
          *     component's own config file at `spawn.configFile` if it doesn't
          *     exist, then begins supervising. For a `remote` entry no file is
-         *     scaffolded — the watchdog only monitors reachability.
+         *     scaffolded — the agent only monitors reachability.
          */
         post: operations["createComponent"];
         delete?: never;
@@ -164,7 +164,7 @@ export interface paths {
         /**
          * Remove a component from the topology.
          * @description SIGTERMs the spawned process (if local) and removes the entry
-         *     from `watchdog.yaml`. The component's own config file is left
+         *     from `agent.yaml`. The component's own config file is left
          *     on disk so re-adding by the same name picks up where it left
          *     off.
          */
@@ -175,7 +175,7 @@ export interface paths {
          * Modify a component's topology entry.
          * @description Partial update. Changes that affect the running process
          *     (spawn.configFile, url's port, safeMode) trigger a restart of
-         *     that component once the patch is applied — the watchdog's
+         *     that component once the patch is applied — the agent's
          *     respawn loop sees the new desired state and reconciles.
          */
         patch: operations["updateComponent"];
@@ -194,14 +194,14 @@ export interface paths {
         put?: never;
         /**
          * Restart one supervised component.
-         * @description For a spawned component the watchdog SIGTERMs it (with a brief
+         * @description For a spawned component the agent SIGTERMs it (with a brief
          *     timeout, then SIGKILL) and respawns with the current desired
          *     state — picking up any config changes made via PATCH. The first-
          *     run wizard's "Start" step calls this once per component to
          *     flip them out of safe mode after their real config is in place.
          *
          *     For a `remote` component this returns `409 Conflict`: the
-         *     watchdog cannot restart something it does not own.
+         *     agent cannot restart something it does not own.
          */
         post: operations["restartComponent"];
         delete?: never;
@@ -233,11 +233,19 @@ export interface paths {
          *     why not, which is a real answer on Linux with an NVIDIA GPU
          *     because upstream publishes no CUDA build for it.
          *
+         *     Not every engine is one we install. `acquisition.policy` says
+         *     which kind this is, and for a `manual` engine — vLLM, a Python
+         *     package in the operator's own environment — `manualInstall`
+         *     carries the command for the detected host and `python` describes
+         *     the environment that was found. So this endpoint renders three
+         *     different panels from one shape: install it, here is why we
+         *     cannot, and here is how you do it yourself.
+         *
          *     Note what `available` does and does not mean: it answers "is a
-         *     binary discoverable on this host", by managed install or PATH. A
-         *     runtime carrying an explicit `binary` bypasses discovery
-         *     entirely and will run happily against an engine reported here as
-         *     unavailable.
+         *     binary discoverable on this host" — by managed install, by an
+         *     install-wide configured path, or on PATH. A runtime carrying an
+         *     explicit `binary` bypasses discovery entirely and will run
+         *     happily against an engine reported here as unavailable.
          */
         get: operations["listEngines"];
         put?: never;
@@ -286,6 +294,15 @@ export interface paths {
          *     Returns 409 when an install is already running, and 422 when
          *     this host has no installable build (see
          *     `EngineAcquisition.reason`).
+         *
+         *     **An engine with `acquisition.policy: manual` always returns
+         *     422**, on every host, because we do not install that engine at
+         *     all — its unit of installation is a Python environment rather
+         *     than a verifiable asset. The 422's `detail` carries
+         *     `manualInstall`'s command and docs URL, so a client that reached
+         *     here anyway still learns the way forward. A UI should read
+         *     `policy` and render instructions instead of an install button,
+         *     rather than discovering this by calling.
          */
         post: operations["installEngine"];
         /**
@@ -323,7 +340,7 @@ export interface paths {
         put?: never;
         /**
          * Declare a new engine runtime.
-         * @description Persists the runtime to the watchdog's topology and spawns it
+         * @description Persists the runtime to the agent's topology and spawns it
          *     immediately unless `autoStart` is false. `flags` are validated
          *     against the engine adapter's `flagSchema`; unknown keys are
          *     rejected rather than silently dropped, because a typo'd flag
@@ -444,6 +461,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What this host is, and which control root it answers to.
+         * @description One agent, one host. This is how the control root learns what a
+         *     node *is* — accelerators included — and how anything else
+         *     discovers which control root this node recognises.
+         *
+         *     `epoch` is the highest control-root generation this agent has
+         *     acknowledged, and the agent **refuses any root presenting a
+         *     lower one**. That refusal is the whole fencing mechanism: a
+         *     superseded control root cannot command a node that has already
+         *     heard from its successor, with no election and no agreement
+         *     between agents required. See `control.yaml`.
+         *
+         *     Present before enrollment too, with `enrolled: false` and no
+         *     control root — an agent supervises local processes perfectly well
+         *     with no trust relationship at all, which is what makes the
+         *     bootstrap order work and is consistent with the standing
+         *     degraded-mode rule.
+         */
+        get: operations["getNode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/node/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join an install by presenting a join token to a control root.
+         * @description Operator-only, and the one call that gives this agent a place in
+         *     an install. It generates the node's identity keypair if it has
+         *     none, then calls the control root's `POST /v1/nodes/enroll` with
+         *     the join token and its **public** key.
+         *
+         *     The private key never leaves this host. That is not a detail:
+         *     per-node sealing means a secret is sealed to this key, so a
+         *     control root that could obtain it would be a control root that
+         *     could read every node's secrets — which is exactly the blast
+         *     radius the design refuses.
+         *
+         *     Returns 409 if already enrolled. Re-enrolling elsewhere is a
+         *     deliberate act: revoke at the old control root first, so its
+         *     signing key rotates and this node stops being trusted there.
+         */
+        post: operations["enrollWithControl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config": {
         parameters: {
             query?: never;
@@ -452,12 +537,28 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read the watchdog's UI preferences and first-run state.
-         * @description Returns the watchdog's settings that are NOT topology — UI
+         * Read the agent's UI preferences, engine paths and first-run state.
+         * @description Returns the agent's settings that are NOT topology — UI
          *     preferences (theme, font size, future displayName, future
-         *     connectors) and `firstRunComplete`. Topology lives under
-         *     `/v1/components`. This split prevents accidental topology
-         *     changes when an operator edits UI prefs.
+         *     connectors), host-local engine paths, and `firstRunComplete`.
+         *     Topology lives under `/v1/components`. This split prevents
+         *     accidental topology changes when an operator edits UI prefs.
+         *
+         *     **`vllmBinary`** (`file_path`) is the install-wide path to the
+         *     `vllm` console script in the operator's own virtual environment.
+         *     It exists because vLLM is an engine we deliberately do not
+         *     install (`EngineAcquisition.policy: manual`), and without it a
+         *     working venv reads as unavailable unless the operator puts it on
+         *     `PATH` or repeats the path on every runtime. It points at the
+         *     console script rather than at an interpreter or a venv
+         *     directory: the script's shebang binds its own interpreter, so
+         *     nothing needs activating.
+         *
+         *     A config field rather than a new endpoint on purpose — the
+         *     generic editor renders it with no engine-specific UI code, which
+         *     is the same rule that makes `EngineDescriptor.flagSchema` a
+         *     `ConfigSchema`. The pattern generalises as `<engine>Binary` if a
+         *     third driven engine ever arrives.
          */
         get: operations["getConfig"];
         put?: never;
@@ -476,7 +577,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** UI-renderable description of every editable watchdog config field. */
+        /** UI-renderable description of every editable agent config field. */
         get: operations["getConfigSchema"];
         put?: never;
         post?: never;
@@ -495,8 +596,8 @@ export interface paths {
         };
         /**
          * Liveness / readiness probe.
-         * @description The watchdog is healthy if its own HTTP server is up and at
-         *     least one supervised component is reachable. A watchdog that
+         * @description The agent is healthy if its own HTTP server is up and at
+         *     least one supervised component is reachable. A agent that
          *     cannot reach any of its children stays up (so config endpoints
          *     remain editable) but reports `degraded`.
          */
@@ -524,7 +625,7 @@ export interface components {
         /**
          * @description Combined declarative + operational view of one supervised
          *     component. The declarative half (`name`, `kind`, `url`,
-         *     `spawn`, `safeMode`) is what's persisted to `watchdog.yaml`.
+         *     `spawn`, `safeMode`) is what's persisted to `agent.yaml`.
          *     The operational half (`status`, `lastRestart`, `lastError`,
          *     `pid`) is observed at runtime and not persisted.
          */
@@ -534,20 +635,20 @@ export interface components {
             kind: components["schemas"]["ComponentKind"];
             /**
              * Format: uri
-             * @description Canonical address. For spawned components the watchdog
+             * @description Canonical address. For spawned components the agent
              *     parses the port out of this URL and passes it via env var
              *     (`EUGENE_PLEXUS_<KIND>_BIND_PORT`); for remote components
-             *     this is what the watchdog probes.
+             *     this is what the agent probes.
              */
             url: string;
             /**
-             * @description Present iff this component runs locally under watchdog
-             *     supervision. Absence means it's remote (the watchdog only
+             * @description Present iff this component runs locally under agent
+             *     supervision. Absence means it's remote (the agent only
              *     monitors reachability).
              */
             spawn?: components["schemas"]["SpawnConfig"];
             /**
-             * @description When true the watchdog launches the spawned component with
+             * @description When true the agent launches the spawned component with
              *     `EUGENE_PLEXUS_<KIND>_SAFE_MODE=1`, telling it to ignore its
              *     own config file and boot from defaults. Used to recover
              *     from a config that breaks startup. Ignored for remote
@@ -560,7 +661,7 @@ export interface components {
             pid?: number;
             /**
              * Format: date-time
-             * @description When the watchdog last started or restarted this component.
+             * @description When the agent last started or restarted this component.
              */
             lastRestart?: string;
             /**
@@ -586,7 +687,7 @@ export interface components {
         SpawnConfig: {
             /**
              * @description Absolute path to the component's own config file. The
-             *     watchdog passes this to the component via its
+             *     agent passes this to the component via its
              *     kind-specific env var
              *     (`EUGENE_PLEXUS_<KIND>_CONFIG_FILE`) at spawn time.
              */
@@ -603,23 +704,89 @@ export interface components {
         /**
          * @description Current operational state.
          *
-         *     * `starting` — watchdog has spawned the process but it has
+         *     * `starting` — agent has spawned the process but it has
          *       not yet answered `/healthz`.
          *     * `running` — process is up and `/healthz` is healthy.
          *     * `safe_mode` — process is up but launched with
          *       `SAFE_MODE=1`; will refuse to do useful work until the
          *       operator fixes its config and clears the safe-mode flag.
-         *     * `exited` — process exited cleanly and the watchdog is in
+         *     * `exited` — process exited cleanly and the agent is in
          *       the middle of respawning it (transient state).
          *     * `crashed` — process has exited non-zero repeatedly and the
-         *       watchdog has given up auto-restarting it. Operator must
+         *       agent has given up auto-restarting it. Operator must
          *       restart it manually after fixing the cause.
-         *     * `unreachable` — for remote components, the watchdog can't
+         *     * `unreachable` — for remote components, the agent can't
          *       reach the URL. For spawned components this state is not
          *       used (use `crashed` or `exited` instead).
          * @enum {string}
          */
         ComponentStatus: "starting" | "running" | "safe_mode" | "exited" | "crashed" | "unreachable";
+        /**
+         * @description What this agent knows about its own host and its own place in an
+         *     install. The install-wide `Node` view lives on the control root;
+         *     this is the half only the host itself can answer.
+         */
+        NodeIdentity: {
+            /**
+             * @description False on a fresh agent, and not an error state — supervision
+             *     works without a trust relationship, which is what lets the
+             *     agent on the control host boot first and start the control
+             *     root.
+             */
+            enrolled: boolean;
+            /** @description This node's name in the install. Absent until enrolled. */
+            name?: string;
+            /**
+             * @description This node's identity public key. The private half never
+             *     leaves the host; a secret sealed to this key is readable here
+             *     and by the control root's recovery recipient, and nowhere
+             *     else.
+             */
+            publicKey?: string;
+            /**
+             * Format: uri
+             * @description The control root this node answers to.
+             */
+            controlUrl?: string;
+            /**
+             * Format: int64
+             * @description Highest control-root epoch this agent has acknowledged. **It
+             *     refuses any root presenting a lower one**, which fences a
+             *     superseded control root without an election, without quorum,
+             *     and without agreeing with any other agent.
+             */
+            epoch?: number;
+            /** @enum {string} */
+            os?: "windows" | "linux" | "macos";
+            /** @enum {string} */
+            arch?: "x64" | "arm64";
+            /**
+             * @description What this host can compute on, detected locally. The control
+             *     root aggregates these into the cross-host inventory M3
+             *     deferred; detection stays here because only the host can do
+             *     it.
+             */
+            devices?: components["schemas"]["ComputeDevice"][];
+            agentVersion?: string;
+        };
+        EnrollRequest: {
+            /**
+             * Format: uri
+             * @description The control root to join.
+             */
+            controlUrl: string;
+            /**
+             * @description A join token minted at that control root. Single-use and
+             *     short-lived by design — it is the only credential this node
+             *     has until enrollment completes.
+             */
+            token: string;
+            /**
+             * @description Requested node name. Defaults to the host's own name, which
+             *     is the answer an operator would have typed anyway.
+             */
+            name?: string;
+        };
         /** @description Whether this install has been through first-run setup. */
         AuthStatus: {
             /**
@@ -684,12 +851,43 @@ export interface components {
          */
         EngineAcquisition: {
             /**
-             * @description False means no published asset fits this host and `reason`
-             *     says why. This is a real outcome, not an error: upstream
-             *     publishes no CUDA build for Linux, so a Linux box with an
-             *     NVIDIA GPU cannot be served automatically and is told so
-             *     rather than quietly handed a slower Vulkan build it never
-             *     asked for.
+             * @description Whether this engine is one we install at all. A property of
+             *     the engine, not of this host.
+             *
+             *     * `managed` — we fetch, verify and retain builds of it.
+             *       llama.cpp, which ships prebuilt release assets with
+             *       per-asset digests.
+             *     * `manual` — the operator installs it and we discover what
+             *       they installed. vLLM, whose unit of installation is a
+             *       Python environment: an interpreter of a version we do not
+             *       control (specifically 3.12 for the ROCm and Intel wheels),
+             *       several GB per retained copy, three of six targets on a
+             *       non-default package index, Apple silicon served by a
+             *       separate project entirely, and no single digest that
+             *       verifies the result. Decided 2026-09-09.
+             *
+             *     Separate from `installable` because the two answer different
+             *     questions and the UI renders them differently.
+             *     `installable: false` under `policy: managed` means *not on
+             *     this host* — there is a build, just not for this one, which
+             *     is Linux + NVIDIA llama.cpp. `policy: manual` means *not by
+             *     us, anywhere*, and the UI owes the operator instructions
+             *     (`manualInstall`) rather than a disabled install button.
+             *     Inferring that difference from a false boolean would be
+             *     guesswork.
+             * @enum {string}
+             */
+            policy?: "managed" | "manual";
+            /**
+             * @description False means we will not be installing this engine here, and
+             *     `reason` says why. This is a real outcome, not an error, and
+             *     it arises two ways. Under `policy: managed` no published
+             *     asset fits this host — upstream publishes no CUDA build for
+             *     Linux, so a Linux box with an NVIDIA GPU cannot be served
+             *     automatically and is told so rather than quietly handed a
+             *     slower Vulkan build it never asked for. Under
+             *     `policy: manual` it is always false, on every host, by
+             *     decision.
              */
             installable: boolean;
             /** @description The asset variant that would be fetched, when installable. */
@@ -697,9 +895,18 @@ export interface components {
             /**
              * @description Why not, when `installable: false`. Written for the operator,
              *     naming the way forward - build from source, use a container,
-             *     or point `binary` at an existing build.
+             *     or point `binary` at an existing build. For a
+             *     `policy: manual` engine the way forward is an install the
+             *     operator performs, and `manualInstall` carries the command
+             *     itself.
              */
             reason?: string;
+            /**
+             * @description How the operator installs this engine themselves. Present
+             *     for `policy: manual`, and the reason driving an engine is a
+             *     supported path rather than a shrug.
+             */
+            manualInstall?: components["schemas"]["ManualInstall"];
             detected?: components["schemas"]["HostAccelerator"];
             /** @description Newest upstream build we know of. */
             latestVersion?: string;
@@ -720,7 +927,44 @@ export interface components {
             checkedAt?: string;
         };
         /**
-         * @description What the watchdog detected about this machine, insofar as it
+         * @description Instructions for installing an engine we do not manage, written
+         *     for the host we actually detected.
+         *
+         *     This exists so that "we don't install this one" is still an
+         *     answer the operator can act on. A refusal that names the exact
+         *     command is a different product from a refusal that says no —
+         *     and since a `manual` engine's refusal is permanent rather than
+         *     situational, it is the only surface the operator gets.
+         */
+        ManualInstall: {
+            /**
+             * @description A copy-pasteable command for the detected platform and
+             *     accelerator, e.g.
+             *     `uv pip install vllm --torch-backend=auto`. Omitted when we
+             *     cannot name one honestly — an unrecognised accelerator, or a
+             *     target upstream serves from a separate project — in which
+             *     case `docsUrl` and `notes` carry it. Never a guess: a
+             *     command that does not work is worse than no command, because
+             *     the operator will believe it.
+             */
+            command?: string;
+            /**
+             * @description Upstream's own install page. Required, and deliberately the
+             *     one field that always exists: upstream's instructions are
+             *     correct for longer than any copy we make of them, and this
+             *     is the value that stays right when our `command` goes stale.
+             */
+            docsUrl: string;
+            /**
+             * @description Constraints the command alone does not convey — a required
+             *     Python version, a non-default package index, that this
+             *     target is served by a separate upstream project, or that the
+             *     platform is unsupported and the way in is a Linux VM.
+             */
+            notes?: string;
+        };
+        /**
+         * @description What the agent detected about this machine, insofar as it
          *     decides which engine build to fetch. Not a general hardware
          *     inventory - the VRAM-and-quant-fit surface that M3 needs belongs
          *     to the library component, not here.
@@ -801,7 +1045,7 @@ export interface components {
         EngineList: {
             engines: components["schemas"]["EngineDescriptor"][];
         };
-        /** @description One engine adapter, plus what the watchdog found on this host. */
+        /** @description One engine adapter, plus what the agent found on this host. */
         EngineDescriptor: {
             engine: components["schemas"]["EngineKind"];
             /**
@@ -818,10 +1062,25 @@ export interface components {
              *     This is the engine half of a join the UI performs: the
              *     library reports what format each model *is*, and this
              *     reports what each engine can *load*. `llama_cpp` lists
-             *     `gguf` only, so a safetensors model in the library has
-             *     nowhere to run until the vLLM adapter lands, and the UI can
-             *     say so — naming the missing engine — instead of offering a
-             *     launch button that fails.
+             *     `gguf`; `vllm` lists `safetensors`. Between them the UI can
+             *     grey out a launch button and name the missing engine instead
+             *     of offering one that fails.
+             *
+             *     `vllm` does **not** list `gguf`, though upstream has a path
+             *     for it. That path is documented as highly experimental and
+             *     under-optimized, and it needs a second `--tokenizer` model
+             *     because converting a GGUF tokenizer is unstable — so
+             *     claiming the format would light up a launch button across
+             *     the whole GGUF population llama.cpp already serves properly.
+             *
+             *     A format match is a *first* filter and not a promise. It says
+             *     the engine can load this kind of file, not that it can load
+             *     this model: vLLM's model registry is the authority on
+             *     architectures and it answers only at spawn. The second
+             *     filter is therefore the engine's own failure, surfaced
+             *     verbatim through `Runtime.lastError`. No architecture list is
+             *     copied in here, for the same reason the formats are not
+             *     copied into the library.
              *
              *     It lives here because engine knowledge lives here. Putting
              *     format support on the library would give the library a copy
@@ -831,19 +1090,37 @@ export interface components {
             /** @description Absolute path to the binary the adapter would spawn. */
             binaryPath?: string;
             /**
-             * @description Version string as reported by the binary itself (for
-             *     llama.cpp, the build number). Surfaced so an operator can
-             *     tell what they are actually running, and so a flag that
-             *     stopped working after an upgrade is diagnosable.
+             * @description What is running, so an operator can tell what they actually
+             *     have and so a flag that stopped working after an upgrade is
+             *     diagnosable. For llama.cpp, the build number as the binary
+             *     reports it.
+             *
+             *     **Not necessarily obtained by running the engine.** For a
+             *     Python-package engine the version is read from the installed
+             *     distribution's metadata instead: vLLM exposes it through a
+             *     CLI flag whose module import chain loads PyTorch first, and
+             *     paying that to render a settings panel is not acceptable.
+             *     Same trade the managed store already makes for llama.cpp,
+             *     where the recorded build number is returned rather than
+             *     re-probed.
              */
             version?: string;
             /**
-             * @description Where the binary came from.
+             * @description Where the binary came from. Discovery precedence is an
+             *     explicit `binary` on the runtime, then `configured`, then
+             *     `managed`, then `PATH`.
              *
-             *     * `managed` — fetched and verified by us. The one-click
-             *       path; not implemented until engine acquisition lands.
-             *     * `configured` — an explicit path the operator set, because
-             *       they build llama.cpp themselves or want a specific build.
+             *     * `managed` — fetched and verified by us. Only ever set for
+             *       an engine with `acquisition.policy: managed`.
+             *     * `configured` — an explicit path the operator set. Two
+             *       sources: a `binary` on one runtime, for someone who builds
+             *       llama.cpp themselves or wants a specific build for one
+             *       model; or an install-wide path in the agent's own
+             *       config, which is how an engine we never manage becomes
+             *       discoverable at all. Without the second, an operator with
+             *       a perfectly good vLLM venv would read as unavailable
+             *       unless they put it on `PATH` or repeated the path on every
+             *       runtime.
              *     * `path` — found on `PATH`.
              * @enum {string}
              */
@@ -865,7 +1142,76 @@ export interface components {
             error?: string;
             managed?: components["schemas"]["ManagedEngine"];
             acquisition?: components["schemas"]["EngineAcquisition"];
+            /**
+             * @description Present when this engine is a Python package rather than a
+             *     self-contained binary, describing the environment it lives
+             *     in. Absent for llama.cpp.
+             */
+            python?: components["schemas"]["PythonEngine"];
         };
+        /**
+         * @description The environment a Python-package engine was found in.
+         *
+         *     This is the `ManagedEngine.variant` idea applied to an engine
+         *     whose build is a property of its environment rather than of a
+         *     filename: recorded because it is the answer to "why is this
+         *     slow" often enough to be worth surfacing. A venv holding a
+         *     CPU-only PyTorch looks identical from the outside to one holding
+         *     a CUDA build and runs orders of magnitude slower, and nothing
+         *     else on this descriptor would ever say so.
+         */
+        PythonEngine: {
+            /**
+             * @description Absolute path to the interpreter behind the engine's console
+             *     script. The script's own shebang binds it, so nothing needs
+             *     activating and the argv stays a plain executable invocation —
+             *     but the interpreter is what identifies *which* install is in
+             *     use when an operator keeps more than one.
+             */
+            interpreter: string;
+            /**
+             * @description e.g. `3.12.8`. Surfaced rather than merely logged because it
+             *     is sometimes the whole problem and is not fixable from here:
+             *     upstream publishes the ROCm and Intel wheels for 3.12 only,
+             *     so an operator on 3.13 has an unusable environment and the
+             *     only useful thing we can do is show them the number.
+             */
+            pythonVersion?: string;
+            /**
+             * @description The engine package's own version, from the installed
+             *     distribution's metadata. Mirrors `EngineDescriptor.version`
+             *     and is here so the environment reads as a self-contained
+             *     record.
+             */
+            packageVersion?: string;
+            /**
+             * @description The installed PyTorch version *including its build tag* —
+             *     e.g. `2.9.0+cu129`. The tag is the load-bearing half: it is
+             *     what distinguishes a CUDA build from a CPU-only one, which
+             *     is the single most useful fact about an environment that is
+             *     serving slowly.
+             */
+            torchVersion?: string;
+            accelerator?: components["schemas"]["FrameworkAccelerator"];
+        };
+        /**
+         * @description What a Python engine's installed framework was *built for*, read
+         *     from its build tag rather than from the host.
+         *
+         *     Deliberately a separate schema from `HostAccelerator.accelerator`
+         *     rather than a shared one, because the two say different things
+         *     and carry different values. That one reports what the *machine*
+         *     has; this one reports what the *wheel* has. A CUDA box running a
+         *     CPU-only PyTorch is a real and quiet failure — everything looks
+         *     installed and inference is orders of magnitude slower — and it
+         *     is visible only as the disagreement between these two fields.
+         *
+         *     `unknown` when the build tag does not parse. Honest, and better
+         *     than reporting `none`, which would read as a definite claim that
+         *     there is no acceleration.
+         * @enum {string}
+         */
+        FrameworkAccelerator: "none" | "cuda" | "rocm" | "xpu" | "metal" | "unknown";
         RuntimeList: {
             runtimes: components["schemas"]["Runtime"][];
         };
@@ -911,6 +1257,20 @@ export interface components {
              *     filename with its extension stripped — plainly-named files
              *     mean the obvious name is already the right one, so this is
              *     an override, not a requirement.
+             *
+             *     **The resolved value is always passed to the engine
+             *     explicitly, never left to the engine's own default.** vLLM's
+             *     default served name is the `--model` argument verbatim, and
+             *     we launch models by absolute path because the user's files
+             *     stay theirs — so leaving it unset would publish
+             *     `/home/you/models/Qwen3-8B` as an OpenAI model id. That
+             *     leaks the operator's directory layout to every API client
+             *     and, worse, makes the routing key differ per host for the
+             *     same model, which breaks both multi-host placement and any
+             *     failover priority list that names a model. llama.cpp derives
+             *     its default from the filename and would have been fine,
+             *     which is exactly why this was invisible until a second
+             *     engine existed.
              */
             modelAlias?: string;
             /**
@@ -928,7 +1288,7 @@ export interface components {
              */
             port?: number;
             /**
-             * @description Whether the watchdog spawns this runtime at startup and
+             * @description Whether the agent spawns this runtime at startup and
              *     respawns it on exit. False leaves it declared but
              *     `stopped`, which is how a rarely-used large model stays
              *     configured without holding VRAM.
@@ -995,7 +1355,7 @@ export interface components {
             /** @description Resolved alias — the declared value, or the derived filename. */
             modelAlias?: string;
             host?: string;
-            /** @description Resolved port, including one assigned by the watchdog. */
+            /** @description Resolved port, including one assigned by the agent. */
             port?: number;
             autoStart?: boolean;
             flags?: {
@@ -1017,7 +1377,7 @@ export interface components {
              */
             url?: string;
             /**
-             * @description The exact command line the watchdog spawned, as the adapter
+             * @description The exact command line the agent spawned, as the adapter
              *     resolved it. Read-only and reported deliberately: the first
              *     question anyone debugging a local engine asks is "what
              *     command did you actually run", and every tool that hides the
@@ -1026,6 +1386,19 @@ export interface components {
             argv?: string[];
             /** @description OS process id. Set only while the engine is alive. */
             pid?: number;
+            /**
+             * @description The node this runtime runs on — always *this* agent's node,
+             *     since an agent supervises only its own host.
+             *
+             *     Reported anyway, and this is why: the control root relays
+             *     these into a union view across every node, and a runtime that
+             *     arrived without a node would be a runtime the operator cannot
+             *     locate. Filled from the agent's own identity rather than
+             *     declared, so it cannot disagree with reality. Absent on an
+             *     agent that has not enrolled, which is the only state in which
+             *     "which node" has no answer.
+             */
+            node?: string;
             /** @description Version reported by the binary that is actually running. */
             engineVersion?: string;
             capabilities?: components["schemas"]["RuntimeCapabilities"];
@@ -1044,23 +1417,44 @@ export interface components {
          *     recover a config from), and it has a model-load phase that a
          *     component does not.
          *
-         *     * `starting` — spawned, not yet answering its readiness probe
-         *       at all.
-         *     * `loading` — answering, but reporting the model is still being
-         *       read into memory. Worth its own state rather than folding
-         *       into `starting`: a large quant off a spinning disk can sit
-         *       here for minutes, and an operator staring at a dashboard
-         *       needs to know the difference between "working on it" and
-         *       "wedged". This is exactly what a per-engine readiness probe
-         *       buys — llama-server distinguishes the two on `/health` and a
-         *       generic TCP check could not.
+         *     These are defined by what they *mean*, not by how any one engine
+         *     reports them. That distinction is load-bearing, because the two
+         *     engines report the load phase in opposite ways — see `loading`.
+         *
+         *     * `starting` — spawned, and we have no information yet. Not "the
+         *       probe failed": the honest gap between spawning a process and
+         *       learning anything about it.
+         *     * `loading` — the engine is alive and working, and is not
+         *       servable yet. Worth its own state rather than folding into
+         *       `starting`: a large quant off a spinning disk can sit here for
+         *       minutes, and an operator staring at a dashboard needs to know
+         *       the difference between "working on it" and "wedged".
+         *
+         *       How it is *observed* is per-engine, and this is most of why
+         *       readiness is per-adapter rather than a shared TCP check.
+         *       `llama-server` says so itself, answering `/health` with 503
+         *       and a loading status. **vLLM does the opposite:** it binds its
+         *       port before loading the model and does not answer at all until
+         *       the model is in memory, so for minutes it is
+         *       indistinguishable — over the network alone — from a process
+         *       that died.
+         *
+         *       Hence the rule: for an engine that does not answer while
+         *       loading, *the process being alive while nothing answers* **is**
+         *       `loading`. There is nothing else it could be. That inference
+         *       needs the process handle, which the supervisor has and a
+         *       network probe does not, and it is why lifecycle adapters live
+         *       here rather than in the driver. An engine like that also needs
+         *       a per-adapter startup budget to keep "working on it" separable
+         *       from "wedged"; vLLM's is minutes, because CUDA graph capture
+         *       and compilation dominate it.
          *     * `ready` — model loaded and serving. The only state in which
          *       the gateway will route to it.
          *     * `stopped` — deliberately stopped, or declared with
          *       `autoStart: false`. Not an error; the respawn loop is
          *       suppressed.
          *     * `exited` — exited cleanly and is being respawned (transient).
-         *     * `crashed` — exited non-zero repeatedly and the watchdog has
+         *     * `crashed` — exited non-zero repeatedly and the agent has
          *       given up. `lastError` and the captured engine output say why;
          *       `POST .../restart` retries.
          * @enum {string}
@@ -1145,8 +1539,8 @@ export interface components {
         };
         /**
          * @description Login request body sent by the UI to `POST /v1/auth/login` on
-         *     the watchdog. The passphrase is the same one the operator set
-         *     in the wizard. The watchdog bcrypt-compares it; on match,
+         *     the agent. The passphrase is the same one the operator set
+         *     in the wizard. The agent bcrypt-compares it; on match,
          *     issues a session token.
          */
         AuthLoginRequest: {
@@ -1155,26 +1549,36 @@ export interface components {
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
-         *     component references it: the watchdog's `/v1/components`, and
+         *     component references it: the agent's `/v1/components`, and
          *     (via `ConfigField.componentKindHint`) any component declaring
          *     a config field that points at a peer of a specific kind.
          *
          *     A component is a **Eugene Plexus process**. Engine processes
          *     are not components and are not named here — they are runtimes,
-         *     declared separately on the watchdog, because a third-party
+         *     declared separately on the agent, because a third-party
          *     binary shares none of a component's declarative shape (no
-         *     module, no config trio, no service token). See the watchdog's
+         *     module, no config trio, no service token). See the agent's
          *     `GET /v1/runtimes`.
          *
+         *     `control` is the trust root, node registry, install-wide
+         *     topology and UI host — exactly one active, plus warm standbys.
          *     `gateway` is the one OpenAI-compatible front door and there is
          *     exactly one. `inference-driver` instances are the per-backend
          *     wrappers and there are N — one per backend, wherever that
          *     backend lives. `library` scans the operator's model
          *     directories and holds per-model launch profiles; there is
          *     exactly one, and it is deliberately not in the request path.
+         *
+         *     **The agent is not in this list**, for the same reason engine
+         *     runtimes are not: it supervises, it is not supervised. Its
+         *     lifecycle belongs to the platform — a systemd unit, a container
+         *     entrypoint — not to a topology entry. `control` *is* in the list
+         *     precisely because the agent on its host supervises it like
+         *     anything else, which is what stops the control root needing a
+         *     second copy of the supervision machinery.
          * @enum {string}
          */
-        ComponentKind: "gateway" | "inference-driver" | "library";
+        ComponentKind: "control" | "gateway" | "inference-driver" | "library";
         /**
          * @description Acknowledgement returned by `POST /v1/admin/restart`. The
          *     component schedules its own process exit shortly after returning
@@ -1213,17 +1617,29 @@ export interface components {
          *     and without an adapter there is nothing that knows how to start
          *     it or tell when it is ready.
          *
-         *     `llama_cpp` drives upstream `llama-server`. vLLM is a second
-         *     adapter later, and MLX after that. We never ship an engine — all
-         *     three are upstream projects we wrap and track.
+         *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
+         *     `vllm` drives upstream `vllm serve` and loads safetensors. MLX
+         *     is a third adapter later. We never ship an engine — every one of
+         *     them is an upstream project we wrap and track.
          *
-         *     Lives here rather than on the watchdog because two components
-         *     reference it: the watchdog's engines and runtimes, and a
+         *     The two differ in far more than argv, and that is why readiness
+         *     is per-adapter rather than one shared TCP check:
+         *     `llama-server` answers `/health` while it loads and reports that
+         *     it is loading, whereas vLLM binds its port *before* loading the
+         *     model and refuses connections until the model is in memory — so
+         *     for minutes it is indistinguishable, over the network alone,
+         *     from a process that died. They differ in acquisition too: a
+         *     llama.cpp build is fetched and verified by us, while vLLM is a
+         *     Python package the operator installs themselves. See
+         *     `EngineAcquisition.policy`.
+         *
+         *     Lives here rather than on the agent because two components
+         *     reference it: the agent's engines and runtimes, and a
          *     library `ModelProfile`, which names the engine its launch flags
          *     are written for.
          * @enum {string}
          */
-        EngineKind: "llama_cpp";
+        EngineKind: "llama_cpp" | "vllm";
         /**
          * @description On-disk format of a model. A dimension of the data model rather
          *     than an assumption (locked 2026-09-08): both are implemented at
@@ -1264,9 +1680,32 @@ export interface components {
          *     and M3's downloader offers the first entry as the default
          *     destination. `driver_list` stays reserved for M5's ordered
          *     model→driver priority lists.
+         *
+         *     `runtime_name` holds the `name` of a supervised engine runtime,
+         *     and UIs render it as a dropdown sourced from the agent's
+         *     `GET /v1/runtimes`. It exists because `componentKindHint` cannot
+         *     do this job: a runtime is deliberately not a component, so
+         *     `/v1/components` does not list one. What is saved is the
+         *     runtime's *name*, never its URL — the agent assigns the port
+         *     when the operator does not pick one, so a stored URL would
+         *     encode a number the operator never chose and does not own, and
+         *     would be wrong the moment the runtime moved. Its first user is
+         *     the inference-driver's `runtimeName`, which is how a driver
+         *     follows the engine process it fronts.
+         *
+         *     `node_name` holds the `name` of an enrolled node, rendered as a
+         *     dropdown sourced from the control root's `GET /v1/nodes`. Same
+         *     reasoning as `runtime_name` one level up: a node is not a
+         *     component either, so `componentKindHint` cannot source it, and
+         *     what is saved is the name rather than a URL because the address
+         *     of a host is topology the control root owns.
+         *
+         *     `driver_list` stays reserved for the ordered model→driver
+         *     priority lists that arrive with lifecycle policy — **M6** since
+         *     multi-host and trust took M5.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "duration" | "driver_list";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "duration" | "runtime_name" | "node_name" | "driver_list";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -1330,7 +1769,7 @@ export interface components {
             /**
              * @description Declarative rendering hint: this field references a peer
              *     component of the given kind. UIs render any kind-hinted
-             *     field as a dropdown sourced from the watchdog's
+             *     field as a dropdown sourced from the agent's
              *     `/v1/components` (filtered by kind), with `(off)` as the
              *     first option (saves an empty string). For single-instance
              *     kinds (memory, identity, etc.) the dropdown UX collapses
@@ -1410,6 +1849,61 @@ export interface components {
             };
         };
         /**
+         * @description What kind of device this is.
+         *
+         *     A named schema rather than an inline enum because an inline one
+         *     generated a bare `Kind` class, which is too generic to sit in a
+         *     module every component imports.
+         *
+         *     Note `cpu` is a member, which is why the surrounding schema is
+         *     `ComputeDevice` and not `Accelerator`: a list that includes CPUs
+         *     is a device list. The narrower `HostAccelerator.accelerator` on
+         *     the agent keeps its own name and its own values — it answers
+         *     "which prebuilt engine build fits this machine", not "what can
+         *     this host compute on".
+         * @enum {string}
+         */
+        ComputeDeviceKind: "cuda" | "rocm" | "xpu" | "metal" | "cpu";
+        /**
+         * @description One compute device on one host, as that host's agent detected it.
+         *
+         *     Shared because it appears on both sides of a join: an agent
+         *     reports its own devices on `GET /v1/node`, and the control root
+         *     aggregates them into `Node.devices` — the cross-host
+         *     inventory M3 deferred with the note that *"building a real
+         *     inventory is topology work"*. Two copies of this shape would be
+         *     two definitions of one fact, and the copy would be the one that
+         *     went stale.
+         *
+         *     Deliberately **not** the same thing as the agent's
+         *     `HostAccelerator`, which answers a narrower question — "which
+         *     prebuilt engine build should we fetch for this machine" — and
+         *     describes a host in the singular. This is a device *list*,
+         *     because a host with two cards is the case that makes replicas of
+         *     one model possible.
+         */
+        ComputeDevice: {
+            kind: components["schemas"]["ComputeDeviceKind"];
+            /** @description Device name as the vendor reports it, e.g. `NVIDIA GeForce RTX 5090`. */
+            name?: string;
+            /**
+             * @description Device ordinal on its own host — what `CUDA_VISIBLE_DEVICES`
+             *     or `HIP_VISIBLE_DEVICES` in a runtime's `env` selects to pin
+             *     that runtime to one card.
+             */
+            index?: number;
+            /** Format: int64 */
+            memoryTotalBytes?: number;
+            /**
+             * Format: int64
+             * @description Free decides whether a model fits, not total — M3 measured
+             *     2.9 GiB of a 32 GiB card already held on an idle desktop.
+             *     Both are reported so the difference is visible rather than
+             *     surprising.
+             */
+            memoryFreeBytes?: number;
+        };
+        /**
          * @description Current effective config values, keyed by `ConfigField.key`.
          *     Values of fields with `sensitive: true` are returned as the
          *     literal string `"<redacted>"` regardless of whether they are
@@ -1467,7 +1961,7 @@ export interface components {
             /** @description Component identifier (e.g. `"inference-driver"`). */
             component?: string;
             /**
-             * @description True when the component was started with the watchdog's
+             * @description True when the component was started with the agent's
              *     safe-mode env var set
              *     (`EUGENE_PLEXUS_<KIND>_SAFE_MODE=1`) and is therefore
              *     running on built-in defaults instead of its persisted
@@ -1767,7 +2261,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["Problem"];
-            /** @description Component is remote and cannot be restarted by the watchdog. */
+            /** @description Component is remote and cannot be restarted by the agent. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2112,6 +2606,70 @@ export interface operations {
                 };
             };
             404: components["responses"]["Problem"];
+        };
+    };
+    getNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This node. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeIdentity"];
+                };
+            };
+        };
+    };
+    enrollWithControl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrollRequest"];
+            };
+        };
+        responses: {
+            /** @description Enrolled; the resulting identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeIdentity"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            /** @description Already enrolled with a control root. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The control root refused or was unreachable. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getConfig: {

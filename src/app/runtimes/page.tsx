@@ -17,7 +17,7 @@ import type {
  * Runtime dashboard — what engine processes exist, what state they're in,
  * and what the host can actually run.
  *
- * Two reads, both on the watchdog:
+ * Two reads, both on the agent:
  *   GET /v1/engines  → which adapters have a usable binary here
  *   GET /v1/runtimes → the declared engine processes and their live state
  *
@@ -59,8 +59,8 @@ const STATUS_HELP: Record<RuntimeStatus, string> = {
   loading: "Answering, but still reading the model into memory.",
   starting: "Spawned, not yet answering its readiness probe.",
   stopped: "Deliberately stopped, or declared with autoStart off.",
-  exited: "Exited cleanly; the watchdog is respawning it.",
-  crashed: "Exited non-zero repeatedly. The watchdog gave up — see the error.",
+  exited: "Exited cleanly; the agent is respawning it.",
+  crashed: "Exited non-zero repeatedly. The agent gave up — see the error.",
 };
 
 export default function RuntimesPage() {
@@ -73,8 +73,8 @@ export default function RuntimesPage() {
   const load = useCallback(async () => {
     try {
       const [r, e] = await Promise.all([
-        api.get<RuntimeList>("watchdog", "/v1/runtimes"),
-        api.get<EngineList>("watchdog", "/v1/engines"),
+        api.get<RuntimeList>("agent", "/v1/runtimes"),
+        api.get<EngineList>("agent", "/v1/engines"),
       ]);
       setRuntimes(r.runtimes ?? []);
       setEngines(e.engines ?? []);
@@ -86,7 +86,7 @@ export default function RuntimesPage() {
   }, []);
 
   // Poll rather than subscribe. A runtime's status changes on the
-  // watchdog's own readiness-probe cadence (2s), so there is nothing for
+  // agent's own readiness-probe cadence (2s), so there is nothing for
   // a push channel to deliver sooner, and a dashboard that reconnects a
   // socket is a dashboard that can silently stop updating.
   useEffect(() => {
@@ -110,7 +110,7 @@ export default function RuntimesPage() {
   const loadInstall = useCallback(async (engine: string) => {
     try {
       const state = await api.get<EngineInstall>(
-        "watchdog",
+        "agent",
         `/v1/engines/${encodeURIComponent(engine)}/install`,
       );
       setInstalls((prev) => ({ ...prev, [engine]: state }));
@@ -147,7 +147,7 @@ export default function RuntimesPage() {
     setError(null);
     try {
       const started = await api.post<EngineInstall>(
-        "watchdog",
+        "agent",
         `/v1/engines/${encodeURIComponent(engine)}/install`,
         {},
       );
@@ -166,7 +166,7 @@ export default function RuntimesPage() {
   async function cancelInstall(engine: string) {
     try {
       const state = await api.delete<EngineInstall>(
-        "watchdog",
+        "agent",
         `/v1/engines/${encodeURIComponent(engine)}/install`,
       );
       setInstalls((prev) => ({ ...prev, [engine]: state }));
@@ -178,7 +178,7 @@ export default function RuntimesPage() {
   async function act(name: string, action: "start" | "stop" | "restart") {
     setBusy(`${name}:${action}`);
     try {
-      await api.post("watchdog", `/v1/runtimes/${encodeURIComponent(name)}/${action}`, {});
+      await api.post("agent", `/v1/runtimes/${encodeURIComponent(name)}/${action}`, {});
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -448,7 +448,7 @@ function RuntimesPanel({
         <p className="text-xs text-[color:var(--muted)]">Loading…</p>
       ) : runtimes.length === 0 ? (
         <p className="text-xs text-[color:var(--muted)]">
-          No engine runtimes declared. Add one with the watchdog&apos;s{" "}
+          No engine runtimes declared. Add one with the agent&apos;s{" "}
           <code className="font-mono">POST /v1/runtimes</code>.
         </p>
       ) : (

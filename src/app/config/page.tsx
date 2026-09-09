@@ -15,7 +15,7 @@ interface Tab {
 
 const STATIC_TABS: Tab[] = [
   { value: "ui", label: "UI" },
-  { value: "watchdog", label: "Watchdog" },
+  { value: "agent", label: "Agent" },
   { value: "gateway", label: "Gateway" },
 ];
 
@@ -27,7 +27,7 @@ export default function ConfigPage() {
   const [driversError, setDriversError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>("ui");
 
-  // Driver tabs come from the watchdog topology, which is where a
+  // Driver tabs come from the agent topology, which is where a
   // driver's URL is written down and therefore the only list that can't
   // disagree with what the proxy will resolve. The gateway's
   // /v1/admin/drivers is a live-health view of the same set and 503s
@@ -37,7 +37,7 @@ export default function ConfigPage() {
     let cancelled = false;
     async function load() {
       try {
-        const list = await api.get<ComponentList>("watchdog", "/v1/components");
+        const list = await api.get<ComponentList>("agent", "/v1/components");
         if (cancelled) return;
         const components = list.components ?? [];
         setDrivers(

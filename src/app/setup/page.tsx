@@ -20,7 +20,7 @@
  * of the question and the rest get added from Config.
  *
  * This is a cut, not the rewrite. The wizard still assumes the operator
- * has components in the watchdog topology already and cannot create
+ * has components in the agent topology already and cannot create
  * them, and it has nothing to say about engine runtimes or a model
  * library because neither is acquirable yet. The real first-run flow —
  * fetch an engine, point at a model directory, launch a runtime, front
@@ -33,13 +33,13 @@
  *   - Screen 7: `← Back` + `Start`
  *
  * State lives in React (with sessionStorage mirror so a tab refresh
- * doesn't lose progress). The actual write-to-watchdog happens only on
+ * doesn't lose progress). The actual write-to-agent happens only on
  * the final Start button — the wizard treats the entire flow as one
  * transaction and either commits everything or commits nothing.
  *
  * Transactional order on Start:
  *   1. POST /v1/auth/initialize with the wizard's passphrase → get a
- *      session token, populate AuthState.master_key on the watchdog.
+ *      session token, populate AuthState.master_key on the agent.
  *   2. Patch the chosen securityMode (default is prompt_on_startup,
  *      skip the patch if unchanged). Switching to os_keyring with the
  *      session active persists the master key for auto-unlock.
@@ -63,7 +63,7 @@ import { setSessionToken } from "@/lib/session";
 import { useFontSize, FONT_SIZE_LABELS, type FontSize } from "@/lib/useFontSize";
 import { useTheme, type Theme } from "@/lib/useTheme";
 import type { Component, ComponentList } from "@/lib/types";
-import { WIZARD_PROVIDERS, type WizardCredential } from "@/lib/watchdog";
+import { WIZARD_PROVIDERS, type WizardCredential } from "@/lib/agent";
 
 const DRAFT_KEY = "eugene-wizard-draft";
 const TOTAL_SCREENS = 7;
@@ -178,7 +178,7 @@ export default function WizardPage() {
     }
   }, [hydrated, draft, screen]);
 
-  // Pull the watchdog's current component list once. The final screen
+  // Pull the agent's current component list once. The final screen
   // uses it for the summary and to decide what to PATCH vs. skip. The
   // endpoint is auth-protected; the wizard hasn't initialized the
   // install yet so we skip auth and tolerate a 401 — an empty list is
@@ -187,11 +187,11 @@ export default function WizardPage() {
     let cancelled = false;
     async function load() {
       try {
-        const list = await api.get<ComponentList>("watchdog", "/v1/components", { skipAuth: true });
+        const list = await api.get<ComponentList>("agent", "/v1/components", { skipAuth: true });
         if (cancelled) return;
         setKnownComponents(list.components ?? []);
       } catch {
-        // Watchdog unreachable or auth-required — leave empty.
+        // Agent unreachable or auth-required — leave empty.
       }
     }
     void load();
@@ -217,7 +217,7 @@ export default function WizardPage() {
   function cancel() {
     // Cancel only fires from screen 1; bail-out from later screens goes
     // back to 1 first. Stopping already-spawned children belongs to a
-    // watchdog endpoint that doesn't exist; here we just clear the draft
+    // agent endpoint that doesn't exist; here we just clear the draft
     // and return so the operator can decide what to do next.
     try {
       sessionStorage.removeItem(DRAFT_KEY);
@@ -232,13 +232,13 @@ export default function WizardPage() {
     setStartError(null);
     try {
       // Step 1: initialize the install. Sets the passphrase hash + master
-      // salt on the watchdog, derives the master key into memory, and
+      // salt on the agent, derives the master key into memory, and
       // returns a session token. After this call, the rest of the
       // wizard's PATCHes are authenticated by the api client's
       // auto-attach.
       setStartMessage("Setting your passphrase and deriving keys…");
       const initResp = await api.post<InitializeResponse>(
-        "watchdog",
+        "agent",
         "/v1/auth/initialize",
         { passphrase },
         { skipAuth: true },
@@ -248,16 +248,16 @@ export default function WizardPage() {
       // Step 2: persist the chosen securityMode. Default is
       // prompt_on_startup; skip the patch if unchanged so we don't touch
       // the keyring needlessly. Flipping to os_keyring with the session
-      // active triggers the watchdog's keyring write.
+      // active triggers the agent's keyring write.
       if (draft.securityMode !== "prompt_on_startup") {
         setStartMessage("Applying security mode…");
-        await api.patch("watchdog", "/v1/config", {
+        await api.patch("agent", "/v1/config", {
           securityMode: draft.securityMode,
         });
       }
 
       // Step 3: PATCH the driver component. It must already exist in the
-      // watchdog topology — creating one from scratch is a follow-on.
+      // agent topology — creating one from scratch is a follow-on.
       // The final screen warns when it doesn't.
       setStartMessage("Saving driver configuration…");
       const driverNames = knownComponents
@@ -269,7 +269,7 @@ export default function WizardPage() {
       }
 
       setStartMessage("Finalizing setup…");
-      await api.patch("watchdog", "/v1/config", { firstRunComplete: true });
+      await api.patch("agent", "/v1/config", { firstRunComplete: true });
 
       // Best-effort restart so the driver picks up its new config. The
       // gateway needs none: its routing table refreshes on a timer and
@@ -277,7 +277,7 @@ export default function WizardPage() {
       if (target) {
         setStartMessage("Restarting the driver with your new configuration…");
         try {
-          await api.post("watchdog", `/v1/components/${encodeURIComponent(target)}/restart`, {});
+          await api.post("agent", `/v1/components/${encodeURIComponent(target)}/restart`, {});
         } catch {
           // A failed restart isn't a wizard failure.
         }
@@ -304,7 +304,7 @@ export default function WizardPage() {
         return (
           "This install already has a passphrase set. Use the login page " +
           "to sign in, or reset the install by removing the auth block " +
-          "from watchdog.yaml by hand."
+          "from agent.yaml by hand."
         );
       }
       if (
@@ -650,7 +650,7 @@ function ScreenSecurity({
           "Best for: shared environments, sensitive conversations, " +
           "security-conscious operators. Eugene's encryption key is " +
           "never written to disk. You'll type the passphrase by hand " +
-          "every time the watchdog starts. A power outage means Eugene " +
+          "every time the agent starts. A power outage means Eugene " +
           "stays offline until you re-enter the passphrase. Stronger " +
           "security; less convenience."
         }
@@ -740,7 +740,7 @@ function ScreenDriver({
       </p>
       <Field
         label="Name"
-        description="A label for this driver. It's also the name the watchdog topology uses, so keep it short."
+        description="A label for this driver. It's also the name the agent topology uses, so keep it short."
       >
         <input
           type="text"
@@ -774,7 +774,7 @@ function ScreenDriver({
           For a local engine, the base URL is the runtime&rsquo;s own address — the Runtimes page
           shows it once the engine is up. Until engine acquisition lands you have to start
           <span className="font-mono"> llama-server </span>
-          yourself or declare a runtime on the watchdog.
+          yourself or declare a runtime on the agent.
         </p>
       )}
       <CredentialFields credentials={credentials} driver={driver} onChange={onChange} />
@@ -812,7 +812,7 @@ function ScreenDeployment({
         checked={value === "local"}
         onChange={() => onChange("local")}
         label="All on this machine (recommended)"
-        description="Every component runs as a local process. The watchdog handles spawning and supervision; you won't need to think about ports."
+        description="Every component runs as a local process. The agent handles spawning and supervision; you won't need to think about ports."
       />
       <Radio
         checked={value === "networked"}
@@ -991,14 +991,14 @@ function MissingTopologyHints({
   if (missingDriver) {
     lines.push(
       knownDriverNames.length > 0
-        ? `No inference-driver named "${missingDriver}" in the watchdog topology. ` +
+        ? `No inference-driver named "${missingDriver}" in the agent topology. ` +
             `Present: ${knownDriverNames.join(", ")} — your settings will be applied to ` +
             `"${knownDriverNames[0]}".`
-        : `No inference-driver in the watchdog topology at all, so the driver ` +
+        : `No inference-driver in the agent topology at all, so the driver ` +
             `settings on the previous screen have nowhere to go.`,
     );
   }
-  if (missingGateway) lines.push("No gateway in the watchdog topology.");
+  if (missingGateway) lines.push("No gateway in the agent topology.");
   if (lines.length === 0) return null;
   return (
     <div className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">
@@ -1009,8 +1009,8 @@ function MissingTopologyHints({
         ))}
       </ul>
       <p className="mt-2">
-        Add them with the watchdog&rsquo;s <span className="font-mono">POST /v1/components</span> or
-        by hand-editing <span className="font-mono">watchdog.yaml</span>, then re-run setup.
+        Add them with the agent&rsquo;s <span className="font-mono">POST /v1/components</span> or by
+        hand-editing <span className="font-mono">agent.yaml</span>, then re-run setup.
       </p>
     </div>
   );

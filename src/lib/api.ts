@@ -30,7 +30,7 @@ export class ApiError extends Error {
 interface RequestOptions {
   /** When true, don't attach the Bearer token and don't redirect on 401.
    * Used by the login form and the wizard's `/v1/auth/initialize` call —
-   * both expect to talk to the watchdog without an existing session. */
+   * both expect to talk to the agent without an existing session. */
   skipAuth?: boolean;
   /** Client-side timeout in milliseconds. When the request exceeds this,
    * the fetch is aborted and a friendly `ApiError` (`status=0`,

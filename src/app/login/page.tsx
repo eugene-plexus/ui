@@ -6,17 +6,17 @@
  * Reached when:
  *   - The user lands fresh in a tab with no session token.
  *   - A protected route returned 401 (token missing, malformed, expired,
- *     or rejected because the watchdog rotated its signing key on its
+ *     or rejected because the agent rotated its signing key on its
  *     own restart — Phase 8 of the v0.2 security rollout).
  *
- * Posts the passphrase to the watchdog's `/v1/auth/login`. On success
+ * Posts the passphrase to the agent's `/v1/auth/login`. On success
  * stores the issued JWT in sessionStorage and returns to wherever the
  * user was before (via the `next` query param). On 503 "Setup required"
  * sends them to /setup — they hit /login but the install isn't
  * initialized yet, which means the wizard is the right destination.
  *
  * Rate limiting (5 failures / 60s per source IP) is enforced by the
- * watchdog; a 429 response renders a "wait and try again" message.
+ * agent; a 429 response renders a "wait and try again" message.
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
@@ -88,7 +88,7 @@ function LoginForm() {
     let cancelled = false;
     async function probe() {
       try {
-        const status = await api.get<{ initialized: boolean }>("watchdog", "/v1/auth/status", {
+        const status = await api.get<{ initialized: boolean }>("agent", "/v1/auth/status", {
           skipAuth: true,
         });
         if (cancelled) return;
@@ -98,8 +98,8 @@ function LoginForm() {
         }
         setProbing(false);
       } catch {
-        // If the probe fails (older watchdog without the endpoint, or
-        // watchdog down) fall through to showing the form. The submit
+        // If the probe fails (older agent without the endpoint, or
+        // agent down) fall through to showing the form. The submit
         // path's existing 503 handling still covers the pre-init case.
         if (!cancelled) setProbing(false);
       }
@@ -123,7 +123,7 @@ function LoginForm() {
     setError(null);
     try {
       const resp = await api.post<LoginResponse>(
-        "watchdog",
+        "agent",
         "/v1/auth/login",
         { passphrase },
         { skipAuth: true },

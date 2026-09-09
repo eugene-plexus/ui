@@ -92,7 +92,7 @@ export interface paths {
         /**
          * Save a new launch profile against a model.
          * @description `flags` are stored as given and **not validated here** — the
-         *     engine adapter's `flagSchema` on the watchdog is the validator,
+         *     engine adapter's `flagSchema` on the agent is the validator,
          *     and it runs when a runtime is actually created. A profile is
          *     allowed to be wrong; a runtime is not.
          *
@@ -301,7 +301,7 @@ export interface paths {
          *     may be one or two segments (`unsloth/Qwen3.8-27B-GGUF`, but
          *     also `gpt2`). A path segment would need `%2F`, which
          *     intermediaries mangle — and every UI call to this component
-         *     goes through the watchdog's proxy.
+         *     goes through the agent's proxy.
          */
         get: operations["getCatalogueModel"];
         put?: never;
@@ -542,7 +542,7 @@ export interface paths {
          *
          *     Detection is stdlib plus vendor CLIs — no new dependency, because
          *     every dependency this component gains has to be installed into
-         *     the watchdog's venv as well.
+         *     the agent's venv as well.
          */
         get: operations["getHardware"];
         put?: never;
@@ -674,7 +674,7 @@ export interface paths {
         put?: never;
         /**
          * Schedule a process restart.
-         * @description Exits shortly after responding and relies on the watchdog to
+         * @description Exits shortly after responding and relies on the agent to
          *     respawn. A scan in flight is abandoned; its findings so far
          *     persist, and the next scan is incremental over them.
          */
@@ -819,7 +819,7 @@ export interface components {
             /**
              * @description Context length the **model** declares. Not what an engine
              *     will serve — that depends on the launch flags and available
-             *     memory, and is reported by the watchdog as
+             *     memory, and is reported by the agent as
              *     `RuntimeCapabilities.contextLength`. Both numbers are real
              *     and a UI that shows only this one tells a comfortable lie.
              */
@@ -898,7 +898,7 @@ export interface components {
         ModelStatus: "present" | "missing" | "unreadable";
         /**
          * @description What the model's own metadata says it can do. Distinct from the
-         *     watchdog's `RuntimeCapabilities`, which is read back off a
+         *     agent's `RuntimeCapabilities`, which is read back off a
          *     *running* engine: this is a property of the file, available
          *     before anything is launched, and it is what the launch flags
          *     have to be chosen from.
@@ -1107,7 +1107,7 @@ export interface components {
              *     for the engine it names — and a model whose format no
              *     installed engine can load has nowhere to use one at all. The
              *     engine side of that answer is
-             *     `EngineDescriptor.modelFormats` on the watchdog.
+             *     `EngineDescriptor.modelFormats` on the agent.
              */
             engine: components["schemas"]["EngineKind"];
             /**
@@ -1116,7 +1116,7 @@ export interface components {
              *     size, parallel slots. Copied onto `RuntimeSpec.flags`
              *     verbatim.
              *
-             *     **Stored, not validated.** The validator is the watchdog's
+             *     **Stored, not validated.** The validator is the agent's
              *     adapter schema, at runtime-creation time. A profile is
              *     allowed to be wrong; the runtime that uses it is not, and
              *     that is where an unknown key becomes a 400. Validating in
@@ -2040,7 +2040,7 @@ export interface components {
         };
         /**
          * @description What this host has to spend, as detected. Deliberately **not**
-         *     shared with the watchdog's `HostAccelerator`: that answers "which
+         *     shared with the agent's `HostAccelerator`: that answers "which
          *     engine build do I fetch" and its own description already says the
          *     VRAM-and-fit surface belongs here. The two overlap on `os` and
          *     `arch` and diverge on everything else, so this duplicates two
@@ -2213,17 +2213,29 @@ export interface components {
          *     and without an adapter there is nothing that knows how to start
          *     it or tell when it is ready.
          *
-         *     `llama_cpp` drives upstream `llama-server`. vLLM is a second
-         *     adapter later, and MLX after that. We never ship an engine — all
-         *     three are upstream projects we wrap and track.
+         *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
+         *     `vllm` drives upstream `vllm serve` and loads safetensors. MLX
+         *     is a third adapter later. We never ship an engine — every one of
+         *     them is an upstream project we wrap and track.
          *
-         *     Lives here rather than on the watchdog because two components
-         *     reference it: the watchdog's engines and runtimes, and a
+         *     The two differ in far more than argv, and that is why readiness
+         *     is per-adapter rather than one shared TCP check:
+         *     `llama-server` answers `/health` while it loads and reports that
+         *     it is loading, whereas vLLM binds its port *before* loading the
+         *     model and refuses connections until the model is in memory — so
+         *     for minutes it is indistinguishable, over the network alone,
+         *     from a process that died. They differ in acquisition too: a
+         *     llama.cpp build is fetched and verified by us, while vLLM is a
+         *     Python package the operator installs themselves. See
+         *     `EngineAcquisition.policy`.
+         *
+         *     Lives here rather than on the agent because two components
+         *     reference it: the agent's engines and runtimes, and a
          *     library `ModelProfile`, which names the engine its launch flags
          *     are written for.
          * @enum {string}
          */
-        EngineKind: "llama_cpp";
+        EngineKind: "llama_cpp" | "vllm";
         /**
          * @description Current effective config values, keyed by `ConfigField.key`.
          *     Values of fields with `sensitive: true` are returned as the
@@ -2287,32 +2299,65 @@ export interface components {
          *     and M3's downloader offers the first entry as the default
          *     destination. `driver_list` stays reserved for M5's ordered
          *     model→driver priority lists.
+         *
+         *     `runtime_name` holds the `name` of a supervised engine runtime,
+         *     and UIs render it as a dropdown sourced from the agent's
+         *     `GET /v1/runtimes`. It exists because `componentKindHint` cannot
+         *     do this job: a runtime is deliberately not a component, so
+         *     `/v1/components` does not list one. What is saved is the
+         *     runtime's *name*, never its URL — the agent assigns the port
+         *     when the operator does not pick one, so a stored URL would
+         *     encode a number the operator never chose and does not own, and
+         *     would be wrong the moment the runtime moved. Its first user is
+         *     the inference-driver's `runtimeName`, which is how a driver
+         *     follows the engine process it fronts.
+         *
+         *     `node_name` holds the `name` of an enrolled node, rendered as a
+         *     dropdown sourced from the control root's `GET /v1/nodes`. Same
+         *     reasoning as `runtime_name` one level up: a node is not a
+         *     component either, so `componentKindHint` cannot source it, and
+         *     what is saved is the name rather than a URL because the address
+         *     of a host is topology the control root owns.
+         *
+         *     `driver_list` stays reserved for the ordered model→driver
+         *     priority lists that arrive with lifecycle policy — **M6** since
+         *     multi-host and trust took M5.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "duration" | "driver_list";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "duration" | "runtime_name" | "node_name" | "driver_list";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
-         *     component references it: the watchdog's `/v1/components`, and
+         *     component references it: the agent's `/v1/components`, and
          *     (via `ConfigField.componentKindHint`) any component declaring
          *     a config field that points at a peer of a specific kind.
          *
          *     A component is a **Eugene Plexus process**. Engine processes
          *     are not components and are not named here — they are runtimes,
-         *     declared separately on the watchdog, because a third-party
+         *     declared separately on the agent, because a third-party
          *     binary shares none of a component's declarative shape (no
-         *     module, no config trio, no service token). See the watchdog's
+         *     module, no config trio, no service token). See the agent's
          *     `GET /v1/runtimes`.
          *
+         *     `control` is the trust root, node registry, install-wide
+         *     topology and UI host — exactly one active, plus warm standbys.
          *     `gateway` is the one OpenAI-compatible front door and there is
          *     exactly one. `inference-driver` instances are the per-backend
          *     wrappers and there are N — one per backend, wherever that
          *     backend lives. `library` scans the operator's model
          *     directories and holds per-model launch profiles; there is
          *     exactly one, and it is deliberately not in the request path.
+         *
+         *     **The agent is not in this list**, for the same reason engine
+         *     runtimes are not: it supervises, it is not supervised. Its
+         *     lifecycle belongs to the platform — a systemd unit, a container
+         *     entrypoint — not to a topology entry. `control` *is* in the list
+         *     precisely because the agent on its host supervises it like
+         *     anything else, which is what stops the control root needing a
+         *     second copy of the supervision machinery.
          * @enum {string}
          */
-        ComponentKind: "gateway" | "inference-driver" | "library";
+        ComponentKind: "control" | "gateway" | "inference-driver" | "library";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -2376,7 +2421,7 @@ export interface components {
             /**
              * @description Declarative rendering hint: this field references a peer
              *     component of the given kind. UIs render any kind-hinted
-             *     field as a dropdown sourced from the watchdog's
+             *     field as a dropdown sourced from the agent's
              *     `/v1/components` (filtered by kind), with `(off)` as the
              *     first option (saves an empty string). For single-instance
              *     kinds (memory, identity, etc.) the dropdown UX collapses
@@ -2544,7 +2589,7 @@ export interface components {
             /** @description Component identifier (e.g. `"inference-driver"`). */
             component?: string;
             /**
-             * @description True when the component was started with the watchdog's
+             * @description True when the component was started with the agent's
              *     safe-mode env var set
              *     (`EUGENE_PLEXUS_<KIND>_SAFE_MODE=1`) and is therefore
              *     running on built-in defaults instead of its persisted

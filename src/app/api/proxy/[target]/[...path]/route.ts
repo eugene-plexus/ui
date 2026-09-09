@@ -6,9 +6,9 @@
  * and body. This avoids CORS configuration on the components and keeps the
  * UI origin-restricted.
  *
- * `<target>` is `gateway`, `watchdog`, or the name of an
- * `inference-driver` entry in the watchdog topology. Driver resolution is
- * dynamic — URLs are read from the watchdog at request time, so the UI
+ * `<target>` is `gateway`, `agent`, or the name of an
+ * `inference-driver` entry in the agent topology. Driver resolution is
+ * dynamic — URLs are read from the agent at request time, so the UI
  * needs no env-var-per-driver bootstrap and a driver added while the UI
  * is running is reachable immediately.
  */
@@ -44,7 +44,7 @@ async function handle(
   }
 
   // Forward the incoming Authorization header into the target resolver.
-  // Watchdog's /v1/components (the resolver's lookup endpoint) is
+  // Agent's /v1/components (the resolver's lookup endpoint) is
   // bearer-auth-protected, so without this the resolver gets 401 on
   // every logged-in request.
   const authHeader = req.headers.get("authorization") ?? undefined;
@@ -53,7 +53,7 @@ async function handle(
     return NextResponse.json({ error: resolved.error }, { status: 503 });
   }
 
-  // Component URLs from the watchdog topology arrive with a trailing
+  // Component URLs from the agent topology arrive with a trailing
   // slash (e.g. `http://127.0.0.1:8081/`). Naive concatenation
   // would produce `http://127.0.0.1:8083//v1/config/schema` — FastAPI
   // treats the double slash as a different path and returns 404.

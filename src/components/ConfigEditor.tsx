@@ -35,7 +35,7 @@ interface RestartState {
  *
  * Loads `/v1/config/schema` and `/v1/config` from the configured target
  * component, renders a form driven entirely by the schema's metadata,
- * and PATCHes the diff back. The same UI serves the watchdog, the
+ * and PATCHes the diff back. The same UI serves the agent, the
  * gateway and every inference-driver — no per-component code, which is
  * the whole point: a component that adds a knob gets a form field for
  * free.
@@ -53,7 +53,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   const [restart, setRestart] = useState<RestartState>({ phase: "idle" });
   // Topology snapshot. Populated when the loaded schema has any
   // `componentKindHint` fields — those need to render as dropdowns
-  // sourced from the watchdog's current components. Null while
+  // sourced from the agent's current components. Null while
   // unfetched / not applicable; the dropdown gracefully falls back
   // to a free-text input when topology is null.
   const [topology, setTopology] = useState<Component[] | null>(null);
@@ -83,14 +83,14 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         setServerDoc(docResp);
         setDraft({ ...(docResp as Record<string, unknown>) });
         // If this schema has any peer-reference fields, fetch the
-        // watchdog topology so we can render them as dropdowns. Skip
+        // agent topology so we can render them as dropdowns. Skip
         // the fetch entirely when nothing on the schema needs it
         // (the gateway's config has no kind hints, so there's no point
-        // pinging the watchdog while loading it).
+        // pinging the agent while loading it).
         const hasKindHint = schemaResp.fields.some((f) => f.componentKindHint != null);
         if (hasKindHint) {
           try {
-            const topo = await api.get<ComponentList>("watchdog", "/v1/components");
+            const topo = await api.get<ComponentList>("agent", "/v1/components");
             if (!cancelled) setTopology(topo.components ?? []);
           } catch {
             // Topology fetch failing isn't fatal — the field falls

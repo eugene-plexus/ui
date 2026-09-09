@@ -291,7 +291,7 @@ export interface components {
         /**
          * @description Driver self-description, and the gateway's only source of truth
          *     for what this backend serves. A driver does not know its position
-         *     in any topology: its operator-supplied name lives in the watchdog
+         *     in any topology: its operator-supplied name lives in the agent
          *     topology, not here.
          */
         DriverInfo: {
@@ -314,6 +314,22 @@ export interface components {
              *     adapter's built-in default rather than pinning a specific model.
              */
             modelId?: string;
+            /**
+             * @description The supervised engine runtime this driver is following, when
+             *     it was configured with `runtimeName` rather than a literal
+             *     `baseUrl`. Absent for a cloud provider, a CLI subscription,
+             *     or any backend that is not a runtime this install
+             *     supervises.
+             *
+             *     Reported here despite the rule that a driver never says
+             *     where it sits, because this is not the driver's own address —
+             *     it is *what it serves*, which is exactly what `/v1/info` is
+             *     for. It lets the gateway and the UI show which engine
+             *     process is behind a driver, so a model that is loaded but
+             *     unroutable is diagnosable from the routing table instead of
+             *     by reading two components' configs side by side.
+             */
+            runtime?: string;
             /** @description Backend capabilities the gateway keys off when routing. */
             capabilities?: {
                 /** @description Whether `/v1/generate/stream` emits true incremental tokens. */
@@ -451,32 +467,65 @@ export interface components {
          *     and M3's downloader offers the first entry as the default
          *     destination. `driver_list` stays reserved for M5's ordered
          *     model→driver priority lists.
+         *
+         *     `runtime_name` holds the `name` of a supervised engine runtime,
+         *     and UIs render it as a dropdown sourced from the agent's
+         *     `GET /v1/runtimes`. It exists because `componentKindHint` cannot
+         *     do this job: a runtime is deliberately not a component, so
+         *     `/v1/components` does not list one. What is saved is the
+         *     runtime's *name*, never its URL — the agent assigns the port
+         *     when the operator does not pick one, so a stored URL would
+         *     encode a number the operator never chose and does not own, and
+         *     would be wrong the moment the runtime moved. Its first user is
+         *     the inference-driver's `runtimeName`, which is how a driver
+         *     follows the engine process it fronts.
+         *
+         *     `node_name` holds the `name` of an enrolled node, rendered as a
+         *     dropdown sourced from the control root's `GET /v1/nodes`. Same
+         *     reasoning as `runtime_name` one level up: a node is not a
+         *     component either, so `componentKindHint` cannot source it, and
+         *     what is saved is the name rather than a URL because the address
+         *     of a host is topology the control root owns.
+         *
+         *     `driver_list` stays reserved for the ordered model→driver
+         *     priority lists that arrive with lifecycle policy — **M6** since
+         *     multi-host and trust took M5.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "duration" | "driver_list";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "duration" | "runtime_name" | "node_name" | "driver_list";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
-         *     component references it: the watchdog's `/v1/components`, and
+         *     component references it: the agent's `/v1/components`, and
          *     (via `ConfigField.componentKindHint`) any component declaring
          *     a config field that points at a peer of a specific kind.
          *
          *     A component is a **Eugene Plexus process**. Engine processes
          *     are not components and are not named here — they are runtimes,
-         *     declared separately on the watchdog, because a third-party
+         *     declared separately on the agent, because a third-party
          *     binary shares none of a component's declarative shape (no
-         *     module, no config trio, no service token). See the watchdog's
+         *     module, no config trio, no service token). See the agent's
          *     `GET /v1/runtimes`.
          *
+         *     `control` is the trust root, node registry, install-wide
+         *     topology and UI host — exactly one active, plus warm standbys.
          *     `gateway` is the one OpenAI-compatible front door and there is
          *     exactly one. `inference-driver` instances are the per-backend
          *     wrappers and there are N — one per backend, wherever that
          *     backend lives. `library` scans the operator's model
          *     directories and holds per-model launch profiles; there is
          *     exactly one, and it is deliberately not in the request path.
+         *
+         *     **The agent is not in this list**, for the same reason engine
+         *     runtimes are not: it supervises, it is not supervised. Its
+         *     lifecycle belongs to the platform — a systemd unit, a container
+         *     entrypoint — not to a topology entry. `control` *is* in the list
+         *     precisely because the agent on its host supervises it like
+         *     anything else, which is what stops the control root needing a
+         *     second copy of the supervision machinery.
          * @enum {string}
          */
-        ComponentKind: "gateway" | "inference-driver" | "library";
+        ComponentKind: "control" | "gateway" | "inference-driver" | "library";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -540,7 +589,7 @@ export interface components {
             /**
              * @description Declarative rendering hint: this field references a peer
              *     component of the given kind. UIs render any kind-hinted
-             *     field as a dropdown sourced from the watchdog's
+             *     field as a dropdown sourced from the agent's
              *     `/v1/components` (filtered by kind), with `(off)` as the
              *     first option (saves an empty string). For single-instance
              *     kinds (memory, identity, etc.) the dropdown UX collapses
@@ -708,7 +757,7 @@ export interface components {
             /** @description Component identifier (e.g. `"inference-driver"`). */
             component?: string;
             /**
-             * @description True when the component was started with the watchdog's
+             * @description True when the component was started with the agent's
              *     safe-mode env var set
              *     (`EUGENE_PLEXUS_<KIND>_SAFE_MODE=1`) and is therefore
              *     running on built-in defaults instead of its persisted

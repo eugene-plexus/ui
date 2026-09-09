@@ -1,7 +1,7 @@
 /**
  * Client-side session-token storage.
  *
- * The watchdog issues a JWT on successful `/v1/auth/initialize` or
+ * The agent issues a JWT on successful `/v1/auth/initialize` or
  * `/v1/auth/login`. v0.2 stores it in `sessionStorage` — per-tab, cleared
  * on tab close, no SSR leakage. The api client (lib/api.ts) reads from
  * here and attaches `Authorization: Bearer ...` on every request; the

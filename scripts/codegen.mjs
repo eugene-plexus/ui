@@ -25,8 +25,8 @@ const WORKING_DIR = join(REPO_ROOT, ".codegen-cache");
 // inference-driver.yaml, so these paths and the pin move together, in
 // one commit, or codegen 404s on the tarball.
 //
-// watchdog.yaml joined the list with the runtime dashboard. Its shapes
-// used to be hand-written in src/lib/watchdog.ts against a spec nobody
+// agent.yaml joined the list with the runtime dashboard. Its shapes
+// used to be hand-written in src/lib/agent.ts against a spec nobody
 // regenerated, which is exactly how a UI ends up rendering a status
 // enum the supervisor stopped emitting.
 //
@@ -35,7 +35,7 @@ const SPECS = [
   { input: "openapi/gateway.yaml", output: "gateway.ts" },
   { input: "openapi/inference-driver.yaml", output: "inference-driver.ts" },
   { input: "openapi/library.yaml", output: "library.ts" },
-  { input: "openapi/watchdog.yaml", output: "watchdog.ts" },
+  { input: "openapi/agent.yaml", output: "agent.ts" },
 ];
 
 function fail(msg) {

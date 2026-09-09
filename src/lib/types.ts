@@ -14,7 +14,7 @@
 import type { components as DriverComponents } from "@/generated/inference-driver";
 import type { components as GatewayComponents } from "@/generated/gateway";
 import type { components as LibraryComponents } from "@/generated/library";
-import type { components as WatchdogComponents } from "@/generated/watchdog";
+import type { components as AgentComponents } from "@/generated/agent";
 
 // --- Shared -----------------------------------------------------------
 
@@ -67,25 +67,25 @@ export type OpenAIErrorResponse = GatewayComponents["schemas"]["OpenAIErrorRespo
 export type DriversInfo = GatewayComponents["schemas"]["DriversInfo"];
 export type DriverHealth = GatewayComponents["schemas"]["DriverHealth"];
 
-// --- Watchdog: topology + engine runtimes -----------------------------
+// --- Agent: topology + engine runtimes -----------------------------
 
-export type Component = WatchdogComponents["schemas"]["Component"];
-export type ComponentEntry = WatchdogComponents["schemas"]["ComponentEntry"];
-export type ComponentList = WatchdogComponents["schemas"]["ComponentList"];
-export type ComponentStatus = WatchdogComponents["schemas"]["ComponentStatus"];
+export type Component = AgentComponents["schemas"]["Component"];
+export type ComponentEntry = AgentComponents["schemas"]["ComponentEntry"];
+export type ComponentList = AgentComponents["schemas"]["ComponentList"];
+export type ComponentStatus = AgentComponents["schemas"]["ComponentStatus"];
 
-export type Runtime = WatchdogComponents["schemas"]["Runtime"];
-export type RuntimeSpec = WatchdogComponents["schemas"]["RuntimeSpec"];
-export type RuntimeList = WatchdogComponents["schemas"]["RuntimeList"];
-export type RuntimeStatus = WatchdogComponents["schemas"]["RuntimeStatus"];
-export type RuntimeCapabilities = WatchdogComponents["schemas"]["RuntimeCapabilities"];
-export type EngineKind = WatchdogComponents["schemas"]["EngineKind"];
-export type EngineList = WatchdogComponents["schemas"]["EngineList"];
-export type EngineDescriptor = WatchdogComponents["schemas"]["EngineDescriptor"];
+export type Runtime = AgentComponents["schemas"]["Runtime"];
+export type RuntimeSpec = AgentComponents["schemas"]["RuntimeSpec"];
+export type RuntimeList = AgentComponents["schemas"]["RuntimeList"];
+export type RuntimeStatus = AgentComponents["schemas"]["RuntimeStatus"];
+export type RuntimeCapabilities = AgentComponents["schemas"]["RuntimeCapabilities"];
+export type EngineKind = AgentComponents["schemas"]["EngineKind"];
+export type EngineList = AgentComponents["schemas"]["EngineList"];
+export type EngineDescriptor = AgentComponents["schemas"]["EngineDescriptor"];
 
 // --- Library: the operator's own model directories (M2) ---------------
 //
-// The library holds what is on disk; the watchdog holds what is running.
+// The library holds what is on disk; the agent holds what is running.
 // `EngineDescriptor.modelFormats` is the join between them — it says
 // which of these formats an engine can actually load, which is how a
 // safetensors model gets a greyed-out launch button naming the missing
@@ -153,10 +153,10 @@ export type DownloadSpec = LibraryComponents["schemas"]["DownloadSpec"];
 export type DownloadFile = LibraryComponents["schemas"]["DownloadFile"];
 export type DownloadState = LibraryComponents["schemas"]["DownloadState"];
 
-// --- Watchdog: engine acquisition (M1) --------------------------------
+// --- Agent: engine acquisition (M1) --------------------------------
 
-export type ManagedEngine = WatchdogComponents["schemas"]["ManagedEngine"];
-export type EngineAcquisition = WatchdogComponents["schemas"]["EngineAcquisition"];
-export type HostAccelerator = WatchdogComponents["schemas"]["HostAccelerator"];
-export type EngineInstall = WatchdogComponents["schemas"]["EngineInstall"];
-export type EngineInstallRequest = WatchdogComponents["schemas"]["EngineInstallRequest"];
+export type ManagedEngine = AgentComponents["schemas"]["ManagedEngine"];
+export type EngineAcquisition = AgentComponents["schemas"]["EngineAcquisition"];
+export type HostAccelerator = AgentComponents["schemas"]["HostAccelerator"];
+export type EngineInstall = AgentComponents["schemas"]["EngineInstall"];
+export type EngineInstallRequest = AgentComponents["schemas"]["EngineInstallRequest"];

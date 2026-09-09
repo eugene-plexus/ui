@@ -11,7 +11,7 @@ import { ApiError, api } from "@/lib/api";
 import { createChatCompletion, errorMessage, listModels } from "@/lib/completions";
 import { clearSessionToken, hasSessionToken } from "@/lib/session";
 import type { ChatCompletionMessage, CompletionRoutingInfo, Model } from "@/lib/types";
-import type { WatchdogConfigDocument } from "@/lib/watchdog";
+import type { AgentConfigDocument } from "@/lib/agent";
 
 const STORAGE_KEY = "eugene-playground";
 
@@ -57,13 +57,13 @@ export default function PlaygroundPage() {
   //   2. Check for a session token BEFORE making any authed call, so the
   //      playground never renders for an unauthenticated visitor.
   //   3. Authed GET /v1/config to honor firstRunComplete.
-  // Watchdog unreachable falls through to the playground so a dev run
+  // Agent unreachable falls through to the playground so a dev run
   // against just the gateway still works.
   useEffect(() => {
     let cancelled = false;
     async function check() {
       try {
-        const status = await api.get<{ initialized: boolean }>("watchdog", "/v1/auth/status", {
+        const status = await api.get<{ initialized: boolean }>("agent", "/v1/auth/status", {
           skipAuth: true,
         });
         if (cancelled) return;
@@ -76,7 +76,7 @@ export default function PlaygroundPage() {
           router.replace(`/login?next=${next}`);
           return;
         }
-        const doc = await api.get<WatchdogConfigDocument>("watchdog", "/v1/config");
+        const doc = await api.get<AgentConfigDocument>("agent", "/v1/config");
         if (cancelled) return;
         if (doc.firstRunComplete === false) {
           router.replace("/setup");
@@ -203,7 +203,7 @@ export default function PlaygroundPage() {
 
   async function handleLogout() {
     try {
-      await api.delete("watchdog", "/v1/auth/sessions/current");
+      await api.delete("agent", "/v1/auth/sessions/current");
     } catch {
       // ignore
     }

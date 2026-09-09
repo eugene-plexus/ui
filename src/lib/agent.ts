@@ -1,8 +1,8 @@
 /**
- * Watchdog-specific helpers.
+ * Agent-specific helpers.
  *
  * The wire shapes that used to be hand-typed here are generated now —
- * `openapi/watchdog.yaml` joined `scripts/codegen.mjs` with the runtime
+ * `openapi/agent.yaml` joined `scripts/codegen.mjs` with the runtime
  * dashboard, which is what the old TODO in this file asked for. Import
  * `Component`, `ComponentList`, `Runtime`, `EngineDescriptor` and the
  * rest from `@/lib/types`.
@@ -11,7 +11,7 @@
  * the wizard can render before any driver process exists to ask.
  */
 
-export interface WatchdogConfigDocument extends Record<string, unknown> {
+export interface AgentConfigDocument extends Record<string, unknown> {
   firstRunComplete?: boolean;
   uiTheme?: "light" | "dark" | "auto";
   uiFontSize?: "small" | "medium" | "large";
@@ -48,7 +48,7 @@ export interface WizardProvider {
 }
 
 export const WIZARD_PROVIDERS: WizardProvider[] = [
-  // A local engine runtime the watchdog supervises is reached the same
+  // A local engine runtime the agent supervises is reached the same
   // way as any other OpenAI-compatible endpoint — the driver points its
   // `baseUrl` at the runtime's `url`. That is the whole integration:
   // fronting a runtime is configuration, not a distinct provider kind.

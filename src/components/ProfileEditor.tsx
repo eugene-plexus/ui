@@ -20,11 +20,11 @@ import type {
  *
  * ## Where the form comes from
  *
- * The flag inputs are rendered from the **watchdog's** engine
+ * The flag inputs are rendered from the **agent's** engine
  * `flagSchema` — a standard `ConfigSchema`, so the same generic field
  * renderer that draws every component's settings draws these too, with
  * no engine-specific UI code. The library never sees that schema and
- * never validates a flag; it stores what it is given, and the watchdog
+ * never validates a flag; it stores what it is given, and the agent
  * rejects an unknown key when a runtime is actually created. Two
  * validators would be two copies of engine knowledge, and the stale one
  * would live in the component that never launches anything.
@@ -32,11 +32,11 @@ import type {
  * ## Where the launch happens
  *
  * Here, in the caller — not in the library. Read the profile from the
- * library (8082), POST a runtime to the watchdog (8079) with the
+ * library (8082), POST a runtime to the agent (8079) with the
  * model's path and the profile's flags. `ModelProfileSpec`'s field names
  * are `RuntimeSpec`'s field names precisely so this is a copy rather
  * than a translation, which is what lets the library hold no engine
- * knowledge and never call the watchdog.
+ * knowledge and never call the agent.
  */
 
 /**
@@ -48,7 +48,7 @@ import type {
  * soon as it carries a `default`, which is right for a response and
  * wrong for a request body. Narrowing here rather than satisfying the
  * generated shape keeps `host` out of the UI, where a second copy of
- * "engines bind loopback" would eventually disagree with the watchdog's.
+ * "engines bind loopback" would eventually disagree with the agent's.
  */
 type RuntimeCreate = Pick<RuntimeSpec, "name" | "engine" | "modelPath"> &
   Partial<Omit<RuntimeSpec, "name" | "engine" | "modelPath">>;
@@ -108,10 +108,10 @@ export function ProfileEditor({
     setLaunched(null);
     // The composition this whole layering exists for: the model's path
     // from the library, the flags from the profile, posted to the
-    // watchdog as a runtime declaration. Field names line up one for
+    // agent as a runtime declaration. Field names line up one for
     // one, so nothing here translates.
     //
-    // `host` and `port` are deliberately absent. The watchdog binds
+    // `host` and `port` are deliberately absent. The agent binds
     // loopback and assigns a port from its own range, and restating
     // either here would put a second source of truth in the UI for
     // something the supervisor owns. `autoStart` IS sent, because
@@ -126,7 +126,7 @@ export function ProfileEditor({
       autoStart: true,
     };
     try {
-      const runtime = await api.post<Runtime>("watchdog", "/v1/runtimes", spec);
+      const runtime = await api.post<Runtime>("agent", "/v1/runtimes", spec);
       setLaunched(runtime.name);
     } catch (err) {
       setError(errorText(err));
@@ -161,7 +161,7 @@ export function ProfileEditor({
       {/* Deliberately does not claim the model is ready to use. The
           M2 acceptance run confirmed that launching declares a runtime
           and stops there: the gateway routes via drivers, and nothing
-          yet points one at a port the watchdog only chose at launch.
+          yet points one at a port the agent only chose at launch.
           Saying "done" here would be the UI lying about a step the
           operator still has to take. Automating it is M5's routing
           work — see docs/acceptance/m2-five-process-run.md. */}
@@ -267,7 +267,7 @@ function ProfileRow({
             className={buttonClass}
             title={
               canLaunch
-                ? "Declare a runtime on the watchdog using this model and these flags."
+                ? "Declare a runtime on the agent using this model and these flags."
                 : "No installed engine can load this model."
             }
           >
@@ -403,7 +403,7 @@ function ProfileForm({
         </label>
       </div>
 
-      {/* Rendered from the watchdog's flagSchema, so adding a curated
+      {/* Rendered from the agent's flagSchema, so adding a curated
           flag to an engine adapter is a server-side change only. */}
       {schema ? (
         <div className="mt-3">
@@ -419,8 +419,8 @@ function ProfileForm({
         </div>
       ) : (
         <p className="mt-3 text-xs text-[color:var(--muted)]">
-          No flag schema available for <span className="font-mono">{engine}</span> — the watchdog
-          did not report one. You can still set extra arguments below.
+          No flag schema available for <span className="font-mono">{engine}</span> — the agent did
+          not report one. You can still set extra arguments below.
         </p>
       )}
 
@@ -511,7 +511,7 @@ function suggestedName(model: LibraryModel): string {
  *
  * Runtime names are unique per install and operator-facing, so this aims
  * for recognisable rather than clever. A collision surfaces as a 409
- * from the watchdog with a message saying so, which is a better outcome
+ * from the agent with a message saying so, which is a better outcome
  * than silently adopting an existing runtime that has different flags.
  */
 function runtimeName(model: LibraryModel, profile: ModelProfile): string {

@@ -24,7 +24,7 @@ import type {
  *
  * Two components, joined here:
  *   library  GET /v1/models  → what each model *is*
- *   watchdog GET /v1/engines → what each engine can *load*
+ *   agent GET /v1/engines → what each engine can *load*
  *
  * That join is the reason a safetensors model shows a disabled Launch
  * button naming the missing engine rather than one that fails: llama.cpp
@@ -118,7 +118,7 @@ function LibraryPageInner() {
     // one-shot read rather than part of any poll.
     void (async () => {
       try {
-        const list = await api.get<EngineList>("watchdog", "/v1/engines");
+        const list = await api.get<EngineList>("agent", "/v1/engines");
         setEngines(list.engines ?? []);
       } catch {
         setEngines([]);

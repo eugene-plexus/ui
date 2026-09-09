@@ -24,7 +24,7 @@ export function ConfigFieldInput({
   field: ConfigFieldDef;
   value: unknown;
   pending: boolean;
-  /** Current watchdog topology snapshot — used to render
+  /** Current agent topology snapshot — used to render
    * `componentKindHint`-bearing fields as dropdowns. Null while
    * loading or when the parent decided not to fetch (e.g. the schema
    * has no peer-reference fields). The dropdown falls back to a free-
@@ -125,7 +125,7 @@ export function ConfigFieldInput({
     }
 
     // `driver_list` is still in ConfigValueType but no component emits
-    // one: the gateway derives its routing table from the watchdog
+    // one: the gateway derives its routing table from the agent
     // topology instead of holding a configured list. The bespoke editor
     // for it is gone rather than kept warm — a renderer for a shape
     // nothing produces is how a UI drifts away from the contract.
@@ -133,7 +133,7 @@ export function ConfigFieldInput({
     // balancing at M5; the renderer comes back with them.
 
     // Peer-reference dropdown: a `componentKindHint` tells us this
-    // field points at a watchdog topology entry of the given kind.
+    // field points at a agent topology entry of the given kind.
     // Render as a dropdown sourced from the live topology so the
     // operator doesn't have to copy URLs by hand. The wire value is
     // still the peer's URL — the hint only changes the input UX.
@@ -144,7 +144,7 @@ export function ConfigFieldInput({
     // operator picks one.
     //
     // Falls back to a free-text URL input when topology is null —
-    // either still loading, or the watchdog fetch failed. Better to
+    // either still loading, or the agent fetch failed. Better to
     // let the operator type a URL by hand than block them entirely.
     if (field.componentKindHint && topology != null) {
       const matches = topology.filter(

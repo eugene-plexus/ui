@@ -22,23 +22,23 @@ not the rewrite — that needs engine acquisition and the model library to exist
   drive is not compatible with anything. A bar under the transcript reports which driver, runtime
   and backend served the turn, how long it took, and how many backends were tried — `attempts > 1`
   is the visible evidence the failover cascade fired.
-- **Runtimes** (`/runtimes`) — the engine processes the watchdog supervises (`GET /v1/runtimes`)
+- **Runtimes** (`/runtimes`) — the engine processes the agent supervises (`GET /v1/runtimes`)
   plus which engine adapters found a usable binary on this host (`GET /v1/engines`). Start / stop /
   restart per runtime, the resolved context length and slot count read back from the running
   engine, and the exact argv it was spawned with. `loading` is shown distinctly from `starting`,
   because a large quant off a slow disk sits there for minutes and that is not a fault.
 - **Config** (`/config`) — reads `/v1/config/schema` from the selected component and renders a
-  typed form for every field. Tabs are the watchdog, the gateway, and one per inference-driver in
-  the watchdog topology. Driven entirely by schema metadata; no per-component UI code, which is the
+  typed form for every field. Tabs are the agent, the gateway, and one per inference-driver in
+  the agent topology. Driven entirely by schema metadata; no per-component UI code, which is the
   point — a component that adds a knob gets a form field for free. PATCHes the diff back, surfaces
   `applied` / `rejected` / `requiresRestart`, and offers a Restart Now modal that polls `/healthz`
   until the component is back.
 - **First-run wizard** (`/setup`) — seven screens: theme/font, passphrase + security mode, welcome,
   deployment topology, gateway address, one driver, summary. Auto-saves to sessionStorage; commits
-  to the watchdog on Start as a single transaction.
+  to the agent on Start as a single transaction.
 - **Same-origin proxy** at `/api/proxy/<target>/<...path>` — the browser only talks to the Next.js
-  server; the server forwards to the component URL. `gateway` and `watchdog` are fixed targets;
-  anything else is the name of an `inference-driver` in the watchdog topology, resolved there at
+  server; the server forwards to the component URL. `gateway` and `agent` are fixed targets;
+  anything else is the name of an `inference-driver` in the agent topology, resolved there at
   request time. No CORS configuration on the components, no private URLs in the browser.
 
 ## What M0 doesn't do
@@ -48,7 +48,7 @@ not the rewrite — that needs engine acquisition and the model library to exist
   playground would render the same text at the same moment either way, so it doesn't stream.
 - **Model library / discovery / download** — M2 and M3.
 - **Creating topology entries.** The config editor and wizard configure components that already
-  exist; adding one still means `POST /v1/components` or editing `watchdog.yaml`.
+  exist; adding one still means `POST /v1/components` or editing `agent.yaml`.
 
 ## Running
 
@@ -59,14 +59,14 @@ npm run dev
 ```
 
 By default the UI is served at `http://localhost:3000` and proxies API calls to
-`http://127.0.0.1:8080` (gateway) and `http://127.0.0.1:8079` (watchdog). Override the bootstrap
+`http://127.0.0.1:8080` (gateway) and `http://127.0.0.1:8079` (agent). Override the bootstrap
 targets via env:
 
 ```bash
-GATEWAY_URL=http://gateway.tailnet:8080 WATCHDOG_URL=http://watchdog.tailnet:8079 npm run dev
+GATEWAY_URL=http://gateway.tailnet:8080 AGENT_URL=http://agent.tailnet:8079 npm run dev
 ```
 
-Driver URLs are not configured here. The proxy resolves a driver name against the watchdog
+Driver URLs are not configured here. The proxy resolves a driver name against the agent
 topology at request time, which is also where the gateway reads it from — one place a driver's URL
 is written down, so the UI and the router cannot disagree about where it is.
 
