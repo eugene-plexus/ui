@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 import type { Component, ConfigField as ConfigFieldDef } from "@/lib/types";
 
 /**
@@ -102,6 +104,22 @@ export function ConfigFieldInput({
           onChange={(e) => onChange(e.target.value)}
           disabled={pending}
           className={baseInputClass}
+        />
+      );
+    }
+
+    // An ordered list of directory paths — the library's model roots are
+    // the only user so far. Rendered as an add/remove list rather than a
+    // text field because asking someone to comma-separate Windows paths
+    // is asking for a bug report, and because the order is meaningful:
+    // it is the order the operator sees, and M3's downloader offers the
+    // first entry as the default destination.
+    if (field.valueType === "path_list") {
+      return (
+        <PathListInput
+          value={Array.isArray(value) ? (value as unknown[]).map(String) : []}
+          pending={pending}
+          onChange={onChange}
         />
       );
     }
@@ -222,4 +240,104 @@ export function ConfigFieldInput({
  */
 function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+/**
+ * Editor for a `path_list` — an ordered list of directory paths.
+ *
+ * Rows are keyed by index deliberately. Paths are edited in place and
+ * the list is short; a synthetic id would have to survive a round-trip
+ * through a plain `string[]` on the wire, which it cannot.
+ *
+ * Empty rows are kept in local state while typing and stripped on the
+ * way out, so adding a row doesn't immediately produce a validation
+ * error for a path the operator hasn't finished typing. The server
+ * rejects duplicates rather than silently de-duplicating them — two
+ * spellings of one directory would scan it twice, and dropping one of
+ * the operator's entries without saying so is worse than an error.
+ */
+function PathListInput({
+  value,
+  pending,
+  onChange,
+}: {
+  value: string[];
+  pending: boolean;
+  onChange: (newValue: unknown) => void;
+}) {
+  // Rows live here, empties included, so a freshly added row survives
+  // until it is typed into. The parent only ever sees trimmed, non-empty
+  // paths — propagating an empty string would make "add directory"
+  // immediately produce a validation error for a path nobody has
+  // finished typing.
+  const [rows, setRows] = useState<string[]>(value);
+  const mirrored = useRef<string>(JSON.stringify(value));
+
+  // Resync when the value changes from outside: a reload after save, or
+  // a revert. Compared against what we last pushed up, so our own
+  // round-trips don't clobber a half-typed row.
+  useEffect(() => {
+    const incoming = JSON.stringify(value);
+    if (incoming !== mirrored.current) {
+      mirrored.current = incoming;
+      setRows(value);
+    }
+  }, [value]);
+
+  function update(next: string[]) {
+    setRows(next);
+    const cleaned = next.map((p) => p.trim()).filter((p) => p.length > 0);
+    mirrored.current = JSON.stringify(cleaned);
+    onChange(cleaned);
+  }
+
+  const rowClass =
+    "flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50";
+  const buttonClass =
+    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.length === 0 && (
+        <p className="text-xs text-[color:var(--muted)] italic">
+          No directories yet. Point this at wherever you already keep models — nothing is moved or
+          renamed.
+        </p>
+      )}
+      {rows.map((path, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <input
+            type="text"
+            value={path}
+            spellCheck={false}
+            placeholder="D:\\models"
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = e.target.value;
+              update(next);
+            }}
+            disabled={pending}
+            className={rowClass}
+          />
+          <button
+            type="button"
+            onClick={() => update(rows.filter((_, i) => i !== index))}
+            disabled={pending}
+            className={buttonClass}
+            title="Stop scanning this directory. The files in it are untouched."
+          >
+            remove
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => setRows([...rows, ""])}
+        disabled={pending}
+        className={`${buttonClass} w-fit`}
+      >
+        add directory
+      </button>
+    </div>
+  );
 }

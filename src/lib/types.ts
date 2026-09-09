@@ -13,6 +13,7 @@
 
 import type { components as DriverComponents } from "@/generated/inference-driver";
 import type { components as GatewayComponents } from "@/generated/gateway";
+import type { components as LibraryComponents } from "@/generated/library";
 import type { components as WatchdogComponents } from "@/generated/watchdog";
 
 // --- Shared -----------------------------------------------------------
@@ -81,6 +82,31 @@ export type RuntimeCapabilities = WatchdogComponents["schemas"]["RuntimeCapabili
 export type EngineKind = WatchdogComponents["schemas"]["EngineKind"];
 export type EngineList = WatchdogComponents["schemas"]["EngineList"];
 export type EngineDescriptor = WatchdogComponents["schemas"]["EngineDescriptor"];
+
+// --- Library: the operator's own model directories (M2) ---------------
+//
+// The library holds what is on disk; the watchdog holds what is running.
+// `EngineDescriptor.modelFormats` is the join between them — it says
+// which of these formats an engine can actually load, which is how a
+// safetensors model gets a greyed-out launch button naming the missing
+// engine rather than one that fails.
+
+export type LibraryModel = LibraryComponents["schemas"]["LibraryModel"];
+export type LibraryModelList = LibraryComponents["schemas"]["LibraryModelList"];
+export type ModelStatus = LibraryComponents["schemas"]["ModelStatus"];
+export type ModelFormat = LibraryComponents["schemas"]["ModelFormat"];
+export type ModelCapabilities = LibraryComponents["schemas"]["ModelCapabilities"];
+export type ModelFile = LibraryComponents["schemas"]["ModelFile"];
+export type GgufDetail = LibraryComponents["schemas"]["GgufDetail"];
+export type SafetensorsDetail = LibraryComponents["schemas"]["SafetensorsDetail"];
+export type ModelProfile = LibraryComponents["schemas"]["ModelProfile"];
+export type ModelProfileSpec = LibraryComponents["schemas"]["ModelProfileSpec"];
+export type ModelProfileList = LibraryComponents["schemas"]["ModelProfileList"];
+export type Scan = LibraryComponents["schemas"]["Scan"];
+export type ScanState = LibraryComponents["schemas"]["ScanState"];
+export type ScanRoot = LibraryComponents["schemas"]["ScanRoot"];
+export type SkippedPath = LibraryComponents["schemas"]["SkippedPath"];
+export type SkipReason = LibraryComponents["schemas"]["SkipReason"];
 
 // --- Watchdog: engine acquisition (M1) --------------------------------
 

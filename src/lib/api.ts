@@ -124,6 +124,11 @@ export const api = {
     jsonRequest<T>(target, path, { method: "POST", body: JSON.stringify(body) }, options),
   patch: <T>(target: ProxyTarget, path: string, body: unknown, options?: RequestOptions) =>
     jsonRequest<T>(target, path, { method: "PATCH", body: JSON.stringify(body) }, options),
+  // PUT exists for launch profiles, which replace whole-document rather
+  // than merging: `flags` is a document, and merge semantics give no way
+  // to express removing a flag.
+  put: <T>(target: ProxyTarget, path: string, body: unknown, options?: RequestOptions) =>
+    jsonRequest<T>(target, path, { method: "PUT", body: JSON.stringify(body) }, options),
   delete: <T>(target: ProxyTarget, path: string, options?: RequestOptions) =>
     jsonRequest<T>(target, path, { method: "DELETE" }, options),
 };

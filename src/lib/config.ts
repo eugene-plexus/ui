@@ -23,6 +23,17 @@ export type ProxyTarget = string;
 
 const FIXED_TARGETS = new Set(["gateway", "watchdog"]);
 
+// `library` is reserved: resolved from the watchdog topology by KIND
+// rather than by name, because there is exactly one. It is not a fixed
+// target with its own env var — a second place recording its URL is the
+// OpenClaw trap the driver path already avoids, and the wizard writes
+// the topology entry anyway.
+//
+// The cost is that an inference-driver cannot be named "library". That
+// is a fair trade for not having a LIBRARY_URL that can disagree with
+// what the watchdog actually spawned.
+const LIBRARY_TARGET = "library";
+
 const DEFAULT_GATEWAY = "http://127.0.0.1:8080";
 const DEFAULT_WATCHDOG = "http://127.0.0.1:8079";
 
@@ -49,9 +60,9 @@ export function watchdogUrl(): string {
  * caller turns that into a 503 with a message naming what it looked for,
  * which is more useful than a blind fallback URL that also fails.
  */
-async function fetchTopologyUrlByName(
+async function fetchTopologyUrl(
   kind: string,
-  name: string,
+  name: string | null,
   authHeader: string | undefined,
 ): Promise<string | null> {
   try {
@@ -61,7 +72,11 @@ async function fetchTopologyUrlByName(
     const doc = (await response.json()) as { components?: WatchdogComponentEntry[] };
     const entry = (doc.components ?? []).find(
       (c) =>
-        c && c.kind === kind && c.name === name && typeof c.url === "string" && c.url.length > 0,
+        c &&
+        c.kind === kind &&
+        (name === null || c.name === name) &&
+        typeof c.url === "string" &&
+        c.url.length > 0,
     );
     return entry?.url ?? null;
   } catch {
@@ -82,7 +97,19 @@ export async function resolveTarget(
   if (FIXED_TARGETS.has(target)) {
     return { error: `unsupported fixed target: ${target}` };
   }
-  const url = await fetchTopologyUrlByName("inference-driver", target, authHeader);
+  if (target === LIBRARY_TARGET) {
+    const url = await fetchTopologyUrl("library", null, authHeader);
+    if (!url) {
+      return {
+        error:
+          `no library component in the watchdog topology ` +
+          `(or the watchdog at ${watchdogUrl()} is unreachable). ` +
+          `Add one on the Config page, or re-run the first-run wizard.`,
+      };
+    }
+    return { url };
+  }
+  const url = await fetchTopologyUrl("inference-driver", target, authHeader);
   if (!url) {
     return {
       error:

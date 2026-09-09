@@ -21,6 +21,9 @@ const STATIC_TABS: Tab[] = [
 
 export default function ConfigPage() {
   const [drivers, setDrivers] = useState<Tab[]>([]);
+  // Rendered only when the topology actually has one. A tab for a
+  // component nobody spawned would open an editor that 503s.
+  const [hasLibrary, setHasLibrary] = useState(false);
   const [driversError, setDriversError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>("ui");
 
@@ -36,11 +39,15 @@ export default function ConfigPage() {
       try {
         const list = await api.get<ComponentList>("watchdog", "/v1/components");
         if (cancelled) return;
+        const components = list.components ?? [];
         setDrivers(
-          (list.components ?? [])
+          components
             .filter((c) => c.kind === "inference-driver")
             .map((c) => ({ value: c.name, label: c.name })),
         );
+        // The proxy resolves `library` by kind rather than by name —
+        // there is exactly one — so the tab value is the literal target.
+        setHasLibrary(components.some((c) => c.kind === "library"));
         setDriversError(null);
       } catch (e) {
         if (cancelled) return;
@@ -54,7 +61,14 @@ export default function ConfigPage() {
     };
   }, []);
 
-  const tabs: Tab[] = useMemo(() => [...STATIC_TABS, ...drivers], [drivers]);
+  const tabs: Tab[] = useMemo(
+    () => [
+      ...STATIC_TABS,
+      ...(hasLibrary ? [{ value: "library", label: "Library" }] : []),
+      ...drivers,
+    ],
+    [drivers, hasLibrary],
+  );
 
   return (
     <main className="flex h-screen flex-col">
