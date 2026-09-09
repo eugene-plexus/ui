@@ -116,10 +116,32 @@ export function ConfigFieldInput({
     // first entry as the default destination.
     if (field.valueType === "path_list") {
       return (
-        <PathListInput
+        <StringListInput
           value={Array.isArray(value) ? (value as unknown[]).map(String) : []}
           pending={pending}
           onChange={onChange}
+          copy={PATH_LIST_COPY}
+        />
+      );
+    }
+
+    // `url_list` is the same widget with different words: an ordered
+    // add/remove list of strings. Added at M5 for the control root's
+    // standby endpoints, which are inherently plural — "N standbys is a
+    // configuration, not a mechanism" — and which would otherwise fall
+    // through to the text input below and render a JSON array in a
+    // single-line box.
+    //
+    // One editor parameterized rather than two that look alike: a
+    // second near-identical list component is how the two drift, and
+    // the difference between them is genuinely only the copy.
+    if (field.valueType === "url_list") {
+      return (
+        <StringListInput
+          value={Array.isArray(value) ? (value as unknown[]).map(String) : []}
+          pending={pending}
+          onChange={onChange}
+          copy={URL_LIST_COPY}
         />
       );
     }
@@ -242,28 +264,59 @@ function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+/** The words that differ between a list of paths and a list of URLs. */
+type ListCopy = {
+  empty: string;
+  placeholder: string;
+  addLabel: string;
+  removeTitle: string;
+  /** Monospace suits a filesystem path; a URL reads better without it. */
+  mono: boolean;
+};
+
+const PATH_LIST_COPY: ListCopy = {
+  empty:
+    "No directories yet. Point this at wherever you already keep models — nothing is moved or renamed.",
+  placeholder: "D:\\models",
+  addLabel: "add directory",
+  removeTitle: "Stop scanning this directory. The files in it are untouched.",
+  mono: true,
+};
+
+const URL_LIST_COPY: ListCopy = {
+  empty:
+    "No standbys yet. A standby replicates this root's log and can be promoted if this host is not coming back — none is required, and more than one is a configuration rather than a mechanism.",
+  placeholder: "http://other-host:8083",
+  addLabel: "add address",
+  removeTitle: "Stop replicating to this address. Nothing on that host is touched.",
+  mono: false,
+};
+
 /**
- * Editor for a `path_list` — an ordered list of directory paths.
+ * Editor for an ordered list of strings — `path_list` and `url_list`.
  *
- * Rows are keyed by index deliberately. Paths are edited in place and
+ * Rows are keyed by index deliberately. Entries are edited in place and
  * the list is short; a synthetic id would have to survive a round-trip
  * through a plain `string[]` on the wire, which it cannot.
  *
  * Empty rows are kept in local state while typing and stripped on the
  * way out, so adding a row doesn't immediately produce a validation
- * error for a path the operator hasn't finished typing. The server
+ * error for an entry the operator hasn't finished typing. The server
  * rejects duplicates rather than silently de-duplicating them — two
- * spellings of one directory would scan it twice, and dropping one of
- * the operator's entries without saying so is worse than an error.
+ * spellings of one directory would scan it twice, two spellings of one
+ * standby would report it twice, and dropping one of the operator's
+ * entries without saying so is worse than an error either way.
  */
-function PathListInput({
+function StringListInput({
   value,
   pending,
   onChange,
+  copy,
 }: {
   value: string[];
   pending: boolean;
   onChange: (newValue: unknown) => void;
+  copy: ListCopy;
 }) {
   // Rows live here, empties included, so a freshly added row survives
   // until it is typed into. The parent only ever sees trimmed, non-empty
@@ -291,18 +344,16 @@ function PathListInput({
     onChange(cleaned);
   }
 
-  const rowClass =
-    "flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50";
+  const rowClass = `flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 ${
+    copy.mono ? "font-mono text-xs" : "text-sm"
+  } outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50`;
   const buttonClass =
     "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
   return (
     <div className="flex flex-col gap-2">
       {rows.length === 0 && (
-        <p className="text-xs text-[color:var(--muted)] italic">
-          No directories yet. Point this at wherever you already keep models — nothing is moved or
-          renamed.
-        </p>
+        <p className="text-xs text-[color:var(--muted)] italic">{copy.empty}</p>
       )}
       {rows.map((path, index) => (
         <div key={index} className="flex items-center gap-2">
@@ -310,7 +361,7 @@ function PathListInput({
             type="text"
             value={path}
             spellCheck={false}
-            placeholder="D:\\models"
+            placeholder={copy.placeholder}
             onChange={(e) => {
               const next = [...rows];
               next[index] = e.target.value;
@@ -324,7 +375,7 @@ function PathListInput({
             onClick={() => update(rows.filter((_, i) => i !== index))}
             disabled={pending}
             className={buttonClass}
-            title="Stop scanning this directory. The files in it are untouched."
+            title={copy.removeTitle}
           >
             remove
           </button>
@@ -336,7 +387,7 @@ function PathListInput({
         disabled={pending}
         className={`${buttonClass} w-fit`}
       >
-        add directory
+        {copy.addLabel}
       </button>
     </div>
   );

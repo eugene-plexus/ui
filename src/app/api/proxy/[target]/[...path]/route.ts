@@ -6,11 +6,11 @@
  * and body. This avoids CORS configuration on the components and keeps the
  * UI origin-restricted.
  *
- * `<target>` is `gateway`, `agent`, or the name of an
- * `inference-driver` entry in the agent topology. Driver resolution is
- * dynamic — URLs are read from the agent at request time, so the UI
- * needs no env-var-per-driver bootstrap and a driver added while the UI
- * is running is reachable immediately.
+ * `<target>` is `gateway`, `agent`, `library`, `control`, or the name
+ * of an `inference-driver` entry in the agent topology. Everything but
+ * the first two is resolved from the agent at request time, so the UI
+ * needs no env-var-per-component bootstrap and a component added while
+ * the UI is running is reachable immediately.
  */
 
 import { NextRequest, NextResponse } from "next/server";

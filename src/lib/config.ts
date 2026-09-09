@@ -34,6 +34,20 @@ const FIXED_TARGETS = new Set(["gateway", "agent"]);
 // what the agent actually spawned.
 const LIBRARY_TARGET = "library";
 
+// `control` is resolved the same way and for the same reason: exactly
+// one per install, spawned by the local agent like any other component,
+// so its URL is topology rather than configuration.
+//
+// Note it is resolved through the **agent**, not through itself. That
+// is not a detail — it is why the browser can still reach the runtime
+// dashboard when the control root is down, and it keeps the UI's
+// dependency pointing at the per-host process rather than the
+// install-wide one. A UI that resolved everything through the control
+// root would make a control-root outage look like a total outage,
+// which is precisely the property M5 spent an acceptance run proving
+// false.
+const CONTROL_TARGET = "control";
+
 const DEFAULT_GATEWAY = "http://127.0.0.1:8080";
 const DEFAULT_AGENT = "http://127.0.0.1:8079";
 
@@ -105,6 +119,19 @@ export async function resolveTarget(
           `no library component in the agent topology ` +
           `(or the agent at ${agentUrl()} is unreachable). ` +
           `Add one on the Config page, or re-run the first-run wizard.`,
+      };
+    }
+    return { url };
+  }
+  if (target === CONTROL_TARGET) {
+    const url = await fetchTopologyUrl("control", null, authHeader);
+    if (!url) {
+      return {
+        error:
+          `no control component in the agent topology ` +
+          `(or the agent at ${agentUrl()} is unreachable). ` +
+          `A single-host install can run without one, in which case the ` +
+          `agent still holds the trust root.`,
       };
     }
     return { url };

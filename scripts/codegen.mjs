@@ -31,11 +31,20 @@ const WORKING_DIR = join(REPO_ROOT, ".codegen-cache");
 // enum the supervisor stopped emitting.
 //
 // library.yaml joined at M2, pinned from specs 8288926 onward.
+//
+// control.yaml joined at M5, pinned from specs 811112b onward. Adding
+// it is what makes the re-pin worth anything to this repo: the control
+// root is the operator's surface for nodes, epochs, promotion and
+// failover lag, and none of it is renderable against types we do not
+// have. Note that the pin has to reach 811112b in the same commit —
+// this path does not exist at an earlier one, and codegen 404s on the
+// tarball rather than failing gracefully.
 const SPECS = [
   { input: "openapi/gateway.yaml", output: "gateway.ts" },
   { input: "openapi/inference-driver.yaml", output: "inference-driver.ts" },
   { input: "openapi/library.yaml", output: "library.ts" },
   { input: "openapi/agent.yaml", output: "agent.ts" },
+  { input: "openapi/control.yaml", output: "control.ts" },
 ];
 
 function fail(msg) {
