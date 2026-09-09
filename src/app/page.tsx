@@ -255,6 +255,12 @@ export default function PlaygroundPage() {
             Library
           </Link>
           <Link
+            href="/discover"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+          >
+            Discover
+          </Link>
+          <Link
             href="/runtimes"
             className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >

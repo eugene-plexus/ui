@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
+import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
+import { FitBreakdown, formatMemory } from "@/components/FitBadge";
 import { ProfileEditor } from "@/components/ProfileEditor";
 import { ApiError, api } from "@/lib/api";
 import type {
@@ -10,6 +13,7 @@ import type {
   EngineList,
   LibraryModel,
   LibraryModelList,
+  ModelFit,
   Scan,
   SkippedPath,
   SkipReason,
@@ -52,6 +56,18 @@ const SKIP_REASON_LABEL: Record<SkipReason, string> = {
 };
 
 export default function LibraryPage() {
+  // `useSearchParams` suspends during prerender, so the boundary is
+  // required rather than decorative. The fallback is the page frame
+  // without a selection, which is what an operator arriving without a
+  // `?model=` sees anyway.
+  return (
+    <Suspense fallback={null}>
+      <LibraryPageInner />
+    </Suspense>
+  );
+}
+
+function LibraryPageInner() {
   const [models, setModels] = useState<LibraryModel[] | null>(null);
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
   const [scan, setScan] = useState<Scan | null>(null);
@@ -59,6 +75,19 @@ export default function LibraryPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { downloads, reload: reloadDownloads, active: activeDownloads } = useDownloads();
+
+  // A finished download links here as `/library?model=<id>`. Applied
+  // once, so selecting something else afterwards is not fought by the
+  // URL that got you here.
+  const searchParams = useSearchParams();
+  const requestedModel = searchParams.get("model");
+  const [appliedRequest, setAppliedRequest] = useState(false);
+  useEffect(() => {
+    if (appliedRequest || !requestedModel) return;
+    setSelected(requestedModel);
+    setAppliedRequest(true);
+  }, [appliedRequest, requestedModel]);
 
   const loadModels = useCallback(async () => {
     try {
@@ -106,6 +135,15 @@ export default function LibraryPage() {
     const id = setInterval(() => void loadScan(), SCAN_POLL_MS);
     return () => clearInterval(id);
   }, [scanning, loadScan]);
+
+  // The library scans the destination directory itself when a
+  // download finishes, so the thing that goes stale here is the model
+  // list. Reload it when the number of active transfers drops.
+  const [previousActive, setPreviousActive] = useState(0);
+  useEffect(() => {
+    if (activeDownloads < previousActive) void loadModels();
+    setPreviousActive(activeDownloads);
+  }, [activeDownloads, previousActive, loadModels]);
 
   const [wasScanning, setWasScanning] = useState(false);
   useEffect(() => {
@@ -195,6 +233,9 @@ export default function LibraryPage() {
               </button>
             </>
           )}
+          <Link href="/discover" className={buttonClass}>
+            Discover
+          </Link>
           <Link href="/config" className={buttonClass}>
             Config
           </Link>
@@ -208,6 +249,17 @@ export default function LibraryPage() {
       )}
 
       <ScanBanner scan={scan} />
+
+      {downloads.length > 0 && (
+        <div className="max-h-[30vh] overflow-y-auto border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2">
+          <p className="font-ui mb-1.5 text-[11px] font-semibold text-[color:var(--muted)]">
+            {activeDownloads > 0
+              ? `${activeDownloads} download${activeDownloads === 1 ? "" : "s"} in flight`
+              : "recent downloads"}
+          </p>
+          <DownloadsPanel downloads={downloads} onChanged={reloadDownloads} />
+        </div>
+      )}
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(280px,360px)_1fr] overflow-hidden">
         <ModelList
@@ -492,6 +544,8 @@ function ModelDetail({
 
       <Facts model={model} />
 
+      {model.status === "present" && <FitPanel model={model} />}
+
       {/* The format/engine join. Two distinct answers: no adapter exists
           for this format at all, or one does but no binary is installed. */}
       {capable.length === 0 ? (
@@ -516,6 +570,90 @@ function ModelDetail({
         engines={usable.length > 0 ? usable : capable}
         onChanged={onChanged}
       />
+    </div>
+  );
+}
+
+/**
+ * Will this model run here, and at what context?
+ *
+ * The same arithmetic the discovery screen applies to a download
+ * candidate, pointed at something already on the disk — where the scan
+ * has already read the real metadata, so this is a calculation rather
+ * than an estimate.
+ *
+ * `maxContextLength` is the more useful half of the answer. It is the
+ * number that goes in a profile's context flag, and it is frequently far
+ * below what the model declares: a current 27B says it was trained for
+ * 262,144 tokens and almost no machine can hold that.
+ */
+function FitPanel({ model }: { model: LibraryModel }) {
+  const [fit, setFit] = useState<ModelFit | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setFit(null);
+    setError(null);
+    void (async () => {
+      try {
+        setFit(
+          await api.get<ModelFit>("library", `/v1/models/${encodeURIComponent(model.id)}/fit`),
+        );
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) return;
+        setError(errorText(err));
+      }
+    })();
+  }, [model.id]);
+
+  if (error) {
+    return <p className="text-xs text-[color:var(--muted)]">could not measure fit: {error}</p>;
+  }
+  if (!fit) return null;
+
+  const verdict = fit.fit.verdict;
+  const tone =
+    verdict === "fits" ? "status-success" : verdict === "no" ? "status-error" : "status-warn";
+
+  return (
+    <div className={`${tone} rounded-[var(--radius)] border px-3 py-2 text-xs`}>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="font-ui font-semibold">
+          {verdict === "fits" && "Fits in GPU memory"}
+          {verdict === "tight" && "Would fit on an idle GPU"}
+          {verdict === "split" && "Needs partial CPU offload"}
+          {verdict === "no" && "Too large for this machine"}
+        </p>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="font-ui text-[11px] underline"
+          aria-expanded={open}
+        >
+          {open ? "hide the numbers" : "show the numbers"}
+        </button>
+      </div>
+      <p className="mt-0.5">
+        {formatMemory(fit.fit.requiredBytes)} needed at {fit.fit.contextLength.toLocaleString()}{" "}
+        tokens of context.
+        {fit.maxContextLength != null && (
+          <>
+            {" "}
+            The largest context that still fits entirely in GPU memory is{" "}
+            <strong>{fit.maxContextLength.toLocaleString()}</strong> tokens
+            {fit.modelContextLength != null && fit.modelContextLength > fit.maxContextLength && (
+              <> — this model declares {fit.modelContextLength.toLocaleString()}</>
+            )}
+            .
+          </>
+        )}
+      </p>
+      {open && (
+        <div className="mt-2">
+          <FitBreakdown fit={fit.fit} />
+        </div>
+      )}
     </div>
   );
 }

@@ -143,6 +143,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/models/{id}/fit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Will this model I already own run here, and at what context?
+         * @description The same computation the catalogue applies to a download
+         *     candidate, pointed at a model already on the disk — where it can
+         *     use the metadata the scan already read instead of estimating,
+         *     so `basis` is `metadata` rather than `estimate`.
+         *
+         *     Two things it answers that the library browser cannot: whether a
+         *     model that fits at 8k still fits at 128k, and what the actual
+         *     arithmetic was. Both matter because the trained context of a
+         *     current model can be 262144 and almost nobody can serve that —
+         *     the model's declared context and the context this host can hold
+         *     are different numbers, which is M2's Trap 7 restated in the one
+         *     place it has consequences.
+         *
+         *     `vramBytes` and `ramBytes` override the detected budget. That is
+         *     how a caller scores a model against **another** host's memory,
+         *     which is the only honest answer in a multi-host deployment where
+         *     the GPU is in a different building.
+         */
+        get: operations["getModelFit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/scan": {
         parameters: {
             query?: never;
@@ -185,6 +223,366 @@ export interface paths {
          *     mistakes a short list for a complete one.
          */
         delete: operations["cancelScan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalogue/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the upstream model catalogue.
+         * @description The answer to "let me just go to the dumpster fire UI that is
+         *     HuggingFace… no search page with summaries, just an autocomplete
+         *     list."
+         *
+         *     **Repos, not candidates.** A result is one repository with its
+         *     publisher, popularity and tags — no file sizes and no fit
+         *     verdicts, because the upstream search response does not carry
+         *     sizes and getting them costs one extra call *per repo*. Sizes,
+         *     quant options and guidance all live on
+         *     `GET /v1/catalogue/model`, which is the screen where the
+         *     operator has picked something and a per-repo call is warranted.
+         *
+         *     **Debounce this.** Upstream allows 500 API requests per 300
+         *     seconds and search-as-you-type will exceed that inside two
+         *     minutes. Responses are cached server-side for a short window;
+         *     the client is still expected not to fire on every keystroke.
+         */
+        get: operations["searchCatalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalogue/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One upstream repo, its download candidates, and what will fit.
+         * @description The discovery screen. **Guidance and discovery are the same
+         *     response**, deliberately: the moment an operator is choosing
+         *     between `Q3_K_S` and `Q2_K_M` is the moment they need to be
+         *     told which one their machine can run, and a UI that has to join
+         *     two calls to say so will ship without the second one.
+         *
+         *     The work this does that a raw file listing does not:
+         *
+         *     * **Groups 30 files into 25 candidates.** Verified on a real
+         *       repo: shards are summed into one candidate, and the vision
+         *       projectors, the imatrix calibration file and the MTP draft
+         *       model are pulled out of the candidate list into
+         *       `projectors` / `otherFiles`. A screen that lists `.gguf`
+         *       files offers four things that cannot be launched and one that
+         *       is half a model.
+         *     * **Scores every candidate** against detected memory at
+         *       `contextLength`, with the arithmetic attached.
+         *     * **Computes bits per weight** from size and parameter count —
+         *       the one number that makes `IQ2_S`, `Q2_K` and `UD-Q3_K_XL`
+         *       comparable when their names come from three different
+         *       upstream naming schemes.
+         *     * **Says what the operator already owns**, by path, so a 16 GB
+         *       download of a file already on the disk is visible before it
+         *       starts rather than after.
+         *
+         *     The `repo` is a query parameter because it contains a slash and
+         *     may be one or two segments (`unsloth/Qwen3.8-27B-GGUF`, but
+         *     also `gpt2`). A path segment would need `%2F`, which
+         *     intermediaries mangle — and every UI call to this component
+         *     goes through the watchdog's proxy.
+         */
+        get: operations["getCatalogueModel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalogue/model/card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The model card prose.
+         * @description The README, verbatim, as Markdown — 7–10 KB for a typical repo.
+         *     Separate from `GET /v1/catalogue/model` because it is a separate
+         *     upstream fetch and a client showing a collapsed "about this
+         *     model" panel should not pay for it until the panel opens.
+         *
+         *     This is the "with summaries" half of the search complaint.
+         *     Returned as untrusted Markdown: it is written by whoever
+         *     uploaded the model, so a renderer must not execute anything in
+         *     it.
+         */
+        get: operations["getCatalogueCard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalogue/model/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one remote file's real metadata before downloading it.
+         * @description Reads the candidate's own metadata **over HTTP Range**, without
+         *     downloading the model, and re-scores the fit from it.
+         *
+         *     Measured on a 16.5 GB GGUF: the KV block is at the front of the
+         *     file, 10.9 MB of it, fetched in under a second — **0.07% of the
+         *     file** — and it yields the machine-readable quant
+         *     (`general.file_type`), the layer count, the KV head count and
+         *     key/value lengths, and the trained context. Safetensors is two
+         *     orders cheaper: an 8-byte read gives the header length and a
+         *     second read gives an exact parameter count.
+         *
+         *     Why it exists: without it, remote quant identification is
+         *     filename-derived, and the filename is exactly what
+         *     `GET /v1/models` refuses to trust for a *local* model. This
+         *     holds a candidate to the same standard before 16 GB is spent on
+         *     it — and for a hybrid-attention model it is the difference
+         *     between a KV-cache estimate that is right and one that is
+         *     4.1× too large.
+         *
+         *     **Explicit, never automatic.** It costs upstream bandwidth per
+         *     call, so it is for the one candidate the operator has settled
+         *     on. Firing it across a listing would be ~270 MB for one repo.
+         */
+        get: operations["preflightCatalogueFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every download, in flight or finished.
+         * @description Records persist after they finish so the operator can see what
+         *     arrived, where it went, and which library entry it became.
+         *     `DELETE` is what forgets one.
+         */
+        get: operations["listDownloads"];
+        put?: never;
+        /**
+         * Fetch a model into a directory the operator chose.
+         * @description A collection rather than M1's singleton install: several
+         *     downloads can be queued, and `maxConcurrentDownloads` (default
+         *     1) decides how many transfer at once. Two 40 GB fetches sharing
+         *     one link both finish later than one after the other, and the
+         *     progress bar people watch is the one they started first.
+         *
+         *     **One job, N files.** A split GGUF is 2–9 files, a multimodal
+         *     model is a quant plus a projector, and a safetensors model is a
+         *     directory of which nothing is optional. "Download this model" is
+         *     one operator action, so it is one record with per-file progress
+         *     inside it.
+         *
+         *     The destination is resolved and reported **before a byte
+         *     moves** — root plus layout plus the upstream filename — because
+         *     the one thing this component must never do is put a file
+         *     somewhere the operator did not choose.
+         *
+         *     Responds 202 with the record in `queued`; poll
+         *     `GET /v1/downloads/{id}`.
+         */
+        post: operations["startDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/downloads/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One download's progress. */
+        get: operations["getDownload"];
+        put?: never;
+        post?: never;
+        /**
+         * Cancel in flight, or forget a finished record.
+         * @description Cancelling stops the transfer and **removes the `.part`
+         *     file**. That is the one file on disk this component will
+         *     delete, and the reason it may: a `.part` is ours, created as a
+         *     side effect of a job the operator just abandoned. A completed
+         *     model file is the operator's and is never touched — the same
+         *     guarantee `DELETE /v1/models/{id}` makes.
+         *
+         *     To keep the partial bytes for later, `pause` instead.
+         */
+        delete: operations["cancelDownload"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/downloads/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop transferring, keep the partial file.
+         * @description The `.part` stays on disk and the record goes `paused`. A paused
+         *     download shows up in the next scan as `incomplete_download`,
+         *     which is the reason M2 reserved for exactly this.
+         */
+        post: operations["pauseDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/downloads/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Continue a paused or failed download.
+         * @description Runs the same loop the automatic retry runs: re-resolve
+         *     upstream, compare the remote digest and size against what the
+         *     record stored, and continue from the byte count on disk with a
+         *     `Range` request.
+         *
+         *     **The comparison is the load-bearing step.** When the digest
+         *     disagrees the remote file changed under the partial, and the
+         *     only correct move is to discard the partial and start over,
+         *     which this reports through `restartedFromZero`. Uploaders
+         *     requantize under the same filename; appending the tail of a new
+         *     file to the head of an old one yields exactly the right number
+         *     of bytes and a corrupt model.
+         *
+         *     Resuming is also what a *retry* is, and retries are automatic
+         *     and bounded — a 40 GB transfer over a domestic link will meet a
+         *     transient failure, and treating that as terminal makes the
+         *     feature useless. `attempts` is visible so an operator can tell
+         *     a flaky link from a dead one.
+         */
+        post: operations["resumeDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/hardware": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What this host has to spend on a model.
+         * @description Detected on **this component's host**, which is what makes the
+         *     fit arithmetic possible and is also its limitation: in a
+         *     multi-host deployment the GPU that will load the model may be
+         *     somewhere else entirely. Hence `hostname` on the response, and
+         *     the budget overrides on the fit endpoints.
+         *
+         *     **Free is reported alongside total, and free is what scoring
+         *     uses.** Measured on the dev box with nothing unusual running:
+         *     2.9 GiB of a 32 GiB card was already held by the desktop, and a
+         *     third of RAM was in use. Scoring against total tells the
+         *     operator a model fits and then it OOMs; showing both lets them
+         *     see what quitting something would buy.
+         *
+         *     Detection is stdlib plus vendor CLIs — no new dependency, because
+         *     every dependency this component gains has to be installed into
+         *     the watchdog's venv as well.
+         */
+        get: operations["getHardware"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/quants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the quant tiers mean.
+         * @description Static reference content, identical for every model: tier →
+         *     family, nominal bits per weight, what the `K` / `IQ` / `UD`
+         *     naming conventions mean, and where on the curve quality starts
+         *     to go.
+         *
+         *     Served from the component rather than hardcoded in the UI so
+         *     there is one copy to update as upstream's quant families churn,
+         *     and so a headless install can print it.
+         *
+         *     **It contains no per-model judgement and never will.** The
+         *     relative quality of `IQ2_S` against `Q2_K` is upstream research,
+         *     model-dependent, and not ours to invent — a fabricated quality
+         *     score is worse than no score, which is the same rule that makes
+         *     an unrecognised `general.file_type` degrade to "here is the
+         *     number". The per-model numbers this component *will* state are
+         *     size, bits per weight, and whether it fits.
+         */
+        get: operations["getQuantTable"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -900,13 +1298,859 @@ export interface components {
          *       not parse. Reported rather than skipped silently.
          *     * `unsupported_format` — a model format with no scanner yet.
          *       MLX is the reserved case.
-         *     * `incomplete_download` — a partial file from an interrupted
-         *       download. Reserved for M3, which is when `.part` files start
-         *       landing in scanned roots; better to have the reason before
-         *       then than to surface a half-fetched 40 GB model as broken.
+         *     * `incomplete_download` — a `.part` file from a download that
+         *       is in flight, paused, or failed. No longer reserved: the
+         *       downloader writes these into scanned roots by design, and a
+         *       `paused` download is *expected* to leave one there. The
+         *       matching `Download` record, if there is one, is what says
+         *       whether it can be resumed; a `.part` with no record behind it
+         *       is litter and can be deleted by hand.
          * @enum {string}
          */
         SkipReason: "projector" | "shard_member" | "adapter" | "older_revision" | "not_a_model" | "unreadable_header" | "unsupported_format" | "incomplete_download";
+        /**
+         * @description Ordering for a catalogue search. `trending` is upstream's own
+         *     trending score, which is the closest thing to "what is worth
+         *     looking at this week" — and, honestly, the ranking most likely
+         *     to surface a keyword-stuffed finetune above an official release.
+         *     The index is upstream's; we can filter and describe better than
+         *     their search page but we cannot fix what it ranks.
+         * @enum {string}
+         */
+        CatalogueSort: "downloads" | "likes" | "trending" | "modified" | "created";
+        CatalogueSearchPage: {
+            results: components["schemas"]["CatalogueSearchResult"][];
+            /**
+             * @description Pass back as `cursor` for the next page. Absent on the last
+             *     page. Opaque — it is upstream's own continuation token and
+             *     carries no page arithmetic.
+             */
+            nextCursor?: string;
+            /**
+             * Format: date-time
+             * @description When this answer was fetched upstream. Present because
+             *     results are cached for a short window to stay inside the
+             *     500-request/300-second API budget, and a client showing
+             *     popularity numbers should know they are minutes old.
+             */
+            cachedAt?: string;
+        };
+        /**
+         * @description One upstream repository. **No sizes and no fit verdict** — see
+         *     `searchCatalogue`: upstream's search response carries neither
+         *     and synthesizing them would cost a call per row.
+         */
+        CatalogueSearchResult: {
+            /** @description Full repo id, e.g. `unsloth/Qwen3.8-27B-GGUF`. */
+            repo: string;
+            /**
+             * @description The publisher. Prominent on purpose — "which quant publisher
+             *     do I trust" is how people navigate this catalogue, and it is
+             *     the fastest signal that separates an official release from a
+             *     reupload.
+             */
+            owner?: string;
+            name?: string;
+            /**
+             * @description What this repo appears to serve, from its tags and library
+             *     metadata. Approximate at search time — a repo can hold both
+             *     formats, and only the detail call reads the file list.
+             */
+            formats?: components["schemas"]["ModelFormat"][];
+            gated?: components["schemas"]["GateKind"];
+            private?: boolean;
+            downloads?: number;
+            likes?: number;
+            trendingScore?: number;
+            /** @description Upstream's task label, e.g. `text-generation`. */
+            pipelineTag?: string;
+            libraryName?: string;
+            license?: string;
+            tags?: string[];
+            /** Format: date-time */
+            createdAt?: string;
+            /**
+             * Format: date-time
+             * @description Worth showing next to popularity: a repo with millions of
+             *     downloads and no change in a year is a different
+             *     proposition from one updated last week.
+             */
+            lastModified?: string;
+        };
+        /**
+         * @description Whether upstream restricts the *bytes*. `open` is unrestricted;
+         *     `auto` needs a token and one click-through on the model page;
+         *     `manual` needs a human approval that can take days.
+         *
+         *     A three-valued enum rather than upstream's own
+         *     `false | "auto" | "manual"`, which would be a boolean-or-string
+         *     union in every generated client for no gain. `open` is the
+         *     normalization of `false`.
+         *
+         *     The three cases are distinguished because a gated repo browses
+         *     perfectly — metadata, file list, sizes and digests are all
+         *     public — and **only the download 401s.** Warning about it on
+         *     the detail screen is the difference between a legible
+         *     prerequisite and a mysterious failure after the operator has
+         *     chosen a quant and pressed the button.
+         * @enum {string}
+         */
+        GateKind: "open" | "auto" | "manual";
+        /**
+         * @description One upstream repo, resolved: what it is, what can be downloaded
+         *     from it, and which of those this host can run.
+         */
+        CatalogueModel: {
+            repo: string;
+            owner?: string;
+            name?: string;
+            /** @description The revision that was asked for, e.g. `main`. */
+            revision: string;
+            /**
+             * @description The commit `revision` resolved to, from upstream's
+             *     `X-Repo-Commit`. Reported because `main` moves — repos are
+             *     requantized and re-uploaded under the same filenames — and
+             *     a download pins this so a later resume can tell "the
+             *     transfer broke" from "the file I was fetching is gone".
+             */
+            resolvedCommit?: string;
+            gated?: components["schemas"]["GateKind"];
+            private?: boolean;
+            downloads?: number;
+            likes?: number;
+            trendingScore?: number;
+            license?: string;
+            tags?: string[];
+            pipelineTag?: string;
+            libraryName?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            lastModified?: string;
+            /** @description Formats actually present in the file list. */
+            formats?: components["schemas"]["ModelFormat"][];
+            /**
+             * @description Parameter count, when upstream states one. For a GGUF repo
+             *     it comes from the hub's own repo-level metadata and is
+             *     exact — which is what makes `bitsPerWeight` computable with
+             *     no extra request, and is the inverse of the local case where
+             *     a GGUF gives no parameter count at all.
+             */
+            parameters?: number;
+            architecture?: string;
+            /**
+             * @description Context the model was trained for, per upstream. Not what
+             *     this host can serve — that is what `candidates[].fit`
+             *     answers, at a context the caller chose.
+             */
+            contextLength?: number;
+            /** @description Whether upstream reports an embedded chat template. */
+            chatTemplate?: boolean;
+            /**
+             * @description The launchable choices, one per quant or per format variant,
+             *     with shards already summed. **This is the list the operator
+             *     picks from**, and it is materially shorter than the file
+             *     list: one verified repo held 30 `.gguf` files and 25
+             *     candidates.
+             */
+            candidates: components["schemas"]["CatalogueCandidate"][];
+            /**
+             * @description Vision projectors offered by this repo, as their own list
+             *     because a multimodal repo ships more than one precision of
+             *     them and the operator picks — and because a projector is
+             *     never a candidate on its own. Add the chosen one to the
+             *     download's `files`.
+             */
+            projectors?: components["schemas"]["CatalogueFile"][];
+            /**
+             * @description Files in the repo that are neither candidates nor
+             *     projectors: the imatrix calibration file, an MTP or draft
+             *     model, documentation. Reported rather than hidden, for the
+             *     same reason the scan reports `skipped` — a listing that
+             *     silently drops files it did not understand is
+             *     indistinguishable from one that is broken.
+             */
+            otherFiles?: components["schemas"]["CatalogueFile"][];
+            /** @description Every file in the repo summed. Rarely what anyone wants to download. */
+            totalSizeBytes?: number;
+            recommended?: components["schemas"]["CatalogueRecommendation"];
+            /**
+             * @description Things to say before a download starts: the repo is gated,
+             *     nothing here fits, the only thing that fits is a very low
+             *     quant, upstream metadata was unreadable so the fit is a
+             *     size estimate.
+             */
+            warnings?: string[];
+        };
+        /**
+         * @description One downloadable, launchable choice. **Shards are already
+         *     summed here** — scoring the file named on the launch line
+         *     understates a split candidate by the size of every other shard
+         *     (verified: 46.55 GiB for shard 1 of a model that is 50.90 GiB).
+         */
+        CatalogueCandidate: {
+            /**
+             * @description What to show in the list: the quant tier for GGUF
+             *     (`Q4_K_M`, `UD-IQ3_XXS`), or the variant directory for a
+             *     safetensors repo.
+             */
+            label: string;
+            format: components["schemas"]["ModelFormat"];
+            /**
+             * @description Every file this candidate needs, in the order a download
+             *     should fetch them. For a split GGUF, all shards. For
+             *     safetensors, the weights **and** the sidecars — `config.json`
+             *     and the tokenizer files are not optional. Pass these
+             *     straight to `DownloadSpec.files`.
+             */
+            files: components["schemas"]["CatalogueFile"][];
+            /** @description Sum over `files`. The number the fit verdict is computed from. */
+            sizeBytes: number;
+            /**
+             * @description Quant tier, e.g. `Q4_K_M`. GGUF only — a safetensors model
+             *     is sized, not tiered.
+             */
+            quantization?: string;
+            /**
+             * @description **Where the tier came from, and this field is load-bearing.**
+             *     `filename` at listing time, because the hub exposes no
+             *     per-file quant and the name is all there is — the very thing
+             *     a local scan refuses to trust. `metadata` after a preflight
+             *     has read `general.file_type` over HTTP Range.
+             *
+             *     Fit is computed from `sizeBytes`, which is authoritative
+             *     either way, so a mislabelled file changes what is displayed
+             *     and never what is promised.
+             * @enum {string}
+             */
+            quantSource?: "filename" | "metadata";
+            /**
+             * @description `sizeBytes × 8 / parameters`. The one quality-adjacent
+             *     number here that is arithmetic rather than judgement, and
+             *     the only thing that makes three upstream naming schemes
+             *     comparable: on one verified repo it ordered all 25
+             *     candidates monotonically from 1.81 to exactly 16.00 for
+             *     BF16 — that last value being the check that the parameter
+             *     count is real.
+             *
+             *     Absent when upstream states no parameter count.
+             */
+            bitsPerWeight?: number;
+            /** @description Dominant tensor dtype, for safetensors candidates. */
+            dtype?: string;
+            fit?: components["schemas"]["Fit"];
+            alreadyOwned?: components["schemas"]["AlreadyOwned"];
+            /**
+             * @description Convenience copy of the repo's gate, on the row the operator
+             *     is about to click.
+             */
+            gated?: boolean;
+        };
+        /** @description One file in an upstream repo, with whatever it can be verified against. */
+        CatalogueFile: {
+            /**
+             * @description Repo-relative path, which is **not** a filename: split
+             *     quants live in subdirectories (`BF16/…-00001-of-00002.gguf`).
+             *     The download writes the basename.
+             */
+            path: string;
+            sizeBytes: number;
+            /**
+             * @description Content digest, for the large files — every weight file is
+             *     LFS-backed and carries one. Note that the entry also has a
+             *     40-hex `oid` beside it upstream which is the sha1 of the
+             *     136-byte LFS *pointer*, not of the model: verifying against
+             *     that passes on any download at all. This field is the real
+             *     one.
+             */
+            sha256?: string;
+            /**
+             * @description For the small non-LFS files — `config.json`, the tokenizer
+             *     files, the safetensors index — which have no content digest
+             *     upstream. They are still verifiable:
+             *     `sha1("blob <len>\0" + bytes)`, checked exactly against a
+             *     real repo. Between this and `sha256` every file has
+             *     something to check, so nothing is written unverified.
+             */
+            gitBlobSha1?: string;
+            role?: components["schemas"]["ModelFileRole"];
+            /**
+             * @description Whether upstream stores this through LFS. Decides which
+             *     digest is present, and also which redirect shape the
+             *     download meets — a 302 to a signed CDN URL for LFS, a 307
+             *     to an internal path for the rest, both mandatory to follow.
+             */
+            lfs?: boolean;
+        };
+        /**
+         * @description Which candidate to take, and why. **The largest one that fully
+         *     fits at the requested context** — not the largest that runs at
+         *     all, because partial offload is a decision the operator should
+         *     make knowingly rather than inherit from a recommendation.
+         */
+        CatalogueRecommendation: {
+            /** @description The recommended candidate's `label`. */
+            label: string;
+            /**
+             * @description Prose, naming the numbers: what fits, at what context,
+             *     against how much free memory. Differentiator #6 is "show
+             *     *why*"; a bare recommendation with no arithmetic is the
+             *     thing the source complaint is complaining about.
+             */
+            reason: string;
+            /**
+             * @description Present when the largest thing that fits is below ~4 bits
+             *     per weight, naming the alternatives — shorter context,
+             *     partial offload, a smaller model. Recommending a 1.81-bpw
+             *     quant without comment is how a first impression becomes
+             *     "this thing is stupid", and the failure is ours rather than
+             *     the model's.
+             */
+            lowQualityWarning?: string;
+        };
+        /**
+         * @description This candidate is already on the disk. The join only this
+         *     component can make, since it holds both the catalogue and the
+         *     library — and it is what stops a 16 GB re-download of a file the
+         *     operator already has.
+         */
+        AlreadyOwned: {
+            /** @description The local `LibraryModel.id`. */
+            modelId: string;
+            /** @description Where it already is. */
+            path: string;
+            /**
+             * @description `digest` is certain — the local file's hash was known and
+             *     matched. `name_and_size` is a strong guess and labelled as
+             *     one, because the library deliberately never hashes model
+             *     content (a 40 GB read per scan is not on the table), so for
+             *     most entries name and size is all there is to compare.
+             * @enum {string}
+             */
+            matchedOn?: "digest" | "name_and_size";
+        };
+        /** @description The model card, as published. */
+        CatalogueCard: {
+            repo: string;
+            revision?: string;
+            /**
+             * @description The README verbatim. **Untrusted content** — written by
+             *     whoever uploaded the model — so a renderer must not execute
+             *     anything in it and should not follow its links blindly.
+             */
+            markdown: string;
+            /**
+             * @description The card's YAML front matter as upstream parsed it: license,
+             *     base model, tags. Structured, so a UI can show the license
+             *     without regexing prose.
+             */
+            frontMatter?: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            fetchedAt?: string;
+        };
+        /**
+         * @description What one remote file says about itself, read over HTTP Range
+         *     without downloading it. See `preflightCatalogueFile` for the
+         *     cost, which is the point of the endpoint.
+         */
+        CataloguePreflight: {
+            repo: string;
+            resolvedCommit?: string;
+            file: string;
+            format: components["schemas"]["ModelFormat"];
+            /**
+             * @description How much of the remote file this cost. Reported so the
+             *     number is visible rather than assumed: ~11 MB for a
+             *     large-vocab GGUF, ~11 KB for a safetensors header. The GGUF
+             *     figure is mostly tokenizer — the metadata worth having sits
+             *     on the far side of the vocabulary, which is why the read is
+             *     not smaller.
+             */
+            bytesRead: number;
+            /** @description The tier, from `general.file_type`. Machine-read, not guessed. */
+            quantization?: string;
+            /**
+             * @description Raw `general.file_type`. Reported alongside the label rather
+             *     than instead of it, for M2's reason: the quant families
+             *     churn and an unrecognised value must degrade to "here is the
+             *     number", never to a plausible neighbour.
+             */
+            fileType?: number;
+            /**
+             * @description Whether the metadata tier and the filename tier match. When
+             *     false both are reported and neither is silently preferred.
+             *     This is the check the whole endpoint exists to make
+             *     possible.
+             */
+            agreesWithFilename?: boolean;
+            architecture?: string;
+            /** @description Total layers the file declares. */
+            blockCount?: number;
+            /**
+             * @description How many of those layers actually hold a KV cache. **Not
+             *     the same number** on a hybrid model: one current release
+             *     declares 65 blocks with a full-attention interval of 4, so
+             *     16 layers carry KV and the naive arithmetic overestimates
+             *     the cache by 4.1× at every context length. This field is
+             *     what stops guidance from being confidently wrong about an
+             *     entire class of modern models.
+             */
+            attentionLayers?: number;
+            contextLength?: number;
+            /**
+             * @description Exact count, for safetensors, from the summed tensor shapes
+             *     in the header. Absent for GGUF, which does not carry one —
+             *     the same asymmetry the local scan meets, reproduced over the
+             *     network at wildly different cost.
+             */
+            parameters?: number;
+            dtype?: string;
+            vocabSize?: number;
+            capabilities?: components["schemas"]["ModelCapabilities"];
+            recommendedSampling?: components["schemas"]["RecommendedSampling"];
+            fit?: components["schemas"]["Fit"];
+            /**
+             * @description From the file's own `split.count`, when it is a shard.
+             *     Probing the **first** shard is enough — verified: shard 1 of
+             *     a split model carries the complete KV block.
+             */
+            shardCount?: number;
+        };
+        DownloadList: {
+            downloads: components["schemas"]["Download"][];
+        };
+        /**
+         * @description What to fetch and where to put it. The file list is explicit
+         *     rather than inferred from the repo: "download the model" has to
+         *     mean something exact by the time it reaches the transfer loop,
+         *     and the catalogue detail response has already grouped the repo
+         *     into candidates whose `files` can be passed straight through.
+         */
+        DownloadSpec: {
+            /** @description Upstream repo id. */
+            repo: string;
+            /**
+             * @description Resolved to a commit at start and pinned for the life of
+             *     the download, so a resume days later fetches the same bytes
+             *     it began with.
+             * @default main
+             */
+            revision: string;
+            /**
+             * @description Repo-relative paths. Every shard of a split candidate, the
+             *     projector if the operator wants vision, and for safetensors
+             *     the sidecars as well as the weights. Take these from
+             *     `CatalogueCandidate.files` and `CatalogueModel.projectors`.
+             */
+            files: string[];
+            /**
+             * @description Which configured model root to write under. Must be one of
+             *     them — this component will not write outside the
+             *     directories the operator nominated. Defaults to the first,
+             *     which is what the `path_list` config type has promised
+             *     since M2.
+             */
+            root?: string;
+            /**
+             * @description Relative destination under `root`, overriding the configured
+             *     layout. Path traversal is rejected; the result must stay
+             *     inside the root.
+             */
+            subdirectory?: string;
+            /**
+             * @description Override the written name of the **single-file** case. Rarely
+             *     wanted: the upstream name is what the operator recognises,
+             *     what the library will call it, and what
+             *     `Runtime.modelAlias` defaults to — plainly-named files are
+             *     the point. Rejected when `files` holds more than one entry,
+             *     because renaming one shard of a set breaks the set.
+             */
+            filename?: string;
+        };
+        /**
+         * @description One transfer job over N files. Records persist after they finish;
+         *     `DELETE` forgets one.
+         */
+        Download: {
+            id: string;
+            state: components["schemas"]["DownloadState"];
+            repo: string;
+            revision?: string;
+            /**
+             * @description The commit this download is pinned to. A resume that finds
+             *     upstream serving a different digest for the same path
+             *     reports it here rather than appending new bytes to old ones.
+             */
+            resolvedCommit?: string;
+            root?: string;
+            /**
+             * @description Absolute directory the files will land in, resolved **before
+             *     the first byte moves** so the operator can see where their
+             *     model is going while there is still time to change it.
+             */
+            destinationDirectory?: string;
+            files: components["schemas"]["DownloadFile"][];
+            bytesTotal?: number;
+            bytesDownloaded?: number;
+            /** @description Recent rate, not an average over the whole job. */
+            bytesPerSecond?: number;
+            etaSeconds?: number;
+            /**
+             * @description How many times the transfer has been (re)started, including
+             *     automatic retries. Visible because a 40 GB fetch over a
+             *     domestic link will meet transient failures, and the
+             *     difference between a flaky connection and a dead one is
+             *     this number moving.
+             */
+            attempts?: number;
+            /**
+             * @description The library entry this download became, filled in after the
+             *     post-completion scan of the destination directory. This is
+             *     what closes discovery → download → library → profile →
+             *     launch without the UI polling for a model to appear.
+             */
+            modelId?: string;
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            error?: string;
+            /**
+             * @description Upstream's own error code when it gave one — `GatedRepo` is
+             *     the one that will actually happen, and it means "accept the
+             *     licence on the model page" rather than anything the operator
+             *     can fix here. Carried through so the UI can say that instead
+             *     of surfacing a bare 401.
+             */
+            errorCode?: string;
+            /**
+             * @description True when a resume found the remote file had changed and
+             *     discarded the partial. Surfaced rather than silent: the
+             *     operator is about to re-spend bandwidth they already spent,
+             *     and the reason is that upstream requantized under the same
+             *     filename.
+             */
+            restartedFromZero?: boolean;
+            /** @description What the current phase is doing, for the progress dialog. */
+            message?: string;
+        };
+        DownloadFile: {
+            /** @description Repo-relative source path. */
+            path: string;
+            /**
+             * @description Absolute path this file will occupy when it is done. While
+             *     it is in flight the bytes live at this path plus `.part`.
+             */
+            destinationPath: string;
+            sizeBytes?: number;
+            bytesDownloaded?: number;
+            state: components["schemas"]["DownloadState"];
+            /** @description Expected content digest, when upstream published one. */
+            sha256?: string;
+            /**
+             * @description Whether the finished file matched its digest. Verification
+             *     happens **before** the `.part` is renamed into place, so a
+             *     file that exists at `destinationPath` was verified — and one
+             *     that failed stays a `.part` with the record in `failed`,
+             *     never silently retried into the same bytes.
+             */
+            verified?: boolean;
+            role?: components["schemas"]["ModelFileRole"];
+            error?: string;
+        };
+        /**
+         * @description Named phases rather than a percentage, following M1's engine
+         *     install for the same reason: the phases fail differently and the
+         *     operator needs to know which one they are in. A stall in
+         *     `downloading` is the network, a stall in `verifying` is the
+         *     disk, and `verifying` *failing* is the one that means the bytes
+         *     are wrong.
+         *
+         *     * `queued` — accepted, waiting on `maxConcurrentDownloads`.
+         *     * `resolving` — asking upstream for the commit, sizes and
+         *       digests. Where a gated repo's 401 surfaces.
+         *     * `paused` — operator-stopped; the `.part` is kept and shows up
+         *       in the next scan as `incomplete_download`.
+         *     * `cancelled` — operator-abandoned; the `.part` is removed.
+         *     * `failed` — the retry budget is spent. `resume` runs the same
+         *       loop again.
+         * @enum {string}
+         */
+        DownloadState: "queued" | "resolving" | "downloading" | "verifying" | "done" | "failed" | "paused" | "cancelled";
+        /**
+         * @description Whether a model runs on a given memory budget at a given
+         *     context, **with the arithmetic attached**. One computation, three
+         *     callers: per candidate in the catalogue, on a local model, and
+         *     inside a preflight.
+         *
+         *     It is an estimate and says so. The overhead allowance is flat,
+         *     MoE models hold experts differently, and llama.cpp's own
+         *     allocation shifts between builds — so the inputs are all
+         *     reported, which is what makes a wrong answer diagnosable instead
+         *     of merely wrong.
+         */
+        Fit: {
+            verdict: components["schemas"]["FitVerdict"];
+            /** @description `weightsBytes + kvCacheBytes + overheadBytes`. */
+            requiredBytes: number;
+            /** @description Summed over every file in the candidate, shards included. */
+            weightsBytes?: number;
+            /**
+             * @description `contextLength × attentionLayers × headCountKv ×
+             *     (keyLength + valueLength) × bytes per element`. The term
+             *     that goes wrong: see `attentionLayers`.
+             */
+            kvCacheBytes?: number;
+            /**
+             * @description Compute buffers, the graph, the accelerator context. A flat
+             *     allowance, and the reason this is an estimate rather than a
+             *     calculation.
+             */
+            overheadBytes?: number;
+            /** @description The context this verdict is for. Change it and the verdict changes. */
+            contextLength: number;
+            kvCacheType?: components["schemas"]["KvCacheType"];
+            /**
+             * @description Layers that actually hold a KV cache, which on a hybrid
+             *     attention/SSM model is a small fraction of the total. Where
+             *     this is known from metadata the cache figure is real; where
+             *     it is not, it is assumed equal to the layer count and
+             *     `notes` says so — an assumption that is safe in the
+             *     pessimistic direction and, on one verified current model,
+             *     wrong by 4.1×.
+             */
+            attentionLayers?: number;
+            /**
+             * @description `metadata` when the model's own declared shape produced the
+             *     KV term — a local model, or a remote one after a preflight.
+             *     `estimate` when only the file size was available, which is
+             *     every catalogue candidate until someone preflights it.
+             *
+             *     The honest distinction between "this is arithmetic" and
+             *     "this is a guess with a number on it", and the field a UI
+             *     should hang a "check this file" affordance off.
+             * @enum {string}
+             */
+            basis: "metadata" | "estimate";
+            budget?: components["schemas"]["MemoryBudget"];
+            /**
+             * @description The assumptions in words: full offload, F16 KV cache, layer
+             *     count assumed to be attention count, the overhead allowance
+             *     used. Guidance that does not state its assumptions cannot be
+             *     argued with, and this one will sometimes be wrong.
+             */
+            notes?: string[];
+        };
+        /**
+         * @description * `fits` — inside **free** VRAM. Fully offloaded, no host memory
+         *       in the generation path.
+         *     * `tight` — inside total VRAM but not free VRAM. It would fit on
+         *       an idle GPU; something is holding memory right now, and
+         *       closing it is the operator's call.
+         *     * `split` — needs host memory as well. Runnable with partial
+         *       offload, materially slower, and a decision rather than a
+         *       failure.
+         *     * `no` — larger than VRAM and RAM together.
+         *
+         *     Four values rather than a percentage because a percentage of
+         *     *what* — VRAM, or VRAM plus RAM? — is precisely the ambiguity
+         *     the operator is trying to resolve, and because the four have
+         *     different advice. `tight` and `split` are the two the field
+         *     usually collapses into "won't fit", and they are the two worth
+         *     naming.
+         * @enum {string}
+         */
+        FitVerdict: "fits" | "tight" | "split" | "no";
+        /**
+         * @description What a fit verdict was measured against. **Free and total both,
+         *     and free is what decides the verdict.** Measured on the dev box
+         *     with nothing unusual running: 2.9 GiB of a 32 GiB card was
+         *     already held and a third of RAM was in use — so scoring against
+         *     total would have promised a fit that OOMs, and hiding total
+         *     would have concealed what quitting a browser buys back.
+         */
+        MemoryBudget: {
+            vramFreeBytes?: number;
+            vramTotalBytes?: number;
+            /**
+             * @description The biggest single card's free memory. Separate from the sum
+             *     because llama.cpp splits layers across GPUs by default, so
+             *     "fits on one card" and "fits across all of them" are
+             *     different questions with different performance — and two
+             *     replicas on two cards, which is M5's case, needs the
+             *     per-card number rather than the total.
+             */
+            largestGpuFreeBytes?: number;
+            ramAvailableBytes?: number;
+            ramTotalBytes?: number;
+            gpuCount?: number;
+            /**
+             * @description Apple silicon, where the VRAM/RAM split does not exist and
+             *     the real ceiling is the wired limit rather than a separate
+             *     pool. Reported because the naive reading of "VRAM" on a
+             *     96 GB Mac is zero, which would tell one of the better
+             *     local-inference boxes on the market that it has no GPU.
+             */
+            unifiedMemory?: boolean;
+            /**
+             * @description `override` when the caller supplied the budget. That is how
+             *     a model gets scored against **another** host's memory, which
+             *     is the only honest answer in a deployment where the GPU is
+             *     in a different building — and a UI should say which machine
+             *     a verdict is about.
+             * @enum {string}
+             */
+            source?: "detected" | "override";
+        };
+        /**
+         * @description Element type assumed for the KV cache, which halves or quarters
+         *     the cache term. `f16` is the default and llama.cpp's own.
+         *
+         *     Present as a parameter because it is a launch flag
+         *     (`--cache-type-k`) and therefore part of the question: "does
+         *     this fit" has no answer that is independent of how it will be
+         *     launched. A profile that sets the flag and a fit query that
+         *     assumed `f16` disagree, and the operator should be able to see
+         *     both.
+         * @enum {string}
+         */
+        KvCacheType: "f16" | "q8_0" | "q4_0";
+        /** @description A local model's fit, plus which model it is about. */
+        ModelFit: {
+            modelId: string;
+            path?: string;
+            fit: components["schemas"]["Fit"];
+            /**
+             * @description The largest context that still `fits` in free VRAM,
+             *     computed by solving the same arithmetic for context instead
+             *     of asserting it. More useful than a yes/no at one context:
+             *     it is the number that goes in a profile's `-c`, and it
+             *     answers the question a launch actually asks.
+             */
+            maxContextLength?: number;
+            /**
+             * @description What the model was trained for, for comparison. These two
+             *     are frequently far apart — a current 27B declares 262144 and
+             *     almost nobody can hold that — and showing only the model's
+             *     number is the comfortable lie M2 named.
+             */
+            modelContextLength?: number;
+        };
+        /**
+         * @description What this host has to spend, as detected. Deliberately **not**
+         *     shared with the watchdog's `HostAccelerator`: that answers "which
+         *     engine build do I fetch" and its own description already says the
+         *     VRAM-and-fit surface belongs here. The two overlap on `os` and
+         *     `arch` and diverge on everything else, so this duplicates two
+         *     enums rather than coupling two surfaces that will evolve apart.
+         *     When they disagree it is because they are on different hosts,
+         *     which is information rather than a bug.
+         */
+        HostHardware: {
+            /**
+             * @description Which machine these numbers are from. Load-bearing in a
+             *     multi-host deployment: a driver lives next to its engine, so
+             *     the GPU that will load the model is not necessarily on the
+             *     host that measured this.
+             */
+            hostname: string;
+            /** @enum {string} */
+            os: "windows" | "linux" | "macos";
+            /** @enum {string} */
+            arch: "x64" | "arm64";
+            cpuCount?: number;
+            ramTotalBytes?: number;
+            /**
+             * @description What is actually free, which is a third less than total on
+             *     an ordinary desktop. The number scoring uses.
+             */
+            ramAvailableBytes?: number;
+            unifiedMemory?: boolean;
+            gpus?: components["schemas"]["Gpu"][];
+            /**
+             * Format: date-time
+             * @description Free memory moves constantly, so a verdict computed from a
+             *     cached reading needs a timestamp on it.
+             */
+            detectedAt?: string;
+            /**
+             * @description What could not be detected and what was assumed instead — no
+             *     vendor tool on PATH, an accelerator whose free memory is
+             *     unreadable, a platform whose memory model is not the one
+             *     assumed. Named rather than silently defaulted: a fit verdict
+             *     computed from a wrong budget is worse than no verdict, and
+             *     three of the detection paths in this component are
+             *     unverified on real hardware (AMD, Intel, and Apple unified
+             *     memory).
+             */
+            warnings?: string[];
+        };
+        Gpu: {
+            /**
+             * @description The device index, which is what goes in
+             *     `CUDA_VISIBLE_DEVICES` in a profile's `env` — the mechanism
+             *     behind two replicas on two cards.
+             */
+            index: number;
+            name: string;
+            /** @enum {string} */
+            vendor?: "nvidia" | "amd" | "intel" | "apple" | "unknown";
+            vramTotalBytes: number;
+            /**
+             * @description Absent when the platform will not say. On a fresh desktop
+             *     this is around 2.9 GiB below total before anything is
+             *     launched, which is 11% of a 24 GB card.
+             */
+            vramFreeBytes?: number;
+            computeCapability?: string;
+            driverVersion?: string;
+        };
+        /**
+         * @description Static reference content: what the quant tiers mean. Served from
+         *     here so there is one copy to maintain as upstream's families
+         *     churn, and so a headless install can print it.
+         */
+        QuantTable: {
+            tiers: components["schemas"]["QuantTier"][];
+            /**
+             * Format: date-time
+             * @description When this table was last revised, since the families move.
+             */
+            updatedAt?: string;
+        };
+        QuantTier: {
+            /** @description The label as it appears in filenames, e.g. `Q4_K_M`, `IQ3_XXS`. */
+            tier: string;
+            /**
+             * @description `legacy` (`Q4_0`, `Q8_0`), `k_quant` (`Q4_K_M` — mixed
+             *     precision per tensor), `i_quant` (`IQ*` — importance-matrix
+             *     quantized), `dynamic` (`UD-*` — per-tensor choices made by
+             *     the publisher), or `unquantized` (`F16`, `BF16`, `F32`).
+             */
+            family?: string;
+            /**
+             * @description The tier's nominal width. The *actual* figure for a specific
+             *     file is `CatalogueCandidate.bitsPerWeight`, computed from its
+             *     real size — mixed-precision schemes do not land on their
+             *     nominal value.
+             */
+            nominalBitsPerWeight?: number;
+            /** @description What this tier does, in one sentence. */
+            summary: string;
+            /**
+             * @description When it is a sensible choice. Describes the **shape** of the
+             *     quality curve — noticeable degradation below roughly 4 bits
+             *     per weight, severe below 3 — and never a per-model
+             *     judgement. Which of `IQ2_S` and `Q2_K` is better for a given
+             *     model is upstream research and not ours to invent; a
+             *     fabricated quality score is worse than none, the same rule
+             *     that makes an unrecognised `general.file_type` degrade to
+             *     the raw number.
+             */
+            guidance?: string;
+        };
         /**
          * @description On-disk format of a model. A dimension of the data model rather
          *     than an assumption (locked 2026-09-08): both are implemented at
@@ -1587,6 +2831,46 @@ export interface operations {
             404: components["responses"]["Problem"];
         };
     };
+    getModelFit: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Defaults to the configured `guidanceContextLength`. Pass
+                 *     the model's own `contextLength` to ask "can I serve what
+                 *     this was trained for".
+                 */
+                contextLength?: number;
+                kvCacheType?: components["schemas"]["KvCacheType"];
+                /**
+                 * @description Override the detected VRAM budget. Sets `budget.source` to
+                 *     `override`, so a UI can say the verdict is about a machine
+                 *     it did not measure.
+                 */
+                vramBytes?: number;
+                /** @description Override the detected host-memory budget. */
+                ramBytes?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The verdict and the arithmetic behind it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelFit"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
     getScan: {
         parameters: {
             query?: never;
@@ -1669,6 +2953,339 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    searchCatalogue: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Free-text query, passed to upstream's own search. Omit to
+                 *     browse by `sort` alone, which is how the "what is popular
+                 *     right now" landing view works.
+                 */
+                q?: string;
+                /**
+                 * @description Restrict to repos serving this format. `gguf` maps to
+                 *     upstream's `gguf` filter; `safetensors` is inferred from
+                 *     library and tag metadata and is therefore approximate — a
+                 *     repo can hold both.
+                 */
+                format?: components["schemas"]["ModelFormat"];
+                /**
+                 * @description Publisher, e.g. `unsloth`. Worth a first-class parameter
+                 *     because "the quant publisher I trust" is how people
+                 *     actually navigate this catalogue.
+                 */
+                author?: string;
+                sort?: components["schemas"]["CatalogueSort"];
+                direction?: "asc" | "desc";
+                limit?: number;
+                /**
+                 * @description Opaque continuation token from a previous response's
+                 *     `nextCursor`. Cursor-based rather than offset because
+                 *     upstream paginates with an opaque cursor in a `Link` header
+                 *     and there is no page number to pass through.
+                 */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of results. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogueSearchPage"];
+                };
+            };
+            502: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getCatalogueModel: {
+        parameters: {
+            query: {
+                /** @description Upstream repo id, e.g. `unsloth/Qwen3.8-27B-GGUF`. */
+                repo: string;
+                /**
+                 * @description Branch, tag or commit. The response reports the
+                 *     `resolvedCommit` it landed on, because `main` moves —
+                 *     repos are requantized and re-uploaded under the same
+                 *     filenames.
+                 */
+                revision?: string;
+                /**
+                 * @description Context to score the candidates at. Defaults to the
+                 *     configured `guidanceContextLength`. This is the parameter
+                 *     the UI puts behind a slider: watching the recommendation
+                 *     walk down the quant list as context grows *is* the
+                 *     guidance.
+                 */
+                contextLength?: number;
+                kvCacheType?: components["schemas"]["KvCacheType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The repo, its candidates, and the guidance. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogueModel"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            502: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getCatalogueCard: {
+        parameters: {
+            query: {
+                repo: string;
+                revision?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogueCard"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            502: components["responses"]["Problem"];
+        };
+    };
+    preflightCatalogueFile: {
+        parameters: {
+            query: {
+                repo: string;
+                revision?: string;
+                /**
+                 * @description Repo-relative path of the file to read — for a split
+                 *     candidate, the **first** shard, which carries the whole
+                 *     KV block (verified: shard 1 of a 2-shard BF16 model gave
+                 *     the full metadata).
+                 */
+                file: string;
+                contextLength?: number;
+                kvCacheType?: components["schemas"]["KvCacheType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the file says about itself. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CataloguePreflight"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            502: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listDownloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The downloads. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadList"];
+                };
+            };
+        };
+    };
+    startDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadSpec"];
+            };
+        };
+        responses: {
+            /** @description Accepted; the transfer runs in the background. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Download"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            507: components["responses"]["Problem"];
+        };
+    };
+    getDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The record. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Download"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    cancelDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled and forgotten. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    pauseDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paused. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Download"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    resumeDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resuming. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Download"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    getHardware: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The host's memory and accelerators. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostHardware"];
+                };
+            };
+        };
+    };
+    getQuantTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tiers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuantTable"];
                 };
             };
         };

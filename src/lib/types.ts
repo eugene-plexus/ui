@@ -108,6 +108,51 @@ export type ScanRoot = LibraryComponents["schemas"]["ScanRoot"];
 export type SkippedPath = LibraryComponents["schemas"]["SkippedPath"];
 export type SkipReason = LibraryComponents["schemas"]["SkipReason"];
 
+// --- Library: the catalogue, downloads and guidance (M3) --------------
+//
+// The library's remote half. Two shapes carry most of the weight:
+//
+// `CatalogueCandidate` is one launchable *choice*, not one file — shards
+// are already summed, and the projectors and calibration files are
+// pulled out into their own lists. One real repo holds 30 `.gguf` files
+// and 25 candidates.
+//
+// `Fit` is the same computation in three places (a candidate, a local
+// model, a preflight), and `Fit.basis` is the field a UI should care
+// about: `estimate` means the KV term came from the file size alone,
+// `metadata` means the model's own declared shape produced it. That is
+// the difference between arithmetic and a guess with a number on it,
+// and it is what the Check button on a candidate exists to change.
+
+export type CatalogueSearchPage = LibraryComponents["schemas"]["CatalogueSearchPage"];
+export type CatalogueSearchResult = LibraryComponents["schemas"]["CatalogueSearchResult"];
+export type CatalogueSort = LibraryComponents["schemas"]["CatalogueSort"];
+export type CatalogueModel = LibraryComponents["schemas"]["CatalogueModel"];
+export type CatalogueCandidate = LibraryComponents["schemas"]["CatalogueCandidate"];
+export type CatalogueFile = LibraryComponents["schemas"]["CatalogueFile"];
+export type CatalogueRecommendation = LibraryComponents["schemas"]["CatalogueRecommendation"];
+export type CatalogueCard = LibraryComponents["schemas"]["CatalogueCard"];
+export type CataloguePreflight = LibraryComponents["schemas"]["CataloguePreflight"];
+export type AlreadyOwned = LibraryComponents["schemas"]["AlreadyOwned"];
+export type GateKind = LibraryComponents["schemas"]["GateKind"];
+export type ModelFileRole = LibraryComponents["schemas"]["ModelFileRole"];
+
+export type Fit = LibraryComponents["schemas"]["Fit"];
+export type FitVerdict = LibraryComponents["schemas"]["FitVerdict"];
+export type ModelFit = LibraryComponents["schemas"]["ModelFit"];
+export type MemoryBudget = LibraryComponents["schemas"]["MemoryBudget"];
+export type KvCacheType = LibraryComponents["schemas"]["KvCacheType"];
+export type HostHardware = LibraryComponents["schemas"]["HostHardware"];
+export type Gpu = LibraryComponents["schemas"]["Gpu"];
+export type QuantTable = LibraryComponents["schemas"]["QuantTable"];
+export type QuantTier = LibraryComponents["schemas"]["QuantTier"];
+
+export type Download = LibraryComponents["schemas"]["Download"];
+export type DownloadList = LibraryComponents["schemas"]["DownloadList"];
+export type DownloadSpec = LibraryComponents["schemas"]["DownloadSpec"];
+export type DownloadFile = LibraryComponents["schemas"]["DownloadFile"];
+export type DownloadState = LibraryComponents["schemas"]["DownloadState"];
+
 // --- Watchdog: engine acquisition (M1) --------------------------------
 
 export type ManagedEngine = WatchdogComponents["schemas"]["ManagedEngine"];
