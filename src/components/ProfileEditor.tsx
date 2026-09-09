@@ -158,13 +158,28 @@ export function ProfileEditor({
           {error}
         </p>
       )}
+      {/* Deliberately does not claim the model is ready to use. The
+          M2 acceptance run confirmed that launching declares a runtime
+          and stops there: the gateway routes via drivers, and nothing
+          yet points one at a port the watchdog only chose at launch.
+          Saying "done" here would be the UI lying about a step the
+          operator still has to take. Automating it is M5's routing
+          work — see docs/acceptance/m2-five-process-run.md. */}
       {launched && (
-        <p className="status-ok mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs">
-          Declared runtime <span className="font-mono">{launched}</span>. Watch it come up on the{" "}
+        <p className="status-warn mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
+          Declared runtime <span className="font-mono">{launched}</span>. Watch it load on the{" "}
           <a href="/runtimes" className="underline">
             Runtimes
           </a>{" "}
-          page — a large quant takes a while to load.
+          page — a large quant takes a while.
+          <br />
+          It is <strong>not routable yet</strong>: an inference-driver has to point at it before the
+          gateway can serve it. Set that driver&rsquo;s <span className="font-mono">baseUrl</span>{" "}
+          to the runtime&rsquo;s URL on the{" "}
+          <a href="/config" className="underline">
+            Config
+          </a>{" "}
+          page. Wiring that automatically is still to come.
         </p>
       )}
 
