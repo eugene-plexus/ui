@@ -29,9 +29,12 @@ const WORKING_DIR = join(REPO_ROOT, ".codegen-cache");
 // used to be hand-written in src/lib/watchdog.ts against a spec nobody
 // regenerated, which is exactly how a UI ends up rendering a status
 // enum the supervisor stopped emitting.
+//
+// library.yaml joined at M2, pinned from specs 8288926 onward.
 const SPECS = [
   { input: "openapi/gateway.yaml", output: "gateway.ts" },
   { input: "openapi/inference-driver.yaml", output: "inference-driver.ts" },
+  { input: "openapi/library.yaml", output: "library.ts" },
   { input: "openapi/watchdog.yaml", output: "watchdog.ts" },
 ];
 

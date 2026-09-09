@@ -664,9 +664,20 @@ export interface components {
         /**
          * @description The kind of value a config field holds. The UI uses this to pick
          *     a renderer (text input, dropdown, password field, etc.).
+         *
+         *     Two of these hold more than a scalar. `path_list` is an ordered
+         *     JSON array of directory paths on the component host — the
+         *     library's model roots are the first and so far only user — and
+         *     the UI renders it as an add/remove list of directory pickers
+         *     rather than a text field, because asking someone to
+         *     comma-separate Windows paths is asking for a bug report. Order
+         *     is preserved and meaningful: it is the order the operator sees,
+         *     and M3's downloader offers the first entry as the default
+         *     destination. `driver_list` stays reserved for M5's ordered
+         *     model→driver priority lists.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "url" | "duration" | "driver_list";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "duration" | "driver_list";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
@@ -684,10 +695,12 @@ export interface components {
          *     `gateway` is the one OpenAI-compatible front door and there is
          *     exactly one. `inference-driver` instances are the per-backend
          *     wrappers and there are N — one per backend, wherever that
-         *     backend lives.
+         *     backend lives. `library` scans the operator's model
+         *     directories and holds per-model launch profiles; there is
+         *     exactly one, and it is deliberately not in the request path.
          * @enum {string}
          */
-        ComponentKind: "gateway" | "inference-driver";
+        ComponentKind: "gateway" | "inference-driver" | "library";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field

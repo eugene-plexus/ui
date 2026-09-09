@@ -620,19 +620,6 @@ export interface components {
          * @enum {string}
          */
         ComponentStatus: "starting" | "running" | "safe_mode" | "exited" | "crashed" | "unreachable";
-        /**
-         * @description Which engine adapter constructs the argv and interprets
-         *     readiness. Deliberately a closed enum rather than a free string:
-         *     an engine is supported exactly when an adapter exists for it,
-         *     and without an adapter there is nothing that knows how to start
-         *     it or tell when it is ready.
-         *
-         *     `llama_cpp` drives upstream `llama-server`. vLLM is a second
-         *     adapter later, and MLX after that. We never ship an engine — all
-         *     three are upstream projects we wrap and track.
-         * @enum {string}
-         */
-        EngineKind: "llama_cpp";
         /** @description Whether this install has been through first-run setup. */
         AuthStatus: {
             /**
@@ -823,6 +810,24 @@ export interface components {
              *     for this engine will fail to spawn.
              */
             available: boolean;
+            /**
+             * @description On-disk model formats this adapter's engine can load. A
+             *     property of the engine, not of this host — it does not
+             *     change with `available`.
+             *
+             *     This is the engine half of a join the UI performs: the
+             *     library reports what format each model *is*, and this
+             *     reports what each engine can *load*. `llama_cpp` lists
+             *     `gguf` only, so a safetensors model in the library has
+             *     nowhere to run until the vLLM adapter lands, and the UI can
+             *     say so — naming the missing engine — instead of offering a
+             *     launch button that fails.
+             *
+             *     It lives here because engine knowledge lives here. Putting
+             *     format support on the library would give the library a copy
+             *     of it, and the copy would be the one that went stale.
+             */
+            modelFormats: components["schemas"]["ModelFormat"][];
             /** @description Absolute path to the binary the adapter would spawn. */
             binaryPath?: string;
             /**
@@ -891,6 +896,13 @@ export interface components {
              *     path, in the operator's own layout.** We never relocate,
              *     rename, or hash-address a model file; a runtime points at
              *     where the user put it.
+             *
+             *     For a sharded GGUF this is the *first* shard
+             *     (`…-00001-of-0000N.gguf`), which is what the engine expects.
+             *     When a runtime is created from the library, this is the
+             *     `path` off a `LibraryModel` and the `flags` are a
+             *     `ModelProfile` — but nothing here depends on the library
+             *     existing, and a hand-written runtime is still a runtime.
              */
             modelPath: string;
             /**
@@ -1157,10 +1169,12 @@ export interface components {
          *     `gateway` is the one OpenAI-compatible front door and there is
          *     exactly one. `inference-driver` instances are the per-backend
          *     wrappers and there are N — one per backend, wherever that
-         *     backend lives.
+         *     backend lives. `library` scans the operator's model
+         *     directories and holds per-model launch profiles; there is
+         *     exactly one, and it is deliberately not in the request path.
          * @enum {string}
          */
-        ComponentKind: "gateway" | "inference-driver";
+        ComponentKind: "gateway" | "inference-driver" | "library";
         /**
          * @description Acknowledgement returned by `POST /v1/admin/restart`. The
          *     component schedules its own process exit shortly after returning
@@ -1193,11 +1207,66 @@ export interface components {
             message?: string;
         };
         /**
-         * @description The kind of value a config field holds. The UI uses this to pick
-         *     a renderer (text input, dropdown, password field, etc.).
+         * @description Which engine adapter constructs the argv and interprets
+         *     readiness. Deliberately a closed enum rather than a free string:
+         *     an engine is supported exactly when an adapter exists for it,
+         *     and without an adapter there is nothing that knows how to start
+         *     it or tell when it is ready.
+         *
+         *     `llama_cpp` drives upstream `llama-server`. vLLM is a second
+         *     adapter later, and MLX after that. We never ship an engine — all
+         *     three are upstream projects we wrap and track.
+         *
+         *     Lives here rather than on the watchdog because two components
+         *     reference it: the watchdog's engines and runtimes, and a
+         *     library `ModelProfile`, which names the engine its launch flags
+         *     are written for.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "url" | "duration" | "driver_list";
+        EngineKind: "llama_cpp";
+        /**
+         * @description On-disk format of a model. A dimension of the data model rather
+         *     than an assumption (locked 2026-09-08): both are implemented at
+         *     v0.1, and the differences are load-bearing rather than
+         *     cosmetic.
+         *
+         *     * `gguf` — a single file, quantized, carrying its own metadata
+         *       and tokenizer. Large models may be **split** into
+         *       `…-00001-of-0000N.gguf` shards, of which only the first is
+         *       named on a launch line. A multimodal GGUF ships its vision
+         *       projector as a separate file in the same directory, which is
+         *       not itself a model.
+         *     * `safetensors` — a directory: `config.json` plus one or more
+         *       weight files plus tokenizer files. Unquantized in practice,
+         *       so **no quant tier** — a safetensors model is sized, not
+         *       tiered, and the quant fields exist only on the GGUF side.
+         *
+         *     Shared because it appears on both sides of a join: a library
+         *     entry declares what a model *is*, and
+         *     `EngineDescriptor.modelFormats` declares what an engine can
+         *     *load*. Nothing can serve a safetensors model until the vLLM
+         *     adapter lands, and that answer comes from the engine's
+         *     descriptor rather than from anything the library knows.
+         * @enum {string}
+         */
+        ModelFormat: "gguf" | "safetensors";
+        /**
+         * @description The kind of value a config field holds. The UI uses this to pick
+         *     a renderer (text input, dropdown, password field, etc.).
+         *
+         *     Two of these hold more than a scalar. `path_list` is an ordered
+         *     JSON array of directory paths on the component host — the
+         *     library's model roots are the first and so far only user — and
+         *     the UI renders it as an add/remove list of directory pickers
+         *     rather than a text field, because asking someone to
+         *     comma-separate Windows paths is asking for a bug report. Order
+         *     is preserved and meaningful: it is the order the operator sees,
+         *     and M3's downloader offers the first entry as the default
+         *     destination. `driver_list` stays reserved for M5's ordered
+         *     model→driver priority lists.
+         * @enum {string}
+         */
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "duration" | "driver_list";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
