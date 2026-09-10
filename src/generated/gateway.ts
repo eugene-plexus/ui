@@ -210,6 +210,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Aggregated per-backend latency, throughput and failure counts.
+         * @description What each backend actually did, over a window. The question this
+         *     exists to answer is "is this backend faster than that one for
+         *     this model **on this box**" — and the restraint that goes with
+         *     it: these numbers describe this install only. They are not a
+         *     benchmark and must not be presented as one.
+         *
+         *     Grouped by (model, driver, runtime, node, backend). A group's
+         *     throughput is computed from the latency of the attempt that
+         *     **served** the request, never the request's total — a cascade
+         *     whose primary timed out for 30 s before a secondary answered in
+         *     800 ms would otherwise report the secondary as forty times
+         *     slower than it is.
+         *
+         *     `tokensPerSecond` is **null**, not zero, for a group whose
+         *     backends do not report token usage — the CLI subscription
+         *     backends do not. A UI that renders those the same way says "slow"
+         *     where it means "unmeasured".
+         *
+         *     Operator-only. No component needs this, so a `service:*` token
+         *     is refused rather than accepted for reads as elsewhere; and
+         *     model names plus traffic volumes are not nothing on a shared
+         *     tailnet.
+         */
+        get: operations["getMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/metrics/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Individual retained requests, newest first, with their attempts.
+         * @description The rows behind the aggregates, for the question an aggregate
+         *     cannot answer: what happened at 02:14. Each request carries
+         *     every attempt it made, so a cascade is legible as one request
+         *     and the backends it tried in order.
+         *
+         *     Newest first, cursor-paged. Raw rows exist only within
+         *     `metricsRetentionDays`; older traffic survives as rollups
+         *     reachable through `GET /v1/metrics?bucket=hour` and not here.
+         */
+        get: operations["getMetricRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config": {
         parameters: {
             query?: never;
@@ -246,6 +314,22 @@ export interface paths {
          *       and runtimes, and a stop or start is sent to the agent that
          *       owns the runtime. Unset means a single-host install and the
          *       one configured agent.
+         *
+         *     The retained-metrics fields (M8):
+         *
+         *     * **`metricsEnabled`** (`boolean`, default `true`) — whether
+         *       completions are measured at all. False skips building the
+         *       row, not just writing it: the recording path runs on every
+         *       request, and "small" is how the routing table came to be a
+         *       refresh interval behind.
+         *     * **`metricsRetentionDays`** (`integer`, default `7`) — how
+         *       long raw per-request rows are kept. `0` keeps rollups only.
+         *       A request plus its attempts is roughly 200 bytes, so a heavy
+         *       install at one completion a second is about 17 MB a day.
+         *     * **`metricsRollupEnabled`** (`boolean`, default `true`) —
+         *       hourly aggregates, kept indefinitely because they are a few
+         *       hundred rows a day and they are the only thing that can
+         *       answer "what did last night look like" once raw rows age out.
          */
         get: operations["getConfig"];
         put?: never;
@@ -533,6 +617,7 @@ export interface components {
              */
             model: string;
             choices: components["schemas"]["ChatCompletionChoice"][];
+            /** @description Present on the final chunk only. */
             usage?: components["schemas"]["CompletionUsage"];
             x_eugene_plexus?: components["schemas"]["CompletionRoutingInfo"];
         };
@@ -555,8 +640,23 @@ export interface components {
             created: number;
             model: string;
             choices: components["schemas"]["ChatCompletionChunkChoice"][];
-            /** @description Present on the final chunk only. */
             usage?: components["schemas"]["CompletionUsage"];
+            /**
+             * @description Set on the **final frame only**, alongside `usage` — the
+             *     same place OpenAI puts its own end-of-stream extras.
+             *     Absent on every earlier frame, because the values are not
+             *     known until the completion is done.
+             *
+             *     Added at M8. Until then a streaming client could see no
+             *     routing information at all: the non-streaming response
+             *     carried this and the stream did not, so exactly the clients
+             *     that stream — the UI playground among them — were the ones
+             *     that could not tell which backend answered. Retained
+             *     metrics do not depend on this (they are recorded at the
+             *     routing hooks, which fire on both paths); this closes the
+             *     matching gap in what a caller can see.
+             */
+            x_eugene_plexus?: components["schemas"]["CompletionRoutingInfo"];
         };
         ChatCompletionChunkChoice: {
             index: number;
@@ -718,6 +818,177 @@ export interface components {
                 param?: string | null;
                 code?: string | null;
             };
+        };
+        /**
+         * @description A latency distribution, in milliseconds. Percentiles rather than
+         *     a mean because generation latency is long-tailed, and a mean
+         *     hides exactly the requests an operator is asking about.
+         */
+        Percentiles: {
+            p50: number;
+            p90: number;
+            p99?: number;
+            max: number;
+        };
+        /**
+         * @description Completion tokens per second, computed from the **serving
+         *     attempt's** elapsed time — not the request total, which
+         *     includes failed attempts.
+         *
+         *     `samples` is how many requests in the group actually reported
+         *     token usage, and can be lower than the group's `requests`. A
+         *     group where nothing reported usage is not given a zeroed
+         *     `Throughput`: the field is null instead, so "unmeasured" and
+         *     "zero" stay distinguishable.
+         */
+        Throughput: {
+            p50: number;
+            p90?: number;
+            samples: number;
+        };
+        /**
+         * @description One dimension tuple's numbers over the window, or over one hour
+         *     of it when `bucket=hour`.
+         */
+        MetricsGroup: {
+            /**
+             * Format: date-time
+             * @description Present only when `bucket=hour`.
+             */
+            bucketStart?: string;
+            /**
+             * @description The model id the client **asked for**. After a cascade this
+             *     is not what answered — `driver` and `runtime` say that —
+             *     and grouping by the requested id is what makes "this model
+             *     is slow" answerable at all.
+             */
+            model?: string;
+            driver?: string;
+            /**
+             * @description The engine runtime behind the driver, by name so replicas
+             *     are distinguished. Null for hosted and CLI backends, which
+             *     have no runtime of ours.
+             */
+            runtime?: string | null;
+            /** @description Which host's agent supervises it. Null before enrollment. */
+            node?: string | null;
+            backend?: components["schemas"]["BackendKind"];
+            requests: number;
+            /** @description Requests that ended with no backend having served them. */
+            errors: number;
+            /**
+             * @description Requests with `attempts > 1`. A cascade that silently
+             *     always works hides a broken primary, which is why this is
+             *     counted rather than only logged.
+             */
+            cascaded: number;
+            /**
+             * @description Requests that had to wake a `startOnDemand` runtime. The
+             *     measured cost of M6's idle unload, which shipped with no
+             *     way to see what it costs.
+             */
+            swappedIn: number;
+            latencyMs: components["schemas"]["Percentiles"];
+            /** @description Null when no request in this group reported token usage. */
+            tokensPerSecond?: components["schemas"]["Throughput"] | null;
+            /**
+             * @description Wake latency, over the `swappedIn` requests only. Null when
+             *     none of them woke anything.
+             */
+            waitedMs?: components["schemas"]["Percentiles"] | null;
+            /**
+             * @description Requests served, keyed by the 1-based tier that answered. A
+             *     slot whose tier 2 answers everything has a primary that is
+             *     not working, and this is where that becomes visible.
+             */
+            tierCounts?: {
+                [key: string]: number;
+            };
+        };
+        MetricsSummary: {
+            /** Format: date-time */
+            windowStart: string;
+            /** Format: date-time */
+            windowEnd: string;
+            /**
+             * Format: date-time
+             * @description When this gateway process started. Present so a history
+             *     that begins mid-window reads as partial rather than as an
+             *     install that served nothing — the gateway is respawned on
+             *     operator login, so a fresh start time is routine.
+             */
+            gatewayStartedAt: string;
+            /**
+             * @description Measurements discarded since startup because the write
+             *     queue was full. Non-zero means these numbers are a sample
+             *     rather than a census, and the endpoint says so instead of
+             *     quietly under-reporting. Recording degrades before
+             *     inference does.
+             */
+            rowsDropped: number;
+            /**
+             * @description True when the window reaches past `metricsRetentionDays`,
+             *     so raw rows for its early part no longer exist. With
+             *     `bucket=hour` the rollups still cover it.
+             */
+            truncated?: boolean;
+            groups: components["schemas"]["MetricsGroup"][];
+        };
+        /** @description One backend touched by one request, in the order tried. */
+        MetricAttempt: {
+            driver: string;
+            runtime?: string | null;
+            node?: string | null;
+            backend?: components["schemas"]["BackendKind"];
+            /** @description This attempt alone, not the request. */
+            elapsedMs: number;
+            served: boolean;
+            /**
+             * @description The exception **class name** only, never its message.
+             *     Driver error text can carry a provider's response body, and
+             *     a metrics table is the kind of thing that gets pasted into
+             *     an issue — this must not become an accidental credential
+             *     store.
+             */
+            error?: string | null;
+        };
+        MetricRequest: {
+            /** Format: date-time */
+            startedAt: string;
+            requestedModel: string;
+            /**
+             * @description What actually answered. Differs from the requested id after
+             *     a cascade.
+             */
+            servedModel?: string | null;
+            attempts: number;
+            tier?: number;
+            /**
+             * @description Gateway-side wall clock for the whole request, including
+             *     failed attempts and excluding the wake — the same figure
+             *     `x_eugene_plexus.latency_ms` reports. Per-backend
+             *     throughput comes from `tries[].elapsedMs`, never from here.
+             */
+            totalMs: number;
+            waitedMs?: number;
+            swappedIn?: boolean;
+            /**
+             * @description Whether the client asked for SSE. Recorded because streamed
+             *     requests were invisible to the response envelope, and a
+             *     store that could not tell them apart would hide the very
+             *     gap it was built to close.
+             */
+            streamed?: boolean;
+            promptTokens?: number | null;
+            completionTokens?: number | null;
+            /** @enum {string} */
+            outcome: "served" | "error";
+            tries: components["schemas"]["MetricAttempt"][];
+        };
+        MetricRequestPage: {
+            requests: components["schemas"]["MetricRequest"][];
+            /** @description Absent or null on the last page. */
+            nextCursor?: string | null;
         };
         /**
          * @description Which wire protocol an inference-driver instance speaks to its
@@ -1372,6 +1643,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RestartResult"];
+                };
+            };
+        };
+    };
+    getMetrics: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Start of the window, inclusive. Defaults to 24 hours ago.
+                 *     Rows older than `metricsRetentionDays` are gone, so a
+                 *     `since` beyond it returns what survived, plus rollups when
+                 *     `bucket=hour`.
+                 */
+                since?: string;
+                /** @description End of the window, exclusive. Defaults to now. */
+                until?: string;
+                /** @description Restrict to one requested model id. */
+                model?: string;
+                /** @description Restrict to one inference-driver by name. */
+                driver?: string;
+                /**
+                 * @description `none` (default) returns one group per dimension tuple over
+                 *     the whole window. `hour` additionally splits each group by
+                 *     hour, which is what a history chart reads and the only
+                 *     granularity rollups retain once raw rows are pruned.
+                 */
+                bucket?: "none" | "hour";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Aggregates over the window. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsSummary"];
+                };
+            };
+            /**
+             * @description Metrics are disabled (`metricsEnabled: false`) or the store
+             *     could not be opened. Distinguished from an empty window,
+             *     which is a 200 with no groups.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getMetricRequests: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /**
+                 * @description `nextCursor` from a previous page. Opaque; encodes the
+                 *     position rather than an offset, so a page is stable while
+                 *     new requests arrive.
+                 */
+                cursor?: string;
+                model?: string;
+                /**
+                 * @description Restrict to one outcome. `error` and `cascaded` are the two
+                 *     worth filtering for; `cascaded` means `attempts > 1`
+                 *     whether or not the request eventually succeeded.
+                 */
+                outcome?: "served" | "error" | "cascaded";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of retained requests. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricRequestPage"];
+                };
+            };
+            /** @description Metrics are disabled or the store could not be opened. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

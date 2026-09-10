@@ -293,6 +293,12 @@ export default function PlaygroundPage() {
             Runtimes
           </Link>
           <Link
+            href="/metrics"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+          >
+            Metrics
+          </Link>
+          <Link
             href="/config"
             className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
