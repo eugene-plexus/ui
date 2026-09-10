@@ -135,6 +135,14 @@ export default function WizardPage() {
   // not "nothing there" - and reporting the difference wrongly accused a
   // perfectly good install of missing every component.
   const [topologyKnown, setTopologyKnown] = useState(false);
+  // Set once a backend driver has been created and asked what it can serve.
+  // Its presence turns the last screen into a model picker: the driver has to
+  // exist before it can list models, so this is the earliest the operator can
+  // be offered a real list instead of a text box.
+  const [pendingBackend, setPendingBackend] = useState<{
+    name: string;
+    models: string[];
+  } | null>(null);
   // Passphrase state lives OUTSIDE the persisted draft — never written
   // to sessionStorage. A mid-wizard refresh re-prompts for it.
   const [passphrase, setPassphrase] = useState("");
@@ -319,6 +327,44 @@ export default function WizardPage() {
         await withRetry(() =>
           api.post("agent", `/v1/components/${encodeURIComponent(name)}/restart`, {}),
         );
+
+        // Now that it exists and is talking to the backend, ask it what it
+        // can serve. The driver publishes discovered models as `suggestions`
+        // on the modelId field of its own config schema - the same list the
+        // Config page renders as a dropdown. Nothing earlier in the wizard
+        // could have obtained this: there was no driver to ask, and before
+        // Start there is not even a session token.
+        setStartMessage("Asking your backend which models it has…");
+        const models = await withRetry(() => fetchBackendModels(name));
+        setPendingBackend({ name, models });
+        setStarting(false);
+        setStartMessage(null);
+        return;
+      }
+
+      await finishSetup(null, "");
+    } catch (e) {
+      const detail = formatStartError(e);
+      setStartError(detail);
+      setStarting(false);
+    }
+  }
+
+  /** The last write. Separate because a backend needs a model chosen first,
+   * and `firstRunComplete` must not flip until everything has landed. */
+  async function finishSetup(driverName: string | null, modelId: string) {
+    setStarting(true);
+    setStartError(null);
+    try {
+      if (driverName && modelId.trim()) {
+        setStartMessage("Setting the model…");
+        await withRetry(() => api.patch(driverName, "/v1/config", { modelId: modelId.trim() }));
+        // Read at startup, like the provider: without this the gateway lists
+        // nothing and the backend is silently inert.
+        setStartMessage("Restarting your backend…");
+        await withRetry(() =>
+          api.post("agent", `/v1/components/${encodeURIComponent(driverName)}/restart`, {}),
+        );
       }
 
       setStartMessage("Finalizing setup…");
@@ -416,7 +462,18 @@ export default function WizardPage() {
               onChange={(patch) => patchDraft({ backend: { ...draft.backend, ...patch } })}
             />
           )}
-          {screen === 8 && (
+          {screen === 8 && pendingBackend && (
+            <ScreenPickModel
+              driverName={pendingBackend.name}
+              models={pendingBackend.models}
+              value={draft.backend.modelId}
+              onChange={(v) => patchDraft({ backend: { ...draft.backend, modelId: v } })}
+              starting={starting}
+              startMessage={startMessage}
+              startError={startError}
+            />
+          )}
+          {screen === 8 && !pendingBackend && (
             <ScreenDone
               draft={draft}
               knownComponents={knownComponents}
@@ -433,7 +490,12 @@ export default function WizardPage() {
         onCancel={cancel}
         onBack={back}
         onNext={next}
-        onStart={start}
+        onStart={
+          pendingBackend
+            ? () => void finishSetup(pendingBackend.name, draft.backend.modelId)
+            : start
+        }
+        startLabel={pendingBackend ? "Finish" : "Start"}
         starting={starting}
         canContinue={canContinue(screen, draft, passphrase, passphraseConfirm)}
       />
@@ -460,6 +522,22 @@ async function withRetry<T>(call: () => Promise<T>, attempts = 10, delayMs = 100
     }
   }
   throw lastError;
+}
+
+/**
+ * What this backend can actually serve.
+ *
+ * The driver discovers its backend's models and publishes them as
+ * `suggestions` on the `modelId` field of its own config schema - live for
+ * HTTP providers, hardcoded for the CLI ones. `modelId` stays free text
+ * either way, so a model pulled after this call can still be typed in.
+ */
+async function fetchBackendModels(driverName: string): Promise<string[]> {
+  const schema = await api.get<{
+    fields?: { key: string; suggestions?: string[] }[];
+  }>(driverName, "/v1/config/schema");
+  const field = (schema.fields ?? []).find((f) => f.key === "modelId");
+  return field?.suggestions ?? [];
 }
 
 function buildBackendPatch(b: BackendDraft): Record<string, unknown> {
@@ -534,9 +612,12 @@ function canContinue(
   // a chosen one has to be complete. A driver with no model id advertises no
   // model, so the gateway lists nothing and the backend is silently inert:
   // exactly the shape of failure this wizard keeps being fixed for.
+  // Screen 7 is an external backend, and "none" is a valid answer. The model
+  // is deliberately NOT asked here: a driver has to exist before it can list
+  // what it serves, and it cannot exist before Start. The last screen asks,
+  // from a real list.
   if (screen === 7 && draft.backend.provider) {
     const b = draft.backend;
-    if (!b.modelId.trim()) return false;
     const credentials = WIZARD_PROVIDERS.find((p) => p.key === b.provider)?.credentials ?? [];
     if (credentials.includes("api_key") && !b.apiKey.trim()) return false;
     if (credentials.includes("base_url") && !b.baseUrl.trim()) return false;
@@ -585,6 +666,7 @@ function WizardFooter({
   onBack,
   onNext,
   onStart,
+  startLabel,
   starting,
   canContinue,
 }: {
@@ -593,6 +675,7 @@ function WizardFooter({
   onBack: () => void;
   onNext: () => void;
   onStart: () => void;
+  startLabel: string;
   starting: boolean;
   canContinue: boolean;
 }) {
@@ -630,7 +713,7 @@ function WizardFooter({
             disabled={starting}
             className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {starting ? "Starting…" : "Start"}
+            {starting ? "Working…" : startLabel}
           </button>
         ) : (
           <button
@@ -991,18 +1074,9 @@ function ScreenBackend({
       ) : (
         <>
           <CredentialFields credentials={credentials} backend={backend} onChange={onChange} />
-          <Field
-            label="Model"
-            description="Which model this backend serves, exactly as it names it — `ollama list` or your provider's docs. Required: a driver with no model id advertises nothing, so the gateway would route to it never."
-          >
-            <input
-              type="text"
-              value={backend.modelId}
-              onChange={(e) => onChange({ modelId: e.target.value })}
-              placeholder="qwen3-coder:30b"
-              className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-            />
-          </Field>
+          <p className="text-xs leading-relaxed text-[color:var(--muted)]">
+            You will pick the model on the next screen, from the list this backend reports.
+          </p>
         </>
       )}
     </section>
@@ -1078,6 +1152,92 @@ function CredentialFields({
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * Pick the model, from a list the backend actually reported.
+ *
+ * A separate screen rather than a field on the backend screen because a
+ * driver has to exist before it can be asked what it serves, and one cannot
+ * exist before Start - there is no session token until the passphrase is set.
+ * The alternative was making the operator hand-type an exact model id, which
+ * is what this replaces.
+ */
+function ScreenPickModel({
+  driverName,
+  models,
+  value,
+  onChange,
+  starting,
+  startMessage,
+  startError,
+}: {
+  driverName: string;
+  models: string[];
+  value: string;
+  onChange: (v: string) => void;
+  starting: boolean;
+  startMessage: string | null;
+  startError: string | null;
+}) {
+  const listed = models.includes(value);
+  const other = value.trim() !== "" && !listed;
+
+  return (
+    <section>
+      <h2 className="font-ui mb-2 text-xl font-semibold">Which model?</h2>
+      <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
+        <span className="font-mono">{driverName}</span> is connected.{" "}
+        {models.length > 0
+          ? "These are the models it reports having."
+          : "It reported no models — it may have none pulled yet. Type an id if you know one."}
+      </p>
+      {models.length > 0 && (
+        <Field label="Model" description="What the gateway routes to for this backend.">
+          <select
+            value={other ? "__other__" : value}
+            onChange={(e) => onChange(e.target.value === "__other__" ? " " : e.target.value)}
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          >
+            <option value="">Choose a model…</option>
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+            <option value="__other__">Something else…</option>
+          </select>
+        </Field>
+      )}
+      {(other || models.length === 0) && (
+        <Field
+          label="Model id"
+          description="Exactly as the backend names it. Something pulled just now will not be in the list."
+        >
+          <input
+            type="text"
+            value={value.trim()}
+            onChange={(e) => onChange(e.target.value)}
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          />
+        </Field>
+      )}
+      <p className="mb-4 text-xs leading-relaxed text-[color:var(--muted)]">
+        You can skip this and choose later from Config — the backend just will not route anything
+        until you do.
+      </p>
+      {starting && startMessage && (
+        <p className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--muted)]">
+          {startMessage}
+        </p>
+      )}
+      {startError && (
+        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">
+          {startError}
+        </p>
+      )}
+    </section>
   );
 }
 
