@@ -103,6 +103,11 @@ export default function WizardPage() {
   const [startError, setStartError] = useState<string | null>(null);
   const [startMessage, setStartMessage] = useState<string | null>(null);
   const [knownComponents, setKnownComponents] = useState<Component[]>([]);
+  // Whether that list is an answer or just an absence. Before a passphrase
+  // exists the agent 401s this read, so an empty list means "not told",
+  // not "nothing there" - and reporting the difference wrongly accused a
+  // perfectly good install of missing every component.
+  const [topologyKnown, setTopologyKnown] = useState(false);
   // Passphrase state lives OUTSIDE the persisted draft — never written
   // to sessionStorage. A mid-wizard refresh re-prompts for it.
   const [passphrase, setPassphrase] = useState("");
@@ -161,6 +166,7 @@ export default function WizardPage() {
         const list = await api.get<ComponentList>("agent", "/v1/components", { skipAuth: true });
         if (cancelled) return;
         setKnownComponents(list.components ?? []);
+        setTopologyKnown(true);
       } catch {
         // Agent unreachable or auth-required — leave empty.
       }
@@ -212,6 +218,25 @@ export default function WizardPage() {
         { skipAuth: true },
       );
       setSessionToken(initResp.sessionToken);
+
+      // Step 1b: now that there is a token, read the topology for real.
+      // This is the first moment the wizard can tell an empty install from
+      // an unauthorized read, and it is the check that should have stopped
+      // a first run finishing against nothing. The agent declares control,
+      // gateway and library on its first boot, so a missing one means its
+      // package is absent from the agent's environment - unfixable from
+      // here, and worth stopping for rather than reporting success.
+      setStartMessage("Checking this node's components…");
+      const live = await api.get<ComponentList>("agent", "/v1/components");
+      const missing = requiredKindsMissing(live.components ?? []);
+      if (missing.length > 0) {
+        throw new Error(
+          `This node has no ${missing.join(", ")}. The agent declares those on its ` +
+            `first boot, so they are missing from its Python environment. Install ` +
+            `them there (scripts/bootstrap.ps1 does this) and restart the agent. ` +
+            `Your passphrase is set; re-run setup after fixing it.`,
+        );
+      }
 
       // Step 2: persist the chosen securityMode. Default is
       // prompt_on_startup; skip the patch if unchanged so we don't touch
@@ -335,6 +360,7 @@ export default function WizardPage() {
             <ScreenDone
               draft={draft}
               knownComponents={knownComponents}
+              topologyKnown={topologyKnown}
               starting={starting}
               startMessage={startMessage}
               startError={startError}
@@ -374,6 +400,20 @@ async function withRetry<T>(call: () => Promise<T>, attempts = 10, delayMs = 100
     }
   }
   throw lastError;
+}
+
+const REQUIRED_KINDS = ["control", "gateway", "library"] as const;
+
+/**
+ * Which of the components every install must have are absent.
+ *
+ * Only meaningful against a list that was actually read. An unauthenticated
+ * `GET /v1/components` 401s on an install with no passphrase yet, and
+ * treating that empty result as an answer told an operator with a perfectly
+ * good three-component install that all three were missing.
+ */
+function requiredKindsMissing(components: Component[]): string[] {
+  return REQUIRED_KINDS.filter((kind) => !components.some((c) => c.kind === kind));
 }
 
 function canContinue(
@@ -791,12 +831,14 @@ function ScreenDeployment({
 function ScreenDone({
   draft,
   knownComponents,
+  topologyKnown,
   starting,
   startMessage,
   startError,
 }: {
   draft: WizardDraft;
   knownComponents: Component[];
+  topologyKnown: boolean;
   starting: boolean;
   startMessage: string | null;
   startError: string | null;
@@ -825,9 +867,9 @@ function ScreenDone({
   // The agent declares these itself on a first boot. If one is missing, its
   // package is missing from the agent's environment - a real error, not a
   // step the operator forgot.
-  const missingKinds = (["control", "gateway", "library"] as const).filter(
-    (kind) => !knownComponents.some((c) => c.kind === kind),
-  );
+  // Only when the list is an answer. Unauthenticated, it is not one, and the
+  // real check happens at Start with a token - see requiredKindsMissing.
+  const missingKinds = topologyKnown ? requiredKindsMissing(knownComponents) : [];
 
   return (
     <section>
