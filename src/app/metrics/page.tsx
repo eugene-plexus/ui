@@ -61,6 +61,8 @@ interface MetricsGroup {
   latencyMs: Percentiles;
   tokensPerSecond?: Throughput | null;
   waitedMs?: Percentiles | null;
+  routingMs?: Percentiles | null;
+  overheadMs?: Percentiles | null;
   tierCounts?: Record<string, number>;
 }
 
@@ -80,6 +82,21 @@ interface MetricAttempt {
   elapsedMs: number;
   served: boolean;
   error?: string | null;
+  /** The driver's own measurement of its backend call. `elapsedMs`
+   * minus this is what the control plane itself cost. Null when the
+   * backend did not report one. */
+  backendMs?: number | null;
+}
+
+/** One backend the balancer considered. The inputs to the decision, not
+ * a score - there is no score, least-busy is a sort. */
+interface MetricCandidate {
+  driver: string;
+  tier: number;
+  eligible: boolean;
+  reason?: string | null;
+  inFlight?: number | null;
+  slots?: number | null;
 }
 
 interface MetricRequest {
@@ -96,6 +113,10 @@ interface MetricRequest {
   completionTokens?: number | null;
   outcome: "served" | "error";
   tries: MetricAttempt[];
+  routingMs?: number | null;
+  refreshed?: boolean;
+  strategy?: string | null;
+  candidates?: MetricCandidate[];
 }
 
 const WINDOWS: { label: string; hours: number }[] = [
@@ -252,6 +273,18 @@ export default function MetricsPage() {
                   <th className="py-2 pr-3 text-right font-medium">Median</th>
                   <th className="py-2 pr-3 text-right font-medium">Slowest</th>
                   <th className="py-2 pr-3 text-right font-medium">Tokens/sec</th>
+                  <th
+                    className="py-2 pr-3 text-right font-medium"
+                    title="Time spent deciding where to send the request: resolving the model, picking a backend, and any routing-table refresh."
+                  >
+                    Routing
+                  </th>
+                  <th
+                    className="py-2 pr-3 text-right font-medium"
+                    title="What Eugene Plexus itself cost: the local hop to the driver plus the driver's own work. Measured rather than assumed."
+                  >
+                    Overhead
+                  </th>
                   <th className="py-2 pr-3 text-right font-medium">Failed</th>
                   <th className="py-2 pr-3 text-right font-medium">Failed over</th>
                   <th className="py-2 text-right font-medium">Woken</th>
@@ -297,6 +330,25 @@ export default function MetricsPage() {
                       )}
                     </td>
                     <td className="py-2 pr-3 text-right font-mono">
+                      {g.routingMs ? (
+                        ms(g.routingMs.p50)
+                      ) : (
+                        <span className="text-[color:var(--muted)]">&mdash;</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono">
+                      {g.overheadMs ? (
+                        ms(g.overheadMs.p50)
+                      ) : (
+                        <span
+                          className="text-[color:var(--muted)]"
+                          title="This backend does not report how long its own call took, so the split cannot be computed. Not the same as no overhead."
+                        >
+                          unreported
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono">
                       {g.errors > 0 ? (
                         <span className="text-status-error">{g.errors}</span>
                       ) : (
@@ -336,13 +388,21 @@ export default function MetricsPage() {
             request — so a failover does not make the backend that rescued it look slow. The number
             in brackets is how many requests the median is over.
           </p>
+          <p className="mt-1 text-[11px] text-[color:var(--muted)]">
+            <strong>Overhead</strong> is what Eugene Plexus itself costs: the gap between how long
+            the backend said it took and how long the gateway saw it take. Compare it against the
+            median to decide whether routing is worth worrying about — on a local install it usually
+            is not, and this is where you can check that rather than take our word for it.
+          </p>
 
           {recent && recent.length > 0 && (
             <section className="mt-8">
               <h2 className="font-ui mb-2 text-sm font-semibold">Recent requests</h2>
               <p className="mb-3 text-xs text-[color:var(--muted)]">
                 The rows behind the numbers above, newest first. A request that tried more than one
-                backend shows each attempt in the order it was tried.
+                backend shows each attempt in the order it was tried, and one where there was a
+                choice to make shows what the balancer saw when it made it — which is the answer to
+                &ldquo;why did this go there and not to the other one&rdquo;.
               </p>
               <ul className="space-y-1">
                 {recent.map((r, i) => (
@@ -363,14 +423,40 @@ export default function MetricsPage() {
                       {r.streamed && " · streamed"}
                       {r.swappedIn && ` · woken after ${ms(r.waitedMs ?? 0)}`}
                       {r.tier != null && r.tier > 1 && ` · tier ${r.tier}`}
+                      {/* A refresh is the surprising cost: HTTP to the agent
+                          and to every driver, inside this request. Called out
+                          rather than left to be inferred from the number. */}
+                      {r.routingMs != null &&
+                        ` · ${ms(r.routingMs)} routing${r.refreshed ? " (refreshed)" : ""}`}
                     </span>
                     {r.tries.length > 1 && (
                       <div className="mt-1 pl-4 text-[color:var(--muted)]">
                         {r.tries.map((t, j) => (
                           <div key={j}>
                             {t.served ? "✓" : "✗"} {t.driver} {ms(t.elapsedMs)}
+                            {t.backendMs != null &&
+                              ` (${ms(t.backendMs)} backend, ${ms(
+                                Math.max(0, t.elapsedMs - t.backendMs),
+                              )} us)`}
                             {t.error && ` — ${t.error}`}
                           </div>
+                        ))}
+                      </div>
+                    )}
+                    {r.candidates && r.candidates.length > 0 && (
+                      <div className="mt-1 pl-4 text-[color:var(--muted)]">
+                        considered{r.strategy ? ` (${r.strategy})` : ""}:{" "}
+                        {r.candidates.map((c, j) => (
+                          <span key={j}>
+                            {j > 0 && ", "}
+                            <span className={c.eligible ? "" : "opacity-60"}>
+                              {c.driver}
+                              {c.tier > 1 && ` t${c.tier}`}
+                              {c.eligible
+                                ? c.inFlight != null && ` ${c.inFlight}/${c.slots ?? 1}`
+                                : ` — ${c.reason ?? "not eligible"}`}
+                            </span>
+                          </span>
                         ))}
                       </div>
                     )}

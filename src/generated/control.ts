@@ -426,7 +426,19 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Exchange the operator passphrase for a session token. */
+        /**
+         * Exchange the operator passphrase for a session token.
+         * @description Returns `common.yaml`'s shared `AuthLoginResponse`, the same
+         *     shape the agent's login returns, so the field is `sessionToken`.
+         *
+         *     It was not always. This document used to define its own local
+         *     `SessionToken` whose field was `token`, which meant the one
+         *     concept had two wire shapes in one install and the UI's session
+         *     handling could not be reused against the trust root. A component
+         *     redefining a shared schema locally is precisely what the shared
+         *     `specs` repo exists to prevent, so the duplicate is gone rather
+         *     than documented.
+         */
         post: operations["authLogin"];
         delete?: never;
         options?: never;
@@ -1061,11 +1073,6 @@ export interface components {
              */
             passphrase: string;
         };
-        SessionToken: {
-            token: string;
-            /** Format: date-time */
-            expiresAt?: string;
-        };
         /**
          * @description What kind of device this is.
          *
@@ -1213,6 +1220,28 @@ export interface components {
          * @enum {string}
          */
         EngineKind: "llama_cpp" | "vllm";
+        /**
+         * @description Issued on successful login. The UI stores `sessionToken` as a
+         *     Secure / HttpOnly / SameSite=Strict cookie or in memory; every
+         *     subsequent proxy request includes it as
+         *     `Authorization: Bearer <token>`.
+         */
+        AuthLoginResponse: {
+            /**
+             * @description Opaque bearer token. Signed and validated server-side; the
+             *     UI should never inspect its contents. Lifetime is bounded
+             *     by `expiresAt`.
+             */
+            sessionToken: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /**
+             * @description The operator's display name from the constitution
+             *     (typically "operator" or whatever the operator set).
+             *     Echoed for UI welcome strings.
+             */
+            operatorName?: string;
+        };
         /**
          * @description Current effective config values, keyed by `ConfigField.key`.
          *     Values of fields with `sensitive: true` are returned as the
@@ -2013,7 +2042,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionToken"];
+                    "application/json": components["schemas"]["AuthLoginResponse"];
                 };
             };
             /** @description Passphrase rejected. */

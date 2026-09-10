@@ -43,6 +43,8 @@ beforeEach(() => {
         swappedIn: 0,
         latencyMs: { p50: 760, p90: 1200, max: 17914 },
         tokensPerSecond: { p50: 116.8, samples: 4 },
+        routingMs: { p50: 3, p90: 8, max: 41 },
+        overheadMs: { p50: 6, p90: 12, max: 30 },
       },
       {
         model: "claude-via-cli",
@@ -53,8 +55,12 @@ beforeEach(() => {
         cascaded: 1,
         swappedIn: 0,
         latencyMs: { p50: 2000, p90: 3000, max: 3000 },
-        // The CLI subscription backends never report token counts.
+        // The CLI subscription backends never report token counts, and
+        // without the backend's own latency the overhead split cannot be
+        // computed either.
         tokensPerSecond: null,
+        routingMs: { p50: 2, p90: 4, max: 9 },
+        overheadMs: null,
       },
     ],
   };
@@ -99,10 +105,16 @@ describe("metrics page", () => {
 
   it("renders an unreported throughput as unreported, never as zero", async () => {
     render(<MetricsPage />);
+    await screen.findByText("116.8");
+    // Scoped to the row, because "unreported" is now the right word in
+    // two columns - throughput and overhead - and both are absent for
+    // this backend for the same underlying reason.
+    const row = screen.getByText("claude-cli").closest("tr");
+    expect(row).not.toBeNull();
+    expect(row).toHaveTextContent("unreported");
     // "0 tok/s" would say slow where the data says unmeasured, and the
     // operator cannot recover the difference from the screen.
-    expect(await screen.findByText("unreported")).toBeInTheDocument();
-    expect(screen.queryByText("0.0")).not.toBeInTheDocument();
+    expect(row).not.toHaveTextContent("0.0");
   });
 
   it("says metrics are off rather than showing an empty window", async () => {
@@ -137,5 +149,84 @@ describe("metrics page", () => {
       // Within a minute of an hour ago, not a day ago.
       expect(Date.now() - since.getTime()).toBeLessThan(3700_000);
     });
+  });
+
+  it("shows the routing phase and the control plane's own overhead", async () => {
+    render(<MetricsPage />);
+    await screen.findByText("116.8");
+    // The two phases that used to be invisible: routing happened before
+    // any clock started, and the local hop was asserted to be free
+    // rather than measured.
+    expect(screen.getByText("3 ms")).toBeInTheDocument();
+    expect(screen.getByText("6 ms")).toBeInTheDocument();
+  });
+
+  it("says overhead is unreported rather than showing it as free", async () => {
+    render(<MetricsPage />);
+    await screen.findByText("116.8");
+    // A backend that does not report its own latency leaves the split
+    // uncomputable. Rendering it as 0 would assert the hop is free,
+    // which is the claim the measurement exists to check.
+    const unreported = screen.getAllByText("unreported");
+    expect(unreported.length).toBe(2);
+  });
+
+  it("shows what the balancer considered, including why one was skipped", async () => {
+    requests = {
+      requests: [
+        {
+          startedAt: "2026-09-10T22:00:00Z",
+          requestedModel: "qwen",
+          servedModel: "qwen",
+          attempts: 1,
+          tier: 1,
+          totalMs: 900,
+          outcome: "served",
+          routingMs: 4,
+          refreshed: true,
+          strategy: "least_busy",
+          tries: [{ driver: "replica-a", elapsedMs: 880, served: true, backendMs: 870 }],
+          candidates: [
+            { driver: "replica-a", tier: 1, eligible: true, inFlight: 0, slots: 4 },
+            {
+              driver: "replica-b",
+              tier: 1,
+              eligible: false,
+              reason: "runtime 'rt-b' is stopped",
+            },
+          ],
+        },
+      ],
+    };
+    render(<MetricsPage />);
+
+    // The answer to "why there and not the other one".
+    const row = await screen.findByText(/considered/);
+    expect(row).toHaveTextContent("least_busy");
+    expect(row).toHaveTextContent("replica-a");
+    expect(row).toHaveTextContent("0/4");
+    expect(row).toHaveTextContent("runtime 'rt-b' is stopped");
+  });
+
+  it("calls out a request that paid for a routing-table refresh", async () => {
+    requests = {
+      requests: [
+        {
+          startedAt: "2026-09-10T22:00:00Z",
+          requestedModel: "qwen",
+          attempts: 1,
+          totalMs: 900,
+          outcome: "served",
+          routingMs: 210,
+          refreshed: true,
+          tries: [{ driver: "a", elapsedMs: 880, served: true }],
+        },
+      ],
+    };
+    render(<MetricsPage />);
+    // A refresh does HTTP to the agent and to every driver inside the
+    // request that triggered it, so it is named rather than left to be
+    // inferred from a larger number.
+    expect(await screen.findByText(/210 ms routing \(refreshed\)/)).toBeInTheDocument();
   });
 });

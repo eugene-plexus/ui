@@ -266,8 +266,8 @@ export interface paths {
          *     and the backends it tried in order.
          *
          *     Newest first, cursor-paged. Raw rows exist only within
-         *     `metricsRetentionDays`; older traffic survives as rollups
-         *     reachable through `GET /v1/metrics?bucket=hour` and not here.
+         *     `metricsRetentionDays`; older traffic survives only as hourly
+         *     rollups, which no endpoint serves yet.
          */
         get: operations["getMetricRequests"];
         put?: never;
@@ -328,8 +328,10 @@ export interface paths {
          *       install at one completion a second is about 17 MB a day.
          *     * **`metricsRollupEnabled`** (`boolean`, default `true`) —
          *       hourly aggregates, kept indefinitely because they are a few
-         *       hundred rows a day and they are the only thing that can
-         *       answer "what did last night look like" once raw rows age out.
+         *       hundred rows a day and they are the only record that survives
+         *       retention. Written but not yet served: they hold sums and a
+         *       max, and no endpoint reports a percentile it cannot compute
+         *       from those.
          */
         get: operations["getConfig"];
         put?: never;
@@ -897,6 +899,18 @@ export interface components {
              */
             waitedMs?: components["schemas"]["Percentiles"] | null;
             /**
+             * @description How long deciding where to send the request took. Null for
+             *     groups recorded before this was measured.
+             */
+            routingMs?: components["schemas"]["Percentiles"] | null;
+            /**
+             * @description The control plane's own cost: the serving attempt's
+             *     gateway-side time minus the driver's measurement of its
+             *     backend call. Null when no request in the group had a
+             *     backend that reported its own latency.
+             */
+            overheadMs?: components["schemas"]["Percentiles"] | null;
+            /**
              * @description Requests served, keyed by the 1-based tier that answered. A
              *     slot whose tier 2 answers everything has a primary that is
              *     not working, and this is where that becomes visible.
@@ -928,8 +942,10 @@ export interface components {
             rowsDropped: number;
             /**
              * @description True when the window reaches past `metricsRetentionDays`,
-             *     so raw rows for its early part no longer exist. With
-             *     `bucket=hour` the rollups still cover it.
+             *     so raw rows for its early part no longer exist and the
+             *     numbers describe less than the window asked for. Hourly
+             *     rollups do cover that period on disk; nothing serves them
+             *     yet.
              */
             truncated?: boolean;
             groups: components["schemas"]["MetricsGroup"][];
@@ -940,8 +956,26 @@ export interface components {
             runtime?: string | null;
             node?: string | null;
             backend?: components["schemas"]["BackendKind"];
-            /** @description This attempt alone, not the request. */
+            /**
+             * @description This attempt alone, not the request. Gateway-side, so it
+             *     includes the local hop to the driver.
+             */
             elapsedMs: number;
+            /**
+             * @description The **driver's** own measurement of its backend call
+             *     (`GenerateResponse.latencyMs`), when it reported one.
+             *
+             *     `elapsedMs - backendMs` is therefore the cost of the
+             *     gateway-to-driver hop plus the driver's own work: the
+             *     control plane's overhead on this request. This document has
+             *     asserted since M0 that the extra local hop is
+             *     "sub-millisecond against a multi-second generation" and "not
+             *     a cost worth optimising away" - an architectural
+             *     justification nobody had measured. Both numbers were already
+             *     being produced; subtracting them makes the claim checkable
+             *     on any install.
+             */
+            backendMs?: number | null;
             served: boolean;
             /**
              * @description The exception **class name** only, never its message.
@@ -970,6 +1004,37 @@ export interface components {
              *     throughput comes from `tries[].elapsedMs`, never from here.
              */
             totalMs: number;
+            /**
+             * @description Time spent deciding where to send this request - resolving
+             *     the model to a slot, picking a backend, and any
+             *     routing-table refresh that happened on the way - measured
+             *     **before** `totalMs` starts and excluding the wake, which is
+             *     `waitedMs`.
+             *
+             *     Previously invisible, and not always small: a refresh does
+             *     HTTP to the agent and to every driver's `/v1/info`, inside
+             *     the request that triggered it.
+             */
+            routingMs?: number | null;
+            /**
+             * @description Whether a routing-table refresh ran inside this request.
+             *     The expensive and surprising case, so it is a flag rather
+             *     than something to infer from `routingMs`.
+             */
+            refreshed?: boolean;
+            /**
+             * @description The `loadBalancing` value in effect when this request was
+             *     routed. Recorded per request because the config can change
+             *     between them, and `least_busy` and `round_robin` explain
+             *     different orderings.
+             */
+            strategy?: string | null;
+            /**
+             * @description What the balancer considered. Present only when there was a
+             *     decision to make - more than one candidate, or at least one
+             *     rejected.
+             */
+            candidates?: components["schemas"]["MetricCandidate"][];
             waitedMs?: number;
             swappedIn?: boolean;
             /**
@@ -984,6 +1049,46 @@ export interface components {
             /** @enum {string} */
             outcome: "served" | "error";
             tries: components["schemas"]["MetricAttempt"][];
+        };
+        /**
+         * @description One backend the balancer considered for a request, and what it
+         *     saw when it decided.
+         *
+         *     Deliberately the **input** to the decision rather than a score.
+         *     There is no score: `least_busy` is a sort by in-flight requests
+         *     per slot of capacity, and inventing a number to display would be
+         *     inventing the smarter balancer that was explicitly deferred.
+         *     What this answers is the question an operator actually asks —
+         *     why did this request go there and not to the other one.
+         *
+         *     Recorded only when there was a decision to make: more than one
+         *     candidate, or at least one rejected. A single eligible backend is
+         *     not an audit trail.
+         */
+        MetricCandidate: {
+            driver: string;
+            tier: number;
+            /**
+             * @description Whether this backend could take the request at all. A driver
+             *     following a runtime is eligible only while that runtime is
+             *     `ready`; one following nothing of ours is eligible whenever
+             *     it is reachable.
+             */
+            eligible: boolean;
+            /** @description Why not, when `eligible` is false. Null when it was. */
+            reason?: string | null;
+            /**
+             * @description Requests already outstanding to this backend when the choice
+             *     was made. The load signal `least_busy` sorts on.
+             */
+            inFlight?: number | null;
+            /**
+             * @description The runtime's `parallelSlots`, its concurrent capacity. The
+             *     balancer compares `inFlight / slots`, not `inFlight`, so a
+             *     four-slot replica holding two requests is less loaded than a
+             *     one-slot replica holding one.
+             */
+            slots?: number | null;
         };
         MetricRequestPage: {
             requests: components["schemas"]["MetricRequest"][];
@@ -1653,8 +1758,8 @@ export interface operations {
                 /**
                  * @description Start of the window, inclusive. Defaults to 24 hours ago.
                  *     Rows older than `metricsRetentionDays` are gone, so a
-                 *     `since` beyond it returns what survived, plus rollups when
-                 *     `bucket=hour`.
+                 *     `since` beyond it returns what survived and sets
+                 *     `truncated`.
                  */
                 since?: string;
                 /** @description End of the window, exclusive. Defaults to now. */
@@ -1666,8 +1771,15 @@ export interface operations {
                 /**
                  * @description `none` (default) returns one group per dimension tuple over
                  *     the whole window. `hour` additionally splits each group by
-                 *     hour, which is what a history chart reads and the only
-                 *     granularity rollups retain once raw rows are pruned.
+                 *     hour, which is what a history chart reads.
+                 *
+                 *     Both are computed from **raw rows**, so both are bounded by
+                 *     `metricsRetentionDays`. Hourly rollups are written and kept
+                 *     past retention, but they are not served here and deliberately
+                 *     so: a rollup can carry sums and a max, and a percentile
+                 *     cannot be reconstructed from those. Serving a mean through a
+                 *     field named `p50` would be a quieter error than serving
+                 *     nothing.
                  */
                 bucket?: "none" | "hour";
             };
