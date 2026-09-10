@@ -58,6 +58,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { WIZARD_PROVIDERS, providerLabel, type WizardCredential } from "@/lib/agent";
 import { ApiError, api } from "@/lib/api";
 import { setSessionToken } from "@/lib/session";
 import { useFontSize, FONT_SIZE_LABELS, type FontSize } from "@/lib/useFontSize";
@@ -65,7 +66,7 @@ import { useTheme, type Theme } from "@/lib/useTheme";
 import type { Component, ComponentList } from "@/lib/types";
 
 const DRAFT_KEY = "eugene-wizard-draft";
-const TOTAL_SCREENS = 7;
+const TOTAL_SCREENS = 8;
 
 type DeploymentMode = "local" | "networked";
 type SecurityMode = "prompt_on_startup" | "os_keyring";
@@ -76,11 +77,36 @@ interface InitializeResponse {
   operatorName?: string | null;
 }
 
+/** An external backend the agent does NOT supervise: Ollama, LM Studio, a
+ * cloud subscription, any OpenAI-compatible URL. Unlike an engine runtime,
+ * nothing declares a driver for one automatically - there is no runtime for
+ * it to be the companion of. `provider: ""` means "none, ask me later". */
+interface BackendDraft {
+  provider: string;
+  apiKey: string;
+  baseUrl: string;
+  claudeCodeCliPath: string;
+  codexCliPath: string;
+  modelId: string;
+}
+
+function blankBackend(): BackendDraft {
+  return {
+    provider: "",
+    apiKey: "",
+    baseUrl: "",
+    claudeCodeCliPath: "claude",
+    codexCliPath: "codex",
+    modelId: "",
+  };
+}
+
 interface WizardDraft {
   deployment: DeploymentMode;
   gatewayHost: string;
   gatewayPort: number;
   modelRoots: string[];
+  backend: BackendDraft;
   securityMode: SecurityMode;
 }
 
@@ -90,6 +116,7 @@ function blankDraft(): WizardDraft {
     gatewayHost: "127.0.0.1",
     gatewayPort: 8080,
     modelRoots: [],
+    backend: blankBackend(),
     securityMode: "prompt_on_startup",
   };
 }
@@ -267,6 +294,33 @@ export default function WizardPage() {
         await withRetry(() => api.patch("library", "/v1/config", { modelRoots: roots }));
       }
 
+      // Step 4: create the external backend's driver, if one was chosen.
+      // CREATE, not just configure: nothing declares a driver for a backend
+      // the agent doesn't supervise, so the previous wizard's PATCH had
+      // nothing to patch on a fresh install and silently did nothing.
+      if (draft.backend.provider) {
+        setStartMessage("Adding your backend…");
+        const name = driverNameFor(draft.backend.provider, live.components ?? []);
+        const port = freeDriverPort(live.components ?? []);
+        await api.post("agent", "/v1/components", {
+          name,
+          kind: "inference-driver",
+          url: `http://127.0.0.1:${port}`,
+          spawn: { configFile: `${name}.yaml` },
+        });
+        // Its config is its own file, written once it is up. Retried for the
+        // same reason as the library: this install is mid restart-on-login.
+        setStartMessage("Configuring your backend…");
+        await withRetry(() => api.patch(name, "/v1/config", buildBackendPatch(draft.backend)));
+        // A driver reads its provider and model at startup, so PATCH alone
+        // leaves `pendingRestart` and a driver still serving nothing. The
+        // previous wizard called this "best-effort"; it is not optional.
+        setStartMessage("Restarting your backend so it picks up the settings…");
+        await withRetry(() =>
+          api.post("agent", `/v1/components/${encodeURIComponent(name)}/restart`, {}),
+        );
+      }
+
       setStartMessage("Finalizing setup…");
       await api.patch("agent", "/v1/config", { firstRunComplete: true });
 
@@ -357,6 +411,12 @@ export default function WizardPage() {
             />
           )}
           {screen === 7 && (
+            <ScreenBackend
+              backend={draft.backend}
+              onChange={(patch) => patchDraft({ backend: { ...draft.backend, ...patch } })}
+            />
+          )}
+          {screen === 8 && (
             <ScreenDone
               draft={draft}
               knownComponents={knownComponents}
@@ -402,6 +462,44 @@ async function withRetry<T>(call: () => Promise<T>, attempts = 10, delayMs = 100
   throw lastError;
 }
 
+function buildBackendPatch(b: BackendDraft): Record<string, unknown> {
+  const credentials = WIZARD_PROVIDERS.find((p) => p.key === b.provider)?.credentials ?? [];
+  const patch: Record<string, unknown> = { provider: b.provider };
+  if (b.modelId.trim()) patch.modelId = b.modelId.trim();
+  if (credentials.includes("api_key")) patch.apiKey = b.apiKey;
+  if (credentials.includes("claude_cli")) patch.claudeCodeCliPath = b.claudeCodeCliPath || "claude";
+  if (credentials.includes("codex_cli")) patch.codexCliPath = b.codexCliPath || "codex";
+  if (credentials.includes("base_url")) patch.baseUrl = b.baseUrl;
+  return patch;
+}
+
+/** A readable name, and a free one - the agent 409s a duplicate. */
+function driverNameFor(provider: string, existing: Component[]): string {
+  const base = provider.replace(/_local$|_subscription$/, "").replace(/_/g, "-");
+  const taken = new Set(existing.map((c) => c.name));
+  if (!taken.has(base)) return base;
+  for (let i = 2; ; i++) {
+    if (!taken.has(`${base}-${i}`)) return `${base}-${i}`;
+  }
+}
+
+/**
+ * A port below the range the agent allocates companions from (8090+), so a
+ * driver added here can never collide with one the agent declares later.
+ * 8081 is the inference-driver default in the specs' `servers` block.
+ */
+function freeDriverPort(existing: Component[]): number {
+  const taken = new Set(
+    existing.map((c) => Number(new URL(c.url).port)).filter((n) => Number.isFinite(n)),
+  );
+  for (let port = 8081; port < 8090; port++) {
+    if (!taken.has(port)) return port;
+  }
+  throw new Error(
+    "No free port between 8081 and 8089 for another driver. Remove one from Config first.",
+  );
+}
+
 const REQUIRED_KINDS = ["control", "gateway", "library"] as const;
 
 /**
@@ -431,6 +529,18 @@ function canContinue(
   // Screen 6 is model directories, and none is a valid answer: directories
   // can be added later from Config, and Discover downloads into one. Nothing
   // on this screen should be able to block a first run.
+  //
+  // Screen 7 is an external backend, and "none" is also a valid answer - but
+  // a chosen one has to be complete. A driver with no model id advertises no
+  // model, so the gateway lists nothing and the backend is silently inert:
+  // exactly the shape of failure this wizard keeps being fixed for.
+  if (screen === 7 && draft.backend.provider) {
+    const b = draft.backend;
+    if (!b.modelId.trim()) return false;
+    const credentials = WIZARD_PROVIDERS.find((p) => p.key === b.provider)?.credentials ?? [];
+    if (credentials.includes("api_key") && !b.apiKey.trim()) return false;
+    if (credentials.includes("base_url") && !b.baseUrl.trim()) return false;
+  }
   return true;
 }
 
@@ -828,6 +938,149 @@ function ScreenDeployment({
   );
 }
 
+/**
+ * An external backend: something already serving that the agent does not
+ * supervise - Ollama, LM Studio, a Claude or ChatGPT subscription, any
+ * OpenAI-compatible URL.
+ *
+ * This screen was briefly removed on the reasoning that the agent declares a
+ * companion inference-driver per runtime, so there was nothing to configure.
+ * That is true of engines the agent *starts*. It is false of everything here:
+ * an already-running Ollama has no runtime, so it never gets a companion, and
+ * without this screen there was no way to reach one from setup at all.
+ *
+ * The version before that could only PATCH a driver that already existed, and
+ * on a fresh install none did - so it warned and did nothing. This one
+ * creates the component.
+ */
+function ScreenBackend({
+  backend,
+  onChange,
+}: {
+  backend: BackendDraft;
+  onChange: (patch: Partial<BackendDraft>) => void;
+}) {
+  const credentials: WizardCredential[] =
+    WIZARD_PROVIDERS.find((p) => p.key === backend.provider)?.credentials ?? [];
+
+  return (
+    <section>
+      <h2 className="font-ui mb-2 text-xl font-semibold">Add a backend</h2>
+      <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
+        Something already running that this install should be able to route to. Models you launch
+        here get their own driver automatically &mdash; this is for everything else.
+      </p>
+      <Field label="Backend" description="Skip if you only plan to run models from your own files.">
+        <select
+          value={backend.provider}
+          onChange={(e) => onChange({ provider: e.target.value })}
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+        >
+          <option value="">None for now</option>
+          {WIZARD_PROVIDERS.map((p) => (
+            <option key={p.key} value={p.key}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {backend.provider === "" ? (
+        <p className="text-xs leading-relaxed text-[color:var(--muted)]">
+          You can add backends later from Config. Nothing here is permanent.
+        </p>
+      ) : (
+        <>
+          <CredentialFields credentials={credentials} backend={backend} onChange={onChange} />
+          <Field
+            label="Model"
+            description="Which model this backend serves, exactly as it names it — `ollama list` or your provider's docs. Required: a driver with no model id advertises nothing, so the gateway would route to it never."
+          >
+            <input
+              type="text"
+              value={backend.modelId}
+              onChange={(e) => onChange({ modelId: e.target.value })}
+              placeholder="qwen3-coder:30b"
+              className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+            />
+          </Field>
+        </>
+      )}
+    </section>
+  );
+}
+
+function CredentialFields({
+  credentials,
+  backend,
+  onChange,
+}: {
+  credentials: WizardCredential[];
+  backend: BackendDraft;
+  onChange: (patch: Partial<BackendDraft>) => void;
+}) {
+  return (
+    <>
+      {credentials.includes("api_key") && (
+        <Field
+          label="API key"
+          description="The provider-issued key the driver uses to authenticate."
+        >
+          <SecretInput
+            value={backend.apiKey}
+            onChange={(v) => onChange({ apiKey: v })}
+            placeholder="sk-…"
+          />
+        </Field>
+      )}
+      {credentials.includes("base_url") && (
+        <Field
+          label="Base URL"
+          description="HTTP base of your OpenAI-compatible endpoint. The driver appends /v1/chat/completions automatically."
+        >
+          <input
+            type="url"
+            value={backend.baseUrl}
+            onChange={(e) => onChange({ baseUrl: e.target.value })}
+            placeholder="https://my-server.example.com"
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          />
+        </Field>
+      )}
+      {credentials.includes("claude_cli") && (
+        <Field
+          label="Claude Code CLI path"
+          description="Path to the `claude` binary. Leave as “claude” if it's on PATH."
+        >
+          <input
+            type="text"
+            value={backend.claudeCodeCliPath}
+            onChange={(e) => onChange({ claudeCodeCliPath: e.target.value })}
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          />
+        </Field>
+      )}
+      {credentials.includes("codex_cli") && (
+        <Field
+          label="Codex CLI path"
+          description="Path to the `codex` binary. Leave as “codex” if it's on PATH."
+        >
+          <input
+            type="text"
+            value={backend.codexCliPath}
+            onChange={(e) => onChange({ codexCliPath: e.target.value })}
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          />
+        </Field>
+      )}
+      {credentials.includes("none") && (
+        <p className="-mt-2 mb-4 text-xs text-[color:var(--muted)]">
+          No credentials needed — the driver talks to a local service.
+        </p>
+      )}
+    </>
+  );
+}
+
 function ScreenDone({
   draft,
   knownComponents,
@@ -854,6 +1107,13 @@ function ScreenDone({
       value:
         draft.modelRoots.filter((r) => r.trim()).join(", ") ||
         "none yet — add them from Config, or use Discover",
+    },
+    {
+      label: "Backend",
+      value: draft.backend.provider
+        ? providerLabel(draft.backend.provider) +
+          (draft.backend.modelId ? ` · ${draft.backend.modelId}` : "")
+        : "none yet — add one from Config",
     },
     {
       label: "Security",
