@@ -26,8 +26,8 @@ The UI's TypeScript types are generated from [`eugene-plexus/specs`](https://git
 PRs to this repo should generally cover one or more of:
 
 - **New UI surface** — pages, panels, visualizations
-- **Visualization improvements** — better hemisphere display, NT state panel, etc.
-- **Streaming** — once orchestrator's `/v1/chat/stream` is wired
+- **Operational workflows** - model discovery, launch profiles, runtimes, config and control-root management
+- **Streaming** - the gateway's OpenAI-compatible SSE surface; driver token streaming remains unimplemented
 - **Tooling** — CI, codegen, lint config
 
 ## Local setup
@@ -40,7 +40,10 @@ npm run codegen
 npm run dev
 ```
 
-Plus an orchestrator running locally (or env-var-pointed at a remote one) — see the [orchestrator repo](https://github.com/eugene-plexus/orchestrator).
+Use Node.js 24 to match CI. Run an [agent](https://github.com/eugene-plexus/agent)
+and [gateway](https://github.com/eugene-plexus/gateway); declare `library` for model
+workflows and `control` for its proxy surface. Bootstrap URLs are documented in
+[README.md](README.md). The UI resolves other component addresses from agent topology.
 
 ## Git hooks
 
@@ -55,7 +58,7 @@ After that, `git commit` runs Prettier on staged files; if it reformats anything
 
 ## Style
 
-- **Next.js 15+ App Router** with TypeScript strict mode
+- **Next.js 16 App Router** with TypeScript strict mode
 - **ESLint** with `next/core-web-vitals` + `next/typescript`
 - **Prettier** with `prettier-plugin-tailwindcss`
 - **Tailwind v4** for styling — utility classes, no custom CSS unless needed
