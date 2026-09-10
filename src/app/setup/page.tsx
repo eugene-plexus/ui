@@ -56,14 +56,13 @@
  */
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ApiError, api } from "@/lib/api";
 import { setSessionToken } from "@/lib/session";
 import { useFontSize, FONT_SIZE_LABELS, type FontSize } from "@/lib/useFontSize";
 import { useTheme, type Theme } from "@/lib/useTheme";
 import type { Component, ComponentList } from "@/lib/types";
-import { WIZARD_PROVIDERS, type WizardCredential } from "@/lib/agent";
 
 const DRAFT_KEY = "eugene-wizard-draft";
 const TOTAL_SCREENS = 7;
@@ -77,41 +76,12 @@ interface InitializeResponse {
   operatorName?: string | null;
 }
 
-interface DriverDraft {
-  name: string;
-  host: string;
-  port: number;
-  provider: string;
-  apiKey: string;
-  claudeCodeCliPath: string;
-  codexCliPath: string;
-  baseUrl: string;
-  modelId: string;
-}
-
 interface WizardDraft {
   deployment: DeploymentMode;
   gatewayHost: string;
   gatewayPort: number;
-  driver: DriverDraft;
+  modelRoots: string[];
   securityMode: SecurityMode;
-}
-
-function blankDriver(): DriverDraft {
-  return {
-    name: "driver-1",
-    host: "127.0.0.1",
-    port: 8081,
-    // A local engine runtime is reached over OpenAI-compatible HTTP like
-    // anything else, so the custom-URL provider is the right default for
-    // a control plane whose headline case is a model on this machine.
-    provider: "openai_compat_custom",
-    apiKey: "",
-    claudeCodeCliPath: "claude",
-    codexCliPath: "codex",
-    baseUrl: "",
-    modelId: "",
-  };
 }
 
 function blankDraft(): WizardDraft {
@@ -119,7 +89,7 @@ function blankDraft(): WizardDraft {
     deployment: "local",
     gatewayHost: "127.0.0.1",
     gatewayPort: 8080,
-    driver: blankDriver(),
+    modelRoots: [],
     securityMode: "prompt_on_startup",
   };
 }
@@ -146,10 +116,11 @@ export default function WizardPage() {
       const raw = sessionStorage.getItem(DRAFT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<WizardDraft> & { screen?: number };
-        // A draft saved by the ten-screen wizard has a `drivers` tuple
-        // and no `driver`. Merging one would produce a half-shaped draft
-        // that renders undefined fields, so ignore it and start clean.
-        if (parsed.driver && typeof parsed.driver === "object") {
+        // A draft saved by an earlier wizard has a `driver` object (or a
+        // `drivers` tuple, older still) and no `modelRoots`. Merging one
+        // produces a half-shaped draft that renders undefined fields, so
+        // ignore it and start clean. The shape check moves with the shape.
+        if (Array.isArray(parsed.modelRoots)) {
           setDraft((prev) => ({ ...prev, ...parsed }));
           if (
             typeof parsed.screen === "number" &&
@@ -203,9 +174,6 @@ export default function WizardPage() {
   function patchDraft(patch: Partial<WizardDraft>) {
     setDraft((prev) => ({ ...prev, ...patch }));
   }
-  function patchDriver(patch: Partial<DriverDraft>) {
-    setDraft((prev) => ({ ...prev, driver: { ...prev.driver, ...patch } }));
-  }
 
   function next() {
     setScreen((s) => Math.min(s + 1, TOTAL_SCREENS));
@@ -256,32 +224,26 @@ export default function WizardPage() {
         });
       }
 
-      // Step 3: PATCH the driver component. It must already exist in the
-      // agent topology — creating one from scratch is a follow-on.
-      // The final screen warns when it doesn't.
-      setStartMessage("Saving driver configuration…");
-      const driverNames = knownComponents
-        .filter((c) => c.kind === "inference-driver")
-        .map((c) => c.name);
-      const target = driverNames.includes(draft.driver.name) ? draft.driver.name : driverNames[0];
-      if (target) {
-        await api.patch(target, "/v1/config", buildDriverPatch(draft.driver));
+      // Step 3: point the library at the operator's model directories.
+      // Their files stay exactly where they are - this only says where to
+      // look. No driver is configured here: since M6 the agent declares one
+      // companion inference-driver per runtime, so there is no driver to
+      // configure until a model is launched. Asking about one up front was
+      // asking about a component that could not exist yet, which is how a
+      // first run could finish against an empty install.
+      const roots = draft.modelRoots.map((r) => r.trim()).filter(Boolean);
+      if (roots.length > 0) {
+        setStartMessage("Pointing the library at your models…");
+        // Retried, because step 1 caused a restart: making the master key
+        // available makes the agent respawn every supervised child so they
+        // pick it up, and the library is one of them. Patching it in that
+        // window gets a connection refusal that has nothing to do with the
+        // operator's input.
+        await withRetry(() => api.patch("library", "/v1/config", { modelRoots: roots }));
       }
 
       setStartMessage("Finalizing setup…");
       await api.patch("agent", "/v1/config", { firstRunComplete: true });
-
-      // Best-effort restart so the driver picks up its new config. The
-      // gateway needs none: its routing table refreshes on a timer and
-      // re-reads each driver's /v1/info.
-      if (target) {
-        setStartMessage("Restarting the driver with your new configuration…");
-        try {
-          await api.post("agent", `/v1/components/${encodeURIComponent(target)}/restart`, {});
-        } catch {
-          // A failed restart isn't a wizard failure.
-        }
-      }
 
       try {
         sessionStorage.removeItem(DRAFT_KEY);
@@ -364,10 +326,9 @@ export default function WizardPage() {
             />
           )}
           {screen === 6 && (
-            <ScreenDriver
-              showHostHint={draft.deployment === "networked"}
-              driver={draft.driver}
-              onChange={patchDriver}
+            <ScreenModels
+              roots={draft.modelRoots}
+              onChange={(modelRoots) => patchDraft({ modelRoots })}
             />
           )}
           {screen === 7 && (
@@ -394,6 +355,27 @@ export default function WizardPage() {
   );
 }
 
+/**
+ * Retry a call across the restart the wizard itself causes.
+ *
+ * `POST /v1/auth/initialize` makes the master key available, and the agent
+ * responds by respawning every supervised child so each one gets it. Anything
+ * the wizard does immediately afterwards can land in that window and be
+ * refused, which reads to the operator as their setup failing.
+ */
+async function withRetry<T>(call: () => Promise<T>, attempts = 10, delayMs = 1000): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await call();
+    } catch (e) {
+      lastError = e;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
+}
+
 function canContinue(
   screen: number,
   draft: WizardDraft,
@@ -406,30 +388,11 @@ function canContinue(
   if (screen === 2) {
     return passphrase.length > 0 && passphrase === passphraseConfirm;
   }
-  // Screen 6 is the driver.
-  if (screen === 6) {
-    const d = draft.driver;
-    if (!d.name.trim()) return false;
-    const credentials = WIZARD_PROVIDERS.find((p) => p.key === d.provider)?.credentials ?? [];
-    if (credentials.includes("api_key") && !d.apiKey.trim()) return false;
-    if (credentials.includes("base_url") && !d.baseUrl.trim()) return false;
-    return true;
-  }
+  // Screen 6 is model directories, and none is a valid answer: directories
+  // can be added later from Config, and Discover downloads into one. Nothing
+  // on this screen should be able to block a first run.
   return true;
 }
-
-function buildDriverPatch(d: DriverDraft): Record<string, unknown> {
-  const credentials = WIZARD_PROVIDERS.find((p) => p.key === d.provider)?.credentials ?? [];
-  const patch: Record<string, unknown> = { provider: d.provider };
-  if (d.modelId.trim()) patch.modelId = d.modelId.trim();
-  if (credentials.includes("api_key")) patch.apiKey = d.apiKey;
-  if (credentials.includes("claude_cli")) patch.claudeCodeCliPath = d.claudeCodeCliPath || "claude";
-  if (credentials.includes("codex_cli")) patch.codexCliPath = d.codexCliPath || "codex";
-  if (credentials.includes("base_url")) patch.baseUrl = d.baseUrl;
-  return patch;
-}
-
-/* ────────────────────────────── chrome ─────────────────────────────── */
 
 function WizardHeader({ screen }: { screen: number }) {
   // Progress fill = current screen / total. Screen 1 shows 10% (the
@@ -716,80 +679,81 @@ function ScreenGateway({
   );
 }
 
-function ScreenDriver({
-  showHostHint,
-  driver,
+/**
+ * Where the operator's models already live.
+ *
+ * This replaced a Driver screen. A driver fronts exactly one backend, and
+ * since M6 the agent declares one per runtime automatically - so at first-run
+ * time there is no driver to configure and no way to make one, which is
+ * exactly what the old screen kept asking about.
+ *
+ * What genuinely cannot be guessed is where the operator keeps their models.
+ * Nothing here moves, renames or copies a file: the library scans these
+ * directories in place. Delete us and the models are still there, correctly
+ * named, where they were put.
+ */
+function ScreenModels({
+  roots,
   onChange,
 }: {
-  showHostHint: boolean;
-  driver: DriverDraft;
-  onChange: (patch: Partial<DriverDraft>) => void;
+  roots: string[];
+  onChange: (roots: string[]) => void;
 }) {
-  const credentials = useMemo(
-    () => WIZARD_PROVIDERS.find((p) => p.key === driver.provider)?.credentials ?? [],
-    [driver.provider],
-  );
-  const isLocalEngine = driver.provider === "openai_compat_custom";
+  const rows = roots.length > 0 ? roots : [""];
+
+  function setAt(index: number, value: string) {
+    const next = [...rows];
+    next[index] = value;
+    onChange(next);
+  }
+  function addRow() {
+    onChange([...rows, ""]);
+  }
+  function removeAt(index: number) {
+    onChange(rows.filter((_, i) => i !== index));
+  }
 
   return (
     <section>
-      <h2 className="font-ui mb-2 text-xl font-semibold">Driver</h2>
+      <h2 className="font-ui mb-2 text-xl font-semibold">Your models</h2>
       <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
-        A driver fronts exactly one backend. Configure one now to get a working endpoint; every
-        further backend is another driver, added from Config.
+        Point the library at directories you already keep models in. They are scanned where they are
+        &mdash; nothing is moved, renamed or copied, and downloads land in these same directories as
+        plainly-named files.
       </p>
-      <Field
-        label="Name"
-        description="A label for this driver. It's also the name the agent topology uses, so keep it short."
+      {rows.map((root, i) => (
+        <div key={i} className="mb-2 flex gap-2">
+          <input
+            type="text"
+            value={root}
+            onChange={(e) => setAt(i, e.target.value)}
+            placeholder="D:\models  or  /home/you/models"
+            aria-label={`Model directory ${i + 1}`}
+            className="font-ui flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+          />
+          {rows.length > 1 && (
+            <button
+              type="button"
+              onClick={() => removeAt(i)}
+              aria-label={`Remove model directory ${i + 1}`}
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addRow}
+        className="font-ui mb-4 rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
       >
-        <input
-          type="text"
-          value={driver.name}
-          onChange={(e) => onChange({ name: e.target.value })}
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-        />
-      </Field>
-      {showHostHint && (
-        <HostPortRow
-          host={driver.host}
-          port={driver.port}
-          onChange={(host, port) => onChange({ host, port })}
-        />
-      )}
-      <Field label="Backend" description="What this driver talks to.">
-        <select
-          value={driver.provider}
-          onChange={(e) => onChange({ provider: e.target.value })}
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-        >
-          {WIZARD_PROVIDERS.map((p) => (
-            <option key={p.key} value={p.key}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </Field>
-      {isLocalEngine && (
-        <p className="-mt-2 mb-4 text-xs text-[color:var(--muted)]">
-          For a local engine, the base URL is the runtime&rsquo;s own address — the Runtimes page
-          shows it once the engine is up. Until engine acquisition lands you have to start
-          <span className="font-mono"> llama-server </span>
-          yourself or declare a runtime on the agent.
-        </p>
-      )}
-      <CredentialFields credentials={credentials} driver={driver} onChange={onChange} />
-      <Field
-        label="Model"
-        description="The model id this backend serves. For a local runtime that's its model alias — by default the model's own filename. Leave blank for the provider default."
-      >
-        <input
-          type="text"
-          value={driver.modelId}
-          onChange={(e) => onChange({ modelId: e.target.value })}
-          placeholder="(provider default)"
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-        />
-      </Field>
+        + Add another directory
+      </button>
+      <p className="text-xs leading-relaxed text-[color:var(--muted)]">
+        You can skip this. Directories can be added later from Config, and Discover downloads into
+        one of them. GGUF and Hugging Face safetensors are both recognised.
+      </p>
     </section>
   );
 }
@@ -824,78 +788,6 @@ function ScreenDeployment({
   );
 }
 
-function CredentialFields({
-  credentials,
-  driver,
-  onChange,
-}: {
-  credentials: WizardCredential[];
-  driver: DriverDraft;
-  onChange: (patch: Partial<DriverDraft>) => void;
-}) {
-  return (
-    <>
-      {credentials.includes("api_key") && (
-        <Field
-          label="API key"
-          description="The provider-issued key the driver uses to authenticate."
-        >
-          <SecretInput
-            value={driver.apiKey}
-            onChange={(v) => onChange({ apiKey: v })}
-            placeholder="sk-…"
-          />
-        </Field>
-      )}
-      {credentials.includes("base_url") && (
-        <Field
-          label="Base URL"
-          description="HTTP base of your OpenAI-compatible endpoint. The driver appends /v1/chat/completions automatically."
-        >
-          <input
-            type="url"
-            value={driver.baseUrl}
-            onChange={(e) => onChange({ baseUrl: e.target.value })}
-            placeholder="https://my-server.example.com"
-            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-          />
-        </Field>
-      )}
-      {credentials.includes("claude_cli") && (
-        <Field
-          label="Claude Code CLI path"
-          description="Path to the `claude` binary. Leave as “claude” if it's on PATH."
-        >
-          <input
-            type="text"
-            value={driver.claudeCodeCliPath}
-            onChange={(e) => onChange({ claudeCodeCliPath: e.target.value })}
-            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-          />
-        </Field>
-      )}
-      {credentials.includes("codex_cli") && (
-        <Field
-          label="Codex CLI path"
-          description="Path to the `codex` binary. Leave as “codex” if it's on PATH."
-        >
-          <input
-            type="text"
-            value={driver.codexCliPath}
-            onChange={(e) => onChange({ codexCliPath: e.target.value })}
-            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-          />
-        </Field>
-      )}
-      {credentials.includes("none") && (
-        <p className="-mt-2 mb-4 text-xs text-[color:var(--muted)]">
-          No credentials needed — the driver talks to a local service.
-        </p>
-      )}
-    </>
-  );
-}
-
 function ScreenDone({
   draft,
   knownComponents,
@@ -916,10 +808,10 @@ function ScreenDone({
         draft.deployment === "networked" ? `${draft.gatewayHost}:${draft.gatewayPort}` : "local",
     },
     {
-      label: `Driver — ${draft.driver.name}`,
-      value: `${providerLabelFor(draft.driver.provider)}${
-        draft.driver.modelId ? ` · ${draft.driver.modelId}` : ""
-      }`,
+      label: "Model directories",
+      value:
+        draft.modelRoots.filter((r) => r.trim()).join(", ") ||
+        "none yet — add them from Config, or use Discover",
     },
     {
       label: "Security",
@@ -930,9 +822,12 @@ function ScreenDone({
     },
   ];
 
-  const driverEntries = knownComponents.filter((c) => c.kind === "inference-driver");
-  const missingDriver = !driverEntries.some((c) => c.name === draft.driver.name);
-  const missingGateway = !knownComponents.some((c) => c.kind === "gateway");
+  // The agent declares these itself on a first boot. If one is missing, its
+  // package is missing from the agent's environment - a real error, not a
+  // step the operator forgot.
+  const missingKinds = (["control", "gateway", "library"] as const).filter(
+    (kind) => !knownComponents.some((c) => c.kind === kind),
+  );
 
   return (
     <section>
@@ -948,11 +843,7 @@ function ScreenDone({
           </div>
         ))}
       </dl>
-      <MissingTopologyHints
-        missingDriver={missingDriver ? draft.driver.name : null}
-        knownDriverNames={driverEntries.map((c) => c.name)}
-        missingGateway={missingGateway}
-      />
+      <MissingTopologyHints missingKinds={missingKinds} />
       <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
         Afterwards: the Runtimes page is where you start an engine and confirm it reached{" "}
         <span className="font-mono">ready</span>, and the playground picks up any model the gateway
@@ -973,50 +864,29 @@ function ScreenDone({
 }
 
 /**
- * The wizard configures components that already exist; it cannot create
- * topology entries. Say so before Start rather than after, and name what
- * IS there — "driver-1 not found" is much less useful on its own than
- * alongside the list of names that would have worked.
+ * Every install has one control root, one gateway and one library, and the
+ * agent declares them itself on its first boot. So a missing one is not a
+ * step the operator skipped - it means that component's package is missing
+ * from the agent's environment, and no amount of clicking here will fix it.
+ *
+ * This used to warn that no inference-driver existed and let Start proceed
+ * anyway, which is how a first run could report success against an install
+ * with nothing in it. Drivers are companions of runtimes now; there is
+ * nothing to warn about before a model is launched.
  */
-function MissingTopologyHints({
-  missingDriver,
-  knownDriverNames,
-  missingGateway,
-}: {
-  missingDriver: string | null;
-  knownDriverNames: string[];
-  missingGateway: boolean;
-}) {
-  const lines: string[] = [];
-  if (missingDriver) {
-    lines.push(
-      knownDriverNames.length > 0
-        ? `No inference-driver named "${missingDriver}" in the agent topology. ` +
-            `Present: ${knownDriverNames.join(", ")} — your settings will be applied to ` +
-            `"${knownDriverNames[0]}".`
-        : `No inference-driver in the agent topology at all, so the driver ` +
-            `settings on the previous screen have nowhere to go.`,
-    );
-  }
-  if (missingGateway) lines.push("No gateway in the agent topology.");
-  if (lines.length === 0) return null;
+function MissingTopologyHints({ missingKinds }: { missingKinds: readonly string[] }) {
+  if (missingKinds.length === 0) return null;
   return (
     <div className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">
-      <p className="mb-1 font-medium">Heads-up — missing topology entries:</p>
-      <ul className="ml-4 list-disc">
-        {lines.map((line, i) => (
-          <li key={i}>{line}</li>
-        ))}
-      </ul>
-      <p className="mt-2">
-        Add them with the agent&rsquo;s <span className="font-mono">POST /v1/components</span> or by
-        hand-editing <span className="font-mono">agent.yaml</span>, then re-run setup.
+      <p className="mb-1 font-medium">Missing from this node: {missingKinds.join(", ")}</p>
+      <p>
+        The agent declares these on a first boot, so this means their packages are not installed in
+        the agent&rsquo;s environment. Install them there and restart the agent &mdash;{" "}
+        <span className="font-mono">bootstrap.ps1</span> does this for every component.
       </p>
     </div>
   );
 }
-
-/* ────────────────────────────── leaves ─────────────────────────────── */
 
 function Field({
   label,
@@ -1136,8 +1006,4 @@ function SecretInput({
       </button>
     </div>
   );
-}
-
-function providerLabelFor(key: string): string {
-  return WIZARD_PROVIDERS.find((p) => p.key === key)?.label ?? key;
 }
