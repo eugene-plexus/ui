@@ -63,6 +63,13 @@ export interface paths {
          *     wait, the next tier is tried; with none, a 503 naming the
          *     runtime being woken.
          *
+         *     A request that finds nothing eligible first refreshes the
+         *     routing table (shared across concurrent requests, at most once a
+         *     second) before waking anything or answering — the table is
+         *     otherwise `routingRefreshSeconds` behind the agent about
+         *     readiness, and the first live run met exactly that seam. A
+         *     request that finds a backend never pays for a topology read.
+         *
          *     Sampling parameters are the gateway's to send. Anything the
          *     caller omits is filled from the model's settings profile and
          *     sent explicitly; a driver never substitutes a default of its
@@ -234,10 +241,11 @@ export interface paths {
          *     * **`idleCheckSeconds`** (`duration`) — how often the gateway
          *       checks each runtime's idle timeout.
          *     * **`controlUrl`** (`url`, optional) — the control root. When
-         *       set, topology comes from its union views and lifecycle
-         *       actions are sent to the agent that owns each runtime, looked
-         *       up through `GET /v1/nodes`. Unset means a single-host install
-         *       and the one configured agent.
+         *       set, the agent list comes from its `GET /v1/nodes`; each
+         *       node's agent is then read directly for that node's drivers
+         *       and runtimes, and a stop or start is sent to the agent that
+         *       owns the runtime. Unset means a single-host install and the
+         *       one configured agent.
          */
         get: operations["getConfig"];
         put?: never;

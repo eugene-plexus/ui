@@ -119,6 +119,12 @@ export interface paths {
          *     its name, the current service-token signing key, the current
          *     epoch, and the control root's identity.
          *
+         *     The `url` it sends is recorded as `Node.url` — where this root
+         *     probes it, forwards declarations to it, and where a gateway sends
+         *     a stop or start for a runtime it owns. An enrollment without one
+         *     is accepted and produces a node nothing can reach, which the node
+         *     list shows as `reachable: false` until it re-enrolls.
+         *
          *     Idempotent on the token: re-presenting a consumed token returns
          *     409 rather than enrolling a second node, because a join token
          *     that could be replayed is a join token that could be stolen.
@@ -238,9 +244,17 @@ export interface paths {
          *
          *     The standby verifies the passphrase, derives the master key,
          *     confirms its applied index, increments the epoch, appends a
-         *     `promote` entry, and begins accepting writes. Agents learn the
-         *     new epoch on their next contact and fence the old root by
-         *     refusing its lower one.
+         *     `promote` entry, and begins accepting writes. Then it **announces
+         *     the epoch** to every enrolled node: a `POST /v1/node/rekey`
+         *     (`agent.yaml`) carrying the *unchanged* signing key and the new
+         *     epoch, signed with the control identity that promotion
+         *     deliberately preserved. Agents record it and fence the old root
+         *     by refusing its lower one. A node that is `down` during the
+         *     announcement learns the epoch from the next rotation or
+         *     announcement that reaches it — the bounded, visible window this
+         *     document accepts in place of quorum. Announcing is best-effort
+         *     and is not a log entry: it delivers an observation about the
+         *     log's own epoch.
          *
          *     **Refusing to promote is a valid outcome.** A standby that cannot
          *     prove its state reports how far behind it is and returns 409;
@@ -279,6 +293,13 @@ export interface paths {
          *     state of the current or most recent rotation, which persists
          *     until the next one starts so a UI that reconnects afterwards
          *     still learns how it ended.
+         *
+         *     Each node is re-keyed with a `POST /v1/node/rekey` (`agent.yaml`)
+         *     **signed by the control root's identity key**, not authenticated
+         *     by a service token — a rotation is the operation that invalidates
+         *     every service token, and a re-run of an interrupted one cannot
+         *     know which key each node still holds. The identity key does not
+         *     rotate, which is what makes it the credential that survives this.
          */
         post: operations["rotateSigningKey"];
         delete?: never;
@@ -508,7 +529,11 @@ export interface components {
             name: string;
             /**
              * Format: uri
-             * @description Where this node's agent is reachable.
+             * @description Where this node's agent is reachable — from this root, and from
+             *     a gateway sending a lifecycle action to the agent that owns a
+             *     runtime. Recorded verbatim from `EnrollmentRequest.url`; the
+             *     agent is the one that knows how it reached this root, and this
+             *     root does not guess from a source address.
              */
             url?: string;
             role: components["schemas"]["NodeRole"];
@@ -606,6 +631,16 @@ export interface components {
              *     sealing.
              */
             publicKey: string;
+            /**
+             * Format: uri
+             * @description Where other hosts reach this agent — its `advertiseUrl`,
+             *     configured or derived (`agent.yaml`, `GET /v1/node`). Becomes
+             *     `Node.url`. The agent sends it because the agent knows which
+             *     interface it used to reach this root; a root deriving it from
+             *     the request's source address would be right on a flat mesh
+             *     network and wrong behind anything else.
+             */
+            url?: string;
             agentVersion?: string;
             /** @enum {string} */
             os?: "windows" | "linux" | "macos";
@@ -633,6 +668,12 @@ export interface components {
              *     from another because the keys were unrelated.
              */
             signingKey: string;
+            /**
+             * @description The key's generation (`Snapshot.signingKeyId`), so the node
+             *     can tell a later `POST /v1/node/rekey` that is newer from one
+             *     that is a replay.
+             */
+            signingKeyId?: string;
             /**
              * @description The control root's public key, so the node can verify that
              *     later epoch changes come from a root it recognises rather

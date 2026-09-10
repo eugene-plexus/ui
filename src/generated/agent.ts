@@ -367,6 +367,14 @@ export interface paths {
          *     operator's. `POST /v1/runtimes/admission` is the same measurement
          *     without the declaration. A runtime declared with `autoStart`
          *     false is not measured until it is started.
+         *
+         *     Accepts the operator **or the control root's own service
+         *     audience** (`service:control`, checked exactly — not any service
+         *     token), because the control root forwards declarations to the
+         *     node that will run them (`control.yaml`, `POST /v1/runtimes`) and
+         *     the trust root's token is what every other credential in the
+         *     install reduces to. A leaked driver or library token still cannot
+         *     declare a runtime; the other mutations here stay operator-only.
          */
         post: operations["createRuntime"];
         delete?: never;
@@ -573,6 +581,13 @@ export interface paths {
          *     with no trust relationship at all, which is what makes the
          *     bootstrap order work and is consistent with the standing
          *     degraded-mode rule.
+         *
+         *     `advertiseUrl` is where *other hosts* reach this agent: the
+         *     `advertiseUrl` config field when the operator set one, otherwise
+         *     derived at enrollment from the interface this agent used to reach
+         *     the control root plus its own bind port. It is what the agent sent
+         *     the control root as the node's URL, reported here so a wrong guess
+         *     is visible and overridable.
          */
         get: operations["getNode"];
         put?: never;
@@ -597,7 +612,8 @@ export interface paths {
          * @description Operator-only, and the one call that gives this agent a place in
          *     an install. It generates the node's identity keypair if it has
          *     none, then calls the control root's `POST /v1/nodes/enroll` with
-         *     the join token and its **public** key.
+         *     the join token, its **public** key, and the URL at which other
+         *     hosts reach this agent (`NodeIdentity.advertiseUrl`).
          *
          *     The private key never leaves this host. That is not a detail:
          *     per-node sealing means a secret is sealed to this key, so a
@@ -610,6 +626,54 @@ export interface paths {
          *     signing key rotates and this node stops being trusted there.
          */
         post: operations["enrollWithControl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/node/rekey": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a new signing key, or a new epoch, from the control root.
+         * @description Called by the **control root**, during a signing-key rotation
+         *     (`control.yaml`, `POST /v1/control/rotate-key`, and revocation,
+         *     which is one) and after a promotion, to announce the new epoch.
+         *
+         *     **The credential is the signature, not a bearer token.** A
+         *     rotation is the one operation that invalidates every service
+         *     token in the install, including any the control root could
+         *     present here, and a re-run of an interrupted rotation cannot
+         *     know which key each node still holds. So the body is signed with
+         *     the control root's identity key — the one whose public half this
+         *     agent recorded at enrollment as `controlPublicKey`, and the one
+         *     that does not rotate. Anything that can reach this port but does
+         *     not hold the control identity is refused with 401.
+         *
+         *     **This is where epoch fencing happens.** The agent records the
+         *     highest `epoch` it has accepted and answers **409** to a lower
+         *     one: a superseded control root returning after a promotion is
+         *     refused with no election, no quorum, and no agreement between
+         *     agents, each of which declines the downgrade on its own. An equal
+         *     epoch with a `signingKeyId` lower than the one held is a replayed
+         *     rotation and is refused the same way.
+         *
+         *     On acceptance the agent persists the epoch and the key, adopts
+         *     the key for its own token verification, and restarts every
+         *     component it supervises so they pick it up — they read the key
+         *     from their environment at spawn. Engines are untouched. A message
+         *     carrying the key the agent already holds records the epoch and
+         *     restarts nothing, which is what makes the same message serve as a
+         *     promotion's announcement.
+         */
+        post: operations["rekeyNode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -646,6 +710,19 @@ export interface paths {
          *     is the same rule that makes `EngineDescriptor.flagSchema` a
          *     `ConfigSchema`. The pattern generalises as `<engine>Binary` if a
          *     third driven engine ever arrives.
+         *
+         *     **`advertiseUrl`** (`url`, optional) is the address at which
+         *     *other hosts* reach this agent — `http://<tailnet-ip>:8079`.
+         *     Sent to the control root at enrollment as the node's URL, and
+         *     stamped onto every component this agent spawns as
+         *     `Component.advertiseUrl` (the same host, that component's port)
+         *     so a gateway elsewhere can reach a companion driver here. When
+         *     unset, the agent derives it at enrollment from the interface it
+         *     used to reach the control root, and `GET /v1/node` reports what
+         *     it derived. Setting an advertise host that is not loopback also
+         *     makes spawned components bind `0.0.0.0` rather than loopback,
+         *     because a component that must be reached from another host
+         *     cannot bind only to this one; engines are never widened.
          */
         get: operations["getConfig"];
         put?: never;
@@ -728,6 +805,20 @@ export interface components {
              *     this is what the agent probes.
              */
             url: string;
+            /**
+             * Format: uri
+             * @description Where a **peer on another host** reaches this component: the
+             *     agent's advertise host with this component's port. Derived,
+             *     never declared, and present only for a component this agent
+             *     spawns on an agent that has an advertise address
+             *     (`NodeIdentity.advertiseUrl`). `url` keeps its one meaning —
+             *     what the agent binds and probes — and the gateway prefers this
+             *     field and falls back to `url`, which is the whole of what makes
+             *     a companion driver on one host routable from a gateway on
+             *     another. Absent on a single-host install, where the two would
+             *     say the same thing.
+             */
+            readonly advertiseUrl?: string;
             /**
              * @description Present iff this component runs locally under agent
              *     supervision. Absence means it's remote (the agent only
@@ -843,6 +934,26 @@ export interface components {
              *     and without agreeing with any other agent.
              */
             epoch?: number;
+            /**
+             * Format: uri
+             * @description Where other hosts reach this agent — the `advertiseUrl` config
+             *     field, or the value derived at enrollment when none was set.
+             *     What the control root holds as this node's `Node.url`.
+             */
+            advertiseUrl?: string;
+            /**
+             * @description The generation of the install signing key this agent holds,
+             *     as the control root named it. During a rotation, the answer
+             *     to "which host is stale" from the host itself.
+             */
+            signingKeyId?: string;
+            /**
+             * @description The identity public key of the control root this agent
+             *     enrolled with, recorded then and checked against every
+             *     `POST /v1/node/rekey` since. A dashboard can compare it with
+             *     the root's own `Snapshot.controlPublicKey`.
+             */
+            controlPublicKey?: string;
             /** @enum {string} */
             os?: "windows" | "linux" | "macos";
             /** @enum {string} */
@@ -873,6 +984,38 @@ export interface components {
              *     is the answer an operator would have typed anyway.
              */
             name?: string;
+        };
+        /**
+         * @description A new signing key, or a new epoch, from the control root. The
+         *     credential is `signature`; see `POST /v1/node/rekey`.
+         */
+        RekeyRequest: {
+            /**
+             * @description The install's service-token signing key, base64. During a
+             *     promotion's announcement this is the key the agent already
+             *     holds.
+             */
+            signingKey: string;
+            /** @description The key's generation, as `Snapshot.signingKeyId` names it. */
+            signingKeyId: string;
+            /**
+             * Format: int64
+             * @description The control root's current epoch. The agent refuses a value
+             *     below the highest it has recorded.
+             */
+            epoch: number;
+            /**
+             * @description Detached Ed25519 signature, base64, by the control root's
+             *     identity key over the **canonical message**: the UTF-8 bytes of
+             *     the JSON object `{"epoch": <epoch>, "signingKey":
+             *     "<signingKey>", "signingKeyId": "<signingKeyId>"}` with keys
+             *     sorted and no whitespace — `json.dumps(obj, sort_keys=True,
+             *     separators=(",", ":"))`. Verified against the
+             *     `controlPublicKey` the agent recorded at enrollment. Three
+             *     fields, one serializer, stated here so both sides implement it
+             *     from the same sentence.
+             */
+            signature: string;
         };
         /** @description Whether this install has been through first-run setup. */
         AuthStatus: {
@@ -3036,6 +3179,56 @@ export interface operations {
             };
             /** @description The control root refused or was unreachable. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    rekeyNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RekeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted; the identity as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeIdentity"];
+                };
+            };
+            /**
+             * @description The signature does not verify against the recorded
+             *     `controlPublicKey`, or this agent has not enrolled and so has
+             *     no root to recognise.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description Fenced. The `epoch` is lower than the highest this agent has
+             *     recorded, or equal with a lower `signingKeyId`. `detail`
+             *     names both numbers.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
