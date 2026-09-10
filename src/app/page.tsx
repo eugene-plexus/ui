@@ -45,6 +45,7 @@ export default function PlaygroundPage() {
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [setupGate, setSetupGate] = useState<"checking" | "ready">("checking");
+  const [seed, setSeed] = useState<{ text: string; nonce: number } | undefined>(undefined);
 
   // `model` is read inside the send path, which we don't want to re-create
   // on every keystroke-driven re-render.
@@ -150,7 +151,13 @@ export default function PlaygroundPage() {
     }
   }, [hydrated, model, messages]);
 
-  async function handleSend(text: string) {
+  /** Send a history and append whatever comes back.
+   *
+   * Factored out of `handleSend` so Regenerate is the same code path with a
+   * different history rather than a parallel one that can drift from it. The
+   * gateway and the drivers below it are stateless by contract, so "resend
+   * this turn" really is just "send these messages again". */
+  async function runTurn(outgoing: ChatCompletionMessage[]) {
     const chosen = modelRef.current;
     if (!chosen) {
       setError("No model selected — the gateway is not routing to anything yet.");
@@ -158,8 +165,6 @@ export default function PlaygroundPage() {
     }
     setError(null);
     setTurnInfo(null);
-
-    const outgoing: ChatCompletionMessage[] = [...messages, { role: "user", content: text }];
     setMessages(outgoing);
     setPending(true);
 
@@ -193,6 +198,27 @@ export default function PlaygroundPage() {
     } finally {
       setPending(false);
     }
+  }
+
+  function handleSend(text: string) {
+    void runTurn([...messages, { role: "user", content: text }]);
+  }
+
+  /** Ask again for the last turn: drop the reply, resend what preceded it. */
+  function handleRegenerate() {
+    const lastUser = messages.map((m) => m.role).lastIndexOf("user");
+    if (lastUser < 0) return;
+    void runTurn(messages.slice(0, lastUser + 1));
+  }
+
+  /** Put an earlier message back in the composer and drop everything from it
+   * onward. Destructive by design and by expectation - an edited message with
+   * the old replies still under it would be a transcript that never happened. */
+  function handleEditUserMessage(index: number, content: string) {
+    setMessages(messages.slice(0, index));
+    setTurnInfo(null);
+    setError(null);
+    setSeed({ text: content, nonce: Date.now() });
   }
 
   function newConversation() {
@@ -284,13 +310,18 @@ export default function PlaygroundPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        <ChatLog messages={messages} pending={pending} />
+        <ChatLog
+          messages={messages}
+          pending={pending}
+          onRegenerate={handleRegenerate}
+          onEditUserMessage={handleEditUserMessage}
+        />
       </div>
 
       {turnInfo && <RoutingBar info={turnInfo} />}
       {error && <div className="status-error border-t px-4 py-2 text-xs">{error}</div>}
 
-      <ChatInput onSend={handleSend} disabled={pending || model == null} />
+      <ChatInput onSend={handleSend} disabled={pending || model == null} seed={seed} />
     </main>
   );
 }

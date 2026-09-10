@@ -1,21 +1,43 @@
 "use client";
 
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 /**
  * Bottom-anchored composer.
  *
  * Enter sends. Shift+Enter inserts a newline. Disabled while a turn is
  * in flight, and while no model is routable.
+ *
+ * The composer owns its text, except that `seed` can put something in it -
+ * that is how editing an earlier message works. It carries a nonce because
+ * the same text seeded twice is still a second request to seed it, and
+ * comparing the strings would silently ignore the second.
  */
 export function ChatInput({
   onSend,
   disabled,
+  seed,
 }: {
   onSend: (text: string) => void;
   disabled: boolean;
+  seed?: { text: string; nonce: number };
 }) {
   const [value, setValue] = useState("");
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const seenNonce = useRef(0);
+
+  useEffect(() => {
+    if (!seed || seed.nonce === seenNonce.current) return;
+    seenNonce.current = seed.nonce;
+    setValue(seed.text);
+    // Focus with the caret at the end: the operator is here to change the
+    // message, not to retype it.
+    const el = textarea.current;
+    if (el) {
+      el.focus();
+      requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length));
+    }
+  }, [seed]);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -38,6 +60,7 @@ export function ChatInput({
       className="flex items-end gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] p-3"
     >
       <textarea
+        ref={textarea}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}

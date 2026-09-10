@@ -1,8 +1,10 @@
 "use client";
 
+import { Children, isValidElement, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { CopyButton } from "@/components/CopyButton";
 import { JumpToBottomButton } from "@/components/JumpToBottomButton";
 import { useAutoScroll } from "@/lib/useAutoScroll";
 import type { ChatCompletionMessage } from "@/lib/types";
@@ -20,9 +22,17 @@ import type { ChatCompletionMessage } from "@/lib/types";
 export function ChatLog({
   messages,
   pending,
+  onRegenerate,
+  onEditUserMessage,
 }: {
   messages: ChatCompletionMessage[];
   pending: boolean;
+  /** Re-run the last turn. Omitted while there is nothing to re-run. */
+  onRegenerate?: () => void;
+  /** Put a previous message back in the composer, dropping everything after
+   * it. The transcript is the caller's to carry, so editing it is just a
+   * different history for the next request. */
+  onEditUserMessage?: (index: number, content: string) => void;
 }) {
   // System messages are part of the request but not of the conversation
   // a person is reading.
@@ -41,7 +51,22 @@ export function ChatLog({
     <div className="relative h-full">
       <div ref={scrollRef} className="flex h-full flex-col gap-4 overflow-y-auto p-4">
         {visible.map((msg, i) => (
-          <ChatBubble key={i} message={msg} />
+          <ChatBubble
+            key={i}
+            message={msg}
+            // Only the newest assistant turn can be regenerated: re-running
+            // an older one would silently discard everything after it.
+            onRegenerate={
+              !pending && msg.role === "assistant" && i === visible.length - 1
+                ? onRegenerate
+                : undefined
+            }
+            onEdit={
+              !pending && msg.role === "user" && onEditUserMessage
+                ? () => onEditUserMessage(messages.indexOf(msg), msg.content)
+                : undefined
+            }
+          />
         ))}
         {pending && (
           <p className="font-ui text-xs text-[color:var(--muted)]">Waiting on the backend…</p>
@@ -52,10 +77,18 @@ export function ChatLog({
   );
 }
 
-function ChatBubble({ message }: { message: ChatCompletionMessage }) {
+function ChatBubble({
+  message,
+  onRegenerate,
+  onEdit,
+}: {
+  message: ChatCompletionMessage;
+  onRegenerate?: () => void;
+  onEdit?: () => void;
+}) {
   const isUser = message.role === "user";
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+    <div className={`group flex flex-col ${isUser ? "items-end" : "items-start"}`}>
       <div
         className={`max-w-[80%] rounded-[var(--radius)] px-4 py-2 text-sm leading-relaxed text-[color:var(--foreground)] backdrop-blur-[var(--bubble-blur)] ${
           isUser
@@ -65,8 +98,59 @@ function ChatBubble({ message }: { message: ChatCompletionMessage }) {
       >
         {isUser ? message.content : <Markdown>{message.content}</Markdown>}
       </div>
+      {/* Visible on hover and on keyboard focus. focus-within matters: a
+          hover-only control is unreachable by keyboard, and these are the
+          only way to get a reply out of the playground. */}
+      <div
+        className={`mt-1 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 ${
+          isUser ? "flex-row-reverse" : ""
+        }`}
+      >
+        {/* The raw markdown, not the rendered text: what is useful about a
+            reply from a coding model is its source. */}
+        <CopyButton text={message.content} title="Copy this message" />
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            title="Edit and resend, discarding everything after it"
+            className="font-ui rounded-[var(--radius)] px-2 py-1 text-[11px] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
+          >
+            Edit
+          </button>
+        )}
+        {onRegenerate && (
+          <button
+            type="button"
+            onClick={onRegenerate}
+            title="Ask again for this turn"
+            className="font-ui rounded-[var(--radius)] px-2 py-1 text-[11px] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
+          >
+            Regenerate
+          </button>
+        )}
+      </div>
     </div>
   );
+}
+
+/**
+ * The literal text inside a rendered markdown node.
+ *
+ * react-markdown hands `pre` an element tree, not the source string, so a
+ * copy button on a code block has to walk it. Only strings are collected -
+ * syntax-highlight spans and the like contribute their text and nothing
+ * else, which is exactly what belongs on a clipboard.
+ */
+function nodeText(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (isValidElement(node)) {
+    const props = node.props as { children?: ReactNode };
+    return Children.toArray(props.children).map(nodeText).join("");
+  }
+  return "";
 }
 
 function Markdown({ children }: { children: string }) {
@@ -114,10 +198,20 @@ function Markdown({ children }: { children: string }) {
             </code>
           );
         },
+        // A code block gets its own copy button. Selecting one by hand in a
+        // scrolling transcript is the single most annoying thing about
+        // reading code out of a chat log.
         pre: ({ children }) => (
-          <pre className="my-2 overflow-x-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-3 font-mono text-xs leading-snug">
-            {children}
-          </pre>
+          <div className="group/code relative my-2">
+            <pre className="overflow-x-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-3 pr-16 font-mono text-xs leading-snug">
+              {children}
+            </pre>
+            <CopyButton
+              text={nodeText(children)}
+              title="Copy this code block"
+              className="absolute top-1.5 right-1.5 border border-[color:var(--border)] bg-[color:var(--panel)] opacity-0 transition-opacity group-hover/code:opacity-100 focus:opacity-100"
+            />
+          </div>
         ),
         table: ({ children }) => (
           <div className="my-2 overflow-x-auto">
