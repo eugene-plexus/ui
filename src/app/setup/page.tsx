@@ -40,12 +40,18 @@
  * Transactional order on Start:
  *   1. POST /v1/auth/initialize with the wizard's passphrase → get a
  *      session token, populate AuthState.master_key on the agent.
- *   2. Patch the chosen securityMode (default is prompt_on_startup,
+ *   1b. Read the topology for real, now that there is a token, and stop
+ *      if a required component is missing.
+ *   2. POST /v1/auth/initialize on the control root, same passphrase.
+ *      Separate call because it is the trust root and mints its own
+ *      auth; nothing else can set its passphrase for it.
+ *   3. Patch the chosen securityMode (default is prompt_on_startup,
  *      skip the patch if unchanged). Switching to os_keyring with the
  *      session active persists the master key for auto-unlock.
- *   3. Patch the driver's provider / credential / model config
- *      (encrypted at rest now that a master key exists).
- *   4. Flip firstRunComplete: true.
+ *   4. Patch the library's model directories, if any were given.
+ *   5. Create and configure the external backend's driver, if one was
+ *      chosen, then ask it what models it has.
+ *   6. Flip firstRunComplete: true.
  *
  * If step 1 fails (e.g. install already initialized), surface the error
  * and let the operator either log in or reset the install by hand.
@@ -273,10 +279,29 @@ export default function WizardPage() {
         );
       }
 
-      // Step 2: persist the chosen securityMode. Default is
+      // Step 2: give the trust root its passphrase.
+      //
+      // The control root mints its own auth - the agent deliberately hands it
+      // no service token - and the flip side of that is nothing else can set
+      // its passphrase for it. Until it has one it answers 503 "Setup
+      // required" across its entire surface (node registry, join tokens, its
+      // own /v1/config) and by design it does not fall open. A first run that
+      // skipped this produced an install the wizard called finished with an
+      // inert trust root: only scripts/dev-seed.ps1 ever set it.
+      setStartMessage("Setting up the trust root…");
+      await initializeControlRoot(passphrase);
+
+      // Step 3: persist the chosen securityMode. Default is
       // prompt_on_startup; skip the patch if unchanged so we don't touch
       // the keyring needlessly. Flipping to os_keyring with the session
       // active triggers the agent's keyring write.
+      //
+      // Deliberately not sent to the control root as well. It declares the
+      // same field and depends on `keyring`, but nothing in it reads either -
+      // so patching it would record a preference that does nothing, and the
+      // root would still ask for the passphrase after a restart. Implementing
+      // it belongs in that repo, not in a wizard step that would look like it
+      // already works.
       if (draft.securityMode !== "prompt_on_startup") {
         setStartMessage("Applying security mode…");
         await api.patch("agent", "/v1/config", {
@@ -284,7 +309,7 @@ export default function WizardPage() {
         });
       }
 
-      // Step 3: point the library at the operator's model directories.
+      // Step 4: point the library at the operator's model directories.
       // Their files stay exactly where they are - this only says where to
       // look. No driver is configured here: since M6 the agent declares one
       // companion inference-driver per runtime, so there is no driver to
@@ -302,7 +327,7 @@ export default function WizardPage() {
         await withRetry(() => api.patch("library", "/v1/config", { modelRoots: roots }));
       }
 
-      // Step 4: create the external backend's driver, if one was chosen.
+      // Step 5: create the external backend's driver, if one was chosen.
       // CREATE, not just configure: nothing declares a driver for a backend
       // the agent doesn't supervise, so the previous wizard's PATCH had
       // nothing to patch on a fresh install and silently did nothing.
@@ -522,6 +547,58 @@ async function withRetry<T>(call: () => Promise<T>, attempts = 10, delayMs = 100
     }
   }
   throw lastError;
+}
+
+/**
+ * Set the operator passphrase on the control root.
+ *
+ * Its own function rather than a `withRetry` call, for two reasons that
+ * `withRetry` gets wrong here.
+ *
+ * **409 is a final answer, not a failure.** It means an earlier run already
+ * initialized this install, and there is no reset endpoint by design. Retrying
+ * it would spend ten seconds re-learning something settled.
+ *
+ * **There is no restart window to ride out.** `withRetry` exists because
+ * `POST /v1/auth/initialize` on the agent respawns every supervised child. The
+ * supervisor deliberately skips the trust root — a restart hands it nothing
+ * (it receives no key from the agent) and costs it everything (it comes back
+ * with its keys sealed and locked until someone logs in). So the only reason
+ * to retry is a root still finishing the boot the agent spawned it for, which
+ * is a few seconds at most.
+ *
+ * The session token rides along deliberately, so no `skipAuth`. Control ignores
+ * an Authorization header on this route, but the UI's proxy needs the token to
+ * resolve `control` to a URL through the agent's `/v1/components` — without it
+ * that lookup 401s and the operator gets "no control component in the agent
+ * topology", which is both alarming and false.
+ */
+async function initializeControlRoot(passphrase: string): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await api.post("control", "/v1/auth/initialize", { passphrase });
+      return;
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) return;
+      lastError = e;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+  // Named as the trust root rather than reported as a bare HTTP error, because
+  // the consequence is specific and worth saying: the agent has a passphrase
+  // and the root does not, so every install-wide operation will refuse.
+  const because = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(
+    `The trust root would not accept a passphrase (${because}). Your passphrase ` +
+      `is set on this node's agent, but the control root has none, so it will ` +
+      `refuse node enrollment, join tokens and its own configuration until it ` +
+      `does. Setup cannot simply be repeated from here — the agent's passphrase ` +
+      `is already set and it will refuse a second one — so check the control ` +
+      `component's logs, then finish the job by POSTing the same passphrase to ` +
+      `the control root's /v1/auth/initialize (scripts/dev-seed.ps1 does exactly ` +
+      `this).`,
+  );
 }
 
 /**
