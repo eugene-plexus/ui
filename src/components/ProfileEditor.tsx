@@ -158,28 +158,21 @@ export function ProfileEditor({
           {error}
         </p>
       )}
-      {/* Deliberately does not claim the model is ready to use. The
-          M2 acceptance run confirmed that launching declares a runtime
-          and stops there: the gateway routes via drivers, and nothing
-          yet points one at a port the agent only chose at launch.
-          Saying "done" here would be the UI lying about a step the
-          operator still has to take. Automating it is M5's routing
-          work — see docs/acceptance/m2-five-process-run.md. */}
+      {/* From M6 a launch ends routable: the agent declares a companion
+          inference-driver beside the runtime, following it by name, so
+          the gateway serves the alias the moment the engine is ready.
+          M2's acceptance run found the gap this message used to
+          describe; M6 closed it. What is still honestly said here is
+          that "ready" is the engine's to reach, not the button's. */}
       {launched && (
-        <p className="status-warn mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
-          Declared runtime <span className="font-mono">{launched}</span>. Watch it load on the{" "}
+        <p className="status-ok mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
+          Declared runtime <span className="font-mono">{launched}</span> and its driver{" "}
+          <span className="font-mono">{launched}-driver</span>. Watch it load on the{" "}
           <a href="/runtimes" className="underline">
             Runtimes
           </a>{" "}
-          page — a large quant takes a while.
-          <br />
-          It is <strong>not routable yet</strong>: an inference-driver has to point at it before the
-          gateway can serve it. Set that driver&rsquo;s <span className="font-mono">baseUrl</span>{" "}
-          to the runtime&rsquo;s URL on the{" "}
-          <a href="/config" className="underline">
-            Config
-          </a>{" "}
-          page. Wiring that automatically is still to come.
+          page — a large quant takes a while. The gateway serves it under its alias as soon as the
+          engine reports <span className="font-mono">ready</span>; nothing else to wire.
         </p>
       )}
 

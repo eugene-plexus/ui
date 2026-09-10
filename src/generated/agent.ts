@@ -339,14 +339,79 @@ export interface paths {
         get: operations["listRuntimes"];
         put?: never;
         /**
-         * Declare a new engine runtime.
+         * Declare a new engine runtime, and the driver that fronts it.
          * @description Persists the runtime to the agent's topology and spawns it
          *     immediately unless `autoStart` is false. `flags` are validated
          *     against the engine adapter's `flagSchema`; unknown keys are
          *     rejected rather than silently dropped, because a typo'd flag
          *     that vanishes is much worse than one that errors.
+         *
+         *     **Launch ends with a routable model.** Unless `autoDriver` is
+         *     false, the agent also declares a companion `inference-driver`
+         *     component named `<name>-driver`, configured with
+         *     `runtimeName: <name>` and `modelId: <alias>`, spawns it, and
+         *     keeps the two together: deleting the runtime deletes the
+         *     driver, renaming it renames the driver, and changing the alias
+         *     re-targets it. The runtime is persisted first — its port is
+         *     assigned at write time — so the driver's lookup of the runtime
+         *     succeeds regardless of the engine's state. M2 named this gap,
+         *     M4 taught a driver to follow a runtime by name, and this is the
+         *     step that creates one. `Runtime.driver` reports the companion.
+         *
+         *     **A launch that will not fit is refused before it spawns.** When
+         *     `autoStart` is true the spec is measured against the free memory
+         *     of the device(s) it targets, and a `refuse` decision is a 422
+         *     carrying the arithmetic — required bytes, free bytes, the device,
+         *     and which runtimes hold the memory. `?force=true` declares it
+         *     anyway, because the estimate is an estimate and the model is the
+         *     operator's. `POST /v1/runtimes/admission` is the same measurement
+         *     without the declaration. A runtime declared with `autoStart`
+         *     false is not measured until it is started.
          */
         post: operations["createRuntime"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runtimes/admission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Would this runtime fit on the device it targets, right now?
+         * @description The dry run behind `POST /v1/runtimes` and `POST
+         *     /v1/runtimes/{name}/start`. Takes a `RuntimeSpec`, measures it
+         *     against the live free memory of the device(s) its `env` pins it
+         *     to (`CUDA_VISIBLE_DEVICES`, `HIP_VISIBLE_DEVICES`; every device
+         *     of the detected kind when unset), and returns a decision with
+         *     its arithmetic. Declares nothing and spawns nothing.
+         *
+         *     Required bytes come from the library's fit computation when a
+         *     `library` component is in this agent's topology — the same
+         *     arithmetic the discovery screen shows, at the context this spec
+         *     asks for — and from the model file's size plus a fixed
+         *     allowance otherwise. `basis` says which. Free bytes are the
+         *     largest single target device's, because llama.cpp's default
+         *     split is by layers and a model that fits across two cards and on
+         *     neither is `split`, not `fits`.
+         *
+         *     **Refuse, never queue** (decided 2026-09-10). A queue is a
+         *     promise about when memory frees that the control plane cannot
+         *     keep; the on-demand path (`RuntimeSpec.startOnDemand`, driven by
+         *     the gateway) is how a model that does not fit right now gets
+         *     loaded when it is actually asked for. `unknown` never refuses:
+         *     a verdict computed from a budget that could not be measured is
+         *     worse than no verdict, and three detection paths are unverified
+         *     on real hardware.
+         */
+        post: operations["checkAdmission"];
         delete?: never;
         options?: never;
         head?: never;
@@ -429,6 +494,19 @@ export interface paths {
          *     an engine holds GPU memory: an operator who wants the VRAM back
          *     for something else needs a stop that is not a delete and not a
          *     crash. Start it again with `POST .../start`.
+         *
+         *     **Accepts the operator or the gateway's service token**
+         *     (`service:gateway`, checked exactly — not any service token).
+         *     The gateway is the component that sees demand, so it is the one
+         *     that unloads an idle runtime; it says so in the body, and the
+         *     agent reports it back as `Runtime.stopReason: idle` so a
+         *     dashboard can explain a stopped model rather than just show
+         *     one. A leaked driver or library token still cannot stop an
+         *     engine.
+         *
+         *     The companion driver, if any, keeps running: it is cheap, and a
+         *     driver that still answers `/v1/info` for a stopped engine is
+         *     what lets the gateway keep listing an on-demand model.
          */
         post: operations["stopRuntime"];
         delete?: never;
@@ -453,6 +531,15 @@ export interface paths {
          * @description Spawns a runtime that is `stopped` or `crashed`. A no-op that
          *     still returns 202 if it is already coming up or ready, so the
          *     UI's Start button is idempotent.
+         *
+         *     Measured against the target device's free memory first, exactly
+         *     as `POST /v1/runtimes` is, and refused with 422 when the model
+         *     will not fit — this is where a runtime declared with `autoStart`
+         *     false meets admission. `?force=true` starts it anyway.
+         *
+         *     Accepts the operator or the gateway's service token
+         *     (`service:gateway`), because the gateway is what starts a
+         *     `startOnDemand` runtime when a request arrives for its model.
          */
         post: operations["startRuntime"];
         delete?: never;
@@ -1296,6 +1383,51 @@ export interface components {
              */
             autoStart: boolean;
             /**
+             * @description Whether the agent declares and supervises a companion
+             *     `inference-driver` that follows this runtime by name, so
+             *     the model is routable the moment the engine is ready. The
+             *     companion is `<name>-driver`; `Runtime.driver` reports it.
+             *     Set false to front the runtime by hand — one hand-tuned
+             *     driver pointed at an engine is still a supported shape, it
+             *     is just no longer the only one. Decided 2026-09-10 over a
+             *     declared pool: one driver per backend is the rule the
+             *     contract has stated since M0, a runtime is a backend, and a
+             *     pool would need allocation state and give drivers names
+             *     that mean a different model every hour.
+             * @default true
+             */
+            autoDriver: boolean;
+            /**
+             * @description Stop the engine after this many seconds with no request for
+             *     its model through the gateway, releasing its GPU memory.
+             *     Absent or 0 means never, which is every existing
+             *     declaration's behaviour unchanged.
+             *
+             *     **The gateway decides; this agent executes.** Only the
+             *     gateway sees demand, so it tracks the last request per
+             *     runtime and calls `POST .../stop` with `reason: idle` when
+             *     this expires. A runtime with a request in flight is never
+             *     stopped. Setting this also **opts the runtime into
+             *     eviction**: when a `startOnDemand` model will not fit, the
+             *     gateway may stop the most-idle runtimes that carry a timeout
+             *     to make room. A model that must stay resident sets none.
+             */
+            idleUnloadSeconds?: number;
+            /**
+             * @description Start this runtime when a request arrives for its model and
+             *     it is `stopped`. The gateway calls `POST .../start`, waits
+             *     for `ready` (bounded by its `swapWaitSeconds`), and serves
+             *     the request; the response says it did (`swapped_in`). With
+             *     `autoStart: false` and `idleUnloadSeconds` set, this is
+             *     llama-swap's model: declare five, load none, serve whichever
+             *     is asked for, unload it when it goes quiet — several at
+             *     once when they fit.
+             *
+             *     False by default so that a hand-pressed Stop stays stopped.
+             * @default false
+             */
+            startOnDemand: boolean;
+            /**
              * @description Curated engine flags, keyed by the field names in the
              *     adapter's `flagSchema`. Validated on write: an unknown key
              *     is a 400, never a silent drop.
@@ -1358,6 +1490,9 @@ export interface components {
             /** @description Resolved port, including one assigned by the agent. */
             port?: number;
             autoStart?: boolean;
+            autoDriver?: boolean;
+            idleUnloadSeconds?: number;
+            startOnDemand?: boolean;
             flags?: {
                 [key: string]: unknown;
             };
@@ -1367,7 +1502,22 @@ export interface components {
             };
             workingDirectory?: string;
             binary?: string;
+            /**
+             * @description Name of the companion `inference-driver` component the agent
+             *     declared for this runtime, when `autoDriver` is true. What
+             *     the gateway's routing table calls this backend, and the
+             *     entry to read in `GET /v1/components` for its health. Absent
+             *     when the operator fronts the runtime by hand.
+             */
+            driver?: string;
             status: components["schemas"]["RuntimeStatus"];
+            /**
+             * @description Why a `stopped` runtime is stopped. Present only in that
+             *     state; cleared on start. An observation, not a declaration
+             *     — it is never replicated, and after a control-root
+             *     promotion the answer is re-read from this agent.
+             */
+            stopReason?: components["schemas"]["StopReason"];
             /**
              * Format: uri
              * @description Where this engine is actually listening
@@ -1485,6 +1635,139 @@ export interface components {
             embeddings?: boolean;
             /** @description Whether a projector was loaded alongside the model. */
             multimodal?: boolean;
+        };
+        /**
+         * @description Optional body for `POST /v1/runtimes/{name}/stop`, saying why.
+         *     Recorded as `Runtime.stopReason` so the dashboard can explain a
+         *     stopped model. Absent means `operator`.
+         */
+        StopRequest: {
+            reason?: components["schemas"]["StopReason"];
+        };
+        /**
+         * @description * `operator` — an explicit stop, from the UI or the API.
+         *     * `idle` — the gateway unloaded it after `idleUnloadSeconds`
+         *       passed with no request for its model. It comes back on the
+         *       next request if `startOnDemand` is set.
+         *     * `autoStart` — declared with `autoStart: false` and never
+         *       started in this agent's lifetime.
+         *
+         *     A reason beside `status: stopped` rather than three new members
+         *     of `RuntimeStatus`, because the state is the same state — the
+         *     process is not running and the respawn loop is suppressed — and
+         *     only the cause differs.
+         * @enum {string}
+         */
+        StopReason: "operator" | "idle" | "autoStart";
+        /**
+         * @description Whether a runtime would fit on the device it targets, right now,
+         *     and the arithmetic behind the answer. Returned by
+         *     `POST /v1/runtimes/admission`, and the reasoning behind a 422
+         *     from `POST /v1/runtimes` or `POST /v1/runtimes/{name}/start`.
+         *
+         *     Deliberately **not** the library's `Fit`. That schema describes
+         *     a model against a host for the discovery screen; this one
+         *     decides a launch of one spec on one device and names what to do
+         *     about a refusal. They overlap on the verdict words and diverge
+         *     on everything else, and sharing them would couple the discovery
+         *     screen to the supervisor.
+         */
+        Admission: {
+            decision: components["schemas"]["AdmissionDecision"];
+            fit: components["schemas"]["AdmissionFit"];
+            basis: components["schemas"]["AdmissionBasis"];
+            /**
+             * Format: int64
+             * @description What the launch is estimated to need on the device — weights
+             *     plus KV cache at the requested context plus an overhead
+             *     allowance when the library computed it; file size plus a
+             *     fixed allowance when it did not.
+             */
+            requiredBytes?: number;
+            /**
+             * Format: int64
+             * @description Free memory on the largest single target device at the
+             *     moment of measurement. Free, not total: M3 measured 2.9 GiB
+             *     of a 32 GiB card held on an idle desktop.
+             */
+            freeBytes?: number;
+            /** Format: int64 */
+            totalBytes?: number;
+            /** @description The device the verdict is about. */
+            device?: components["schemas"]["ComputeDevice"];
+            /**
+             * @description The context the KV cache was sized for — the spec's
+             *     `contextSize`, or the model's own context when the spec
+             *     leaves it to the engine.
+             */
+            contextLength?: number;
+            /**
+             * @description Runtimes currently holding memory on that device, most idle
+             *     first. What an operator would stop to make room, and the
+             *     list the gateway's opt-in eviction walks — restricted there
+             *     to runtimes that declared `idleUnloadSeconds`.
+             */
+            blockers?: components["schemas"]["AdmissionBlocker"][];
+            /**
+             * @description The decision in prose, naming the numbers. A refusal that
+             *     does not say why is the complaint this endpoint exists to
+             *     answer.
+             */
+            reason: string;
+            /**
+             * @description Present when the budget could not be fully measured — no
+             *     vendor tool, an unreadable device, a detection path
+             *     unverified on real hardware. An `admit` with a warning is
+             *     an admit on faith, and says so.
+             */
+            warning?: string;
+        };
+        /**
+         * @description Refuse, never queue (decided 2026-09-10). A refusal carries its
+         *     numbers and is overridable with `force`; the on-demand path is
+         *     how a model that does not fit right now gets loaded when it is
+         *     actually asked for.
+         * @enum {string}
+         */
+        AdmissionDecision: "admit" | "refuse";
+        /**
+         * @description The same four words the library's guidance uses, plus `unknown`,
+         *     mapped onto a decision by what the spec asked for. `fits` admits.
+         *     `tight` — inside total memory but not free memory — and `split`
+         *     — needs host memory too — refuse a full-offload launch and admit
+         *     one whose `gpuLayers` is set below full, because then the
+         *     operator chose partial offload. `no` refuses. `unknown` admits
+         *     with a warning: a verdict from a budget that could not be
+         *     measured is worse than none.
+         * @enum {string}
+         */
+        AdmissionFit: "fits" | "tight" | "split" | "no" | "unknown";
+        /**
+         * @description * `metadata` — the library computed required bytes from the
+         *       model's real metadata at the requested context. Present when
+         *       a `library` component is in this agent's topology and
+         *       answered.
+         *     * `file_size` — the model file's size plus a fixed allowance.
+         *       What an agent with no library reachable can measure on its
+         *       own, said out loud rather than dressed up.
+         * @enum {string}
+         */
+        AdmissionBasis: "metadata" | "file_size";
+        AdmissionBlocker: {
+            /** @description A runtime holding memory on the device. */
+            name: string;
+            status?: components["schemas"]["RuntimeStatus"];
+            /**
+             * @description Its declared idle timeout, when it has one. Only a runtime
+             *     with one is ever evicted by the gateway; the rest are here
+             *     so the operator knows what is holding the memory.
+             */
+            idleUnloadSeconds?: number;
+            /**
+             * @description Whether the gateway may stop this runtime to make room —
+             *     true exactly when it declared `idleUnloadSeconds`.
+             */
+            evictable?: boolean;
         };
         /**
          * @description Issued on successful login. The UI stores `sessionToken` as a
@@ -1710,12 +1993,23 @@ export interface components {
          *     what is saved is the name rather than a URL because the address
          *     of a host is topology the control root owns.
          *
-         *     `driver_list` stays reserved for the ordered model→driver
-         *     priority lists that arrive with lifecycle policy — **M6** since
-         *     multi-host and trust took M5.
+         *     `model_slots` is the gateway's priority-list surface, and the
+         *     one value here that holds objects. An ordered JSON array of
+         *     `{"model": <alias a client asks for>, "targets": [<model id>,
+         *     ...]}`: a request for `model` is served by the drivers serving
+         *     `model` itself, then by the drivers serving each target in
+         *     order, cascading on failure. Targets are **model ids, not driver
+         *     names**, because a model id names a replica set — every driver
+         *     currently serving it, load-balanced — and a driver name would
+         *     name one process. That is why the value reserved since M2 as
+         *     `driver_list` was renamed when M6 defined it: the old name said
+         *     the wrong thing about what goes in the list. A cloud
+         *     subscription is a target like any other, because a
+         *     `claude_code_cli` driver already serves a model id. UIs without
+         *     a structured renderer for it fall back to editing the JSON.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "driver_list";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -2433,7 +2727,14 @@ export interface operations {
     };
     createRuntime: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Declare and spawn even when admission says the model will
+                 *     not fit. An explicit choice with a name; the refusal it
+                 *     overrides named its numbers.
+                 */
+                force?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2466,7 +2767,11 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description A runtime with that name already exists. */
+            /**
+             * @description A runtime with that name already exists — or a component
+             *     already holds the companion driver's name `<name>-driver`
+             *     and is not a companion, in which case `detail` names both.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2475,6 +2780,45 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /**
+             * @description Admission refused: the model will not fit on the device(s)
+             *     this spec targets, and `force` was not set. `detail` carries
+             *     the `Admission` reasoning in prose; `POST
+             *     /v1/runtimes/admission` returns it structured.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    checkAdmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeSpec"];
+            };
+        };
+        responses: {
+            /** @description The decision and what it was computed from. Returned for admit and refuse alike. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Admission"];
+                };
+            };
+            400: components["responses"]["Problem"];
         };
     };
     getRuntime: {
@@ -2581,7 +2925,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StopRequest"];
+            };
+        };
         responses: {
             /** @description Stop scheduled. */
             202: {
@@ -2597,7 +2945,10 @@ export interface operations {
     };
     startRuntime: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Start even when admission says the model will not fit. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 name: string;
@@ -2616,6 +2967,18 @@ export interface operations {
                 };
             };
             404: components["responses"]["Problem"];
+            /**
+             * @description Admission refused and `force` was not set. `detail` carries
+             *     the arithmetic.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getNode: {

@@ -58,7 +58,8 @@ const STATUS_HELP: Record<RuntimeStatus, string> = {
   ready: "Model loaded and serving. The only state the gateway routes to.",
   loading: "Answering, but still reading the model into memory.",
   starting: "Spawned, not yet answering its readiness probe.",
-  stopped: "Deliberately stopped, or declared with autoStart off.",
+  stopped:
+    "Not running and not being respawned: stopped by the operator, unloaded by the gateway after its idle timeout, or declared with autoStart off. `stopReason` says which.",
   exited: "Exited cleanly; the agent is respawning it.",
   crashed: "Exited non-zero repeatedly. The agent gave up — see the error.",
 };
@@ -485,6 +486,9 @@ function RuntimeCard({
             title={STATUS_HELP[r.status]}
           >
             {r.status}
+            {r.status === "stopped" && r.stopReason && (
+              <span className="text-[color:var(--muted)]"> ({r.stopReason})</span>
+            )}
           </span>
           <span className="font-mono text-xs text-[color:var(--muted)]">{r.engine}</span>
           {r.modelAlias && (

@@ -46,13 +46,22 @@ export interface paths {
          * Generate a chat completion, routed to a backend that serves the model.
          * @description The one endpoint everything else exists to support.
          *
-         *     Routing: `model` is resolved to the drivers serving it, one is
-         *     chosen, and the request is translated to that driver's
-         *     `/v1/generate`. If the attempt fails in a cascade-eligible way —
-         *     transport error, 5xx, timeout — the gateway falls through to the
-         *     next driver and tries again. A **4xx does not cascade**: it means
-         *     the request itself is wrong, the next backend would reject it
+         *     Routing: `model` is resolved to its slot — the drivers serving
+         *     it, then the drivers serving each configured target in order
+         *     (see `modelSlots`). Within a tier the least-busy eligible driver
+         *     is chosen and the request is translated to its `/v1/generate`.
+         *     If the attempt fails in a cascade-eligible way — transport
+         *     error, 5xx, timeout — the gateway tries the rest of the tier,
+         *     then the next tier. A **4xx does not cascade**: it means the
+         *     request itself is wrong, the next backend would reject it
          *     identically, and retrying would only bury the real error.
+         *
+         *     A model whose runtimes are all `stopped` is not a 404. If one of
+         *     them declared `startOnDemand`, the gateway starts it, waits up
+         *     to `swapWaitSeconds` for `ready`, and serves the request —
+         *     `x_eugene_plexus.swapped_in` and `waited_ms` say so. Past the
+         *     wait, the next tier is tried; with none, a 503 naming the
+         *     runtime being woken.
          *
          *     Sampling parameters are the gateway's to send. Anything the
          *     caller omits is filled from the model's settings profile and
@@ -114,13 +123,45 @@ export interface paths {
          *     reachability + backend identity, and returns. Does not touch
          *     the saved config; safe to call against unsaved form values.
          *
-         *     Probes a *single* URL. A driver slot in the gateway's `drivers`
-         *     config is a priority list of backends, held as topology entry
-         *     names; the UI resolves each name to a URL via the agent
-         *     topology and calls this once per backend so each fallback can
-         *     be tested independently.
+         *     Probes a *single* URL. The UI resolves a driver's name to a URL
+         *     via the agent topology and calls this once per driver, so each
+         *     backend behind a model can be tested independently. Priority
+         *     lists are `modelSlots` entries naming model ids, not URLs, so
+         *     there is nothing here to probe for a slot as a whole — read
+         *     `GET /v1/admin/routing` for how a slot currently resolves.
          */
         post: operations["probeDriver"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/routing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The resolved routing table — slots, tiers, backends, and what each is doing.
+         * @description What `/v1/models` compresses into one entry per model, opened
+         *     up: every slot the gateway would answer for, its tiers in
+         *     order, and for each backend whether it is eligible right now
+         *     and why not, how many requests are in flight to it, the
+         *     runtime behind it and that runtime's lifecycle state. This is
+         *     the page an operator reads when a request went somewhere
+         *     surprising, and what the acceptance run reads to see the
+         *     balancer alternate.
+         *
+         *     A view of the last refresh, not a fresh poll — the same
+         *     snapshot requests are routed from, so what it shows is what a
+         *     request would meet.
+         */
+        get: operations["getRoutingTable"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -175,10 +216,28 @@ export interface paths {
          *     of fields with `sensitive: true` are redacted as the literal
          *     string `"<redacted>"`.
          *
-         *     (v0.2) Notable config additions: `identityUrl` for the
-         *     identity component, and an extended `defaultSystemPrompt`
-         *     that may be empty when the gateway should always
-         *     assemble prompts from identity-component data.
+         *     The lifecycle-policy fields (M6), all editable at runtime
+         *     through the generic editor:
+         *
+         *     * **`modelSlots`** (`model_slots`) — the priority lists. An
+         *       ordered list of `{model, targets}`; see
+         *       `ConfigValueType.model_slots` for the shape and why targets
+         *       are model ids rather than driver names.
+         *     * **`loadBalancing`** (`enum`) — `least_busy` (default) picks
+         *       the eligible driver with the fewest in-flight requests per
+         *       slot of capacity, ties round-robin; `round_robin` alternates
+         *       strictly, which is worth having when comparing two replicas.
+         *     * **`swapWaitSeconds`** (`duration`) — how long a request waits
+         *       for a `startOnDemand` runtime to reach `ready` before the next
+         *       tier is tried. Engine-dependent: llama.cpp loads a small
+         *       model in seconds; vLLM's silent load is minutes.
+         *     * **`idleCheckSeconds`** (`duration`) — how often the gateway
+         *       checks each runtime's idle timeout.
+         *     * **`controlUrl`** (`url`, optional) — the control root. When
+         *       set, topology comes from its union views and lifecycle
+         *       actions are sent to the agent that owns each runtime, looked
+         *       up through `GET /v1/nodes`. Unset means a single-host install
+         *       and the one configured agent.
          */
         get: operations["getConfig"];
         put?: never;
@@ -385,6 +444,26 @@ export interface components {
              *     honest number, since a request may land on any of them.
              */
             context_length?: number;
+            /**
+             * @description The slot's tiers in priority order, each the driver names
+             *     in it. One tier for an unconfigured model; more when a
+             *     `modelSlots` entry adds targets. Empty tiers are omitted.
+             */
+            tiers?: string[][];
+            /**
+             * @description How many of those drivers can take a request right now — a
+             *     reachable driver whose runtime is `ready`, or that follows
+             *     no runtime. Zero with the model still listed means every
+             *     runtime behind it is asleep and at least one will wake on
+             *     demand.
+             */
+            ready_backends?: number;
+            /**
+             * @description True when a request for this model may have to wait for a
+             *     runtime to start — every eligible backend is `stopped` and
+             *     at least one declared `startOnDemand`.
+             */
+            on_demand?: boolean;
         };
         ChatCompletionRequest: {
             /**
@@ -526,6 +605,88 @@ export interface components {
              *     priority-list cascade fired and an earlier backend failed.
              */
             attempts?: number;
+            /**
+             * @description Which tier of the slot answered, 1-based. Greater than 1
+             *     means every backend in an earlier tier was ineligible or
+             *     failed — a cloud target answering for a local model, say.
+             */
+            tier?: number;
+            /**
+             * @description True when the gateway had to start a `startOnDemand`
+             *     runtime to serve this request. The visible cost of idle
+             *     unload, next to the request that paid it.
+             */
+            swapped_in?: boolean;
+            /**
+             * @description How long the request waited for a runtime to reach `ready`
+             *     before being sent. Zero when nothing had to be woken.
+             */
+            waited_ms?: number;
+        };
+        /**
+         * @description The gateway's resolved routing table, as of the last refresh.
+         *     The same snapshot requests are routed from, opened up so an
+         *     operator can see why a request went where it did.
+         */
+        RoutingTableView: {
+            /** Format: date-time */
+            refreshed_at: string;
+            /** @description The strategy in effect — the `loadBalancing` config value. */
+            load_balancing?: string;
+            slots: components["schemas"]["RoutingSlotView"][];
+            /** @description Drivers in the topology that did not answer `/v1/info`. */
+            unreachable_drivers?: string[];
+        };
+        RoutingSlotView: {
+            /** @description What a client asks for. */
+            model: string;
+            /**
+             * @description True when a `modelSlots` entry exists for this model; false
+             *     for the implicit one-tier slot every served model id gets.
+             */
+            configured?: boolean;
+            tiers: components["schemas"]["RoutingTierView"][];
+        };
+        RoutingTierView: {
+            /** @description The model id this tier is the replica set of. */
+            target: string;
+            backends: components["schemas"]["RoutingBackendView"][];
+        };
+        RoutingBackendView: {
+            driver: string;
+            /** Format: uri */
+            url?: string;
+            /** @description Whether a request could be sent here right now. */
+            eligible: boolean;
+            /**
+             * @description Why not, when `eligible` is false — the runtime's status
+             *     (`stopped`, `loading`, `crashed`), or that the driver was
+             *     unreachable.
+             */
+            ineligible_reason?: string;
+            /** @description Requests this gateway currently has outstanding to it. */
+            in_flight?: number;
+            /** @description The runtime's capacity, when it reported one; 1 otherwise. */
+            parallel_slots?: number;
+            /** @description The engine runtime this driver follows, when it follows one. */
+            runtime?: string;
+            /**
+             * @description The agent's `RuntimeStatus` for that runtime, as a string —
+             *     the agent owns the enum.
+             */
+            runtime_status?: string;
+            /** @description The node the runtime runs on, when the agent reports one. */
+            node?: string;
+            /** @description The agent's `Runtime.stopReason`, when the runtime is stopped. */
+            stop_reason?: string;
+            /** @description The runtime's declared idle timeout, when it has one. */
+            idle_unload_seconds?: number;
+            start_on_demand?: boolean;
+            /**
+             * @description Seconds since the gateway last sent this backend a request.
+             *     Absent when it never has.
+             */
+            idle_seconds?: number;
         };
         /**
          * @description Error envelope for the two OpenAI-compatible operations. The
@@ -718,12 +879,23 @@ export interface components {
          *     what is saved is the name rather than a URL because the address
          *     of a host is topology the control root owns.
          *
-         *     `driver_list` stays reserved for the ordered model→driver
-         *     priority lists that arrive with lifecycle policy — **M6** since
-         *     multi-host and trust took M5.
+         *     `model_slots` is the gateway's priority-list surface, and the
+         *     one value here that holds objects. An ordered JSON array of
+         *     `{"model": <alias a client asks for>, "targets": [<model id>,
+         *     ...]}`: a request for `model` is served by the drivers serving
+         *     `model` itself, then by the drivers serving each target in
+         *     order, cascading on failure. Targets are **model ids, not driver
+         *     names**, because a model id names a replica set — every driver
+         *     currently serving it, load-balanced — and a driver name would
+         *     name one process. That is why the value reserved since M2 as
+         *     `driver_list` was renamed when M6 defined it: the old name said
+         *     the wrong thing about what goes in the list. A cloud
+         *     subscription is a target like any other, because a
+         *     `claude_code_cli` driver already serves a model id. UIs without
+         *     a structured renderer for it fall back to editing the JSON.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "driver_list";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
@@ -1073,8 +1245,11 @@ export interface operations {
             };
             /**
              * @description A driver serves the model but is not ready — the engine is
-             *     still loading, or the gateway is in safe mode. Retryable, so
-             *     it is deliberately not folded into 502.
+             *     still loading, a `startOnDemand` runtime was woken and did
+             *     not reach `ready` within `swapWaitSeconds`, or the gateway
+             *     is in safe mode. Retryable, so it is deliberately not folded
+             *     into 502. The message names the runtime when one is being
+             *     woken.
              */
             503: {
                 headers: {
@@ -1142,6 +1317,35 @@ export interface operations {
                 };
             };
             400: components["responses"]["Problem"];
+        };
+    };
+    getRoutingTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The routing table as of the last refresh. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingTableView"];
+                };
+            };
+            /** @description No routing table — the gateway is in safe mode. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     restart: {

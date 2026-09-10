@@ -146,13 +146,14 @@ export function ConfigFieldInput({
       );
     }
 
-    // `driver_list` is still in ConfigValueType but no component emits
-    // one: the gateway derives its routing table from the agent
-    // topology instead of holding a configured list. The bespoke editor
-    // for it is gone rather than kept warm — a renderer for a shape
-    // nothing produces is how a UI drifts away from the contract.
-    // Configured model->driver priority lists arrive with load
-    // balancing at M5; the renderer comes back with them.
+    // `model_slots` (M6): the gateway's priority lists, an ordered array
+    // of `{model, targets}`. Edited as JSON in a textarea for now — the
+    // design names a structured editor as the UI gap it is. Parsed on
+    // every keystroke; a parse error is shown and nothing is sent, so a
+    // half-typed list never reaches the server as a rejected patch.
+    if (field.valueType === "model_slots") {
+      return <ModelSlotsInput value={value} pending={pending} onChange={onChange} />;
+    }
 
     // Peer-reference dropdown: a `componentKindHint` tells us this
     // field points at a agent topology entry of the given kind.
@@ -307,6 +308,75 @@ const URL_LIST_COPY: ListCopy = {
  * standby would report it twice, and dropping one of the operator's
  * entries without saying so is worse than an error either way.
  */
+/**
+ * Editor for `model_slots`: the JSON array itself, with a parse check.
+ *
+ * Deliberately not a structured form yet. A slot is `{model, targets[]}`
+ * and the server validates every entry with a message that names the
+ * line; a textarea that shows the array as the server holds it, and
+ * refuses to send what does not parse, is honest and small. The
+ * structured editor is a `ui` change with no contract consequence.
+ */
+function ModelSlotsInput({
+  value,
+  pending,
+  onChange,
+}: {
+  value: unknown;
+  pending: boolean;
+  onChange: (newValue: unknown) => void;
+}) {
+  const serialized = JSON.stringify(Array.isArray(value) ? value : [], null, 2);
+  const [text, setText] = useState<string>(serialized);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const mirrored = useRef<string>(serialized);
+
+  useEffect(() => {
+    if (serialized !== mirrored.current) {
+      mirrored.current = serialized;
+      setText(serialized);
+      setParseError(null);
+    }
+  }, [serialized]);
+
+  return (
+    <div className="space-y-1">
+      <textarea
+        value={text}
+        rows={Math.min(14, Math.max(4, text.split("\n").length + 1))}
+        spellCheck={false}
+        disabled={pending}
+        onChange={(e) => {
+          const next = e.target.value;
+          setText(next);
+          try {
+            const parsed: unknown = JSON.parse(next);
+            if (!Array.isArray(parsed)) {
+              setParseError("must be a JSON array of {model, targets} entries");
+              return;
+            }
+            setParseError(null);
+            mirrored.current = JSON.stringify(parsed, null, 2);
+            onChange(parsed);
+          } catch (err) {
+            setParseError(err instanceof Error ? err.message : String(err));
+          }
+        }}
+        className="w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50"
+      />
+      <p className="text-xs leading-relaxed text-[color:var(--muted)]">
+        One entry per name a client may ask for:{" "}
+        <span className="font-mono">
+          {'{"model": "coder", "targets": ["qwen3-coder-30b", "claude-opus-4-7"]}'}
+        </span>
+        . Targets are model ids — each one is every replica serving it — tried in order after the
+        model&rsquo;s own drivers.
+      </p>
+      {parseError && <p className="status-error text-xs">Not saved: {parseError}</p>}
+    </div>
+  );
+}
+
 function StringListInput({
   value,
   pending,
