@@ -40,3 +40,7 @@ CLAUDE.md
 # Playwright acceptance artifacts (traces, screenshots) from a local run.
 /test-results/
 /playwright-report/
+
+# --- Python packaging (staged build output, never committed) ---
+python/eugene_plexus_ui/static/
+*.egg-info/

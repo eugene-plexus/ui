@@ -66,16 +66,20 @@ _list_ is still an open question. See the
   screen under `src/app/setup/`, so a screen can be mounted and tested on its own. Auto-saves to
   sessionStorage; commits to the install on Start as a single transaction — which now includes
   enrolling this host's own agent with the control root it just spawned.
-- **Same-origin proxy** at `/api/proxy/<target>/<...path>` — the browser only talks to the Next.js
-  server; the server forwards to the component URL. `gateway` and `agent` are bootstrap targets;
-  `library`, `control`, and named inference-drivers resolve through agent topology at
-  request time. No CORS configuration on the components, no private URLs in the browser.
+- **Same-origin proxy** at `/api/proxy/<target>/<...path>` — the browser only talks to the origin
+  it was served from; that origin forwards to the component URL. `agent` is this host's agent;
+  `gateway`, `library` and `control` resolve from the agent's topology **by kind**, because an
+  install has exactly one of each; anything else is an inference-driver **by name**. No CORS
+  configuration on the components, no private URLs in the browser.
+
+  **The proxy is not in this repo any more.** It moved into the agent
+  (`eugene_plexus_agent/routes/proxy.py`) at install-paths §9 step 1, where resolving a target is an
+  in-process lookup rather than an authenticated HTTP call back to the thing asking. Deleting it —
+  the only dynamic route this application had — is what lets the UI ship as a static export inside a
+  Python wheel, which takes Node out of the runtime on every platform.
 
 ## Remaining Gaps
 
-- **Token-by-token streaming.** The gateway ships correct OpenAI framing with a single content
-  chunk; real pass-through needs the driver's SSE plumbed through the failover cascade. The
-  playground would render the same text at the same moment either way, so it doesn't stream.
 - **Control-root workflows:** enrollment, rotation, promotion and topology management
   need dedicated screens; generated types and a proxy target are not those screens.
 - **Structured model slots:** `model_slots` currently renders as a JSON editor.
@@ -85,23 +89,48 @@ _list_ is still an open question. See the
 
 ## Running
 
+**In an install, this repo is not running at all.** The agent serves the built assets at its own
+root (`http://127.0.0.1:8079/` by default) out of the `eugene-plexus-ui` wheel. That is the path an
+operator takes and the path acceptance runs drive.
+
+For development, with hot reload:
+
 ```bash
 npm install
 npm run codegen       # produces src/generated/*.ts from pinned specs
-npm run dev
+npm run dev           # http://localhost:3000
 ```
 
-By default the UI is served at `http://localhost:3000` and proxies API calls to
-`http://127.0.0.1:8080` (gateway) and `http://127.0.0.1:8079` (agent). Override the bootstrap
-targets via env:
+`next dev` is not the agent, so `/api/proxy/...` does not exist at that origin; a dev-only
+`rewrites` entry forwards it to the agent. Point it somewhere else with `AGENT_URL`:
 
 ```bash
-GATEWAY_URL=http://gateway.tailnet:8080 AGENT_URL=http://agent.tailnet:8079 npm run dev
+AGENT_URL=http://agent.tailnet:8079 npm run dev
 ```
 
-Library, control-root and driver URLs are not configured here. The proxy resolves them against agent
-topology at request time, which is also where the gateway reads it from — one place a driver's URL
-is written down, so the UI and the router cannot disagree about where it is.
+Component URLs are not configured here at all — not even the gateway's. The agent resolves every
+target from its own topology, which is also where the gateway reads it from, so one place records a
+component's URL and the UI and the router cannot disagree about where it is.
+
+## Packaging — `eugene-plexus-ui`
+
+The browser half of an install is a Python distribution: a Next.js static export staged into
+`python/eugene_plexus_ui/` and wrapped by hatchling, so `pip install eugene-plexus-ui` into the
+agent's interpreter is the whole of "add a browser". The agent finds it through
+`importlib.resources` and mounts it; without it the agent serves the API and says so at `/`.
+
+```bash
+npm run build:python                 # next build, then stage out/ into the package
+python -m build --wheel              # dist/eugene_plexus_ui-*.whl
+```
+
+Two things that are easy to get wrong and are checked in CI: the export is only produced when
+`NODE_ENV` is production (`output: "export"` is conditional, because it cannot coexist with the dev
+`rewrites`), and the staged assets are gitignored build output, so hatchling has to be told to
+include them — a wheel without `index.html` installs and imports perfectly and is useless in a way
+only a browser notices.
+
+Precedent for the shape: Open WebUI ships its built frontend inside its Python wheel.
 
 ## Codegen
 

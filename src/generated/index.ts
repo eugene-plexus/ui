@@ -3,6 +3,6 @@
 // Regenerate with:
 //   npm run codegen
 //
-// Source: https://github.com/eugene-plexus/specs at commit 3df9cdc
+// Source: https://github.com/eugene-plexus/specs at commit a83df4b
 
-export const SPECS_REF = "3df9cdc";
+export const SPECS_REF = "a83df4b";

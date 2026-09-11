@@ -1,10 +1,11 @@
 /**
  * Browser-side API client.
  *
- * Talks to the same-origin proxy at `/api/proxy/<target>/<path>`. The
- * server-side proxy (see `app/api/proxy/[target]/[...path]/route.ts`)
- * forwards to the configured component URL. This module only deals in
- * relative paths and JSON.
+ * Talks to the same-origin proxy at `/api/proxy/<target>/<path>`, which
+ * **the agent serves** (`eugene_plexus_agent/routes/proxy.py`) and which
+ * forwards to the component that target names. Same origin as the page
+ * itself, because the agent also serves the page. This module only deals
+ * in relative paths and JSON.
  *
  * v0.2: every request automatically gets `Authorization: Bearer <token>`
  * when the user has an active session. 401 responses are intercepted
@@ -32,23 +33,28 @@ interface RequestOptions {
    * Used by the login form and the wizard's `/v1/auth/initialize` call —
    * both expect to talk to the agent without an existing session. */
   skipAuth?: boolean;
-  /** Send this bearer **upstream**, while the stored session token still
-   * resolves the target.
+  /** Use this bearer instead of the stored session token.
    *
    * Exactly one caller: the first-run wizard, which needs a control-root
-   * token to mint a join token *and* the agent's token to find out where
-   * the control root is. Between initializing the agent and enrolling it,
-   * those are genuinely two different credentials — the agent is minting
-   * its own random per-restart key and the root is minting the install's
-   * — and they only become one token once enrollment has happened, which
-   * is the thing being set up.
+   * token to mint a join token. Between initializing the agent and
+   * enrolling it, the agent and the root genuinely hold different signing
+   * keys — the agent mints its own random per-restart one, the root mints
+   * the install's — so the session in `localStorage` is not a credential
+   * the root accepts.
    *
-   * Not `Authorization`, because that header is what the proxy uses to
-   * resolve the target through the agent's `/v1/components`. Overriding
-   * it 401s the *lookup*, which surfaces as "no control component in the
-   * agent topology": alarming, false, and already on record from the last
-   * time this was met. */
-  upstreamToken?: string;
+   * **This used to be a second header.** `x-eugene-plexus-upstream-
+   * authorization` existed because the old Next proxy spent the request's
+   * `Authorization` on its own lookup: finding where `control` lives
+   * meant calling the agent's bearer-protected `/v1/components`, so one
+   * header could not be both credentials at once and a 401 at the
+   * resolver surfaced as "no control component in the agent topology" —
+   * alarming, false, and on record twice. The agent resolves targets in
+   * process now and spends no credential doing it, so there is one
+   * header again and it means what it says.
+   *
+   * A 401 here is the *supplied* token being refused, not the session, so
+   * it does not clear the session or bounce to /login. */
+  bearer?: string;
   /** Client-side timeout in milliseconds. When the request exceeds this,
    * the fetch is aborted and a friendly `ApiError` (`status=0`,
    * `statusText='request timed out'`) is thrown. Useful for endpoints
@@ -73,14 +79,11 @@ function proxyHeaders(init: RequestInit, options: RequestOptions, accept: string
   if (!headers.has("accept")) {
     headers.set("accept", accept);
   }
-  if (!options.skipAuth && !headers.has("authorization")) {
-    const token = getSessionToken();
+  if (!headers.has("authorization")) {
+    const token = options.bearer ?? (options.skipAuth ? null : getSessionToken());
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
     }
-  }
-  if (options.upstreamToken) {
-    headers.set("x-eugene-plexus-upstream-authorization", `Bearer ${options.upstreamToken}`);
   }
   return headers;
 }
@@ -166,7 +169,7 @@ async function jsonRequest<T>(
       parsed = text;
     }
   }
-  if (response.status === 401 && !options.skipAuth) {
+  if (response.status === 401 && !options.skipAuth && !options.bearer) {
     // Session expired or token rejected — clear it and bounce to login.
     // The login page reads the current URL via `next` so it can return
     // here once authentication succeeds.

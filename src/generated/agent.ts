@@ -823,6 +823,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proxy/{target}/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description `agent`, `gateway`, `library`, `control`, or the name of an
+                 *     inference-driver in this agent's topology.
+                 */
+                target: string;
+                /**
+                 * @description The remainder of the upstream path, slashes included — e.g.
+                 *     `v1/chat/completions`. Not URL-encoded: this is a wildcard
+                 *     tail, and OpenAPI has no better way to say so.
+                 */
+                path: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {

@@ -1,156 +1,18 @@
 /**
- * Server-side runtime config.
+ * What a proxy target is, and nothing else.
  *
- * Read by the proxy route handler when a request lands. We deliberately
- * don't expose these URLs to the browser — every API call from the UI
- * goes through `/api/proxy/...`, which forwards server-side. This keeps
- * the UI origin-restricted (no CORS dance on the components) and lets us
- * keep the gateway on a private network without poking holes.
+ * This file used to hold the server-side resolver: the mapping from a
+ * target name to a component URL, read by a Next route handler when a
+ * request landed. Both moved to the agent at install-paths §9 step 1 —
+ * `eugene_plexus_agent/routes/proxy.py` — where the topology is an
+ * in-process object rather than a bearer-protected HTTP endpoint the
+ * proxy had to authenticate against to use.
  *
- * Two fixed targets: `gateway` and `agent`. Anything else is the NAME
- * of an `inference-driver` entry in the agent topology, resolved to a
- * URL there.
- *
- * That used to be a two-hop lookup — orchestrator config mapped a driver
- * SLOT to a backend name, then the agent mapped the name to a URL —
- * because the orchestrator kept its own list of drivers. The gateway
- * doesn't: it derives its routing table from the agent topology plus
- * each driver's `/v1/info`. So there is one hop now, and one place where
- * a driver's URL is written down.
+ * Two fixed targets, `gateway` and `agent`; `library` and `control` are
+ * resolved from the agent's topology by KIND, because an install has
+ * exactly one of each; anything else is the NAME of an inference-driver
+ * entry. The browser does not need to know any of that — it says what it
+ * wants to talk to and the agent knows where that is.
  */
 
 export type ProxyTarget = string;
-
-const FIXED_TARGETS = new Set(["gateway", "agent"]);
-
-// `library` is reserved: resolved from the agent topology by KIND
-// rather than by name, because there is exactly one. It is not a fixed
-// target with its own env var — a second place recording its URL is the
-// OpenClaw trap the driver path already avoids, and the wizard writes
-// the topology entry anyway.
-//
-// The cost is that an inference-driver cannot be named "library". That
-// is a fair trade for not having a LIBRARY_URL that can disagree with
-// what the agent actually spawned.
-const LIBRARY_TARGET = "library";
-
-// `control` is resolved the same way and for the same reason: exactly
-// one per install, spawned by the local agent like any other component,
-// so its URL is topology rather than configuration.
-//
-// Note it is resolved through the **agent**, not through itself. That
-// is not a detail — it is why the browser can still reach the runtime
-// dashboard when the control root is down, and it keeps the UI's
-// dependency pointing at the per-host process rather than the
-// install-wide one. A UI that resolved everything through the control
-// root would make a control-root outage look like a total outage,
-// which is precisely the property M5 spent an acceptance run proving
-// false.
-const CONTROL_TARGET = "control";
-
-const DEFAULT_GATEWAY = "http://127.0.0.1:8080";
-const DEFAULT_AGENT = "http://127.0.0.1:8079";
-
-interface AgentComponentEntry {
-  name: string;
-  kind: string;
-  url: string;
-}
-
-export function gatewayUrl(): string {
-  return process.env.GATEWAY_URL?.trim() || DEFAULT_GATEWAY;
-}
-
-export function agentUrl(): string {
-  return process.env.AGENT_URL?.trim() || DEFAULT_AGENT;
-}
-
-/**
- * Resolve one agent-topology entry's URL by (kind, name).
- *
- * Agent's `/v1/components` is bearer-auth-protected, so the caller
- * threads the incoming request's Authorization header through. Returns
- * null when the agent is unreachable or has no matching entry — the
- * caller turns that into a 503 with a message naming what it looked for,
- * which is more useful than a blind fallback URL that also fails.
- */
-async function fetchTopologyUrl(
-  kind: string,
-  name: string | null,
-  authHeader: string | undefined,
-): Promise<string | null> {
-  try {
-    const headers: HeadersInit = authHeader ? { Authorization: authHeader } : {};
-    const response = await fetch(`${agentUrl()}/v1/components`, { headers });
-    if (!response.ok) return null;
-    const doc = (await response.json()) as { components?: AgentComponentEntry[] };
-    const entry = (doc.components ?? []).find(
-      (c) =>
-        c &&
-        c.kind === kind &&
-        (name === null || c.name === name) &&
-        typeof c.url === "string" &&
-        c.url.length > 0,
-    );
-    return entry?.url ?? null;
-  } catch {
-    return null;
-  }
-}
-
-export async function resolveTarget(
-  target: ProxyTarget,
-  authHeader?: string,
-): Promise<{ url: string } | { error: string }> {
-  if (target === "gateway") {
-    return { url: gatewayUrl() };
-  }
-  if (target === "agent") {
-    return { url: agentUrl() };
-  }
-  if (FIXED_TARGETS.has(target)) {
-    return { error: `unsupported fixed target: ${target}` };
-  }
-  if (target === LIBRARY_TARGET) {
-    const url = await fetchTopologyUrl("library", null, authHeader);
-    if (!url) {
-      return {
-        error:
-          `no library component in the agent topology ` +
-          `(or the agent at ${agentUrl()} is unreachable). ` +
-          `Add one on the Config page, or re-run the first-run wizard.`,
-      };
-    }
-    return { url };
-  }
-  if (target === CONTROL_TARGET) {
-    const url = await fetchTopologyUrl("control", null, authHeader);
-    if (!url) {
-      return {
-        error:
-          `no control component in the agent topology ` +
-          `(or the agent at ${agentUrl()} is unreachable). ` +
-          `A single-host install can run without one, in which case the ` +
-          `agent still holds the trust root.`,
-      };
-    }
-    return { url };
-  }
-  const url = await fetchTopologyUrl("inference-driver", target, authHeader);
-  if (!url) {
-    return {
-      error:
-        `no inference-driver named '${target}' in the agent topology ` +
-        `(or the agent at ${agentUrl()} is unreachable)`,
-    };
-  }
-  return { url };
-}
-
-/** Validity check used by the route handler to short-circuit obvious garbage. */
-export function isValidTargetName(value: string): boolean {
-  // Driver names are operator-supplied strings; the agent validates
-  // non-emptiness. The proxy only needs a basic sanity gate to reject
-  // path-traversal-shaped input.
-  return value.length > 0 && !value.includes("/") && !value.includes("..");
-}

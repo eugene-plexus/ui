@@ -75,11 +75,10 @@ export async function withRetry<T>(
  * the control root, so the root this just enrolled with stays up.
  */
 export async function enrollLocalAgent(passphrase: string, controlUrl: string): Promise<string> {
-  // **No `skipAuth`.** Control ignores an Authorization header on its own
-  // login route, but the UI's proxy needs the agent's token to resolve
-  // `control` to a URL at all -- the exact trap `initializeControlRoot`
-  // documents two functions down, and the one this walked into on its
-  // first live run.
+  // Control ignores an Authorization header on its own login route, and
+  // since the agent resolves proxy targets in process, nothing else is
+  // reading one here either -- which is what makes the call below a
+  // one-credential call again.
   const session = await api.post<{ sessionToken: string }>("control", "/v1/auth/login", {
     passphrase,
   });
@@ -87,10 +86,11 @@ export async function enrollLocalAgent(passphrase: string, controlUrl: string): 
     "control",
     "/v1/nodes/join-token",
     {},
-    // The agent's token resolves where the root is; the root's token is
-    // what it accepts. Two credentials for one call, because an install
-    // that has not enrolled yet genuinely has two signing keys.
-    { upstreamToken: session.sessionToken },
+    // The root's token, not the browser's session: an install that has
+    // not enrolled yet genuinely has two signing keys, and this call is
+    // addressed to the one holding the other. It used to need a second
+    // header to say so, because resolving `control` spent the first.
+    { bearer: session.sessionToken },
   );
   await api.post("agent", "/v1/node/enroll", { controlUrl, token: minted.token });
   // The enrollment restarted every child and replaced the signing key, so
