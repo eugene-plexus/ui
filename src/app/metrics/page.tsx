@@ -14,10 +14,14 @@
  *
  * Three restraints are deliberate and should survive edits.
  *
- * **"Unreported" is not "zero".** The CLI subscription backends report
- * no token counts, ever, so `tokensPerSecond` comes back null. Rendering
- * that as `0 tok/s` says "slow" where it means "unmeasured", and the
- * operator cannot recover the difference from the screen.
+ * **"Unreported" is not "zero".** A backend that did not report token
+ * counts leaves `tokensPerSecond` null. Rendering that as `0 tok/s` says
+ * "slow" where it means "unmeasured", and the operator cannot recover
+ * the difference from the screen.
+ *
+ * Which backends those are is a per-request fact, not a property of a
+ * backend kind - an earlier version of this comment asserted the CLI
+ * subscription backends never report usage, and they do.
  *
  * **These numbers describe this box only.** Not a benchmark, and not a
  * ranking of hardware. Same line M3 locked for quant guidance: state
@@ -323,7 +327,7 @@ export default function MetricsPage() {
                       ) : (
                         <span
                           className="text-[color:var(--muted)]"
-                          title="This backend does not report token counts — the CLI subscription backends never do. Not the same as zero."
+                          title="This backend did not report token counts for these requests, so the rate cannot be computed. Not the same as zero."
                         >
                           unreported
                         </span>

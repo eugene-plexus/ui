@@ -55,9 +55,9 @@ beforeEach(() => {
         cascaded: 1,
         swappedIn: 0,
         latencyMs: { p50: 2000, p90: 3000, max: 3000 },
-        // The CLI subscription backends never report token counts, and
-        // without the backend's own latency the overhead split cannot be
-        // computed either.
+        // A backend that reported no token counts on these requests, and
+        // no latency of its own either, so neither the rate nor the
+        // overhead split can be computed.
         tokensPerSecond: null,
         routingMs: { p50: 2, p90: 4, max: 9 },
         overheadMs: null,
