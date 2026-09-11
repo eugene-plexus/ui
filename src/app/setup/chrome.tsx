@@ -9,9 +9,9 @@
 import { TOTAL_SCREENS } from "./draft";
 
 export function WizardHeader({ screen }: { screen: number }) {
-  // Progress fill = current screen / total. Screen 1 shows 10% (the
-  // user has just landed on the first screen, not zero progress);
-  // Screen 10 shows 100% — Start is the only action left.
+  // Progress fill = current screen / total. Screen 1 reads 20% (the user
+  // has landed on the first screen, not made zero progress); the last
+  // screen reads 100%, where Start is the only action left.
   const progressPercent = Math.round((screen / TOTAL_SCREENS) * 100);
   return (
     <header className="bg-[color:var(--panel)]">
@@ -112,5 +112,3 @@ export function WizardFooter({
     </footer>
   );
 }
-
-/* ────────────────────────────── screens ────────────────────────────── */

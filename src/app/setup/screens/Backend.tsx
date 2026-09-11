@@ -146,13 +146,3 @@ export function CredentialFields({
     </>
   );
 }
-
-/**
- * Pick the model, from a list the backend actually reported.
- *
- * A separate screen rather than a field on the backend screen because a
- * driver has to exist before it can be asked what it serves, and one cannot
- * exist before Start - there is no session token until the passphrase is set.
- * The alternative was making the operator hand-type an exact model id, which
- * is what this replaces.
- */

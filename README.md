@@ -58,11 +58,14 @@ _list_ is still an open question. See the
   command to paste on the machine being added. The _other_ machine answers on its own terminal,
   because you cannot reach a worker's web UI until it advertises a non-loopback address, and
   setting that is part of what joining does.
-- **First-run wizard** (`/setup`) — eight screens: theme/font, passphrase + security mode, welcome,
-  deployment topology, gateway address, model directories, one external backend, summary. Split one
-  module per screen under `src/app/setup/`, so a screen can be mounted and tested on its own.
-  Auto-saves to sessionStorage; commits to the install on Start as a single transaction — which
-  now includes enrolling this host's own agent with the control root it just spawned.
+- **First-run wizard** (`/setup`) — five screens: welcome, passphrase + security mode, model
+  directories, one external backend (optional), summary. It was eight until 2026-09-11; the three
+  that went asked questions nothing answered — deployment topology and gateway address were
+  collected, echoed back on the summary as if they were configuration, and never written by Start,
+  and theme/font only ever touched `localStorage` and lives on `/config`. Split one module per
+  screen under `src/app/setup/`, so a screen can be mounted and tested on its own. Auto-saves to
+  sessionStorage; commits to the install on Start as a single transaction — which now includes
+  enrolling this host's own agent with the control root it just spawned.
 - **Same-origin proxy** at `/api/proxy/<target>/<...path>` — the browser only talks to the Next.js
   server; the server forwards to the component URL. `gateway` and `agent` are bootstrap targets;
   `library`, `control`, and named inference-drivers resolve through agent topology at

@@ -6,6 +6,14 @@
  * One screen per module since M9. Nothing here reads or writes the
  * install - a screen renders the draft and reports edits upwards, and
  * every write happens once, in `page.tsx`, when Start is pressed.
+ *
+ * Since the cut to five screens this also absorbs what the Gateway screen
+ * used to say. The difference is that the gateway row is now **read from
+ * the topology** rather than echoed back from the draft: the old screen
+ * collected a host and port that Start never wrote anywhere, so the
+ * summary confidently reported an address the install did not use. When
+ * the topology is not an answer yet - an unauthenticated read on an
+ * install with no passphrase 401s - the row says so rather than guessing.
  */
 
 import { providerLabel } from "@/lib/agent";
@@ -28,11 +36,15 @@ export function ScreenDone({
   startMessage: string | null;
   startError: string | null;
 }) {
+  const gateway = knownComponents.find((c) => c.kind === "gateway");
   const summary: { label: string; value: string }[] = [
     {
       label: "Gateway",
-      value:
-        draft.deployment === "networked" ? `${draft.gatewayHost}:${draft.gatewayPort}` : "local",
+      value: gateway
+        ? (gateway.advertiseUrl ?? gateway.url)
+        : topologyKnown
+          ? "not declared on this node"
+          : "declared by the agent on first boot",
     },
     {
       label: "Model directories",
@@ -79,9 +91,17 @@ export function ScreenDone({
       </dl>
       <MissingTopologyHints missingKinds={missingKinds} />
       <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
+        The gateway address above is what you point a client at &mdash; anything that speaks the
+        OpenAI API works unmodified. It resolves a model name to whichever driver serves it and
+        falls back to another when one dies, so there is no routing table to maintain by hand.
+      </p>
+      <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
         Afterwards: the Runtimes page is where you start an engine and confirm it reached{" "}
-        <span className="font-mono">ready</span>, and the playground picks up any model the gateway
-        can route to.
+        <span className="font-mono">ready</span>, the playground picks up any model the gateway can
+        route to, and Config holds everything this wizard did not ask about &mdash; theme, font
+        size, generation defaults. To add a second machine, mint a join token on the Nodes page and
+        run <span className="font-mono">eugene-plexus-agent join</span> over there; a worker is
+        never onboarded through a browser.
       </p>
       {starting && startMessage && (
         <p className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--muted)]">

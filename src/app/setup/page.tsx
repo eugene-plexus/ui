@@ -3,8 +3,8 @@
 /**
  * First-run wizard — the orchestrator.
  *
- * Eight screens, unchanged at M9. What changed is that this file no
- * longer contains them: it was 1548 lines holding eight screens, the
+ * Five screens. At M9 this file stopped containing them: it was 1548
+ * lines holding eight screens, the
  * persisted draft, the backend-creation logic, port allocation, topology
  * validation and seven leaf inputs, so **nothing in it could be tested
  * without mounting the whole wizard** — which is why its test was 258
@@ -20,18 +20,35 @@
  *   screens/*.tsx     one file per screen
  *   page.tsx          this — the flow, and the one place that writes
  *
- * Screen order (kept as-is; the design proposed cutting to five and that
- * is a separate decision):
+ * Screen order, cut from eight to five on 2026-09-11:
  *
- *   1. Look & feel   — local theme + font, live preview
+ *   1. Welcome       — plain-language framing of what gets set up
  *   2. Security      — passphrase + securityMode
- *   3. Welcome       — plain-language framing of what gets set up
- *   4. Deployment    — all-local vs. networked
- *   5. Gateway       — host:port shown only in networked mode
- *   6. Models        — the operator's model directories
- *   7. Backend       — one external backend, optional
- *   8. Done          — summary + Start (or the model picker, if a backend
+ *   3. Models        — the operator's model directories
+ *   4. Backend       — one external backend, optional
+ *   5. Done          — summary + Start (or the model picker, if a backend
  *                      was created and can be asked what it serves)
+ *
+ * **What went, and why it is not a matter of taste.** Deployment and
+ * Gateway collected `deployment`, `gatewayHost` and `gatewayPort`, which
+ * the Start transaction below never wrote to anything — grep them and the
+ * only reader was the Ready screen's own summary. So the wizard asked two
+ * questions, discarded both answers, and then printed one of them back as
+ * if it were configuration: set `0.0.0.0:9000` there and you got an
+ * install on `127.0.0.1:8080` and a summary claiming otherwise. In the
+ * default local path the Gateway screen also rendered no inputs at all.
+ * Look & feel wrote only `localStorage`, and `UIPreferences` on `/config`
+ * has been the same two controls all along.
+ *
+ * **And Welcome was third**, which is how the split found it: a
+ * plain-language "here is what is about to happen" arriving after the
+ * operator had already chosen a font size and committed a passphrase.
+ * Either it is first or it is nothing.
+ *
+ * What remains is what cannot be derived or defaulted: the passphrase,
+ * where the model files already are, and optionally one backend the agent
+ * does not supervise (which has no runtime, so nothing declares a
+ * companion driver for it).
  *
  * State lives in React (with a sessionStorage mirror so a tab refresh
  * doesn't lose progress). **The actual write-to-install happens only on
@@ -75,10 +92,7 @@ import {
   type WizardDraft,
 } from "./draft";
 import { ScreenBackend } from "./screens/Backend";
-import { ScreenDeployment } from "./screens/Deployment";
 import { ScreenDone } from "./screens/Done";
-import { ScreenGateway } from "./screens/Gateway";
-import { ScreenLookFeel } from "./screens/LookFeel";
 import { ScreenModels } from "./screens/Models";
 import { ScreenPickModel } from "./screens/PickModel";
 import { ScreenSecurity } from "./screens/Security";
@@ -412,7 +426,7 @@ export default function WizardPage() {
       <WizardHeader screen={screen} />
       <div className="flex-1 overflow-y-auto px-6 py-8">
         <div className="mx-auto max-w-2xl">
-          {screen === 1 && <ScreenLookFeel />}
+          {screen === 1 && <ScreenWelcome />}
           {screen === 2 && (
             <ScreenSecurity
               passphrase={passphrase}
@@ -423,34 +437,19 @@ export default function WizardPage() {
               onSecurityMode={(v) => patchDraft({ securityMode: v })}
             />
           )}
-          {screen === 3 && <ScreenWelcome />}
-          {screen === 4 && (
-            <ScreenDeployment
-              value={draft.deployment}
-              onChange={(v) => patchDraft({ deployment: v })}
-            />
-          )}
-          {screen === 5 && (
-            <ScreenGateway
-              mode={draft.deployment}
-              host={draft.gatewayHost}
-              port={draft.gatewayPort}
-              onChange={(host, port) => patchDraft({ gatewayHost: host, gatewayPort: port })}
-            />
-          )}
-          {screen === 6 && (
+          {screen === 3 && (
             <ScreenModels
               roots={draft.modelRoots}
               onChange={(modelRoots) => patchDraft({ modelRoots })}
             />
           )}
-          {screen === 7 && (
+          {screen === 4 && (
             <ScreenBackend
               backend={draft.backend}
               onChange={(patch) => patchDraft({ backend: { ...draft.backend, ...patch } })}
             />
           )}
-          {screen === 8 && pendingBackend && (
+          {screen === 5 && pendingBackend && (
             <ScreenPickModel
               driverName={pendingBackend.name}
               models={pendingBackend.models}
@@ -461,7 +460,7 @@ export default function WizardPage() {
               startError={startError}
             />
           )}
-          {screen === 8 && !pendingBackend && (
+          {screen === 5 && !pendingBackend && (
             <ScreenDone
               draft={draft}
               knownComponents={knownComponents}

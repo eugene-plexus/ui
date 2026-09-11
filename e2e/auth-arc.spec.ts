@@ -40,12 +40,21 @@ test.describe("the auth arc", () => {
   test("first run: the wizard sets up an install nobody has set up", async ({ page }) => {
     await page.goto("/setup");
 
-    // Screen 1 — look & feel. Nothing required.
+    // **Every step below names the screen it is on before it acts.** The
+    // version of this test that walked the eight-screen wizard clicked
+    // Continue in a counted loop, which would have kept passing against
+    // the five-screen one while filling in whatever field happened to be
+    // under it — the same shape of defect as the three M9 found, where a
+    // check reported confidently on somewhere its subject was not.
+
+    // Screen 1 — Welcome. Prose; nothing required.
+    await expect(page.getByRole("heading", { name: /^Welcome$/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Continue/ })).toBeEnabled();
     await page.getByRole("button", { name: /Continue/ }).click();
 
     // Screen 2 — the passphrase. Continue must stay disabled until both
     // halves match, which is the one rule on this screen.
+    await expect(page.getByRole("heading", { name: /^Security$/ })).toBeVisible();
     const fields = page.locator('input[type="password"]');
     await expect(fields).toHaveCount(2);
     await fields.nth(0).fill(PASSPHRASE);
@@ -55,12 +64,8 @@ test.describe("the auth arc", () => {
     await expect(page.getByRole("button", { name: /Continue/ })).toBeEnabled();
     await page.getByRole("button", { name: /Continue/ }).click();
 
-    // Screens 3-5 — welcome, deployment, gateway. All defaults.
-    for (let i = 0; i < 3; i++) {
-      await page.getByRole("button", { name: /Continue/ }).click();
-    }
-
-    // Screen 6 — model directories, if the harness gave us one.
+    // Screen 3 — model directories, if the harness gave us one.
+    await expect(page.getByRole("heading", { name: /^Your models$/ })).toBeVisible();
     if (MODEL_ROOT) {
       await page
         .getByPlaceholder(/models/i)
@@ -69,13 +74,15 @@ test.describe("the auth arc", () => {
     }
     await page.getByRole("button", { name: /Continue/ }).click();
 
-    // Screen 7 — backend. Skipped: the acceptance run declares its own,
+    // Screen 4 — backend. Skipped: the acceptance run declares its own,
     // and a wizard-created one would be a second path to the same state.
+    await expect(page.getByRole("heading", { name: /^Add a backend$/ })).toBeVisible();
     await page.getByRole("button", { name: /Continue/ }).click();
 
-    // Screen 8 — Start. This is the transaction: passphrase on the agent,
-    // topology check, passphrase on the trust root, model directories,
-    // firstRunComplete.
+    // Screen 5 — Start. This is the transaction: passphrase on the agent,
+    // topology check, passphrase on the trust root, enrolling this node
+    // with the control root, model directories, firstRunComplete.
+    await expect(page.getByRole("heading", { name: /^Ready$/ })).toBeVisible();
     await page.getByRole("button", { name: /^Start$/ }).click();
 
     // **And this is the part no script could test.** Initializing makes

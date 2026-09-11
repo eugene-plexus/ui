@@ -148,7 +148,7 @@ afterEach(() => {
 });
 
 /** `delay: null` types a passphrase in one tick instead of one per character.
- * Eight screens at the default keystroke delay is most of a five-second test
+ * A whole walk at the default keystroke delay is most of a five-second test
  * budget spent proving that typing works. */
 function newUser() {
   return userEvent.setup({ delay: null });
@@ -170,10 +170,16 @@ async function walkToLastScreen(user: ReturnType<typeof userEvent.setup>) {
     "correct horse battery staple",
   );
 
-  // Screens 3-7 are accept-the-default.
-  for (let i = 0; i < 6; i++) {
-    await user.click(screen.getByRole("button", { name: "Continue →" }));
-  }
+  // Screens 3 and 4 are accept-the-default. Asserted by heading rather
+  // than counted: a loop of clicks lands on whatever screen the flow
+  // happens to have, which is how a test keeps passing while looking at
+  // something other than its subject.
+  await user.click(screen.getByRole("button", { name: "Continue →" }));
+  await screen.findByRole("heading", { name: /^Your models$/ });
+  await user.click(screen.getByRole("button", { name: "Continue →" }));
+  await screen.findByRole("heading", { name: /^Add a backend$/ });
+  await user.click(screen.getByRole("button", { name: "Continue →" }));
+  await screen.findByRole("heading", { name: /^Ready$/ });
   return screen.findByRole("button", { name: "Start" });
 }
 

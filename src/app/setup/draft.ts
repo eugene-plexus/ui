@@ -3,7 +3,7 @@
  * finished.
  *
  * Extracted at M9. It was inside a 1548-line `page.tsx` with eight
- * screens, the backend-creation logic, port allocation, topology
+ * screens (now five), the backend-creation logic, port allocation, topology
  * validation and seven leaf inputs, which is why nothing in it could be
  * tested without mounting the whole wizard - and why its test was 258
  * lines asserting a call sequence.
@@ -17,9 +17,25 @@ import { WIZARD_PROVIDERS } from "@/lib/agent";
 import type { Component } from "@/lib/types";
 
 export const DRAFT_KEY = "eugene-wizard-draft";
-export const TOTAL_SCREENS = 8;
 
-export type DeploymentMode = "local" | "networked";
+/**
+ * Five screens since 2026-09-11, down from eight.
+ *
+ * The three that went were not merely low-value, they were **inert**:
+ * `deployment` and `gatewayHost`/`gatewayPort` were collected, shown back
+ * on the summary as if they were configuration, and then never sent
+ * anywhere by Start. An operator who set the gateway to `0.0.0.0:9000`
+ * got an install listening on `127.0.0.1:8080` and a Ready screen that
+ * said otherwise. Look & feel wrote only `localStorage` and is on
+ * `/config` already (`UIPreferences`), which is where the summary always
+ * said to change it.
+ *
+ * What is left is what cannot be defaulted or derived: who you are
+ * (passphrase), where your model files are, and optionally one backend
+ * the agent does not supervise.
+ */
+export const TOTAL_SCREENS = 5;
+
 export type SecurityMode = "prompt_on_startup" | "os_keyring";
 
 export interface InitializeResponse {
@@ -53,9 +69,6 @@ export function blankBackend(): BackendDraft {
 }
 
 export interface WizardDraft {
-  deployment: DeploymentMode;
-  gatewayHost: string;
-  gatewayPort: number;
   modelRoots: string[];
   backend: BackendDraft;
   securityMode: SecurityMode;
@@ -63,9 +76,6 @@ export interface WizardDraft {
 
 export function blankDraft(): WizardDraft {
   return {
-    deployment: "local",
-    gatewayHost: "127.0.0.1",
-    gatewayPort: 8080,
     modelRoots: [],
     backend: blankBackend(),
     securityMode: "prompt_on_startup",
@@ -98,19 +108,16 @@ export function canContinue(
   if (screen === 2) {
     return passphrase.length > 0 && passphrase === passphraseConfirm;
   }
-  // Screen 6 is model directories, and none is a valid answer: directories
+  // Screen 3 is model directories, and none is a valid answer: directories
   // can be added later from Config, and Discover downloads into one. Nothing
   // on this screen should be able to block a first run.
   //
-  // Screen 7 is an external backend, and "none" is also a valid answer - but
-  // a chosen one has to be complete. A driver with no model id advertises no
-  // model, so the gateway lists nothing and the backend is silently inert:
-  // exactly the shape of failure this wizard keeps being fixed for.
-  // Screen 7 is an external backend, and "none" is a valid answer. The model
-  // is deliberately NOT asked here: a driver has to exist before it can list
-  // what it serves, and it cannot exist before Start. The last screen asks,
-  // from a real list.
-  if (screen === 7 && draft.backend.provider) {
+  // Screen 4 is an external backend, and "none" is a valid answer too — but a
+  // chosen one has to carry the credentials its provider needs. The model id
+  // is deliberately NOT required here: a driver has to exist before it can be
+  // asked what it serves, and it cannot exist before Start, so the last screen
+  // asks from a real list.
+  if (screen === 4 && draft.backend.provider) {
     const b = draft.backend;
     const credentials = WIZARD_PROVIDERS.find((p) => p.key === b.provider)?.credentials ?? [];
     if (credentials.includes("api_key") && !b.apiKey.trim()) return false;

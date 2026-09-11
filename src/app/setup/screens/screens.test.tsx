@@ -19,8 +19,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { blankDraft, canContinue } from "../draft";
 import { ScreenBackend } from "./Backend";
-import { ScreenDeployment } from "./Deployment";
-import { ScreenGateway } from "./Gateway";
 import { ScreenModels } from "./Models";
 import { ScreenSecurity } from "./Security";
 
@@ -49,37 +47,6 @@ describe("the security screen", () => {
   });
 });
 
-describe("the deployment screen", () => {
-  it("offers exactly two answers and reports the one chosen", async () => {
-    const onChange = vi.fn();
-    render(<ScreenDeployment value="local" onChange={onChange} />);
-    const radios = screen.getAllByRole("radio");
-    expect(radios).toHaveLength(2);
-    await userEvent.click(radios[1]!);
-    expect(onChange).toHaveBeenCalledWith("networked");
-  });
-});
-
-describe("the gateway screen", () => {
-  it("only offers host and port once the install is networked", () => {
-    // A local install has one correct answer, so asking is a question
-    // with no wrong answer available — the screen is deliberately prose
-    // until the deployment screen says otherwise.
-    const local = render(
-      <ScreenGateway mode="local" host="127.0.0.1" port={8080} onChange={vi.fn()} />,
-    );
-    expect(local.container.querySelectorAll("input")).toHaveLength(0);
-    local.unmount();
-
-    const networked = render(
-      <ScreenGateway mode="networked" host="0.0.0.0" port={8080} onChange={vi.fn()} />,
-    );
-    expect(networked.container.querySelectorAll("input").length).toBeGreaterThan(0);
-    expect(networked.getByDisplayValue("0.0.0.0")).toBeInTheDocument();
-    expect(networked.getByDisplayValue("8080")).toBeInTheDocument();
-  });
-});
-
 describe("the models screen", () => {
   it("keeps a row per directory and reports the whole list", async () => {
     const onChange = vi.fn();
@@ -104,7 +71,41 @@ describe("canContinue", () => {
     // Screen 2 is the passphrase. Mismatched halves must not advance.
     expect(canContinue(2, draft, "hunter2", "hunter3")).toBe(false);
     expect(canContinue(2, draft, "hunter2", "hunter2")).toBe(true);
-    // Screen 1 is local display preferences — nothing to get wrong.
+    // Screen 1 is Welcome — prose, nothing to get wrong.
     expect(canContinue(1, draft, "", "")).toBe(true);
+    // Screen 3 is model directories, and none is a valid answer: Discover
+    // downloads into one later, and nothing here may block a first run.
+    expect(canContinue(3, draft, "", "")).toBe(true);
+  });
+
+  it("holds a chosen backend to its provider's credentials, and no further", () => {
+    // Screen 4. "None" is a valid answer, so an untouched draft advances.
+    const draft = blankDraft();
+    expect(canContinue(4, draft, "", "")).toBe(true);
+
+    // openai_compat_custom needs both a base URL and an API key, and does
+    // not advance while either is missing. (The key is the real one from
+    // WIZARD_PROVIDERS: an unknown provider has no credentials to require,
+    // so a typo here would assert nothing and pass.)
+    const chosen = {
+      ...draft,
+      backend: { ...draft.backend, provider: "openai_compat_custom", apiKey: "sk-x" },
+    };
+    expect(canContinue(4, chosen, "", "")).toBe(false);
+    expect(
+      canContinue(4, { ...chosen, backend: { ...chosen.backend, baseUrl: "http://h:1" } }, "", ""),
+    ).toBe(true);
+
+    // But NOT to a model id. A driver has to exist before it can be asked
+    // what it serves, and it cannot exist before Start — which is why the
+    // last screen asks, from a list the driver actually reported.
+    expect(
+      canContinue(
+        4,
+        { ...chosen, backend: { ...chosen.backend, baseUrl: "http://h:1", modelId: "" } },
+        "",
+        "",
+      ),
+    ).toBe(true);
   });
 });
