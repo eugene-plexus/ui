@@ -17,7 +17,10 @@
  * **Pointed at an already-running install.** `webServer` is deliberately
  * absent: the fleet these tests drive is six processes started by
  * `scripts/m9-acceptance.sh`, not a `next dev` this config could spawn.
- * `EP_UI_URL` says where it is.
+ * `EP_UI_URL` says where it is -- and since install-paths §9 step 1 that
+ * is **the agent's own port**, because the agent serves this UI out of
+ * the `eugene-plexus-ui` wheel and `next dev` is the one configuration
+ * no install ever runs.
  *
  * **Opt-in, like every other acceptance run.** CI still runs vitest;
  * nothing here executes on a push. `npm run test:e2e` is the entry point
@@ -30,7 +33,7 @@
 
 import { defineConfig, devices } from "@playwright/test";
 
-const baseURL = process.env.EP_UI_URL ?? "http://127.0.0.1:3000";
+const baseURL = process.env.EP_UI_URL ?? "http://127.0.0.1:8079";
 
 export default defineConfig({
   testDir: "./e2e",

@@ -29,6 +29,23 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const PASSPHRASE = process.env.EP_PASSPHRASE ?? "m9-acceptance-passphrase";
+
+/**
+ * The playground, precisely: an origin and nothing else after the slash.
+ *
+ * **This used to be `/\/$|\/#/` and that stopped meaning anything.**
+ * When the UI became a static export it took `trailingSlash: true` with
+ * it, so every path now ends in a slash -- including `/setup/` and
+ * `/login/`. Three assertions that read "it navigated away" were
+ * satisfied by not navigating at all, and the arc went green in 2.1s
+ * with a wizard that had not finished its transaction and a login that
+ * had not happened. Only `signIn`'s token check, which names its own
+ * subject, noticed.
+ *
+ * Same family as the traps M9 recorded: an assertion that matches the
+ * failure it was meant to catch.
+ */
+const PLAYGROUND = /^https?:\/\/[^/]+\/(?:[?#].*)?$/;
 const MODEL_ROOT = process.env.EP_MODEL_ROOT ?? "";
 
 // Serial: these steps are one arc against one real install, and a first
@@ -89,7 +106,7 @@ test.describe("the auth arc", () => {
     // the master key available, so the agent respawns every supervised
     // child; the page that just authenticated is talking to a fleet that
     // is going away. It has to land on the playground, not on an error.
-    await expect(page).toHaveURL(/\/$|\/#/, { timeout: 120_000 });
+    await expect(page).toHaveURL(PLAYGROUND, { timeout: 120_000 });
     await expectNoWallOfErrors(page);
   });
 
@@ -97,6 +114,16 @@ test.describe("the auth arc", () => {
     // The client-side first-run redirect, asserted from a browser rather
     // than from the config flag — which is all the dev-seed run could do.
     await page.goto("/");
+    // **Wait for the app to mount before asserting it did not redirect.**
+    // The first-run bounce is client-side, so "not on /setup" is true of
+    // a page that has not decided yet -- a negative assertion evaluated
+    // before its subject exists.
+    //
+    // The positive marker is the UNLOCK screen, not the playground: every
+    // test gets a fresh context, so this visit has no session and being
+    // sent to login is the right answer. What is being asserted is only
+    // that it is not sent to the wizard.
+    await expect(page.getByRole("heading", { name: /Unlock/i })).toBeVisible({ timeout: 60_000 });
     await expect(page).not.toHaveURL(/\/setup/);
   });
 
@@ -111,7 +138,7 @@ test.describe("the auth arc", () => {
     await page.locator("#passphrase").fill(PASSPHRASE);
     await page.getByRole("button", { name: /Unlock/i }).click();
 
-    await expect(page).toHaveURL(/\/$|\/#/, { timeout: 120_000 });
+    await expect(page).toHaveURL(PLAYGROUND, { timeout: 120_000 });
     await expectNoWallOfErrors(page);
   });
 
@@ -176,7 +203,7 @@ async function signIn(page: Page): Promise<void> {
   await expect(field).toBeVisible({ timeout: 60_000 });
   await field.fill(PASSPHRASE);
   await page.getByRole("button", { name: /Unlock/i }).click();
-  await expect(page).toHaveURL(/\/$|\/#/, { timeout: 120_000 });
+  await expect(page).toHaveURL(PLAYGROUND, { timeout: 120_000 });
   // And prove it took, rather than assuming the navigation meant it did.
   const token = await page.evaluate(() => sessionStorage.getItem("eugene-session-token"));
   expect(token, "no session token after signing in").toBeTruthy();
