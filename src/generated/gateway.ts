@@ -978,13 +978,14 @@ export interface components {
              *
              *     `elapsedMs - backendMs` is therefore the cost of the
              *     gateway-to-driver hop plus the driver's own work: the
-             *     control plane's overhead on this request. This document has
-             *     asserted since M0 that the extra local hop is
+             *     control plane's overhead on this request. This document
+             *     asserted from M0 to M8 that the extra local hop was
              *     "sub-millisecond against a multi-second generation" and "not
              *     a cost worth optimising away" - an architectural
              *     justification nobody had measured. Both numbers were already
-             *     being produced; subtracting them makes the claim checkable
-             *     on any install.
+             *     being produced; subtracting them made the claim checkable,
+             *     and **the first time it ran it came back 114-120 ms**. See
+             *     this document's overview.
              */
             backendMs?: number | null;
             served: boolean;

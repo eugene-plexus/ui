@@ -10,16 +10,23 @@ playground over the gateway's OpenAI-compatible endpoint.
 
 ## Status
 
-**Current through the M7 contracts (2026-09-10).** Runtime dashboard, config editor,
-model library and profiles, discovery/downloads with hardware guidance, and the
-playground are wired to the services. The UI generates all five API documents,
-including `control`, and can proxy to the control root. Dedicated control-root
-management screens are not built. The first-run wizard remains a reduced legacy
-flow; its rewrite belongs to M8 networked polish.
+**Current through the M9 contracts (2026-09-11).** Runtime dashboard, config editor,
+model library and profiles, discovery/downloads with hardware guidance, retained
+request metrics, and the playground are wired to the services. The UI generates all
+five API documents, including `control`, and proxies to the control root. `/nodes`
+is the first control-root screen — it mints a join token and renders the
+`eugene-plexus-agent join` command for the machine being added; the workflows past
+it are still blocked on whether the agent should own the UI at all.
 
-M3's live acceptance drove the UI's HTTP proxy, not a browser. Browser-driven
-acceptance remains outstanding. See the
-[project status](https://github.com/eugene-plexus/specs#current-status).
+**A browser drives this now.** `npm run test:e2e` runs Playwright against the system
+Chrome and a live install, covering first run, login, restart-on-login and the
+topology-resolved proxy — the arc jsdom cannot reach, because it has no layout, no
+navigation, no real fetch and no cookie jar. It is opt-in like every other
+acceptance run; CI still runs vitest. The first-run wizard is split one module per
+screen (`src/app/setup/`), and each screen can be mounted on its own; its screen
+_list_ is still an open question. See the
+[project status](https://github.com/eugene-plexus/specs#current-status) and the
+[M9 acceptance record](https://github.com/eugene-plexus/specs/blob/main/docs/acceptance/m9-onboarding-run.md).
 
 ## Pages
 
@@ -43,9 +50,19 @@ acceptance remains outstanding. See the
   point — a component that adds a knob gets a form field for free. PATCHes the diff back, surfaces
   `applied` / `rejected` / `requiresRestart`, and offers a Restart Now modal that polls `/healthz`
   until the component is back.
-- **First-run wizard** (`/setup`) — seven screens: theme/font, passphrase + security mode, welcome,
-  deployment topology, gateway address, one driver, summary. Auto-saves to sessionStorage; commits
-  to the agent on Start as a single transaction.
+- **Metrics** (`/metrics`) — what the gateway kept: per-request and per-attempt rows, latency and
+  throughput by backend, and the tier each request was served from. Operator-only, and deliberately
+  two rows per request rather than one, because a request total includes the attempts that failed.
+- **Nodes** (`/nodes`) — every machine in the install, its address, and whether the control root
+  can reach it. Mints a single-use join token and renders the exact `eugene-plexus-agent join`
+  command to paste on the machine being added. The _other_ machine answers on its own terminal,
+  because you cannot reach a worker's web UI until it advertises a non-loopback address, and
+  setting that is part of what joining does.
+- **First-run wizard** (`/setup`) — eight screens: theme/font, passphrase + security mode, welcome,
+  deployment topology, gateway address, model directories, one external backend, summary. Split one
+  module per screen under `src/app/setup/`, so a screen can be mounted and tested on its own.
+  Auto-saves to sessionStorage; commits to the install on Start as a single transaction — which
+  now includes enrolling this host's own agent with the control root it just spawned.
 - **Same-origin proxy** at `/api/proxy/<target>/<...path>` — the browser only talks to the Next.js
   server; the server forwards to the component URL. `gateway` and `agent` are bootstrap targets;
   `library`, `control`, and named inference-drivers resolve through agent topology at
