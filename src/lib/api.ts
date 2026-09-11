@@ -32,6 +32,23 @@ interface RequestOptions {
    * Used by the login form and the wizard's `/v1/auth/initialize` call —
    * both expect to talk to the agent without an existing session. */
   skipAuth?: boolean;
+  /** Send this bearer **upstream**, while the stored session token still
+   * resolves the target.
+   *
+   * Exactly one caller: the first-run wizard, which needs a control-root
+   * token to mint a join token *and* the agent's token to find out where
+   * the control root is. Between initializing the agent and enrolling it,
+   * those are genuinely two different credentials — the agent is minting
+   * its own random per-restart key and the root is minting the install's
+   * — and they only become one token once enrollment has happened, which
+   * is the thing being set up.
+   *
+   * Not `Authorization`, because that header is what the proxy uses to
+   * resolve the target through the agent's `/v1/components`. Overriding
+   * it 401s the *lookup*, which surfaces as "no control component in the
+   * agent topology": alarming, false, and already on record from the last
+   * time this was met. */
+  upstreamToken?: string;
   /** Client-side timeout in milliseconds. When the request exceeds this,
    * the fetch is aborted and a friendly `ApiError` (`status=0`,
    * `statusText='request timed out'`) is thrown. Useful for endpoints
@@ -59,6 +76,9 @@ async function jsonRequest<T>(
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
     }
+  }
+  if (options.upstreamToken) {
+    headers.set("x-eugene-plexus-upstream-authorization", `Bearer ${options.upstreamToken}`);
   }
 
   // Per-call timeout via AbortController. Without this, a hung upstream

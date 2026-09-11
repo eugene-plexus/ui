@@ -47,29 +47,78 @@ export async function withRetry<T>(
 }
 
 /**
- * Set the operator passphrase on the control root.
+ * Enroll **this** host's agent with the control root it just spawned.
  *
- * Its own function rather than a `withRetry` call, for two reasons that
- * `withRetry` gets wrong here.
+ * A locked decision nothing had ever implemented outside an acceptance
+ * script: *"Every node enrolls the same way, including the control host's
+ * ... the control host's agent mints a join token at the root it spawned
+ * and enrolls through it; that is also what puts the control host in
+ * `/v1/nodes` at all."*
  *
- * **409 is a final answer, not a failure.** It means an earlier run already
- * initialized this install, and there is no reset endpoint by design. Retrying
- * it would spend ten seconds re-learning something settled.
+ * **What it costs to skip, which is how this was found.** An unenrolled
+ * agent mints a fresh random signing key on every restart; the control
+ * root mints the install's. So a session token from the agent - which is
+ * every token this browser has - does not verify at the control root, and
+ * every control-root page 401s, clears the session and bounces to login.
+ * M9's Playwright arc walked into it on `/nodes`; nothing before had a
+ * control-root page to walk into.
  *
- * **There is no restart window to ride out.** `withRetry` exists because
- * `POST /v1/auth/initialize` on the agent respawns every supervised child. The
- * supervisor deliberately skips the trust root — a restart hands it nothing
- * (it receives no key from the agent) and costs it everything (it comes back
- * with its keys sealed and locked until someone logs in). So the only reason
- * to retry is a root still finishing the boot the agent spawned it for, which
- * is a few seconds at most.
+ * Order matters and is unforgiving:
+ *   1. log in at the control root - it has its own auth and just got a
+ *      passphrase, and only an operator there can mint a join token;
+ *   2. mint the token;
+ *   3. enroll, which **invalidates the session this wizard is holding**,
+ *      because the key it was signed with has been replaced;
+ *   4. log in again at the agent, which now signs with the install's key.
  *
- * The session token rides along deliberately, so no `skipAuth`. Control ignores
- * an Authorization header on this route, but the UI's proxy needs the token to
- * resolve `control` to a URL through the agent's `/v1/components` — without it
- * that lookup 401s and the operator gets "no control component in the agent
- * topology", which is both alarming and false.
+ * Returns the replacement session token. `restart_all` deliberately skips
+ * the control root, so the root this just enrolled with stays up.
  */
+export async function enrollLocalAgent(passphrase: string, controlUrl: string): Promise<string> {
+  // **No `skipAuth`.** Control ignores an Authorization header on its own
+  // login route, but the UI's proxy needs the agent's token to resolve
+  // `control` to a URL at all -- the exact trap `initializeControlRoot`
+  // documents two functions down, and the one this walked into on its
+  // first live run.
+  const session = await api.post<{ sessionToken: string }>("control", "/v1/auth/login", {
+    passphrase,
+  });
+  const minted = await api.post<{ token: string }>(
+    "control",
+    "/v1/nodes/join-token",
+    {},
+    // The agent's token resolves where the root is; the root's token is
+    // what it accepts. Two credentials for one call, because an install
+    // that has not enrolled yet genuinely has two signing keys.
+    { upstreamToken: session.sessionToken },
+  );
+  await api.post("agent", "/v1/node/enroll", { controlUrl, token: minted.token });
+  // The enrollment restarted every child and replaced the signing key, so
+  // this is retried: the agent answers immediately but is briefly the only
+  // thing that does.
+  const replacement = await withRetry(() =>
+    api.post<{ sessionToken: string }>(
+      "agent",
+      "/v1/auth/login",
+      { passphrase },
+      { skipAuth: true },
+    ),
+  );
+  return replacement.sessionToken;
+}
+
+/**
+ * The URL the local agent should use to reach the control root.
+ *
+ * Read from the agent's own topology rather than guessed, because the
+ * agent is the thing that spawned it and therefore the thing that knows
+ * which port it is on. The browser cannot supply this: it reaches the
+ * control root through a proxy that resolves it the same way.
+ */
+export function controlUrlFrom(components: Component[]): string | null {
+  const entry = components.find((c) => c.kind === "control");
+  return entry?.url ? String(entry.url).replace(/\/+$/, "") : null;
+}
 
 /**
  * Set the operator passphrase on the control root.
@@ -131,15 +180,6 @@ export async function initializeControlRoot(passphrase: string): Promise<void> {
  * HTTP providers, hardcoded for the CLI ones. `modelId` stays free text
  * either way, so a model pulled after this call can still be typed in.
  */
-
-/**
- * What this backend can actually serve.
- *
- * The driver discovers its backend's models and publishes them as
- * `suggestions` on the `modelId` field of its own config schema - live for
- * HTTP providers, hardcoded for the CLI ones. `modelId` stays free text
- * either way, so a model pulled after this call can still be typed in.
- */
 export async function fetchBackendModels(driverName: string): Promise<string[]> {
   const schema = await api.get<{
     fields?: { key: string; suggestions?: string[] }[];
@@ -160,8 +200,6 @@ export function buildBackendPatch(b: BackendDraft): Record<string, unknown> {
 }
 
 /** A readable name, and a free one - the agent 409s a duplicate. */
-
-/** A readable name, and a free one - the agent 409s a duplicate. */
 export function driverNameFor(provider: string, existing: Component[]): string {
   const base = provider.replace(/_local$|_subscription$/, "").replace(/_/g, "-");
   const taken = new Set(existing.map((c) => c.name));
@@ -170,12 +208,6 @@ export function driverNameFor(provider: string, existing: Component[]): string {
     if (!taken.has(`${base}-${i}`)) return `${base}-${i}`;
   }
 }
-
-/**
- * A port below the range the agent allocates companions from (8090+), so a
- * driver added here can never collide with one the agent declares later.
- * 8081 is the inference-driver default in the specs' `servers` block.
- */
 
 /**
  * A port below the range the agent allocates companions from (8090+), so a

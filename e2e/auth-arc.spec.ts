@@ -116,9 +116,13 @@ test.describe("the auth arc", () => {
     await signIn(page);
 
     await page.goto("/runtimes");
+    // A positive assertion, not merely an absence: a 401 here bounces to
+    // /login, and "no errors rendered" is true of the login page too.
+    await expect(page).toHaveURL(/\/runtimes/);
     await expectNoWallOfErrors(page);
 
     await page.goto("/nodes");
+    await expect(page).toHaveURL(/\/nodes/);
     // The control root is reached through the same resolution, and an
     // uninitialized one 503s its whole surface by design. Seeing the
     // install's own node here means the wizard really initialized it.
@@ -145,21 +149,30 @@ test.describe("the auth arc", () => {
   });
 });
 
-/** Sign in through the real form, because that is the code path a user
+/**
+ * Sign in through the real form, because that is the code path a user
  * takes. Seeding sessionStorage directly would test the token, not the
- * login. */
+ * login.
+ *
+ * **Waits for the form rather than asking whether it is there.**
+ * `isVisible()` does not auto-wait, and the login form renders inside a
+ * Suspense boundary after a mount-time probe of `/v1/auth/status` — so
+ * "is the passphrase box visible" answers *no* on a page that is about to
+ * show one, and a helper that reads that as "already signed in" sails on
+ * with no session and turns every later call into a 401. That cost a run,
+ * and it is the third time this milestone that a check looked somewhere
+ * its subject had not arrived yet.
+ */
 async function signIn(page: Page): Promise<void> {
   await page.goto("/login");
-  if (
-    await page
-      .locator("#passphrase")
-      .isVisible()
-      .catch(() => false)
-  ) {
-    await page.locator("#passphrase").fill(PASSPHRASE);
-    await page.getByRole("button", { name: /Unlock/i }).click();
-    await expect(page).toHaveURL(/\/$|\/#/, { timeout: 120_000 });
-  }
+  const field = page.locator("#passphrase");
+  await expect(field).toBeVisible({ timeout: 60_000 });
+  await field.fill(PASSPHRASE);
+  await page.getByRole("button", { name: /Unlock/i }).click();
+  await expect(page).toHaveURL(/\/$|\/#/, { timeout: 120_000 });
+  // And prove it took, rather than assuming the navigation meant it did.
+  const token = await page.evaluate(() => sessionStorage.getItem("eugene-session-token"));
+  expect(token, "no session token after signing in").toBeTruthy();
 }
 
 /**

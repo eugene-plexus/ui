@@ -82,15 +82,6 @@ export const REQUIRED_KINDS = ["control", "gateway", "library"] as const;
  * treating that empty result as an answer told an operator with a perfectly
  * good three-component install that all three were missing.
  */
-
-/**
- * Which of the components every install must have are absent.
- *
- * Only meaningful against a list that was actually read. An unauthenticated
- * `GET /v1/components` 401s on an install with no passphrase yet, and
- * treating that empty result as an answer told an operator with a perfectly
- * good three-component install that all three were missing.
- */
 export function requiredKindsMissing(components: Component[]): string[] {
   return REQUIRED_KINDS.filter((kind) => !components.some((c) => c.kind === kind));
 }

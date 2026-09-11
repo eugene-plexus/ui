@@ -27,6 +27,29 @@ const STRIPPED_REQUEST_HEADERS = new Set([
   "accept-encoding",
 ]);
 
+/**
+ * Send a *different* bearer upstream from the one used to resolve the
+ * target. Never forwarded; it becomes the upstream `Authorization`.
+ *
+ * There is exactly one caller and it is not a convenience. Resolving
+ * `control` (or a driver) means asking the **agent's** bearer-protected
+ * `/v1/components` where it is, so the proxy uses the request's own
+ * Authorization for that lookup and forwards the same header upstream.
+ * Normally right: one install, one signing key, one token that works
+ * everywhere.
+ *
+ * **Except during first run.** Between initializing the agent and
+ * enrolling it, the agent is minting its own random per-restart key while
+ * the control root is minting the install's, so the two genuinely require
+ * different tokens — and the wizard has to mint a join token at the root
+ * (control's token) while resolving where the root is (the agent's). Sent
+ * as one header, that is unsatisfiable; a 401 at the resolver renders as
+ * "no control component in the agent topology", which is alarming and
+ * false. That misreport is already on record from the last time this was
+ * met, and it cost M9's browser arc a run to meet it again.
+ */
+const UPSTREAM_AUTH_HEADER = "x-eugene-plexus-upstream-authorization";
+
 const STRIPPED_RESPONSE_HEADERS = new Set([
   "transfer-encoding",
   "connection",
@@ -70,6 +93,11 @@ async function handle(
     if (!STRIPPED_REQUEST_HEADERS.has(k.toLowerCase())) {
       headers.set(k, v);
     }
+  }
+  const upstreamAuth = req.headers.get(UPSTREAM_AUTH_HEADER);
+  if (upstreamAuth) {
+    headers.set("authorization", upstreamAuth);
+    headers.delete(UPSTREAM_AUTH_HEADER);
   }
 
   const init: RequestInit = {

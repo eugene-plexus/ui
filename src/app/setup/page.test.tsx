@@ -73,6 +73,21 @@ function healthyInstall(): Map<string, Handler> {
       }),
     ],
     ["POST control/v1/auth/initialize", () => ({ status: 204 })],
+    // The control host's agent enrolls with the root it just spawned -
+    // "every node enrolls the same way, including the control host's",
+    // which nothing outside an acceptance script had ever done. Skipping
+    // it leaves the agent's signing key and the install's unrelated, so
+    // the session this browser holds does not verify at the control root.
+    [
+      "POST control/v1/auth/login",
+      () => ({ status: 200, body: { sessionToken: "control-token" } }),
+    ],
+    ["POST control/v1/nodes/join-token", () => ({ status: 201, body: { token: "join-token" } })],
+    ["POST agent/v1/node/enroll", () => ({ status: 200, body: { enrolled: true } })],
+    [
+      "POST agent/v1/auth/login",
+      () => ({ status: 200, body: { sessionToken: "post-enroll-token" } }),
+    ],
     ["PATCH agent/v1/config", () => ({ status: 200, body: {} })],
     ["PATCH library/v1/config", () => ({ status: 200, body: {} })],
   ]);

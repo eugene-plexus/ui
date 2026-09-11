@@ -85,7 +85,9 @@ import { ScreenSecurity } from "./screens/Security";
 import { ScreenWelcome } from "./screens/Welcome";
 import {
   buildBackendPatch,
+  controlUrlFrom,
   driverNameFor,
+  enrollLocalAgent,
   fetchBackendModels,
   formatStartError,
   freeDriverPort,
@@ -256,6 +258,26 @@ export default function WizardPage() {
       // inert trust root: only scripts/dev-seed.ps1 ever set it.
       setStartMessage("Setting up the trust root…");
       await initializeControlRoot(passphrase);
+
+      // Step 2b: enroll THIS host's agent with the root it just spawned.
+      //
+      // A locked decision nothing outside an acceptance script had ever
+      // done - "every node enrolls the same way, including the control
+      // host's ... that is also what puts the control host in /v1/nodes
+      // at all". Skipping it leaves the agent minting its own random
+      // signing key while the root mints the install's, so the session
+      // token this browser holds does not verify at the control root and
+      // every control-root page 401s straight back to the login screen.
+      // Found by M9's browser arc on /nodes, which was the first page to
+      // try.
+      //
+      // It replaces the session, because the key it was signed with is
+      // gone - the same price a rotation charges, for the same reason.
+      const controlUrl = controlUrlFrom(live.components ?? []);
+      if (controlUrl) {
+        setStartMessage("Joining this machine to the install…");
+        setSessionToken(await enrollLocalAgent(passphrase, controlUrl));
+      }
 
       // Step 3: persist the chosen securityMode. Default is
       // prompt_on_startup; skip the patch if unchanged so we don't touch

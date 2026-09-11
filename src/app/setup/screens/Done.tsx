@@ -108,18 +108,6 @@ export function ScreenDone({
  * with nothing in it. Drivers are companions of runtimes now; there is
  * nothing to warn about before a model is launched.
  */
-
-/**
- * Every install has one control root, one gateway and one library, and the
- * agent declares them itself on its first boot. So a missing one is not a
- * step the operator skipped - it means that component's package is missing
- * from the agent's environment, and no amount of clicking here will fix it.
- *
- * This used to warn that no inference-driver existed and let Start proceed
- * anyway, which is how a first run could report success against an install
- * with nothing in it. Drivers are companions of runtimes now; there is
- * nothing to warn about before a model is launched.
- */
 export function MissingTopologyHints({ missingKinds }: { missingKinds: readonly string[] }) {
   if (missingKinds.length === 0) return null;
   return (
