@@ -632,6 +632,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node/unenroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Leave an install — discard the install's key and return to this node's own.
+         * @description Operator-only, and the exact inverse of `POST /v1/node/enroll`.
+         *     The agent discards the install's signing key, the epoch, the
+         *     control root's URL and identity, mints a fresh per-restart
+         *     signing key of its own, and restarts every supervised component
+         *     so they pick it up. **Its runtimes stay declared and its model
+         *     files are untouched** — only routing stops, which is already the
+         *     documented consequence of revocation.
+         *
+         *     **Why this is safe to allow locally, which is the only part that
+         *     needs an argument.** Revocation exists because *a node that still
+         *     holds the signing key can still authenticate*, so removing a
+         *     registry entry alone does nothing. Un-enrolling **discards** that
+         *     key — the opposite direction. A node cannot escape revocation by
+         *     un-enrolling; it can only disarm itself.
+         *
+         *     **It proceeds when the control root is unreachable**, per the
+         *     standing degraded-mode rule: an operator detaching a node from a
+         *     dead install is precisely the case where refusing is useless.
+         *     When the root *is* reachable the agent calls
+         *     `DELETE /v1/nodes/{name}` there first, forwarding the caller's
+         *     own operator bearer — one install, one signing key, so the
+         *     session that authorized this call is an operator session at the
+         *     root too. That rotates the install key for every remaining node,
+         *     which is the whole point of revoking rather than deleting.
+         *     `controlNotified` reports whether it happened; `false` means the
+         *     operator still owes the root a revocation.
+         *
+         *     **This logs out every session on this node**, exactly as
+         *     enrollment does and for the same reason: the key those sessions
+         *     were signed with has been replaced.
+         */
+        post: operations["unenrollNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node/rekey": {
         parameters: {
             query?: never;
@@ -954,6 +1003,29 @@ export interface components {
              *     the root's own `Snapshot.controlPublicKey`.
              */
             controlPublicKey?: string;
+            /**
+             * @description This node's **Ed25519** identity public key — the one it
+             *     signs `PATCH /v1/nodes/{name}` with, recorded at the control
+             *     root as `Node.signingPublicKey`.
+             *
+             *     Separate from `publicKey`, which is X25519 and exists to have
+             *     secrets sealed *to* it. One key cannot do both jobs: sealing
+             *     is Diffie-Hellman and signing is Ed25519, and deriving one
+             *     from the other only runs in the direction we do not have.
+             *
+             *     Absent on a node enrolled before this key existed, which is
+             *     also why its re-advertisements are refused — see
+             *     `PATCH /v1/nodes/{name}` in `control.yaml`.
+             */
+            signingPublicKey?: string;
+            /**
+             * Format: int64
+             * @description How many address announcements this node has made since it
+             *     enrolled. Strictly increasing, persisted here and mirrored at
+             *     the control root, so a replayed announcement cannot move a
+             *     node back to an address it used to have.
+             */
+            advertiseSequence?: number;
             /** @enum {string} */
             os?: "windows" | "linux" | "macos";
             /** @enum {string} */
@@ -1016,6 +1088,44 @@ export interface components {
              *     from the same sentence.
              */
             signature: string;
+        };
+        /**
+         * @description Optional. The default does the right thing; the field exists for
+         *     the operator who already knows the root is gone and does not want
+         *     to wait for the attempt to time out.
+         */
+        UnenrollRequest: {
+            /**
+             * @description Call `DELETE /v1/nodes/{name}` at the control root first, so
+             *     the install rotates its signing key and stops trusting this
+             *     node. Set false to skip the attempt entirely — it does not
+             *     change what happens *here*, only whether the root is told.
+             * @default true
+             */
+            notifyControl: boolean;
+        };
+        UnenrollResult: {
+            identity: components["schemas"]["NodeIdentity"];
+            /**
+             * @description Whether the control root accepted the revocation. **False is
+             *     not a failure of this call** — the node has left either way.
+             *     It means the install still lists this node and still trusts
+             *     the key it just discarded, and an operator owes it a
+             *     `DELETE /v1/nodes/{name}`.
+             */
+            controlNotified: boolean;
+            /** @description The name this node had in the install it just left. */
+            previousName?: string;
+            /**
+             * Format: uri
+             * @description The control root it answered to.
+             */
+            previousControlUrl?: string;
+            /**
+             * @description Why the root was not told, when it was not. Present exactly
+             *     when `controlNotified` is false and something was attempted.
+             */
+            detail?: string;
         };
         /** @description Whether this install has been through first-run setup. */
         AuthStatus: {
@@ -3179,6 +3289,43 @@ export interface operations {
             };
             /** @description The control root refused or was unreachable. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    unenrollNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UnenrollRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Un-enrolled. Read `controlNotified` before assuming the
+             *     install is clean.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnenrollResult"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description This agent is not enrolled, so there is nothing to leave. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -36,3 +36,7 @@ CLAUDE.md
 
 # --- Codegen working dirs ---
 .codegen-cache/
+
+# Playwright acceptance artifacts (traces, screenshots) from a local run.
+/test-results/
+/playwright-report/

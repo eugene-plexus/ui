@@ -67,7 +67,41 @@ export interface paths {
         delete: operations["revokeNode"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * A node tells this root its address changed.
+         * @description **Called by the node, not the operator**, on every agent startup
+         *     and whenever its `advertiseUrl` changes. Without it a node's
+         *     address is announced exactly once, at enrollment, and a host that
+         *     reboots onto a new tailnet IP or a new DHCP lease leaves this
+         *     root holding an address nobody is listening on — with no path
+         *     back, because the only way to reach that node is the address that
+         *     just went stale. That was live for four milestones.
+         *
+         *     **The credential is the signature, not a bearer**, and it is the
+         *     mirror image of `POST /v1/node/rekey` in `agent.yaml`: the root
+         *     proves itself to a node with its identity key, and a node proves
+         *     itself to the root with its own. Two reasons a bearer cannot do
+         *     this job here, and the second is the load-bearing one:
+         *
+         *     1. A service token names a *kind*, not a host, so any component
+         *        anywhere in the install could re-address any node.
+         *     2. **Every other mutation on this root is operator-only**, on
+         *        purpose — "a compromised peer holding a service token must not
+         *        be able to enroll a host or re-key the install". An unattended
+         *        reboot has no operator, so accepting one here would have been
+         *        the first hole in that rule rather than an exception to it.
+         *
+         *     **Idempotent, and deliberately silent when nothing changed.** A
+         *     restart that announces the address it already had answers 200
+         *     with `changed: false` and appends nothing, because otherwise
+         *     every reboot of every node grows the log for no information.
+         *
+         *     `sequence` is strictly increasing per node and mirrored in
+         *     applied state, so a captured announcement cannot be replayed to
+         *     move a node back to an address it used to have. It resets with
+         *     the node record on re-enrollment.
+         */
+        patch: operations["announceNodeAddress"];
         trace?: never;
     };
     "/v1/nodes/join-token": {
@@ -565,6 +599,26 @@ export interface components {
              */
             publicKey?: string;
             /**
+             * @description The node's **Ed25519** public key, used for one thing: to
+             *     verify that a `PATCH /v1/nodes/{name}` really came from this
+             *     node. `publicKey` cannot do it — that one is X25519 and
+             *     exists so secrets can be sealed to the node — and a key that
+             *     both seals and signs is a key whose compromise costs twice.
+             *
+             *     Absent on a node enrolled before nodes had a signing
+             *     identity. Such a node cannot re-advertise and must re-enroll;
+             *     surfaced here rather than inferred from a 401.
+             */
+            signingPublicKey?: string;
+            /**
+             * Format: int64
+             * @description The highest announcement sequence accepted from this node. A
+             *     `PATCH /v1/nodes/{name}` at or below it is a replay and is
+             *     refused. Applied state, so a promoted standby refuses the
+             *     same replays this root would.
+             */
+            advertiseSequence?: number;
+            /**
              * Format: int64
              * @description The highest control-root epoch this node has acknowledged. A
              *     value below `ControlStatus.epoch` is the visible symptom of a
@@ -644,6 +698,13 @@ export interface components {
              */
             publicKey: string;
             /**
+             * @description The agent's Ed25519 public key, recorded as
+             *     `Node.signingPublicKey` and used to verify later address
+             *     announcements. Optional so an older agent still enrolls; the
+             *     cost of omitting it is that the node cannot re-advertise.
+             */
+            signingPublicKey?: string;
+            /**
              * Format: uri
              * @description Where other hosts reach this agent — its `advertiseUrl`,
              *     configured or derived (`agent.yaml`, `GET /v1/node`). Becomes
@@ -659,6 +720,73 @@ export interface components {
             /** @enum {string} */
             arch?: "x64" | "arm64";
             devices?: components["schemas"]["ComputeDevice"][];
+        };
+        /**
+         * @description A node telling this root where it now is. Signed by the node, not
+         *     bearer-authenticated — see `PATCH /v1/nodes/{name}`.
+         */
+        NodeAddressAnnouncement: {
+            /**
+             * Format: uri
+             * @description Where other hosts now reach this node's agent. Becomes
+             *     `Node.url`, normalized once on the way into the log exactly
+             *     as enrollment's is.
+             */
+            url: string;
+            /**
+             * Format: int64
+             * @description Strictly increasing per node, persisted on the node. This
+             *     root refuses anything at or below `Node.advertiseSequence`,
+             *     which is what stops a captured announcement being replayed to
+             *     pin a node to an address it has left.
+             */
+            sequence: number;
+            /**
+             * @description Detached Ed25519 signature, base64, by the node's identity
+             *     signing key over the **canonical message**: the UTF-8 bytes
+             *     of the JSON object `{"name": "<name>", "sequence":
+             *     <sequence>, "url": "<url>"}` with keys sorted and no
+             *     whitespace — `json.dumps(obj, sort_keys=True,
+             *     separators=(",", ":"))`. `name` is the path parameter and
+             *     `url` is the value in this body, verbatim and unnormalized.
+             *
+             *     Same construction as `RekeyRequest.signature` in
+             *     `agent.yaml`, deliberately: three fields, one serializer,
+             *     stated here so both sides implement it from one sentence.
+             *     Including `name` is what stops one node's announcement being
+             *     replayed against another's record.
+             *
+             *     **Verified against the raw request body, never against a
+             *     parsed `url`.** An OpenAPI `format: uri` becomes a URL type
+             *     in most generators, and those normalize — Pydantic's
+             *     `AnyUrl` appends a trailing slash to an authority-only URL —
+             *     so a verifier that parses first compares different bytes
+             *     from the ones the node signed, and *every* announcement
+             *     fails with what looks like a crypto error. Found by it
+             *     happening. A signature is over bytes on the wire; `format:
+             *     uri` stays here because the validation and the generated
+             *     clients are still worth having.
+             */
+            signature: string;
+        };
+        NodeAddressAck: {
+            name: string;
+            /**
+             * Format: uri
+             * @description The address now recorded, after normalization.
+             */
+            url: string;
+            /**
+             * Format: int64
+             * @description The sequence now recorded.
+             */
+            sequence: number;
+            /**
+             * @description False when the announcement matched what was already
+             *     recorded, which is the common case on a restart. Nothing was
+             *     appended to the log.
+             */
+            changed: boolean;
         };
         /**
          * @description What a newly enrolled node needs in order to participate, and
@@ -808,9 +936,21 @@ export interface components {
          *     **every change goes through one writer and one ordered path**, and
          *     an operation that is not in this list is an operation that would
          *     not replicate. Adding a mutation means adding an op here.
+         *
+         *     **`updateNode` is the tenth, added at M9**, and it is worth
+         *     saying why the set opened. M5 closed it at nine and the rule that
+         *     closed it was about what does *not* belong: minting a join token
+         *     and initializing the install are not replicated state, so they
+         *     got no op. An address change is the opposite case — it mutates
+         *     `Node.url`, which lives in the snapshot, and by this schema's own
+         *     sentence something that mutates applied state and has no op is
+         *     something that would not replicate. Reusing `enrollNode` as an
+         *     upsert would have worked and been worse: the log is read by
+         *     operators, and a node that moved house would appear to have
+         *     enrolled again.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "rotateSigningKey" | "promote";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "rotateSigningKey" | "promote";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -821,8 +961,8 @@ export interface components {
          *
          *     **The governing rule, learned by implementing it:** a snapshot
          *     has to be able to reproduce exactly what the log produces,
-         *     because it *is* the log's compacted head. Every one of the nine
-         *     `LogOp` values must have somewhere to land here, or compaction
+         *     because it *is* the log's compacted head. **Every** `LogOp` value
+         *     must have somewhere to land here, or compaction
          *     silently discards the state that op wrote — and the loss shows
          *     up at a promotion rather than at the compaction. Adding an op
          *     means checking this schema can hold its effect.
@@ -859,7 +999,7 @@ export interface components {
             /**
              * @description The control root's own applied configuration.
              *
-             *     Replicated because `patchConfig` is one of the nine ops, so
+             *     Replicated because `patchConfig` is one of the ops, so
              *     config *is* control state — and a snapshot that dropped it
              *     would lose every config change made before the last
              *     compaction. A promoted standby that came up without
@@ -1605,6 +1745,61 @@ export interface operations {
             };
             404: components["responses"]["Problem"];
             /** @description A key rotation is already in flight. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    announceNodeAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeAddressAnnouncement"];
+            };
+        };
+        responses: {
+            /** @description Recorded, or already the case. `changed` tells them apart. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeAddressAck"];
+                };
+            };
+            /**
+             * @description The signature does not verify against the node's recorded
+             *     `signingPublicKey`, or that node has none — it enrolled
+             *     before nodes had a signing identity and must re-enroll
+             *     before it can re-advertise.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            /**
+             * @description Either `sequence` is not above the one already recorded — a
+             *     replay, or a node whose identity file was restored from a
+             *     backup — or this host is a standby and does not accept
+             *     writes. `detail` says which.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
