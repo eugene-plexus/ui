@@ -53,6 +53,7 @@ export type Model = GatewayComponents["schemas"]["Model"];
 export type ModelRoutingInfo = GatewayComponents["schemas"]["ModelRoutingInfo"];
 export type ChatCompletionRequest = GatewayComponents["schemas"]["ChatCompletionRequest"];
 export type ChatCompletionResponse = GatewayComponents["schemas"]["ChatCompletionResponse"];
+export type ChatCompletionChunk = GatewayComponents["schemas"]["ChatCompletionChunk"];
 export type ChatCompletionMessage = GatewayComponents["schemas"]["ChatCompletionMessage"];
 export type CompletionUsage = GatewayComponents["schemas"]["CompletionUsage"];
 export type CompletionRoutingInfo = GatewayComponents["schemas"]["CompletionRoutingInfo"];

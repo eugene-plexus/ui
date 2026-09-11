@@ -57,19 +57,21 @@ interface RequestOptions {
   timeoutMs?: number;
 }
 
-async function jsonRequest<T>(
-  target: ProxyTarget,
-  path: string,
-  init: RequestInit = {},
-  options: RequestOptions = {},
-): Promise<T> {
-  const url = `/api/proxy/${target}${path.startsWith("/") ? path : `/${path}`}`;
+function proxyUrl(target: ProxyTarget, path: string): string {
+  return `/api/proxy/${target}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/** The headers every proxied call carries: content type, accept, the
+ * session bearer, and the second upstream credential the wizard needs.
+ * Shared so a streaming request cannot drift from a JSON one on auth --
+ * which would show up only as a 401 on exactly one code path. */
+function proxyHeaders(init: RequestInit, options: RequestOptions, accept: string): Headers {
   const headers = new Headers(init.headers);
   if (init.body !== undefined && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
   if (!headers.has("accept")) {
-    headers.set("accept", "application/json");
+    headers.set("accept", accept);
   }
   if (!options.skipAuth && !headers.has("authorization")) {
     const token = getSessionToken();
@@ -80,6 +82,52 @@ async function jsonRequest<T>(
   if (options.upstreamToken) {
     headers.set("x-eugene-plexus-upstream-authorization", `Bearer ${options.upstreamToken}`);
   }
+  return headers;
+}
+
+/**
+ * POST that hands back the raw `Response` so the caller can read a
+ * stream off it.
+ *
+ * Deliberately NOT part of `jsonRequest`: that function's contract is
+ * "give me the parsed body", and it reads the whole response to deliver
+ * it. A streaming caller needs the opposite, and conflating the two is
+ * how a "streaming" client ends up awaiting `.text()` and rendering
+ * everything at once -- which is precisely the shape of the gap M10 was
+ * built to close.
+ */
+export async function postStream(
+  target: ProxyTarget,
+  path: string,
+  body: unknown,
+  options: RequestOptions = {},
+): Promise<Response> {
+  const init: RequestInit = { method: "POST", body: JSON.stringify(body) };
+  const response = await fetch(proxyUrl(target, path), {
+    ...init,
+    headers: proxyHeaders(init, options, "text/event-stream"),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let parsed: unknown = text;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      // keep the raw text
+    }
+    throw new ApiError(response.status, response.statusText, parsed);
+  }
+  return response;
+}
+
+async function jsonRequest<T>(
+  target: ProxyTarget,
+  path: string,
+  init: RequestInit = {},
+  options: RequestOptions = {},
+): Promise<T> {
+  const url = proxyUrl(target, path);
+  const headers = proxyHeaders(init, options, "application/json");
 
   // Per-call timeout via AbortController. Without this, a hung upstream
   // component (e.g. a completion waiting on a stuck local engine)

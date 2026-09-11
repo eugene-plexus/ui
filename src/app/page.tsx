@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatInput } from "@/components/ChatInput";
 import { ChatLog } from "@/components/ChatLog";
 import { ApiError, api } from "@/lib/api";
-import { createChatCompletion, errorMessage, listModels } from "@/lib/completions";
+import { errorMessage, listModels, streamChatCompletion } from "@/lib/completions";
 import { clearSessionToken, hasSessionToken } from "@/lib/session";
 import type { ChatCompletionMessage, CompletionRoutingInfo, Model } from "@/lib/types";
 import type { AgentConfigDocument } from "@/lib/agent";
@@ -169,17 +169,48 @@ export default function PlaygroundPage() {
     setPending(true);
 
     try {
-      const response = await createChatCompletion({
-        model: chosen,
-        // Full history every turn: the gateway and the drivers below it
-        // are stateless by contract, so the transcript is the caller's
-        // to carry.
-        messages: outgoing,
-        timeoutMs: REQUEST_TIMEOUT_MS,
-      });
+      // The assistant message is appended empty and then grown in place.
+      // Doing it this way -- rather than accumulating and appending at
+      // the end -- is the whole visible difference M10 makes: the reply
+      // appears as it is generated instead of arriving all at once after
+      // a long silence.
+      let streamed = "";
+      let appended = false;
+      const response = await streamChatCompletion(
+        {
+          model: chosen,
+          // Full history every turn: the gateway and the drivers below it
+          // are stateless by contract, so the transcript is the caller's
+          // to carry.
+          messages: outgoing,
+          timeoutMs: REQUEST_TIMEOUT_MS,
+        },
+        (delta) => {
+          streamed += delta;
+          setMessages((prev) => {
+            if (!appended) {
+              appended = true;
+              return [...prev, { role: "assistant", content: streamed }];
+            }
+            const next = [...prev];
+            next[next.length - 1] = { role: "assistant", content: streamed };
+            return next;
+          });
+        },
+      );
       const choice = response.choices?.[0];
-      if (choice) {
+      if (choice && !appended) {
+        // A backend that answered without emitting a single delta --
+        // possible for a batching backend, whose stream is one event.
         setMessages((prev) => [...prev, choice.message]);
+      }
+      const truncatedBy = (response as { truncatedBy?: string }).truncatedBy;
+      if (truncatedBy) {
+        // The text above is real but incomplete. Showing it without
+        // saying so would present a truncated answer as a finished one,
+        // which is exactly what the gateway's commit-point rule trades
+        // away for early delivery.
+        setError(`The answer was cut short: ${truncatedBy}`);
       }
       setTurnInfo({
         ...(response.x_eugene_plexus ?? {}),
