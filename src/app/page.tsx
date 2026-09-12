@@ -438,12 +438,35 @@ function RoutingBar({ info }: { info: TurnInfo }) {
   if (info.promptTokens != null && info.completionTokens != null) {
     parts.push(`${info.promptTokens}→${info.completionTokens} tok`);
   }
+  // The window that applied to *this* turn, which is not the smallest
+  // across every replica -- that one is on the model picker above.
+  if (info.context_length != null) {
+    parts.push(`${info.context_length.toLocaleString()} ctx`);
+  }
   return (
     <div className="flex items-center gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[11px] text-[color:var(--muted)]">
       <span className="truncate">{parts.join(" · ")}</span>
       {info.attempts != null && info.attempts > 1 && (
         <span className="status-error px-1" title="An earlier backend failed and the cascade fired">
           {info.attempts} attempts
+        </span>
+      )}
+      {/* The answer above is about whatever survived, and nothing else
+          says so -- the backend returned 200 and no flag of its own.
+          This is the one screen where a human reads a completion's
+          envelope, so it is the one place the warning can land. Only
+          `true` renders: `null` means we could not check, which is not
+          the same claim and must not look like reassurance. */}
+      {info.prompt_truncated === true && (
+        <span
+          className="status-error px-1"
+          title={
+            "The backend discarded most of the prompt to make it fit and answered anyway. " +
+            "The reply is about what survived, not what you sent. Raise the backend's " +
+            "context window, or send less."
+          }
+        >
+          input truncated
         </span>
       )}
     </div>

@@ -19,6 +19,34 @@ export interface paths {
          *     and the driver passes it through to its backend, translating into
          *     whatever wire protocol that backend speaks. The driver owns no
          *     conversation state.
+         *
+         *     **How a backend's own refusal comes back, and why the status
+         *     matters more than it looks.** The gateway cascades a 5xx to the
+         *     next backend in the slot and hard-fails a 4xx, on the reasoning
+         *     that the next backend would hit the same bad request. That rule
+         *     only works if this driver keeps the two apart, so it does:
+         *
+         *     * A backend 4xx that another backend would hit identically — an
+         *       over-long prompt, a malformed request, a rejected key, an
+         *       unknown model — is **400**, `type` ending
+         *       `#backend-rejected-request`, with the backend's own status and
+         *       body in `detail`.
+         *     * A backend 4xx that is worth trying elsewhere — `408`, `409`,
+         *       `425`, `429` — stays **502**, so the priority-list cascade
+         *       still fires. A rate-limited cloud provider falling through to
+         *       a local engine is the case failover was built for and must not
+         *       regress.
+         *     * Everything else — a backend 5xx, a transport failure, a
+         *       malformed body — stays **502**.
+         *
+         *     **This is the honest half of context-window handling.**
+         *     `llama-server` answers an over-long prompt with a 400 naming
+         *     both numbers (`n_prompt_tokens` and `n_ctx`); flattening that
+         *     into a 502 made the gateway cascade a request every backend
+         *     would refuse and hand the caller a retryable error, which is the
+         *     looping symptom this project exists to remove. The engine's
+         *     count is exact and ours would be a second implementation of it,
+         *     so the driver's job here is to get out of the way.
          */
         post: operations["generate"];
         delete?: never;
@@ -50,6 +78,14 @@ export interface paths {
          *     Backends that don't support native streaming (some CLI subprocess
          *     adapters) MAY emit the entire response as a single `token` event
          *     followed by `done`.
+         *
+         *     **A failure before the first frame is still a status code**, and
+         *     carries the same 400/502 split `POST /v1/generate` describes —
+         *     so an over-long prompt refused by the engine reaches the caller
+         *     as a 400 and does not cascade. Once the stream is open the 200
+         *     is committed and a failure can only be an `event: error` frame,
+         *     which is why everything that can fail cleanly is made to fail
+         *     before the response is handed over.
          */
         post: operations["generateStream"];
         delete?: never;
@@ -447,6 +483,36 @@ export interface components {
                  *     instead.
                  */
                 toolCalling?: boolean;
+                /**
+                 * @description The context window the backend **resolved**, read back
+                 *     from the backend itself — not the model's trained
+                 *     maximum, and never an estimate.
+                 *
+                 *     Null means unknown, and unknown is a real answer: a
+                 *     hosted provider exposes nothing to read, and a CLI
+                 *     subscription has no window of its own to report. The
+                 *     gateway's `_smallest_context` folds this together with
+                 *     the window a supervised runtime reports and publishes
+                 *     the smallest as `x_eugene_plexus.context_length` on
+                 *     `GET /v1/models`, so a harness can size a prompt
+                 *     against the number that will actually apply.
+                 *
+                 *     **Populated by a probe of the backend, which is why it
+                 *     exists at all.** A supervised runtime already tells the
+                 *     agent its window; this field is for the backend nobody
+                 *     supervises — an Ollama or an LM Studio the operator
+                 *     points us at — which until now reported no window
+                 *     anywhere. Contracted since M0 and populated by nothing
+                 *     until then, exactly as `streaming` was until M10.
+                 *
+                 *     **Advertising, not enforcement.** Nothing here counts a
+                 *     prompt: the window is published so a caller can respect
+                 *     it, and a caller that does not is refused by the engine
+                 *     itself, whose count is exact. A backend that truncates
+                 *     silently instead of refusing is caught after the fact —
+                 *     see `x_eugene_plexus.prompt_truncated` in
+                 *     `gateway.yaml`.
+                 */
                 maxContextTokens?: number;
             };
             /** @description inference-driver semver. */
@@ -974,9 +1040,27 @@ export interface operations {
                     "application/json": components["schemas"]["GenerateResponse"];
                 };
             };
-            400: components["responses"]["Problem"];
+            /**
+             * @description The request cannot be served as asked. Either the driver
+             *     refused it (tools against a backend that cannot carry them)
+             *     or the backend rejected it in a way another backend would
+             *     reject identically — including a prompt longer than the
+             *     context window. Does not cascade.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             500: components["responses"]["Problem"];
-            /** @description Upstream model backend error. */
+            /**
+             * @description Upstream model backend error, or a backend refusal worth
+             *     retrying elsewhere (`408`, `409`, `425`, `429`). Cascades to
+             *     the next backend in the slot.
+             */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -1009,8 +1093,33 @@ export interface operations {
                     "text/event-stream": string;
                 };
             };
-            400: components["responses"]["Problem"];
+            /**
+             * @description Refused before the stream opened — the driver's own refusal,
+             *     or a backend rejection another backend would repeat, a
+             *     prompt longer than the context window included. Does not
+             *     cascade.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             500: components["responses"]["Problem"];
+            /**
+             * @description Backend failure before the stream opened, or a refusal worth
+             *     retrying elsewhere (`408`, `409`, `425`, `429`). Cascades.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     info: {
