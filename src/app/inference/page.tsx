@@ -159,6 +159,46 @@ export default function InferencePage() {
     return names;
   }, [picker.nodes, byNode]);
 
+  /**
+   * Forget a backend. A runtime takes its companion driver with it; an
+   * external backend's driver is the only thing this install holds
+   * about it -- the Ollama, the cloud CLI, the engine someone runs by
+   * hand is untouched. `DELETE` has existed on the agent since M0 and
+   * nothing in the UI had ever called it; the first operator to try
+   * removed an Ollama by killing its process and the supervisor put it
+   * back, which is what supervision is for.
+   */
+  async function remove(row: Row) {
+    const what = row.runtime
+      ? `the runtime "${row.runtime}"${row.driver ? ` and its driver "${row.driver}"` : ""}`
+      : `the driver "${row.driver}"`;
+    const confirmed = window.confirm(
+      `Remove ${what}${row.node ? ` from ${row.node}` : ""}?
+
+` +
+        (row.runtime
+          ? "The engine process is stopped and the model is no longer served. The model files stay where they are."
+          : "The gateway stops routing to it. Whatever it fronts is untouched -- only this install's knowledge of it goes."),
+    );
+    if (!confirmed) return;
+    const key = `${row.node ?? ""}/${row.runtime ?? row.driver ?? ""}:remove`;
+    setBusy(key);
+    setActionError(null);
+    try {
+      const target = targetFor(row.node, localName);
+      if (row.runtime) {
+        await api.delete<void>(target, `/v1/runtimes/${encodeURIComponent(row.runtime)}`);
+      } else if (row.driver) {
+        await api.delete<void>(target, `/v1/components/${encodeURIComponent(row.driver)}`);
+      }
+      await load();
+    } catch (err) {
+      setActionError(describeError(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function act(node: string | null, runtime: string, action: "start" | "stop" | "restart") {
     const key = `${node ?? ""}/${runtime}:${action}`;
     setBusy(key);
@@ -244,6 +284,7 @@ export default function InferencePage() {
             rows={byNode.get(name) ?? []}
             busy={busy}
             onAct={act}
+            onRemove={remove}
           />
         ))}
       </div>
@@ -276,6 +317,7 @@ function NodeSection({
   rows,
   busy,
   onAct,
+  onRemove,
 }: {
   name: string | null;
   node: TargetNode | null;
@@ -283,6 +325,7 @@ function NodeSection({
   rows: Row[];
   busy: string | null;
   onAct: (node: string | null, runtime: string, action: "start" | "stop" | "restart") => void;
+  onRemove: (row: Row) => void;
 }) {
   const label = name ?? node?.label ?? "this host";
   return (
@@ -318,7 +361,7 @@ function NodeSection({
             </thead>
             <tbody>
               {rows.map((row) => (
-                <RowView key={row.key} row={row} busy={busy} onAct={onAct} />
+                <RowView key={row.key} row={row} busy={busy} onAct={onAct} onRemove={onRemove} />
               ))}
             </tbody>
           </table>
@@ -332,10 +375,12 @@ function RowView({
   row,
   busy,
   onAct,
+  onRemove,
 }: {
   row: Row;
   busy: string | null;
   onAct: (node: string | null, runtime: string, action: "start" | "stop" | "restart") => void;
+  onRemove: (row: Row) => void;
 }) {
   const status = row.runtimeStatus as RuntimeStatus | null;
   const known = status !== null && status in STATUS_TONE;
@@ -434,15 +479,37 @@ function RowView({
             >
               {busy === `${prefix}restart` ? "…" : "restart"}
             </button>
+            <button
+              type="button"
+              onClick={() => onRemove(row)}
+              disabled={busy !== null}
+              className={`${dangerButton} ml-1`}
+              title="Stops the engine and forgets the runtime and its driver. The model files stay."
+            >
+              {busy === `${prefix}remove` ? "…" : "remove"}
+            </button>
           </>
         ) : (
-          <Link
-            href="/config"
-            className={smallButton}
-            title="An external backend is not ours to start or stop. Its driver's settings — the URL, the model id, the API key — are on the Config page."
-          >
-            config
-          </Link>
+          <>
+            <Link
+              href="/config"
+              className={smallButton}
+              title="An external backend is not ours to start or stop. Its driver's settings — the URL, the model id, the API key — are on the Config page."
+            >
+              config
+            </Link>
+            {row.driver && (
+              <button
+                type="button"
+                onClick={() => onRemove(row)}
+                disabled={busy !== null}
+                className={`${dangerButton} ml-1`}
+                title="Forgets this driver and stops its process. The backend it fronts is untouched."
+              >
+                {busy === `${row.node ?? ""}/${row.driver}:remove` ? "…" : "remove"}
+              </button>
+            )}
+          </>
         )}
       </td>
     </tr>
@@ -569,5 +636,7 @@ const buttonClass =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
 const smallButton =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+const dangerButton =
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--status-error,#f85149)] hover:text-[color:var(--status-error,#f85149)] disabled:cursor-not-allowed disabled:opacity-30";
 const tinyButton =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-1.5 py-0 text-[10px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
