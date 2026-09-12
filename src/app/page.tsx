@@ -103,7 +103,17 @@ export default function PlaygroundPage() {
   const loadModels = useCallback(async () => {
     try {
       const list = await listModels();
-      const data = list.data ?? [];
+      // Chat models only. The library will discover, download and launch
+      // a dedicated embedding model, and the gateway now refuses one on
+      // this surface with a 400 -- so offering it in the picker would be
+      // offering a choice that cannot work. `surfaces` is absent when
+      // talking to a gateway older than call #2, and an absent list must
+      // read as "no opinion" rather than "no chat", or this screen goes
+      // empty against an install that has not been upgraded yet.
+      const data = (list.data ?? []).filter((m) => {
+        const surfaces = m.x_eugene_plexus?.surfaces;
+        return !surfaces || surfaces.includes("chat");
+      });
       setModels(data);
       setModelsError(null);
       setModel((current) => {

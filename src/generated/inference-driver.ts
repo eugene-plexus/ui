@@ -94,6 +94,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/embed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn text into vectors on the configured backend.
+         * @description The embeddings counterpart to `POST /v1/generate`, and the same
+         *     shape of thing: the caller supplies text, the driver translates
+         *     into whatever wire protocol its backend speaks, and owns no
+         *     state.
+         *
+         *     **Always float arrays, never base64.** OpenAI's `/v1/embeddings`
+         *     lets a client ask for base64, and the OpenAI SDKs use it by
+         *     default — but that is a *transport* encoding, and making every
+         *     driver support it would mean depending on each backend to honour
+         *     a parameter some ignore. So this surface speaks one shape and
+         *     the gateway encodes on the way out, which makes the
+         *     client-visible behaviour identical regardless of what the
+         *     backend underneath happens to support.
+         *
+         *     **The capability is a property of the running backend, not of
+         *     the model**, and it cannot be read off anything — measured
+         *     2026-09-12: `llama-server`'s `/props` exposes no pooling or
+         *     embedding field at all, and an Ollama runner started for chat
+         *     answers `This server does not support embeddings. Start it with
+         *     --embeddings`. So a driver determines it by *trying*, once, and
+         *     reports the result as `capabilities.embeddings` on `/v1/info`.
+         *     The negative case is cheap: llama.cpp refuses a non-pooling
+         *     model in 45 ms, before any compute.
+         */
+        post: operations["embed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/info": {
         parameters: {
             query?: never;
@@ -426,6 +468,41 @@ export interface components {
             totalTokens?: number;
         };
         /**
+         * @description Text to embed. Batched because every backend that does this
+         *     accepts a batch, and a per-item round trip would multiply the
+         *     control plane's own overhead by the size of a document set.
+         */
+        EmbedRequest: {
+            /**
+             * @description One entry per vector to produce. Order is preserved: the
+             *     n-th vector in the response is the n-th input, which is the
+             *     only thing that lets a caller match them up, since an
+             *     embedding carries no identity of its own.
+             */
+            input: string[];
+            /** @description Correlation id, echoed back. Same role as on `GenerateRequest`. */
+            requestId?: string;
+        };
+        EmbedResponse: {
+            /**
+             * @description One vector per input, in the order the inputs arrived.
+             *     Floats, always — see the operation description for why this
+             *     surface does not carry base64.
+             */
+            embeddings: number[][];
+            /**
+             * @description The model that produced these vectors, as the backend named
+             *     it. **Load-bearing beyond attribution:** vectors from two
+             *     models are not comparable, so a caller storing them needs to
+             *     know which model's space they belong to.
+             */
+            modelId?: string;
+            backend?: components["schemas"]["BackendKind"];
+            usage?: components["schemas"]["Usage"];
+            latencyMs?: number;
+            requestId?: string;
+        };
+        /**
          * @description Driver self-description, and the gateway's only source of truth
          *     for what this backend serves. A driver does not know its position
          *     in any topology: its operator-supplied name lives in the agent
@@ -483,6 +560,24 @@ export interface components {
                  *     instead.
                  */
                 toolCalling?: boolean;
+                /**
+                 * @description Whether this driver can serve `POST /v1/embed`.
+                 *
+                 *     **A property of the running backend, not of the model**,
+                 *     and not readable from anything: `llama-server`'s
+                 *     `/props` carries no pooling or embedding field, and an
+                 *     Ollama runner started for chat refuses with "This server
+                 *     does not support embeddings". So it is determined by
+                 *     trying once and cached for the driver's lifetime — which
+                 *     is the right lifetime, since it cannot change without
+                 *     the backend restarting.
+                 *
+                 *     The gateway reads it to mark which surface each model
+                 *     serves on `GET /v1/models`, and to refuse a chat request
+                 *     against an embeddings-only model with a reason instead
+                 *     of passing it down to fail obscurely.
+                 */
+                embeddings?: boolean;
                 /**
                  * @description The context window the backend **resolved**, read back
                  *     from the backend itself — not the model's trained
@@ -1111,6 +1206,58 @@ export interface operations {
             /**
              * @description Backend failure before the stream opened, or a refusal worth
              *     retrying elsewhere (`408`, `409`, `425`, `429`). Cascades.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    embed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmbedRequest"];
+            };
+        };
+        responses: {
+            /** @description Vectors produced. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbedResponse"];
+                };
+            };
+            /**
+             * @description This backend cannot embed, or rejected the request in a way
+             *     another backend would reject identically. Does not cascade.
+             *     A driver whose `capabilities.embeddings` is false fails here
+             *     rather than returning something that is not an embedding.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            500: components["responses"]["Problem"];
+            /**
+             * @description Upstream backend error, or a refusal worth retrying
+             *     elsewhere (`408`, `409`, `425`, `429`). Cascades — but only
+             *     across replicas of the SAME model; see `gateway.yaml`.
              */
             502: {
                 headers: {

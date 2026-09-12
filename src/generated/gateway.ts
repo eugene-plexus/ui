@@ -127,6 +127,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/embeddings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * OpenAI-compatible embeddings.
+         * @description The second OpenAI surface this gateway serves, and the reason it
+         *     exists is coherence rather than demand: the library already
+         *     detects dedicated embedding models (a pooling type in GGUF
+         *     metadata, an encoder architecture in safetensors) and will
+         *     happily discover, download and launch one. Before this endpoint,
+         *     that model then appeared on `GET /v1/models` looking like
+         *     anything else and failed every request it was sent. We were
+         *     letting people acquire a thing we could not serve.
+         *
+         *     **FAILOVER DOES NOT CROSS MODELS HERE, AND THAT IS THE RULE THIS
+         *     ENDPOINT TURNS ON.** Everywhere else in this gateway a slot is
+         *     an ordered list of targets and a failure cascades to the next
+         *     one. For chat that degrades gracefully -- a different model
+         *     answers, and the caller can tell. For embeddings it is silent
+         *     corruption: vectors from two models occupy different spaces, so
+         *     a fallback writes noise into the caller's vector store with a
+         *     200 and nothing to mark the seam. Different dimensions would at
+         *     least raise; the *same* dimension poisons quietly, and the
+         *     damage outlives the request in a database.
+         *
+         *     So: balancing and failover across **replicas of the same model
+         *     id** work exactly as they do for chat -- those are
+         *     interchangeable by definition. A `modelSlots` cascade to a
+         *     *different* target does not run for embeddings. A request whose
+         *     own model has no eligible backend fails rather than being served
+         *     by a neighbour. Same family of rule as M10's "failover is
+         *     possible until the first token and impossible after it": both
+         *     give up a retry to avoid returning a wrong answer that looks
+         *     like a right one.
+         *
+         *     **`encoding_format` is honoured here rather than passed down.**
+         *     The OpenAI SDKs request `base64` by default, and backends differ
+         *     on whether they implement it -- so the driver surface speaks
+         *     float arrays only and this layer encodes. The encoding is
+         *     little-endian `float32`, then base64, verified byte-for-byte
+         *     against a real backend's own output rather than inferred from
+         *     the OpenAI documentation.
+         */
+        post: operations["createEmbedding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/drivers": {
         parameters: {
             query?: never;
@@ -582,6 +638,26 @@ export interface components {
              */
             context_length?: number;
             /**
+             * @description Which OpenAI surfaces this model can be sent to.
+             *
+             *     OpenAI's own `/v1/models` does not say, which is why every
+             *     RAG front-end makes you pick an embedding model from a
+             *     dropdown of everything and discover your mistake as an
+             *     error. This install knows, because the driver determines it
+             *     from the backend, so it says.
+             *
+             *     **Measured, not assumed, and the two are not always
+             *     disjoint**: an Ollama runner started for chat refuses to
+             *     embed, `nomic-embed-text` refuses to chat -- but
+             *     `llama-server` given `--embedding` still serves chat
+             *     perfectly well. Hence a list.
+             *
+             *     Empty means nothing serving this model would admit to either
+             *     surface, which is a backend that could not be reached rather
+             *     than a model that does nothing.
+             */
+            surfaces?: ("chat" | "embeddings")[];
+            /**
              * @description Whether a request for this model may carry `tools`.
              *
              *     **True only when every backend serving it can**, by the same
@@ -1014,6 +1090,76 @@ export interface components {
              *     refusal is exact and is passed straight through as a 400.
              */
             prompt_truncated?: boolean;
+        };
+        EmbeddingRequest: {
+            /**
+             * @description Must name a model that serves the embeddings surface.
+             *     `GET /v1/models` reports `x_eugene_plexus.surfaces` per
+             *     model; a chat-only model is refused here with a 400 rather
+             *     than sent down to fail as an obscure backend error.
+             */
+            model: string;
+            /**
+             * @description One string, or a batch of them. Order is preserved and is
+             *     the only way a caller can match vectors to inputs.
+             *
+             *     **Token-array inputs are not accepted**, which OpenAI does
+             *     allow. Supporting them would mean tokenizing on this side to
+             *     validate, and this install deliberately owns no tokenizer --
+             *     see the context-window decision. A caller sending one gets a
+             *     400 rather than a silently different answer.
+             */
+            input: string | string[];
+            /**
+             * @description `base64` is what the OpenAI SDKs ask for by default, so it
+             *     is supported and is handled **here** rather than passed to
+             *     the backend: little-endian `float32`, then base64.
+             * @default float
+             * @enum {string}
+             */
+            encoding_format: "float" | "base64";
+            /** @description Opaque end-user id, as OpenAI defines it. Recorded, not routed on. */
+            user?: string;
+            /**
+             * @description Passed through to the backend unchanged. Most local backends
+             *     ignore it; this layer does not emulate truncation, because a
+             *     silently-truncated vector is a wrong answer that looks like
+             *     a right one.
+             */
+            dimensions?: number;
+        };
+        EmbeddingResponse: {
+            /** @enum {string} */
+            object: "list";
+            data: components["schemas"]["EmbeddingData"][];
+            /**
+             * @description The model that actually produced these vectors. After a
+             *     same-model failover this still names that model -- by the
+             *     rule above, it can never name a different one.
+             */
+            model: string;
+            usage?: components["schemas"]["EmbeddingUsage"];
+            x_eugene_plexus?: components["schemas"]["CompletionRoutingInfo"];
+        };
+        EmbeddingData: {
+            /** @enum {string} */
+            object: "embedding";
+            /** @description Position of the input this vector came from. */
+            index: number;
+            /**
+             * @description An array of floats, or a base64 string when the caller asked
+             *     for `base64` -- little-endian `float32`.
+             */
+            embedding: number[] | string;
+        };
+        /**
+         * @description Separate from `CompletionUsage` because there is no completion:
+         *     OpenAI omits `completion_tokens` here, and inventing a zero
+         *     would assert something the backend never said.
+         */
+        EmbeddingUsage: {
+            prompt_tokens?: number;
+            total_tokens?: number;
         };
         /**
          * @description The gateway's resolved routing table, as of the last refresh.
@@ -1878,10 +2024,19 @@ export interface operations {
             /**
              * @description The request cannot be served as asked, and no backend would
              *     serve it differently — so it is refused here rather than
-             *     cascaded. Three ways to get one: a malformed body; `tools`
-             *     for a model no backend can carry them to; or a backend that
-             *     rejected the request itself, which most often means **a
-             *     prompt longer than the context window**.
+             *     cascaded. Four ways to get one: a malformed body; `tools`
+             *     for a model no backend can carry them to; **a model that
+             *     serves embeddings and not chat**; or a backend that rejected
+             *     the request itself, which most often means **a prompt longer
+             *     than the context window**.
+             *
+             *     The embeddings case is new with `POST /v1/embeddings` and is
+             *     the reason it was worth adding: the library detects and will
+             *     launch a dedicated embedding model, and before this that
+             *     model sat on `GET /v1/models` looking like any other and
+             *     failed here as whatever the backend happened to say. Now it
+             *     is refused by name, and `x_eugene_plexus.surfaces` says
+             *     which surface to use instead.
              *
              *     The last is passed through verbatim, and deliberately: an
              *     engine that counts tokens knows exactly how many the prompt
@@ -1932,6 +2087,77 @@ export interface operations {
              *     is in safe mode. Retryable, so it is deliberately not folded
              *     into 502. The message names the runtime when one is being
              *     woken.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    createEmbedding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmbeddingRequest"];
+            };
+        };
+        responses: {
+            /** @description Vectors produced. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingResponse"];
+                };
+            };
+            /**
+             * @description Malformed request, or the named model does not serve this
+             *     surface -- `GET /v1/models` reports which surfaces each
+             *     model serves, so a caller can tell before sending.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description No reachable driver serves the requested model. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description Every eligible backend for this model failed. Note "for this
+             *     model": the cascade never reached a different one.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description Something serves this model and none of it can take a
+             *     request right now -- usually an engine still loading.
+             *     Retryable.
              */
             503: {
                 headers: {
