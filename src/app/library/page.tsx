@@ -8,6 +8,7 @@ import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBreakdown, formatMemory } from "@/components/FitBadge";
 import { ProfileEditor } from "@/components/ProfileEditor";
 import { ApiError, api } from "@/lib/api";
+import { fitQuery, useNodeBudget } from "@/lib/nodeBudget";
 import type {
   EngineDescriptor,
   EngineList,
@@ -592,20 +593,28 @@ function FitPanel({ model }: { model: LibraryModel }) {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
+  // Whose memory this is about: the node a launch from this browser
+  // runs on, not the host the library runs on -- see `nodeBudget.ts`.
+  const { budget } = useNodeBudget();
+
   useEffect(() => {
     setFit(null);
     setError(null);
     void (async () => {
       try {
+        const params = new URLSearchParams(fitQuery(budget)).toString();
         setFit(
-          await api.get<ModelFit>("library", `/v1/models/${encodeURIComponent(model.id)}/fit`),
+          await api.get<ModelFit>(
+            "library",
+            `/v1/models/${encodeURIComponent(model.id)}/fit${params ? `?${params}` : ""}`,
+          ),
         );
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) return;
         setError(errorText(err));
       }
     })();
-  }, [model.id]);
+  }, [model.id, budget]);
 
   if (error) {
     return <p className="text-xs text-[color:var(--muted)]">could not measure fit: {error}</p>;
@@ -623,7 +632,7 @@ function FitPanel({ model }: { model: LibraryModel }) {
           {verdict === "fits" && "Fits in GPU memory"}
           {verdict === "tight" && "Would fit on an idle GPU"}
           {verdict === "split" && "Needs partial CPU offload"}
-          {verdict === "no" && "Too large for this machine"}
+          {verdict === "no" && "Too large for this node"}
         </p>
         <button
           type="button"
@@ -649,6 +658,12 @@ function FitPanel({ model }: { model: LibraryModel }) {
           </>
         )}
       </p>
+      {budget && (
+        <p className="mt-0.5 opacity-80">
+          Scored against {budget.node ?? "this host"}
+          {budget.gpu ? ` · ${budget.gpu.name}` : " · no GPU"}, where a launch from here runs.
+        </p>
+      )}
       {open && (
         <div className="mt-2">
           <FitBreakdown fit={fit.fit} />

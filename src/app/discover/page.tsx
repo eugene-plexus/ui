@@ -8,6 +8,7 @@ import { FitBadge, formatBytes, formatMemory } from "@/components/FitBadge";
 import { ModelCard } from "@/components/ModelCard";
 import { QuantReference } from "@/components/QuantReference";
 import { ApiError, api } from "@/lib/api";
+import { type NodeBudget, fitQuery, useNodeBudget } from "@/lib/nodeBudget";
 import type {
   CatalogueCandidate,
   CatalogueFile,
@@ -72,6 +73,11 @@ export default function DiscoverPage() {
   const [contextLength, setContextLength] = useState(8192);
 
   const [hardware, setHardware] = useState<HostHardware | null>(null);
+  // Whose memory the verdicts are about: this node's, because a launch
+  // from this browser runs here. The library's own reading below is
+  // about the host the library runs on, which on a multi-host install
+  // is a different machine -- see `nodeBudget.ts`.
+  const { budget } = useNodeBudget();
   const { downloads, reload: reloadDownloads, active } = useDownloads();
   const [showDownloads, setShowDownloads] = useState(true);
 
@@ -128,7 +134,7 @@ export default function DiscoverPage() {
             ← Library
           </Link>
           <h1 className="font-ui text-sm font-semibold tracking-wide">Discover</h1>
-          {hardware && <HardwareSummary hardware={hardware} />}
+          <HardwareSummary budget={budget} hardware={hardware} />
         </div>
         <div className="flex items-center gap-3">
           <label className="font-ui flex items-center gap-1.5 text-xs text-[color:var(--muted)]">
@@ -201,6 +207,7 @@ export default function DiscoverPage() {
               key={selectedRepo}
               repo={selectedRepo}
               contextLength={contextLength}
+              budget={budget}
               downloads={downloads}
               onDownloadStarted={() => {
                 setShowDownloads(true);
@@ -208,7 +215,7 @@ export default function DiscoverPage() {
               }}
             />
           ) : (
-            <EmptyDetail hardware={hardware} />
+            <EmptyDetail budget={budget} hardware={hardware} />
           )}
         </div>
       </div>
@@ -249,7 +256,46 @@ export default function DiscoverPage() {
   );
 }
 
-function HardwareSummary({ hardware }: { hardware: HostHardware }) {
+function HardwareSummary({
+  budget,
+  hardware,
+}: {
+  budget: NodeBudget | null;
+  hardware: HostHardware | null;
+}) {
+  // The node's own reading wins, and the line names the node: "no GPU
+  // detected" with no machine attached is how a worker with an RTX 5090
+  // was told it had none -- the library had measured the NAS it runs on.
+  if (budget) {
+    const where = budget.node ?? "this host";
+    const measured = hardware
+      ? ` The library itself runs on ${hardware.hostname} and measures that host; that reading is not used here.`
+      : "";
+    return (
+      <span
+        className="font-ui text-xs text-[color:var(--muted)]"
+        title={`Scored against ${where}, the machine a launch from this browser runs on. Verdicts use free memory, not total.${measured}`}
+      >
+        {where} ·{" "}
+        {budget.gpu ? (
+          <>
+            {budget.gpu.name} · {formatMemory(budget.gpu.freeBytes)} free
+            {budget.gpu.totalBytes != null && <> of {formatMemory(budget.gpu.totalBytes)}</>}
+          </>
+        ) : (
+          <>
+            no GPU · {budget.ramBytes != null ? formatMemory(budget.ramBytes) : "unknown"} host
+            memory free
+          </>
+        )}
+        {budget.gpuCount > 1 && <> · {budget.gpuCount} GPUs, largest card counts</>}
+      </span>
+    );
+  }
+
+  // No device list from this node's agent: fall back to what the library
+  // measured, and say whose machine that is.
+  if (!hardware) return null;
   const gpu = (hardware.gpus ?? [])[0];
   const free = gpu?.vramFreeBytes ?? gpu?.vramTotalBytes;
   return (
@@ -260,6 +306,7 @@ function HardwareSummary({ hardware }: { hardware: HostHardware }) {
         "Detected on the host the library runs on. Fit verdicts are measured against free memory, not total."
       }
     >
+      {hardware.hostname} ·{" "}
       {gpu ? (
         <>
           {gpu.name} · {formatMemory(free)} free of {formatMemory(gpu.vramTotalBytes)}
@@ -332,10 +379,36 @@ function ResultsList({
   );
 }
 
-function EmptyDetail({ hardware }: { hardware: HostHardware | null }) {
+function EmptyDetail({
+  budget,
+  hardware,
+}: {
+  budget: NodeBudget | null;
+  hardware: HostHardware | null;
+}) {
+  const where = budget?.node ?? "this host";
   return (
     <div className="max-w-2xl space-y-4 text-xs text-[color:var(--muted)]">
       <p>Pick a model on the left to see what it actually ships and which version fits here.</p>
+      {budget && !budget.gpu && (
+        <div className="status-warn rounded-[var(--radius)] border px-3 py-2">
+          <p className="mb-1 font-semibold">No GPU on {where}</p>
+          <p>
+            Verdicts are scored against host memory alone, because a model launched from this
+            browser runs on this machine. If the GPU is on another node of this install, open
+            Discover from that node&rsquo;s own address.
+          </p>
+        </div>
+      )}
+      {budget?.unifiedMemory && (
+        <div className="status-warn rounded-[var(--radius)] border px-3 py-2">
+          <p className="mb-1 font-semibold">Apple silicon: one memory pool</p>
+          <p>
+            Scored as {formatMemory(budget.vramBytes)} of GPU memory. There is nothing to offload
+            to, so a &ldquo;partial offload&rdquo; verdict does not apply here.
+          </p>
+        </div>
+      )}
       <p>
         One repository usually holds a dozen or more versions of the same model at different
         precisions. This screen groups them into the choices that can actually be launched — the
@@ -347,9 +420,14 @@ function EmptyDetail({ hardware }: { hardware: HostHardware | null }) {
         filenames. Nothing is renamed, hashed, or moved into a cache: delete Eugene Plexus and every
         model is still where it was.
       </p>
-      {hardware && (hardware.warnings ?? []).length > 0 && (
+      {/* The library's warnings are about the host the LIBRARY runs on.
+          Shown only when its reading is the one in use -- otherwise a
+          worker would read "nvidia-smi is not on PATH" about a NAS. */}
+      {!budget && hardware && (hardware.warnings ?? []).length > 0 && (
         <div className="status-warn rounded-[var(--radius)] border px-3 py-2">
-          <p className="mb-1 font-semibold">About the hardware readings</p>
+          <p className="mb-1 font-semibold">
+            About the hardware readings, from {hardware.hostname}
+          </p>
           <ul className="list-disc space-y-0.5 pl-4">
             {(hardware.warnings ?? []).map((warning) => (
               <li key={warning}>{warning}</li>
@@ -364,11 +442,13 @@ function EmptyDetail({ hardware }: { hardware: HostHardware | null }) {
 function RepoDetail({
   repo,
   contextLength,
+  budget,
   downloads,
   onDownloadStarted,
 }: {
   repo: string;
   contextLength: number;
+  budget: NodeBudget | null;
   downloads: Download[];
   onDownloadStarted: () => void;
 }) {
@@ -386,7 +466,13 @@ function RepoDetail({
     setLoading(true);
     void (async () => {
       try {
-        const params = new URLSearchParams({ repo, contextLength: String(contextLength) });
+        // `fitQuery` points the library's arithmetic at this node's
+        // memory. Without it every verdict is about the library's host.
+        const params = new URLSearchParams({
+          repo,
+          contextLength: String(contextLength),
+          ...fitQuery(budget),
+        });
         const body = await api.get<CatalogueModel>(
           "library",
           `/v1/catalogue/model?${params.toString()}`,
@@ -406,7 +492,7 @@ function RepoDetail({
         if (id === requestId.current) setLoading(false);
       }
     })();
-  }, [repo, contextLength]);
+  }, [repo, contextLength, budget]);
 
   async function preflight(candidate: CatalogueCandidate) {
     const weights = candidate.files[0]?.path;
@@ -418,6 +504,7 @@ function RepoDetail({
         repo,
         file: weights,
         contextLength: String(contextLength),
+        ...fitQuery(budget),
       });
       const body = await api.get<CataloguePreflight>(
         "library",

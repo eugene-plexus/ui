@@ -84,6 +84,13 @@ export type EngineKind = AgentComponents["schemas"]["EngineKind"];
 export type EngineList = AgentComponents["schemas"]["EngineList"];
 export type EngineDescriptor = AgentComponents["schemas"]["EngineDescriptor"];
 
+// The host itself: which control root it answers to, and what it can
+// compute on. `devices` is the cross-host inventory M3 deferred and M7
+// built; `nodeBudget.ts` turns it into the numbers a fit verdict needs,
+// so guidance is scored against the machine a launch will actually reach.
+export type NodeIdentity = AgentComponents["schemas"]["NodeIdentity"];
+export type ComputeDevice = AgentComponents["schemas"]["ComputeDevice"];
+
 // --- Library: the operator's own model directories (M2) ---------------
 //
 // The library holds what is on disk; the agent holds what is running.

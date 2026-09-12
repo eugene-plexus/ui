@@ -3096,6 +3096,25 @@ export interface operations {
                  */
                 contextLength?: number;
                 kvCacheType?: components["schemas"]["KvCacheType"];
+                /**
+                 * @description Override the detected VRAM budget, in bytes. Sets
+                 *     `budget.source` to `override` on every candidate's fit, so a
+                 *     UI can say the verdicts are about a machine the library did
+                 *     not measure.
+                 *
+                 *     This is how a browser on a GPU node scores against **that
+                 *     node** while the library runs elsewhere — the limitation the
+                 *     `/v1/hardware` description names. On the first two-machine
+                 *     install the library lived in a container with no GPU and
+                 *     every model was launched on a worker with one; without this,
+                 *     Discover told that worker it had no GPU, truthfully, about
+                 *     the wrong machine. The implementation accepted the parameter
+                 *     before the contract said so; documented when the first
+                 *     caller appeared.
+                 */
+                vramBytes?: number;
+                /** @description Override the detected host-memory budget, in bytes. */
+                ramBytes?: number;
             };
             header?: never;
             path?: never;
@@ -3156,6 +3175,16 @@ export interface operations {
                 file: string;
                 contextLength?: number;
                 kvCacheType?: components["schemas"]["KvCacheType"];
+                /**
+                 * @description Override the detected VRAM budget, in bytes — the same
+                 *     parameter `/v1/catalogue/model` takes, for the same reason:
+                 *     the fit this preflight computes must be about the machine
+                 *     the file will be launched on, not the one the library runs
+                 *     on.
+                 */
+                vramBytes?: number;
+                /** @description Override the detected host-memory budget, in bytes. */
+                ramBytes?: number;
             };
             header?: never;
             path?: never;
