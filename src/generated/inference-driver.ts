@@ -41,7 +41,9 @@ export interface paths {
          * @description Same request shape as `POST /v1/generate`, but the response is a
          *     Server-Sent Events stream. Events:
          *
-         *     - `event: token` — `data` is a JSON `{"text": "..."}` chunk
+         *     - `event: token` — `data` is a JSON `StreamToken`: `text` for a
+         *       text fragment, `toolCalls` for tool-call fragments, never
+         *       both in one frame
          *     - `event: done`  — `data` is the final `GenerateResponse` JSON
          *     - `event: error` — `data` is a `Problem` JSON
          *
@@ -267,12 +269,42 @@ export interface components {
              * @description Caller-supplied id for log correlation. Echoed in the response.
              */
             requestId?: string;
+            /**
+             * @description Tools the model may call, in OpenAI's shape. Carried down to
+             *     the backend unchanged and never executed here — the driver
+             *     is a protocol adapter, and running a tool is the caller's
+             *     job by the same reasoning that keeps output-affecting
+             *     parameters on the gateway.
+             *
+             *     An adapter whose backend cannot carry tools MUST fail the
+             *     request rather than drop the field. Dropping it yields a
+             *     plain answer that a harness cannot distinguish from the
+             *     model declining to call anything.
+             */
+            tools?: components["schemas"]["Tool"][];
+            /**
+             * @description `none`, `auto`, `required`, or an object naming one
+             *     function. Passed through.
+             */
+            toolChoice?: ("none" | "auto" | "required") | components["schemas"]["NamedToolChoice"];
+            responseFormat?: components["schemas"]["ResponseFormat"];
         };
         GenerateResponse: {
-            /** @description The generated assistant text. */
-            content: string;
+            /**
+             * @description The generated assistant text. **Nullable since tool calling
+             *     landed:** a turn that only calls a tool produces no text,
+             *     and an empty string would be a lie about what the model
+             *     said. Was required; a response with `toolCalls` and no
+             *     `content` is the common agent-loop case.
+             */
+            content?: string | null;
+            /**
+             * @description Tools the model chose to call. Present when `finishReason`
+             *     is `tool_calls`.
+             */
+            toolCalls?: components["schemas"]["ToolCall"][];
             /** @enum {string} */
-            finishReason: "stop" | "length" | "stop_sequence" | "error";
+            finishReason: "stop" | "length" | "stop_sequence" | "tool_calls" | "error";
             usage?: components["schemas"]["Usage"];
             /** Format: uuid */
             requestId?: string;
@@ -281,6 +313,75 @@ export interface components {
             modelId?: string;
             /** @description End-to-end driver-side latency in milliseconds. */
             latencyMs?: number;
+        };
+        /**
+         * @description One `event: token` payload. Exactly one of `text` or `toolCalls`
+         *     is set.
+         */
+        StreamToken: {
+            /** @description A fragment of the assistant's text. */
+            text?: string;
+            /** @description Fragments of one or more tool calls, accumulated by `index`. */
+            toolCalls?: components["schemas"]["ToolCallDelta"][];
+        };
+        Tool: {
+            /** @constant */
+            type: "function";
+            function: components["schemas"]["FunctionDefinition"];
+        };
+        FunctionDefinition: {
+            name: string;
+            description?: string;
+            /** @description A JSON Schema object, passed through verbatim. */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | null;
+        };
+        NamedToolChoice: {
+            /** @constant */
+            type: "function";
+            function: {
+                name: string;
+            };
+        };
+        ToolCall: {
+            id: string;
+            /** @constant */
+            type: "function";
+            function: components["schemas"]["FunctionCall"];
+        };
+        FunctionCall: {
+            name: string;
+            /**
+             * @description Arguments as a JSON **string**, not an object — a model can
+             *     emit invalid JSON and the string preserves what it actually
+             *     said. Not parsed here.
+             */
+            arguments: string;
+        };
+        ToolCallDelta: {
+            index: number;
+            id?: string;
+            /** @constant */
+            type?: "function";
+            function?: {
+                name?: string;
+                arguments?: string;
+            };
+        };
+        ResponseFormat: {
+            /** @enum {string} */
+            type: "text" | "json_object" | "json_schema";
+            json_schema?: components["schemas"]["ResponseJsonSchema"];
+        };
+        ResponseJsonSchema: {
+            name: string;
+            description?: string;
+            schema: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | null;
         };
         /** @description Token accounting. Some backends (CLI subprocess) may report nulls. */
         Usage: {
@@ -334,6 +435,18 @@ export interface components {
             capabilities?: {
                 /** @description Whether `/v1/generate/stream` emits true incremental tokens. */
                 streaming?: boolean;
+                /**
+                 * @description Whether this driver can carry `tools` to its backend and
+                 *     report `toolCalls` back.
+                 *
+                 *     The gateway reads it to answer a question a harness
+                 *     cannot otherwise ask: a plain answer where a tool call
+                 *     was expected looks identical whether the model declined
+                 *     or the backend never saw the tools. A driver that says
+                 *     `false` here is failed at the front door with a reason
+                 *     instead.
+                 */
+                toolCalling?: boolean;
                 maxContextTokens?: number;
             };
             /** @description inference-driver semver. */
@@ -344,7 +457,7 @@ export interface components {
          *     OpenAI / Anthropic chat roles so adapters never re-shape on a hop.
          * @enum {string}
          */
-        Role: "system" | "user" | "assistant";
+        Role: "system" | "user" | "assistant" | "tool";
         /**
          * @description A single message in a conversation. Deliberately close to the
          *     OpenAI / Anthropic chat message format so drivers don't have to
@@ -352,8 +465,33 @@ export interface components {
          */
         Message: {
             role: components["schemas"]["Role"];
-            /** @description Message text. Text-only for now; multimodal extensions deferred. */
-            content: string;
+            /**
+             * @description Message text. Text-only for now; multimodal extensions
+             *     deferred. **Nullable, and no longer required:** an assistant
+             *     turn that only calls a tool has no text to carry, and the
+             *     alternative — an empty string — would assert the model said
+             *     nothing when in fact it said something that was not text.
+             */
+            content?: string | null;
+            /**
+             * @description On an **assistant** message: the tool calls the model made,
+             *     in OpenAI's `{id, type, function: {name, arguments}}` shape.
+             *
+             *     Deliberately loose here. This is the *shared* schema, so a
+             *     tightly-typed copy would be a third definition of the same
+             *     object alongside the gateway's and the driver's, and the one
+             *     place all three must agree is the wire format, which is
+             *     OpenAI's and not ours to restate. The two API documents
+             *     carry the strict shapes.
+             */
+            toolCalls?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * @description On a **tool** message: which call this is the result of.
+             *     `content` is the result, serialized by the caller.
+             */
+            toolCallId?: string;
             /**
              * Format: date-time
              * @description When the message was produced. Server-assigned if omitted.

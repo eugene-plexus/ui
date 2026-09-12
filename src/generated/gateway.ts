@@ -98,6 +98,27 @@ export interface paths {
          *     exactly as it does for a non-streamed request, and a backend
          *     that dies during connection or before producing output is
          *     failed over silently.
+         *
+         *     **A tool-call fragment is a first token.** The commit point is
+         *     the first frame carrying any part of an answer, and a
+         *     `tool_calls` delta is part of an answer — so a stream that has
+         *     emitted one fragment of one call is past the point of no return
+         *     exactly as if it had emitted prose.
+         *
+         *     This is the same rule, but it is worth stating separately
+         *     because the failure it prevents is worse. Splicing prose from
+         *     two models produces a visibly odd answer. Splicing a tool call
+         *     produces `arguments` half-written by one model and completed by
+         *     another, which can parse as valid JSON and name real
+         *     parameters — a **wrong action taken confidently**, with nothing
+         *     at the seam to notice. Text that reads strangely is a bad
+         *     answer; a call that runs cleanly against the wrong arguments is
+         *     a bad *effect*, and this control plane hands that call to a
+         *     harness that will execute it.
+         *
+         *     So: a caller that needs the cascade more than early tokens
+         *     should not stream, and that advice is stronger for an agent
+         *     loop than for a chat window.
          */
         post: operations["createChatCompletion"];
         delete?: never;
@@ -561,6 +582,16 @@ export interface components {
              */
             context_length?: number;
             /**
+             * @description Whether a request for this model may carry `tools`.
+             *
+             *     **True only when every backend serving it can**, by the same
+             *     reasoning as `context_length` above: a request may land on
+             *     any of them, so the honest answer is the weakest one. A
+             *     harness can read this and pick a model rather than discover
+             *     the limit as a 400 halfway through a task.
+             */
+            tool_calling?: boolean;
+            /**
              * @description The slot's tiers in priority order, each the driver names
              *     in it. One tier for an unconfigured model; more when a
              *     `modelSlots` entry adds targets. Empty tiers are omitted.
@@ -613,6 +644,34 @@ export interface components {
             stream: boolean;
             /** @description Opaque client-supplied identifier, echoed into logs only. */
             user?: string;
+            /**
+             * @description Tools the model may call. Passed through to the backend
+             *     unchanged; the gateway never invents, filters or reorders
+             *     them.
+             *
+             *     **The gateway does not execute tools.** It carries the
+             *     definitions down and the model's chosen calls back up, and
+             *     the caller runs them and sends the results as `tool` role
+             *     messages. That is OpenAI's contract and it is the one an
+             *     agent harness implements.
+             *
+             *     A backend that cannot carry tools is not silently stripped:
+             *     the request fails with a 400 naming the backend, because a
+             *     harness that receives a plain answer where it expected a
+             *     tool call has no way to tell "the model chose not to" from
+             *     "nobody ever offered it the tools" — and the second is a
+             *     bug that looks exactly like the first. `GET /v1/models`
+             *     reports which models can.
+             */
+            tools?: components["schemas"]["Tool"][];
+            /**
+             * @description How the model should use `tools`. `auto` is the default when
+             *     tools are present, `none` forbids calling one, `required`
+             *     forces at least one call, and an object names a specific
+             *     function. Passed through; the gateway does not enforce it.
+             */
+            tool_choice?: ("none" | "auto" | "required") | components["schemas"]["NamedToolChoice"];
+            response_format?: components["schemas"]["ResponseFormat"];
         };
         /**
          * @description OpenAI-shaped chat message. Intentionally *not* the shared
@@ -623,10 +682,30 @@ export interface components {
          */
         ChatCompletionMessage: {
             /** @enum {string} */
-            role: "system" | "user" | "assistant";
-            content: string;
+            role: "system" | "user" | "assistant" | "tool";
+            /**
+             * @description The message text. **Nullable, and that is not laxity:** an
+             *     assistant message that only calls a tool has no text, and
+             *     OpenAI sends `content: null` alongside `tool_calls` for it.
+             *     A schema that required a string here would reject the
+             *     single most common assistant turn in an agent loop.
+             */
+            content?: string | null;
             /** @description Optional participant name, per OpenAI. */
             name?: string;
+            /**
+             * @description Set on an **assistant** message, naming the tools the model
+             *     chose to call. The caller executes them and replies with one
+             *     `tool` message per call, each carrying the matching
+             *     `tool_call_id`.
+             */
+            tool_calls?: components["schemas"]["ToolCall"][];
+            /**
+             * @description Required on a **tool** message: which call in the preceding
+             *     assistant turn this is the result of. `content` is the
+             *     result, as a string — the caller serializes it.
+             */
+            tool_call_id?: string;
         };
         ChatCompletionResponse: {
             /** @description Completion id, `chatcmpl-` prefixed as clients expect. */
@@ -650,11 +729,19 @@ export interface components {
             message: components["schemas"]["ChatCompletionMessage"];
             /**
              * @description `stop` for a natural end or a matched stop sequence,
-             *     `length` for hitting the token cap — OpenAI's two values for
-             *     a completion without tool calls.
+             *     `length` for hitting the token cap, `tool_calls` when the
+             *     model stopped because it wants one or more tools run.
+             *
+             *     Until 2026-09-11 this enum was `stop` and `length` only, and
+             *     its description said so in as many words — "OpenAI's two
+             *     values for a completion **without** tool calls". That
+             *     sentence was the single occurrence of the string "tool"
+             *     anywhere in this contract or the driver's, and it was an
+             *     accurate description of a control plane no agent harness
+             *     could use.
              * @enum {string}
              */
-            finish_reason: "stop" | "length";
+            finish_reason: "stop" | "length" | "tool_calls";
         };
         /** @description One SSE frame of a streaming completion. */
         ChatCompletionChunk: {
@@ -686,18 +773,132 @@ export interface components {
             index: number;
             /**
              * @description Incremental payload. The first chunk carries `role`;
-             *     subsequent chunks carry `content` fragments.
+             *     subsequent chunks carry `content` fragments, `tool_calls`
+             *     fragments, or neither on the terminal chunk.
              */
             delta: {
                 /** @enum {string} */
                 role?: "assistant";
-                content?: string;
+                content?: string | null;
+                /**
+                 * @description Tool-call fragments. Each carries an `index` and the
+                 *     caller accumulates by it: `id` and `function.name`
+                 *     arrive once, `function.arguments` arrives as a string
+                 *     split across any number of frames. A single frame is
+                 *     **not** parseable JSON and was never meant to be.
+                 */
+                tool_calls?: components["schemas"]["ToolCallDelta"][];
             };
             /**
              * @description Null until the terminal chunk.
              * @enum {string|null}
              */
-            finish_reason?: "stop" | "length" | null;
+            finish_reason?: "stop" | "length" | "tool_calls" | null;
+        };
+        /**
+         * @description One tool offered to the model. OpenAI has only ever defined
+         *     `function`, and the wrapper exists so other kinds can be added
+         *     without reshaping the field.
+         */
+        Tool: {
+            /** @constant */
+            type: "function";
+            function: components["schemas"]["FunctionDefinition"];
+        };
+        FunctionDefinition: {
+            /** @description The name the model calls, e.g. `read_file`. */
+            name: string;
+            /**
+             * @description What the tool does. Load bearing rather than decorative —
+             *     it is the only thing the model has to decide *whether* to
+             *     call this tool.
+             */
+            description?: string;
+            /**
+             * @description A JSON Schema object describing the arguments. Passed
+             *     through verbatim: we do not validate it, rewrite it, or
+             *     translate dialects. A backend that rejects a construct
+             *     rejects it in its own words, which is more useful than a
+             *     guess of ours made one hop earlier.
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Ask the backend to constrain generation to `parameters`.
+             *     Passed through; backends that do not support it ignore it.
+             */
+            strict?: boolean | null;
+        };
+        /** @description Force one specific function. */
+        NamedToolChoice: {
+            /** @constant */
+            type: "function";
+            function: {
+                name: string;
+            };
+        };
+        /** @description One tool call the model chose to make. */
+        ToolCall: {
+            /**
+             * @description Correlation id. The caller echoes it as `tool_call_id` on
+             *     the message carrying the result.
+             */
+            id: string;
+            /** @constant */
+            type: "function";
+            function: components["schemas"]["FunctionCall"];
+        };
+        FunctionCall: {
+            name: string;
+            /**
+             * @description The arguments as a **JSON string**, not an object. That is
+             *     OpenAI's shape and it is deliberate on their part: a model
+             *     can emit invalid JSON, and a string preserves what it
+             *     actually said instead of failing the whole response. The
+             *     caller parses it and handles the failure. We do not parse
+             *     it, so we cannot lose it.
+             */
+            arguments: string;
+        };
+        /**
+         * @description A fragment of a `ToolCall` in a streaming response. Accumulate
+         *     by `index`.
+         */
+        ToolCallDelta: {
+            /**
+             * @description Which call in the assistant turn this fragment belongs to.
+             *     Present on every fragment, because a model can interleave
+             *     fragments of two calls.
+             */
+            index: number;
+            id?: string;
+            /** @constant */
+            type?: "function";
+            function?: {
+                name?: string;
+                /** @description A fragment of the arguments string, to be concatenated. */
+                arguments?: string;
+            };
+        };
+        /**
+         * @description Constrain the shape of the reply. Passed through to the backend;
+         *     the gateway does not enforce or post-validate it.
+         */
+        ResponseFormat: {
+            /** @enum {string} */
+            type: "text" | "json_object" | "json_schema";
+            /** @description Required when `type` is `json_schema`. */
+            json_schema?: components["schemas"]["ResponseJsonSchema"];
+        };
+        ResponseJsonSchema: {
+            name: string;
+            description?: string;
+            /** @description A JSON Schema object. Passed through verbatim. */
+            schema: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | null;
         };
         /**
          * @description Token accounting in OpenAI's field names. Fields may be absent

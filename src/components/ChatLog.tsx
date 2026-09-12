@@ -63,7 +63,7 @@ export function ChatLog({
             }
             onEdit={
               !pending && msg.role === "user" && onEditUserMessage
-                ? () => onEditUserMessage(messages.indexOf(msg), msg.content)
+                ? () => onEditUserMessage(messages.indexOf(msg), msg.content ?? "")
                 : undefined
             }
           />
@@ -87,6 +87,12 @@ function ChatBubble({
   onEdit?: () => void;
 }) {
   const isUser = message.role === "user";
+  // `content` is nullable since tool calling landed: an assistant turn
+  // that only calls a tool has no text. The playground does not render
+  // tool calls yet, so such a turn shows as an empty bubble rather than
+  // as a crash -- honest about having nothing to say, and a placeholder
+  // for the tool-call rendering the diagnostic will want.
+  const text = message.content ?? "";
   return (
     <div className={`group flex flex-col ${isUser ? "items-end" : "items-start"}`}>
       <div
@@ -96,7 +102,7 @@ function ChatBubble({
             : "border border-[color:var(--border)] bg-[color:var(--bubble-bg)]"
         }`}
       >
-        {isUser ? message.content : <Markdown>{message.content}</Markdown>}
+        {isUser ? text : <Markdown>{text}</Markdown>}
       </div>
       {/* Visible on hover and on keyboard focus. focus-within matters: a
           hover-only control is unreachable by keyboard, and these are the
@@ -108,7 +114,7 @@ function ChatBubble({
       >
         {/* The raw markdown, not the rendered text: what is useful about a
             reply from a coding model is its source. */}
-        <CopyButton text={message.content} title="Copy this message" />
+        <CopyButton text={text} title="Copy this message" />
         {onEdit && (
           <button
             type="button"
