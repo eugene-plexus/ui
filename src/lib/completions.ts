@@ -11,7 +11,7 @@
  * `lib/types.ts`.
  */
 
-import { api, postStream } from "./api";
+import { api, postStream, problemMessage } from "./api";
 import type {
   ChatCompletionChunk,
   ChatCompletionMessage,
@@ -193,22 +193,12 @@ export async function streamChatCompletion(
 /**
  * Pull a human-readable message out of whatever the gateway returned.
  *
- * Two envelopes are possible and the difference matters when debugging:
- * `/v1/chat/completions` answers with OpenAI's `{error: {message}}` so
- * SDKs can build their exception types, while every other endpoint —
- * including the proxy itself when it can't resolve a target — answers
- * with RFC 7807 `{detail}` or `{error}`.
+ * Kept as a name because the playground reads best with it, but the
+ * unwrapping lives in `api.ts` now and is shared. This version handled
+ * `{detail: <string>}` and NOT `{detail: {detail}}` — which is the
+ * shape FastAPI actually produces, and so the shape of every `Problem`
+ * the proxy has ever returned. It named that case in its own docstring
+ * and then missed it, so a proxy failure reached the playground as
+ * `HTTP 503 Service Unavailable` with the reason discarded.
  */
-export function errorMessage(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) return null;
-  const rec = body as Record<string, unknown>;
-  const openai = rec.error;
-  if (typeof openai === "object" && openai !== null) {
-    const message = (openai as Record<string, unknown>).message;
-    if (typeof message === "string") return message;
-  }
-  if (typeof openai === "string") return openai;
-  if (typeof rec.detail === "string") return rec.detail;
-  if (typeof rec.title === "string") return rec.title;
-  return null;
-}
+export const errorMessage = problemMessage;

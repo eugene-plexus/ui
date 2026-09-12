@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
-import { ApiError, api } from "@/lib/api";
+import { api, describeError } from "@/lib/api";
 import type { ProxyTarget } from "@/lib/config";
 import type {
   ConfigDocument,
@@ -644,11 +644,10 @@ function shallowEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function formatError(e: unknown): string {
-  if (e instanceof ApiError) {
-    const detail =
-      typeof e.body === "object" && e.body !== null ? JSON.stringify(e.body) : String(e.body ?? "");
-    return `${e.status} ${e.statusText} — ${detail}`;
-  }
-  return e instanceof Error ? e.message : String(e);
-}
+/** Was: the status line plus `JSON.stringify(body)`.
+ *
+ * That is how a worker node's Gateway tab reported "the install's
+ * gateway is not on this host" — as a wall of escaped JSON with the
+ * one useful sentence buried in it. Every component writes that
+ * sentence deliberately; this screen was the one that threw it away. */
+const formatError = describeError;

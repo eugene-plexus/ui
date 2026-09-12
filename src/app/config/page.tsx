@@ -19,6 +19,20 @@ const STATIC_TABS: Tab[] = [
   { value: "gateway", label: "Gateway" },
 ];
 
+/** Does anything in the install serve the library, wherever it runs?
+ *
+ * A question only an enrolled node needs to ask, and one that fails
+ * harmlessly: a standalone install has no control root to ask and
+ * simply keeps the tab hidden, which is the answer it already gave. */
+async function installHasLibrary(): Promise<boolean> {
+  try {
+    const list = await api.get<{ components?: { kind?: string }[] }>("control", "/v1/components");
+    return (list.components ?? []).some((c) => c.kind === "library");
+  } catch {
+    return false;
+  }
+}
+
 export default function ConfigPage() {
   const [drivers, setDrivers] = useState<Tab[]>([]);
   // Rendered only when the topology actually has one. A tab for a
@@ -47,7 +61,13 @@ export default function ConfigPage() {
         );
         // The proxy resolves `library` by kind rather than by name —
         // there is exactly one — so the tab value is the literal target.
-        setHasLibrary(components.some((c) => c.kind === "library"));
+        //
+        // On a worker there is no local library and there never will be,
+        // but the proxy now forwards to the node that has one, so the
+        // tab is useful there. Asked of the control root only when the
+        // local answer is no, which on a single-host install is also
+        // "no library exists" and costs nothing.
+        setHasLibrary(components.some((c) => c.kind === "library") || (await installHasLibrary()));
         setDriversError(null);
       } catch (e) {
         if (cancelled) return;

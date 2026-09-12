@@ -28,6 +28,62 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The sentence a component wrote, out of whatever envelope carried it.
+ *
+ * Every component in this install answers a failure with an RFC 7807
+ * `Problem` whose `detail` is the operator's next action — *"Set
+ * `advertiseUrl` in that node's agent config"*, not *"resolution
+ * failed"*. FastAPI nests that document one level down, as
+ * `{detail: {title, detail, status, …}}`, and a screen that renders the
+ * body instead of reading it shows the operator a JSON document to
+ * parse by eye. That is exactly how the worker-node gateway failure was
+ * reported: a paragraph of punctuation with one usable sentence inside
+ * it.
+ *
+ * Four shapes, because two of them really do occur:
+ * `/v1/chat/completions` answers with OpenAI's `{error: {message}}` so
+ * SDKs can build their exception types, and everything else answers
+ * with a `Problem` — nested under `detail` when FastAPI raised it,
+ * bare when a component returned it directly.
+ *
+ * Returns null when the body carries no sentence, so a caller can fall
+ * back to the status line rather than printing "null".
+ */
+export function problemMessage(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) {
+    return typeof body === "string" && body.trim() !== "" ? body : null;
+  }
+  const record = body as Record<string, unknown>;
+
+  const openai = record.error;
+  if (typeof openai === "string") return openai;
+  if (typeof openai === "object" && openai !== null) {
+    const message = (openai as Record<string, unknown>).message;
+    if (typeof message === "string") return message;
+  }
+
+  const detail = record.detail;
+  if (typeof detail === "string") return detail;
+  if (typeof detail === "object" && detail !== null) {
+    const inner = detail as Record<string, unknown>;
+    if (typeof inner.detail === "string") return inner.detail;
+    if (typeof inner.title === "string") return inner.title;
+  }
+
+  if (typeof record.title === "string") return record.title;
+  return null;
+}
+
+/** What to put on screen when a call failed: the component's own
+ * sentence when it wrote one, and the status line when it did not. */
+export function describeError(e: unknown): string {
+  if (e instanceof ApiError) {
+    return problemMessage(e.body) ?? `${e.status} ${e.statusText}`;
+  }
+  return e instanceof Error ? e.message : String(e);
+}
+
 interface RequestOptions {
   /** When true, don't attach the Bearer token and don't redirect on 401.
    * Used by the login form and the wizard's `/v1/auth/initialize` call —
