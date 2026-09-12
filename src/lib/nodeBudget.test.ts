@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { budgetFromNode, fitQuery } from "./nodeBudget";
+import { budgetFromNode, describeBudget, fitQuery, targetFor } from "./nodeBudget";
 import type { NodeIdentity } from "./types";
 
 const AMISH_STATION: NodeIdentity = {
@@ -45,7 +45,6 @@ describe("budgetFromNode", () => {
   it("picks the largest single card, never the sum", () => {
     // Two cards. The sum would say a 40 GB model fits; neither card holds it.
     const budget = budgetFromNode({
-      enrolled: false,
       devices: [
         { kind: "cuda", name: "small", index: 1, memoryTotalBytes: 12e9, memoryFreeBytes: 11e9 },
         { kind: "cuda", name: "big", index: 0, memoryTotalBytes: 24e9, memoryFreeBytes: 23e9 },
@@ -58,7 +57,6 @@ describe("budgetFromNode", () => {
 
   it("a CPU-only host is a zero VRAM budget, which the library scores against host memory", () => {
     const budget = budgetFromNode({
-      enrolled: true,
       name: "468e3ed662bf",
       devices: [
         { kind: "cpu", name: "x86_64", index: 0, memoryTotalBytes: 100e9, memoryFreeBytes: 79e9 },
@@ -71,7 +69,6 @@ describe("budgetFromNode", () => {
 
   it("falls back to total when a card reports no free figure, as the library itself does", () => {
     const budget = budgetFromNode({
-      enrolled: false,
       devices: [{ kind: "xpu", name: "Arc", index: 0, memoryTotalBytes: 16e9 }],
     });
     expect(budget?.vramBytes).toBe(16e9);
@@ -81,13 +78,12 @@ describe("budgetFromNode", () => {
   it("returns null when the agent reported no devices, so the caller keeps the library's numbers", () => {
     // A fabricated zero here would score every model as CPU-only on a
     // host whose detection merely failed.
-    expect(budgetFromNode({ enrolled: false, devices: [] })).toBeNull();
-    expect(budgetFromNode({ enrolled: false })).toBeNull();
+    expect(budgetFromNode({ devices: [] })).toBeNull();
+    expect(budgetFromNode({})).toBeNull();
   });
 
   it("flags Apple silicon, whose one pool the library cannot be told about", () => {
     const budget = budgetFromNode({
-      enrolled: false,
       devices: [
         {
           kind: "metal",
@@ -112,7 +108,6 @@ describe("fitQuery", () => {
 
   it("omits ramBytes when the node reported no host memory", () => {
     const budget = budgetFromNode({
-      enrolled: false,
       devices: [{ kind: "cuda", name: "x", index: 0, memoryTotalBytes: 8e9, memoryFreeBytes: 7e9 }],
     });
     expect(fitQuery(budget)).toEqual({ vramBytes: "7000000000" });
@@ -120,5 +115,24 @@ describe("fitQuery", () => {
 
   it("is empty with no budget, so a call scores against the library's own host as before", () => {
     expect(fitQuery(null)).toEqual({});
+  });
+});
+
+describe("targetFor", () => {
+  it("names the local agent for this node and the node hop for any other", () => {
+    // The local node by name must NOT become `node:<name>`: that would
+    // cost a round trip to the control root and back to ourselves.
+    expect(targetFor("Amish_Station", "Amish_Station")).toBe("agent");
+    expect(targetFor("468e3ed662bf", "Amish_Station")).toBe("node:468e3ed662bf");
+    expect(targetFor(null, null)).toBe("agent");
+  });
+});
+
+describe("describeBudget", () => {
+  it("is one line an operator can read in a dropdown", () => {
+    expect(describeBudget(budgetFromNode(AMISH_STATION))).toBe(
+      "NVIDIA GeForce RTX 5090 · 30 GiB free",
+    );
+    expect(describeBudget(null)).toBe("hardware unknown");
   });
 });

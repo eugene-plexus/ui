@@ -19,6 +19,27 @@ const STATIC_TABS: Tab[] = [
   { value: "gateway", label: "Gateway" },
 ];
 
+/** Every inference-driver in the install and the node it runs on, or
+ * nothing when there is no control root to ask. A driver on another
+ * node is labelled with that node, because two workers can each have a
+ * `llama-1` and the proxy resolves a name to the first it finds. */
+async function installDrivers(): Promise<Tab[]> {
+  try {
+    const list = await api.get<{ components?: { kind?: string; name?: string; node?: string }[] }>(
+      "control",
+      "/v1/components",
+    );
+    return (list.components ?? [])
+      .filter((c) => c.kind === "inference-driver" && c.name)
+      .map((c) => ({
+        value: c.name as string,
+        label: c.node ? `${c.name} @ ${c.node}` : (c.name as string),
+      }));
+  } catch {
+    return [];
+  }
+}
+
 /** Does anything in the install serve the library, wherever it runs?
  *
  * A question only an enrolled node needs to ask, and one that fails
@@ -54,11 +75,19 @@ export default function ConfigPage() {
         const list = await api.get<ComponentList>("agent", "/v1/components");
         if (cancelled) return;
         const components = list.components ?? [];
-        setDrivers(
-          components
-            .filter((c) => c.kind === "inference-driver")
-            .map((c) => ({ value: c.name, label: c.name })),
+        // Every driver in the install, not only this host's. The proxy
+        // forwards a driver it does not host to the node that does, so
+        // a worker's Config can open the root's drivers and the root's
+        // can open a worker's -- which is where the drivers usually
+        // are. Local first, so a single-host install is unchanged.
+        const local = components
+          .filter((c) => c.kind === "inference-driver")
+          .map((c) => ({ value: c.name, label: c.name }));
+        const remote = (await installDrivers()).filter(
+          (d) => !local.some((l) => l.value === d.value),
         );
+        if (cancelled) return;
+        setDrivers([...local, ...remote]);
         // The proxy resolves `library` by kind rather than by name —
         // there is exactly one — so the tab value is the literal target.
         //
@@ -118,10 +147,10 @@ export default function ConfigPage() {
             </button>
           ))}
           <Link
-            href="/runtimes"
+            href="/inference"
             className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
-            Runtimes →
+            Inference →
           </Link>
         </nav>
       </header>

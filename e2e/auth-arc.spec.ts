@@ -149,10 +149,10 @@ test.describe("the auth arc", () => {
     // this is the check that would have caught it.
     await signIn(page);
 
-    await page.goto("/runtimes");
+    await page.goto("/inference");
     // A positive assertion, not merely an absence: a 401 here bounces to
     // /login, and "no errors rendered" is true of the login page too.
-    await expect(page).toHaveURL(/\/runtimes/);
+    await expect(page).toHaveURL(/\/inference/);
     await expectNoWallOfErrors(page);
 
     await page.goto("/nodes");

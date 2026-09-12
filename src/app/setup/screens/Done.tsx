@@ -96,12 +96,12 @@ export function ScreenDone({
         falls back to another when one dies, so there is no routing table to maintain by hand.
       </p>
       <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
-        Afterwards: the Runtimes page is where you start an engine and confirm it reached{" "}
-        <span className="font-mono">ready</span>, the playground picks up any model the gateway can
-        route to, and Config holds everything this wizard did not ask about &mdash; theme, font
-        size, generation defaults. To add a second machine, mint a join token on the Nodes page and
-        run <span className="font-mono">eugene-plexus-agent join</span> over there; a worker is
-        never onboarded through a browser.
+        Afterwards: the Inference page is where you see everything serving and confirm an engine
+        reached <span className="font-mono">ready</span>, the playground picks up any model the
+        gateway can route to, and Config holds everything this wizard did not ask about &mdash;
+        theme, font size, generation defaults. To add a second machine, mint a join token on the
+        Nodes page and run <span className="font-mono">eugene-plexus-agent join</span> over there; a
+        worker is never onboarded through a browser.
       </p>
       {starting && startMessage && (
         <p className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--muted)]">

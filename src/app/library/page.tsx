@@ -7,8 +7,9 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBreakdown, formatMemory } from "@/components/FitBadge";
 import { ProfileEditor } from "@/components/ProfileEditor";
+import { NodePicker } from "@/components/NodePicker";
 import { ApiError, api } from "@/lib/api";
-import { fitQuery, useNodeBudget } from "@/lib/nodeBudget";
+import { type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import type {
   EngineDescriptor,
   EngineList,
@@ -73,6 +74,10 @@ function LibraryPageInner() {
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
   const [scan, setScan] = useState<Scan | null>(null);
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
+  // Which node Launch goes to, and whose engines and memory the detail
+  // pane is about. One choice for both -- see `nodeBudget.ts`.
+  const picker = useTargetNode();
+  const target = picker.selected?.target ?? null;
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -115,17 +120,27 @@ function LibraryPageInner() {
   useEffect(() => {
     void loadModels();
     void loadScan();
-    // Engines change only when an operator installs one, so this is a
-    // one-shot read rather than part of any poll.
+  }, [loadModels, loadScan]);
+
+  // Engines change only when an operator installs one, so this is a
+  // one-shot read per node rather than part of any poll -- and it is
+  // the PICKED node's engines, because "can this format be launched"
+  // is a question about the machine it would be launched on.
+  useEffect(() => {
+    if (target === null) return;
+    let cancelled = false;
     void (async () => {
       try {
-        const list = await api.get<EngineList>("agent", "/v1/engines");
-        setEngines(list.engines ?? []);
+        const list = await api.get<EngineList>(target, "/v1/engines");
+        if (!cancelled) setEngines(list.engines ?? []);
       } catch {
-        setEngines([]);
+        if (!cancelled) setEngines([]);
       }
     })();
-  }, [loadModels, loadScan]);
+    return () => {
+      cancelled = true;
+    };
+  }, [target]);
 
   // Poll only while a walk is in flight, and reload the models once it
   // settles rather than on every tick — the list does not change
@@ -201,6 +216,7 @@ function LibraryPageInner() {
             ← Back to playground
           </Link>
           <h1 className="font-ui text-sm font-semibold tracking-wide">Library</h1>
+          <NodePicker nodes={picker.nodes} selected={picker.selected} onSelect={picker.select} />
           {lastScanAt && (
             <span className="text-xs text-[color:var(--muted)]">
               scanned {relativeAge(lastScanAt)}
@@ -275,6 +291,7 @@ function LibraryPageInner() {
               key={current.id}
               model={current}
               engines={engines ?? []}
+              node={picker.selected}
               onChanged={() => void loadModels()}
             />
           ) : (
@@ -478,10 +495,12 @@ function SkippedPanel({ scan }: { scan: Scan }) {
 function ModelDetail({
   model,
   engines,
+  node,
   onChanged,
 }: {
   model: LibraryModel;
   engines: EngineDescriptor[];
+  node: TargetNode | null;
   onChanged: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -559,8 +578,8 @@ function ModelDetail({
         <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
           <span className="font-mono">{capable.map((e) => e.engine).join(", ")}</span> can load
           this, but no binary is installed. Install one from the{" "}
-          <Link href="/runtimes" className="underline">
-            Runtimes
+          <Link href="/inference" className="underline">
+            Inference
           </Link>{" "}
           page.
         </p>
@@ -569,6 +588,7 @@ function ModelDetail({
       <ProfileEditor
         model={model}
         engines={usable.length > 0 ? usable : capable}
+        node={node}
         onChanged={onChanged}
       />
     </div>
@@ -593,9 +613,9 @@ function FitPanel({ model }: { model: LibraryModel }) {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
-  // Whose memory this is about: the node a launch from this browser
-  // runs on, not the host the library runs on -- see `nodeBudget.ts`.
-  const { budget } = useNodeBudget();
+  // Whose memory this is about: the node picked in the header, which is
+  // also where Launch goes -- see `nodeBudget.ts`.
+  const { budget } = useTargetNode();
 
   useEffect(() => {
     setFit(null);

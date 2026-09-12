@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ApiError, api } from "@/lib/api";
+import type { TargetNode } from "@/lib/nodeBudget";
 import type {
   EngineDescriptor,
   LibraryModel,
@@ -11,6 +12,7 @@ import type {
   ModelProfileList,
   ModelProfileSpec,
   Runtime,
+  RuntimePlacement,
   RuntimeSpec,
 } from "@/lib/types";
 
@@ -56,13 +58,17 @@ type RuntimeCreate = Pick<RuntimeSpec, "name" | "engine" | "modelPath"> &
 export function ProfileEditor({
   model,
   engines,
+  node,
   onChanged,
 }: {
   model: LibraryModel;
-  /** Engines that can load this model's format. Empty when none can —
-   * profiles are still editable then, they just have nothing to launch
-   * into. */
+  /** Engines that can load this model's format ON THE TARGET NODE. Empty
+   * when none can — profiles are still editable then, they just have
+   * nothing to launch into. */
   engines: EngineDescriptor[];
+  /** Where Launch goes. Null until the picker has resolved; the local
+   * node when the install has one host. */
+  node: TargetNode | null;
   onChanged: () => void;
 }) {
   const [profiles, setProfiles] = useState<ModelProfile[] | null>(null);
@@ -126,8 +132,23 @@ export function ProfileEditor({
       autoStart: true,
     };
     try {
-      const runtime = await api.post<Runtime>("agent", "/v1/runtimes", spec);
-      setLaunched(runtime.name);
+      if (node && !node.local && node.name) {
+        // Another node: through the control root, which forwards the
+        // declaration to that node's agent and records it in the
+        // install's topology. Forward first, record second, so a runtime
+        // the agent refuses never appears declared — the agent is where
+        // "does this model path exist here" can be answered, and on an
+        // install whose library is on another host the honest failure is
+        // exactly that. It is relayed, not predicted.
+        const placed = await api.post<RuntimePlacement>("control", "/v1/runtimes", {
+          node: node.name,
+          spec,
+        });
+        setLaunched(placed.name);
+      } else {
+        const runtime = await api.post<Runtime>("agent", "/v1/runtimes", spec);
+        setLaunched(runtime.name);
+      }
     } catch (err) {
       setError(errorText(err));
     }
@@ -166,10 +187,11 @@ export function ProfileEditor({
           that "ready" is the engine's to reach, not the button's. */}
       {launched && (
         <p className="status-ok mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
-          Declared runtime <span className="font-mono">{launched}</span> and its driver{" "}
+          Declared runtime <span className="font-mono">{launched}</span>
+          {node && !node.local ? ` on ${node.label}` : ""} and its driver{" "}
           <span className="font-mono">{launched}-driver</span>. Watch it load on the{" "}
-          <a href="/runtimes" className="underline">
-            Runtimes
+          <a href="/inference" className="underline">
+            Inference
           </a>{" "}
           page — a large quant takes a while. The gateway serves it under its alias as soon as the
           engine reports <span className="font-mono">ready</span>; nothing else to wire.
@@ -192,8 +214,8 @@ export function ProfileEditor({
       <div className="mt-3 flex flex-col gap-2">
         {profiles?.length === 0 && !creating && (
           <p className="text-xs text-[color:var(--muted)] italic">
-            None yet. A profile is optional — you can launch from the Runtimes page by hand — but it
-            is the thing that stops you retuning the same model twice.
+            None yet. A profile is optional — a runtime can be declared by hand on the Inference
+            page — but it is the thing that stops you retuning the same model twice.
           </p>
         )}
         {profiles?.map((p) =>

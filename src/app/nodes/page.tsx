@@ -50,6 +50,17 @@ interface NodeRow {
   devices?: { kind?: string; name?: string | null; memoryTotalBytes?: number | null }[] | null;
 }
 
+/** What a node serves, from the two views that know: the control root's
+ * placement of drivers and runtimes, and the gateway's live picture of
+ * each driver (model id, reachability). Joined by driver name. */
+interface Served {
+  driver: string;
+  model: string | null;
+  runtime: string | null;
+  reachable: boolean | null;
+  status: string | null;
+}
+
 interface MintedToken {
   token: string;
   expiresAt: string;
@@ -62,8 +73,54 @@ interface ControlStatus {
   appliedIndex?: number;
 }
 
+/** Drivers per node, with what the gateway knows about each. Both reads
+ * fail soft: a sealed root or a gateway in safe mode leaves the column
+ * saying "nothing" rather than taking the page down with it. */
+async function servedByNode(): Promise<Record<string, Served[]>> {
+  const [placement, drivers, runtimes] = await Promise.all([
+    api
+      .get<{
+        components?: { node: string; name: string; kind: string }[];
+      }>("control", "/v1/components")
+      .catch(() => null),
+    api
+      .get<{
+        drivers?: {
+          name: string;
+          reachable: boolean;
+          modelId?: string | null;
+          runtime?: string | null;
+        }[];
+      }>("gateway", "/v1/admin/drivers")
+      .catch(() => null),
+    api
+      .get<{
+        runtimes?: { node: string; name: string; status?: string | null }[];
+      }>("control", "/v1/runtimes")
+      .catch(() => null),
+  ]);
+  const live = new Map((drivers?.drivers ?? []).map((d) => [d.name, d]));
+  const runtimeStatus = new Map(
+    (runtimes?.runtimes ?? []).map((r) => [`${r.node}/${r.name}`, r.status ?? null]),
+  );
+  const out: Record<string, Served[]> = {};
+  for (const c of placement?.components ?? []) {
+    if (c.kind !== "inference-driver") continue;
+    const d = live.get(c.name);
+    (out[c.node] ??= []).push({
+      driver: c.name,
+      model: d?.modelId ?? null,
+      runtime: d?.runtime ?? null,
+      reachable: d ? d.reachable : null,
+      status: d?.runtime ? (runtimeStatus.get(`${c.node}/${d.runtime}`) ?? null) : null,
+    });
+  }
+  return out;
+}
+
 export default function NodesPage() {
   const [nodes, setNodes] = useState<NodeRow[] | null>(null);
+  const [served, setServed] = useState<Record<string, Served[]>>({});
   const [status, setStatus] = useState<ControlStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
@@ -86,6 +143,7 @@ export default function NodesPage() {
       setStatus(st);
       setError(null);
       setLocked(false);
+      setServed(await servedByNode());
       // The command we print has to name an address the *other* machine
       // can reach. This root's own registry entry is the only place the
       // UI can learn one — the browser's own URL is the UI's host, which
@@ -264,6 +322,7 @@ export default function NodesPage() {
                   <th className="py-2 pr-4">Address</th>
                   <th className="py-2 pr-4">Seen</th>
                   <th className="py-2 pr-4">Host</th>
+                  <th className="py-2 pr-4">Serves</th>
                 </tr>
               </thead>
               <tbody>
@@ -302,6 +361,31 @@ export default function NodesPage() {
                     <td className="py-2 pr-4 text-xs text-[color:var(--muted)]">
                       {[n.os, n.arch].filter(Boolean).join("/") || "—"}
                       {n.devices?.length ? ` · ${n.devices.length} device(s)` : ""}
+                    </td>
+                    <td className="py-2 pr-4 text-xs">
+                      {/* The question this table could not answer: a node was
+                          "reachable" and nothing said what it was for. */}
+                      {(served[n.name] ?? []).length === 0 ? (
+                        <span className="text-[color:var(--muted)]">nothing</span>
+                      ) : (
+                        <ul className="space-y-0.5">
+                          {(served[n.name] ?? []).map((s) => (
+                            <li key={s.driver} className="font-mono">
+                              {s.model ?? s.driver}
+                              <span className="ml-1 font-sans text-[color:var(--muted)]">
+                                via {s.driver}
+                                {s.runtime
+                                  ? ` (runtime ${s.runtime}${s.status ? `, ${s.status}` : ""})`
+                                  : ""}
+                                {s.reachable === false ? " · unreachable" : ""}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <Link href="/inference" className="mt-1 block text-[11px] underline">
+                        Inference →
+                      </Link>
                     </td>
                   </tr>
                 ))}

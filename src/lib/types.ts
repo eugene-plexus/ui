@@ -15,6 +15,7 @@ import type { components as DriverComponents } from "@/generated/inference-drive
 import type { components as GatewayComponents } from "@/generated/gateway";
 import type { components as LibraryComponents } from "@/generated/library";
 import type { components as AgentComponents } from "@/generated/agent";
+import type { components as ControlComponents } from "@/generated/control";
 
 // --- Shared -----------------------------------------------------------
 
@@ -67,6 +68,11 @@ export type OpenAIErrorResponse = GatewayComponents["schemas"]["OpenAIErrorRespo
 
 export type DriversInfo = GatewayComponents["schemas"]["DriversInfo"];
 export type DriverHealth = GatewayComponents["schemas"]["DriverHealth"];
+// The resolved routing table: every slot, its tiers, and for each
+// backend whether a request could go there right now and why not. What
+// the inference screen reads for eligibility and in-flight counts.
+export type RoutingTableView = GatewayComponents["schemas"]["RoutingTableView"];
+export type RoutingBackendView = GatewayComponents["schemas"]["RoutingBackendView"];
 
 // --- Agent: topology + engine runtimes -----------------------------
 
@@ -90,6 +96,18 @@ export type EngineDescriptor = AgentComponents["schemas"]["EngineDescriptor"];
 // so guidance is scored against the machine a launch will actually reach.
 export type NodeIdentity = AgentComponents["schemas"]["NodeIdentity"];
 export type ComputeDevice = AgentComponents["schemas"]["ComputeDevice"];
+
+// --- Control: the install-wide views --------------------------------
+//
+// The control root asks every enrolled node's agent and adds the one
+// dimension an agent cannot supply about itself: which node. These are
+// the agent's own shapes plus `node`, relayed rather than reinterpreted.
+
+export type ControlNode = ControlComponents["schemas"]["Node"];
+export type ComponentPlacement = ControlComponents["schemas"]["ComponentPlacement"];
+export type ComponentPlacementList = ControlComponents["schemas"]["ComponentPlacementList"];
+export type RuntimePlacement = ControlComponents["schemas"]["RuntimePlacement"];
+export type RuntimePlacementList = ControlComponents["schemas"]["RuntimePlacementList"];
 
 // --- Library: the operator's own model directories (M2) ---------------
 //

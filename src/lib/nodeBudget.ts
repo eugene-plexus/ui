@@ -1,5 +1,6 @@
 /**
- * Whose memory a fit verdict is about.
+ * Which node a screen is about: whose memory a fit verdict is scored
+ * against, and where Launch goes.
  *
  * The library scores a model against the host IT runs on -- its
  * `GET /v1/hardware` says so in its own description -- and in a
@@ -7,7 +8,8 @@
  * real two-machine install the library lives in a container on a NAS
  * with no GPU, and every model is launched on a worker with an RTX 5090.
  * Discover said "no GPU detected", truthfully, about a machine nobody
- * was ever going to launch on.
+ * was ever going to launch on -- and recommended a 57 GB BF16 for CPU
+ * inference to a machine with a 32 GB card.
  *
  * M3 built the override half: `vramBytes` / `ramBytes` on the fit
  * endpoints, "for a caller who knows the target host's numbers", and
@@ -16,12 +18,12 @@
  * aggregated into `Node.devices` at the control root. Nothing ever
  * connected the two. This does.
  *
- * WHICH node: the one you are browsing. Launch posts to the local agent,
- * so the machine whose browser you are in is the machine the model will
- * run on, and scoring against any other would recommend a quant for a
- * card the launch never reaches. A node picker -- score here, launch
- * there -- is a design question for the install-wide inference screen,
- * not a default to invent in a helper.
+ * WHICH node: the one the operator picks, defaulting to the one whose
+ * browser they are in. Scoring and launching are the same choice, made
+ * once -- a verdict about node A followed by a launch on node B would
+ * recommend a quant for a card the launch never reaches. `target` is
+ * the proxy target that reaches the chosen node's agent: `agent` for
+ * this one, `node:<name>` for any other.
  *
  * WHY THE LARGEST CARD, NOT THE SUM: the library collapses free, total
  * and largest-card into one number when a caller overrides the budget.
@@ -32,7 +34,7 @@
  * cannot appear, because `gpuCount` is not something a caller can pass.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError, api } from "./api";
 import type { ComputeDevice, NodeIdentity } from "./types";
@@ -61,6 +63,28 @@ export interface NodeBudget {
   unifiedMemory: boolean;
 }
 
+/** A node as a screen chooses it. */
+export interface TargetNode {
+  /** Install name; null for an unenrolled single host. */
+  name: string | null;
+  /** What to print. */
+  label: string;
+  /** The browser's own machine. */
+  local: boolean;
+  /** Proxy target that reaches this node's agent. */
+  target: string;
+  /** As the control root last saw it; always true for the local node. */
+  reachable: boolean;
+  budget: NodeBudget | null;
+}
+
+/** The shape both sources share: the agent's own `/v1/node` and one row
+ * of the control root's `/v1/nodes`. */
+interface DeviceBearer {
+  name?: string | null;
+  devices?: ComputeDevice[] | null;
+}
+
 function memory(device: ComputeDevice): number {
   return device.memoryFreeBytes ?? device.memoryTotalBytes ?? 0;
 }
@@ -69,7 +93,7 @@ function memory(device: ComputeDevice): number {
  * agent reported no devices at all -- detection failed, and the caller
  * should fall back to whatever the library measured rather than score
  * against a fabricated zero. */
-export function budgetFromNode(node: NodeIdentity): NodeBudget | null {
+export function budgetFromNode(node: DeviceBearer): NodeBudget | null {
   const devices = node.devices ?? [];
   if (devices.length === 0) return null;
 
@@ -107,37 +131,130 @@ export function fitQuery(budget: NodeBudget | null): Record<string, string> {
   return query;
 }
 
-/** The budget of the node this browser is talking to.
+/** One line about a node's hardware, for pickers and headers. */
+export function describeBudget(budget: NodeBudget | null): string {
+  if (!budget) return "hardware unknown";
+  if (!budget.gpu) return "no GPU";
+  const gib = (budget.gpu.freeBytes / 1024 ** 3).toFixed(0);
+  return `${budget.gpu.name} · ${gib} GiB free${budget.gpuCount > 1 ? ` · ${budget.gpuCount} GPUs` : ""}`;
+}
+
+/** The proxy target for a node: the local agent by name, otherwise the
+ * node-addressed hop. Exported so a screen that already knows which node
+ * it wants (the inference screen, acting on a row) reaches it the same
+ * way a picker would. */
+export function targetFor(name: string | null, localName: string | null): string {
+  return name === null || name === localName ? "agent" : `node:${name}`;
+}
+
+interface ControlNodeRow {
+  name: string;
+  url?: string | null;
+  reachable?: boolean;
+  devices?: ComputeDevice[] | null;
+}
+
+const STORAGE_KEY = "eugene-plexus.targetNode";
+
+function remembered(): string | null {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function remember(name: string | null): void {
+  try {
+    if (name === null) window.localStorage.removeItem(STORAGE_KEY);
+    else window.localStorage.setItem(STORAGE_KEY, name);
+  } catch {
+    // A per-browser convenience. Losing it costs one re-pick.
+  }
+}
+
+/** The nodes an operator can score against and launch on, and which
+ * one is chosen.
  *
- * `loaded` distinguishes "still asking" from "asked, and this node has
- * nothing to say" -- a screen should not fall back to the library's
- * numbers merely because the agent has not answered yet. */
-export function useNodeBudget(): { budget: NodeBudget | null; loaded: boolean } {
-  const [state, setState] = useState<{ budget: NodeBudget | null; loaded: boolean }>({
-    budget: null,
-    loaded: false,
-  });
+ * Two reads. The local agent's `/v1/node` always answers and is the
+ * default; the control root's `/v1/nodes` adds the rest of the install
+ * and fails harmlessly on a standalone host (there is no rest). A
+ * remembered choice is honoured only if that node is still enrolled --
+ * otherwise a node that left the install would keep being scored
+ * against forever.
+ *
+ * `loaded` distinguishes "still asking" from "asked": a screen should
+ * not fall back to the library's own numbers merely because the agent
+ * has not answered yet. */
+export function useTargetNode(): {
+  nodes: TargetNode[];
+  selected: TargetNode | null;
+  select: (name: string | null) => void;
+  budget: NodeBudget | null;
+  loaded: boolean;
+} {
+  const [nodes, setNodes] = useState<TargetNode[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [choice, setChoice] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      let local: NodeIdentity | null = null;
       try {
-        const node = await api.get<NodeIdentity>("agent", "/v1/node");
-        if (cancelled) return;
-        setState({ budget: budgetFromNode(node), loaded: true });
+        local = await api.get<NodeIdentity>("agent", "/v1/node");
       } catch (err) {
-        if (cancelled) return;
         if (err instanceof ApiError && err.status === 401) return;
-        // The library's own reading is the fallback, and the screen says
-        // whose it is; a page-level error here would block discovery
-        // over a detail of its guidance.
-        setState({ budget: null, loaded: true });
       }
+      let rows: ControlNodeRow[] = [];
+      try {
+        rows = (await api.get<{ nodes?: ControlNodeRow[] }>("control", "/v1/nodes")).nodes ?? [];
+      } catch {
+        // Standalone, or the root is down or sealed: this host is the
+        // only node there is to offer, and it is offered.
+      }
+      if (cancelled) return;
+
+      const localName = local?.name ?? null;
+      const list: TargetNode[] = [];
+      list.push({
+        name: localName,
+        label: localName ?? "this host",
+        local: true,
+        target: "agent",
+        reachable: true,
+        budget: local ? budgetFromNode(local) : null,
+      });
+      for (const row of rows) {
+        if (row.name === localName) continue;
+        list.push({
+          name: row.name,
+          label: row.name,
+          local: false,
+          target: targetFor(row.name, localName),
+          reachable: row.reachable ?? true,
+          budget: budgetFromNode(row),
+        });
+      }
+      setNodes(list);
+      const wanted = remembered();
+      setChoice(wanted !== null && list.some((n) => n.name === wanted) ? wanted : localName);
+      setLoaded(true);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  return state;
+  const select = useCallback((name: string | null) => {
+    setChoice(name);
+    remember(name);
+  }, []);
+
+  const selected = useMemo(() => {
+    if (choice === undefined) return null;
+    return nodes.find((n) => n.name === choice) ?? nodes.find((n) => n.local) ?? null;
+  }, [nodes, choice]);
+
+  return { nodes, selected, select, budget: selected?.budget ?? null, loaded };
 }

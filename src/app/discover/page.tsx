@@ -8,7 +8,8 @@ import { FitBadge, formatBytes, formatMemory } from "@/components/FitBadge";
 import { ModelCard } from "@/components/ModelCard";
 import { QuantReference } from "@/components/QuantReference";
 import { ApiError, api } from "@/lib/api";
-import { type NodeBudget, fitQuery, useNodeBudget } from "@/lib/nodeBudget";
+import { NodePicker } from "@/components/NodePicker";
+import { type NodeBudget, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import type {
   CatalogueCandidate,
   CatalogueFile,
@@ -73,11 +74,11 @@ export default function DiscoverPage() {
   const [contextLength, setContextLength] = useState(8192);
 
   const [hardware, setHardware] = useState<HostHardware | null>(null);
-  // Whose memory the verdicts are about: this node's, because a launch
-  // from this browser runs here. The library's own reading below is
-  // about the host the library runs on, which on a multi-host install
-  // is a different machine -- see `nodeBudget.ts`.
-  const { budget } = useNodeBudget();
+  // Whose memory the verdicts are about: the chosen node's, defaulting
+  // to this one. The library's own reading below is about the host the
+  // library runs on, which on a multi-host install is a different
+  // machine -- see `nodeBudget.ts`.
+  const { nodes, selected, select, budget } = useTargetNode();
   const { downloads, reload: reloadDownloads, active } = useDownloads();
   const [showDownloads, setShowDownloads] = useState(true);
 
@@ -134,6 +135,7 @@ export default function DiscoverPage() {
             ← Library
           </Link>
           <h1 className="font-ui text-sm font-semibold tracking-wide">Discover</h1>
+          <NodePicker nodes={nodes} selected={selected} onSelect={select} />
           <HardwareSummary budget={budget} hardware={hardware} />
         </div>
         <div className="flex items-center gap-3">
@@ -276,7 +278,6 @@ function HardwareSummary({
         className="font-ui text-xs text-[color:var(--muted)]"
         title={`Scored against ${where}, the machine a launch from this browser runs on. Verdicts use free memory, not total.${measured}`}
       >
-        {where} ·{" "}
         {budget.gpu ? (
           <>
             {budget.gpu.name} · {formatMemory(budget.gpu.freeBytes)} free

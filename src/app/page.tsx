@@ -328,10 +328,10 @@ export default function PlaygroundPage() {
             Discover
           </Link>
           <Link
-            href="/runtimes"
+            href="/inference"
             className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
-            Runtimes
+            Inference
           </Link>
           <Link
             href="/metrics"
@@ -403,8 +403,8 @@ function ModelPicker({
     return (
       <p className="font-ui text-xs text-[color:var(--muted)]">
         No routable models.{" "}
-        <Link href="/runtimes" className="underline">
-          Check runtimes
+        <Link href="/inference" className="underline">
+          See what is serving
         </Link>
         .
       </p>
