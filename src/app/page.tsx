@@ -281,7 +281,7 @@ export default function PlaygroundPage() {
       <header className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <Image
-            src="/eugene-icon.png"
+            src="/eugene-icon.svg"
             alt="Eugene Plexus"
             width={40}
             height={40}

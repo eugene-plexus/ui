@@ -1,10 +1,68 @@
 @import "tailwindcss";
 
-/* Default theme = cyberpunk. The selector is duplicated so a) :root has a
-   complete set of tokens even before the pre-hydration script sets
-   data-theme, and b) explicitly setting data-theme="cyberpunk" yields the
-   same values without relying on absence of the attribute. */
+/* Default theme = modern (changed from cyberpunk 2026-09-12). The
+   selector is duplicated so a) :root has a complete set of tokens even
+   before the pre-hydration script sets data-theme, and b) explicitly
+   setting data-theme="modern" yields the same values without relying on
+   absence of the attribute.
+
+   **`:root` carrying the default theme is the fourth place the default
+   is spelled out, and the only one that fails silently.** The other
+   three are the bootstrap script and the <html data-theme> in
+   layout.tsx, and DEFAULT_THEME in useTheme.ts. Leave `:root` on the
+   old palette and nothing errors — you just get one frame of the wrong
+   theme before the script runs, which is exactly the flash that script
+   exists to prevent.
+
+   Source order matters here and is not incidental: `:root` and
+   `[data-theme="x"]` have the SAME specificity, so the `:root` block
+   must come first or it would override the explicit themes below it. */
 :root,
+[data-theme="modern"] {
+  /* Modern = the "Modern" Claude Design preset adopted 2026-05-25.
+     Light, near-white base with deep-blue + magenta accents. Pairs
+     with the Cyberpunk dark theme as the OS-light-mode mapping
+     under the `system` choice. */
+  --background: #fafafb;
+  --foreground: #0d0d10;
+  --panel: #ffffff;
+  --panel-soft: #f3f3f5;
+  --panel-hover: #e7e7eb;
+  --border: #e3e3e8;
+  --border-hover: #8a8a93;
+  --accent-left: #2a55e6;
+  --accent-right: #cf3a85;
+  --on-accent-left: #ffffff;
+  --on-accent-right: #ffffff;
+  --muted: #6a6a73;
+  /* Scrollbar not in the design output — derived: muted at the
+     same translucency cyberpunk uses; hover at accent-left. */
+  --scrollbar-thumb: rgb(106 106 115 / 0.45);
+  --scrollbar-thumb-hover: rgb(42 85 230 / 0.7);
+
+  /* Bubbles sit flat on the panel — no blur. Derived from panel /
+     panel-soft so the bubble pattern stays consistent. */
+  --bubble-bg: #ffffff;
+  --bubble-soft-bg: #f3f3f5;
+  --bubble-blur: 0;
+
+  /* Softer corner radius for the flat-UI aesthetic. */
+  --radius: 6px;
+  /* Design's 1.05 — slight breathing-room bump over identity. Like
+     cyberpunk's 1.1, unwired until the v0.3 spacing-density pass. */
+  --pad: 1.05;
+
+  --bg-icon-display: none;
+  --bg-icon-opacity: 0;
+
+  /* Modern keeps Inter for both UI chrome and body. Mono switches
+     to JetBrains Mono (loaded in layout.tsx alongside cyberpunk's
+     fonts) so code blocks match across themes. */
+  --font-ui: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
+}
+
 [data-theme="cyberpunk"] {
   /* Cyberpunk = the "Miami '26" preset designed by Claude Design,
      adopted 2026-05-25. Dark-violet base with teal + pink accents.
@@ -53,51 +111,6 @@
      Variables emitted by `next/font/google` in layout.tsx. */
   --font-ui: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
   --font-body: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
-}
-
-[data-theme="modern"] {
-  /* Modern = the "Modern" Claude Design preset adopted 2026-05-25.
-     Light, near-white base with deep-blue + magenta accents. Pairs
-     with the Cyberpunk dark theme as the OS-light-mode mapping
-     under the `system` choice. */
-  --background: #fafafb;
-  --foreground: #0d0d10;
-  --panel: #ffffff;
-  --panel-soft: #f3f3f5;
-  --panel-hover: #e7e7eb;
-  --border: #e3e3e8;
-  --border-hover: #8a8a93;
-  --accent-left: #2a55e6;
-  --accent-right: #cf3a85;
-  --on-accent-left: #ffffff;
-  --on-accent-right: #ffffff;
-  --muted: #6a6a73;
-  /* Scrollbar not in the design output — derived: muted at the
-     same translucency cyberpunk uses; hover at accent-left. */
-  --scrollbar-thumb: rgb(106 106 115 / 0.45);
-  --scrollbar-thumb-hover: rgb(42 85 230 / 0.7);
-
-  /* Bubbles sit flat on the panel — no blur. Derived from panel /
-     panel-soft so the bubble pattern stays consistent. */
-  --bubble-bg: #ffffff;
-  --bubble-soft-bg: #f3f3f5;
-  --bubble-blur: 0;
-
-  /* Softer corner radius for the flat-UI aesthetic. */
-  --radius: 6px;
-  /* Design's 1.05 — slight breathing-room bump over identity. Like
-     cyberpunk's 1.1, unwired until the v0.3 spacing-density pass. */
-  --pad: 1.05;
-
-  --bg-icon-display: none;
-  --bg-icon-opacity: 0;
-
-  /* Modern keeps Inter for both UI chrome and body. Mono switches
-     to JetBrains Mono (loaded in layout.tsx alongside cyberpunk's
-     fonts) so code blocks match across themes. */
-  --font-ui: var(--font-inter), system-ui, -apple-system, sans-serif;
-  --font-body: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
@@ -156,20 +169,6 @@
        <p className="status-warn ...">missing topology</p>
 */
 :root,
-[data-theme="cyberpunk"] {
-  /* Banner palette per Claude Design's Miami '26 preset. Design
-     specified fg + border; bg derived as a low-alpha tint of the fg
-     over the dark panel so banner contrast stays consistent. */
-  --status-success-fg: #6ee0b5;
-  --status-success-bg: rgb(110 224 181 / 0.15);
-  --status-success-border: #1d9a78;
-  --status-warn-fg: #ffb88a;
-  --status-warn-bg: rgb(255 184 138 / 0.15);
-  --status-warn-border: #d76a2e;
-  --status-error-fg: #ff7a85;
-  --status-error-bg: rgb(255 122 133 / 0.18);
-  --status-error-border: #cc3a55;
-}
 [data-theme="modern"] {
   /* Banner palette per Claude Design's Modern preset. Design
      specified fg + border; bg derived as a low-alpha tint of the
@@ -183,6 +182,20 @@
   --status-error-fg: #971838;
   --status-error-bg: rgb(242 154 169 / 0.18);
   --status-error-border: #f29aa9;
+}
+[data-theme="cyberpunk"] {
+  /* Banner palette per Claude Design's Miami '26 preset. Design
+     specified fg + border; bg derived as a low-alpha tint of the fg
+     over the dark panel so banner contrast stays consistent. */
+  --status-success-fg: #6ee0b5;
+  --status-success-bg: rgb(110 224 181 / 0.15);
+  --status-success-border: #1d9a78;
+  --status-warn-fg: #ffb88a;
+  --status-warn-bg: rgb(255 184 138 / 0.15);
+  --status-warn-border: #d76a2e;
+  --status-error-fg: #ff7a85;
+  --status-error-bg: rgb(255 122 133 / 0.18);
+  --status-error-border: #cc3a55;
 }
 [data-theme="editorial"] {
   --status-success-fg: #235638;

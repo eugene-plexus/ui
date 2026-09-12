@@ -40,7 +40,14 @@ export const metadata: Metadata = {
 };
 
 // Inline script that runs before React hydrates so the saved theme +
-// font-size are applied before the browser paints. Without this, users
+// font-size are applied before the browser paints. **The default is
+// `modern`, and it is spelled out in four places that must agree**:
+// here (invalid value, and the catch), the `data-theme` on <html>
+// below, `DEFAULT_THEME` in useTheme.ts, and — the one that is easy to
+// miss — which theme's tokens `:root` carries in globals.css. Miss that
+// last one and there is no error, just a frame of the wrong theme
+// before this script runs, which is the flash this script exists to
+// prevent. Without this, users
 // with non-default preferences would see a one-frame flash. Logic is
 // duplicated (intentionally tiny) in `useTheme.ts` and `useFontSize.ts`
 // so React's view of the same state stays in sync.
@@ -49,7 +56,7 @@ const preferencesBootstrap = `
   var root = document.documentElement;
   try {
     var t = localStorage.getItem('eugene-theme');
-    if (t !== 'cyberpunk' && t !== 'modern' && t !== 'editorial' && t !== 'system') t = 'cyberpunk';
+    if (t !== 'cyberpunk' && t !== 'modern' && t !== 'editorial' && t !== 'system') t = 'modern';
     var resolved = t;
     if (t === 'system') {
       resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -58,7 +65,7 @@ const preferencesBootstrap = `
     }
     root.dataset.theme = resolved;
   } catch (_) {
-    root.dataset.theme = 'cyberpunk';
+    root.dataset.theme = 'modern';
   }
   try {
     var f = localStorage.getItem('eugene-font-size');
@@ -74,11 +81,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      data-theme="cyberpunk"
+      data-theme="modern"
       className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${dmSans.variable}`}
       suppressHydrationWarning
     >
       <head>
+        {/* The same mark the website serves, and the same file. An SVG
+            rather than the 846 KB PNG it replaces: one asset for the
+            favicon and both on-screen uses, sharp at any size, and
+            **transparent** — the PNG had no alpha channel at all, so it
+            was a solid navy square. That was invisible on a dark theme
+            and is a dark tile on a light one, which now is the default. */}
+        <link rel="icon" type="image/svg+xml" href="/eugene-icon.svg" />
         <script dangerouslySetInnerHTML={{ __html: preferencesBootstrap }} />
       </head>
       <body className="min-h-screen antialiased">
@@ -87,7 +101,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               need optimization, and `fill`-mode positioning fights the
               flex centering. Kept ESLint-quiet via the comment below. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/eugene-icon.png" alt="" />
+          <img src="/eugene-icon.svg" alt="" />
         </div>
         {children}
       </body>
