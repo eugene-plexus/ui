@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError, api, describeError } from "@/lib/api";
+import { describeControlRoot } from "@/lib/controlRoot";
 import { type Row, type Sources, buildRows } from "@/lib/inferenceRows";
 import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib/nodeBudget";
 import type {
@@ -46,6 +47,16 @@ import type {
  * named at the top, rather than taking the screen down: the page an
  * operator opens when something is wrong must not be the page that
  * fails because something is wrong.
+ *
+ * **The control root line.** Where the gateway's node list came from —
+ * its own agent, the `controlUrl` setting, or nowhere — and whether the
+ * root answered on the last refresh. Until 2026-09-13 nothing set that
+ * field, so a two-machine install came up with its worker enrolled,
+ * reachable and invisible to routing while every surface said "fine";
+ * and a root sealed after a container restart left this screen empty
+ * with nothing saying why. The gateway reports both now, on
+ * `RoutingTableView.control_root`, and this is the screen an operator
+ * has open when it matters.
  *
  * **Acting on a runtime on another node** goes through that node's
  * agent — the `node:<name>` proxy target — because start, stop and
@@ -139,6 +150,7 @@ export default function InferencePage() {
   }, [load]);
 
   const rows = useMemo(() => (sources ? buildRows(sources, localName) : []), [sources, localName]);
+  const controlRoot = useMemo(() => describeControlRoot(sources?.routing?.control_root), [sources]);
 
   const byNode = useMemo(() => {
     const groups = new Map<string | null, Row[]>();
@@ -255,6 +267,19 @@ export default function InferencePage() {
         </div>
       </header>
 
+      {controlRoot && (
+        <div
+          className={
+            controlRoot.tone === "warn"
+              ? "status-warn border-b px-4 py-2 text-xs"
+              : "border-b border-[color:var(--border)] px-4 py-1.5 text-[11px] text-[color:var(--muted)]"
+          }
+          title={controlRoot.detail ?? undefined}
+          data-testid="control-root"
+        >
+          {controlRoot.text}
+        </div>
+      )}
       {gaps.length > 0 && (
         <div className="status-warn border-b px-4 py-2 text-xs">
           <span className="font-semibold">Partial view.</span>{" "}

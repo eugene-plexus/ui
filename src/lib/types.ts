@@ -72,6 +72,7 @@ export type DriverHealth = GatewayComponents["schemas"]["DriverHealth"];
 // backend whether a request could go there right now and why not. What
 // the inference screen reads for eligibility and in-flight counts.
 export type RoutingTableView = GatewayComponents["schemas"]["RoutingTableView"];
+export type ControlRootView = GatewayComponents["schemas"]["ControlRootView"];
 export type RoutingBackendView = GatewayComponents["schemas"]["RoutingBackendView"];
 
 // --- Agent: topology + engine runtimes -----------------------------

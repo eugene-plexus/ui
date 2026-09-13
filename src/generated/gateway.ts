@@ -258,6 +258,14 @@ export interface paths {
          *     A view of the last refresh, not a fresh poll — the same
          *     snapshot requests are routed from, so what it shows is what a
          *     request would meet.
+         *
+         *     `control_root` says where the node list came from — the
+         *     `controlUrl` config field, the gateway's own agent, or nowhere
+         *     — and whether the control root answered on the last refresh.
+         *     A sealed root after a container restart shows here as
+         *     `reachable: false` with `503 Locked` in `error`, the one place
+         *     outside the control root's own API that says so; the table
+         *     keeps the previous node list while it is true.
          */
         get: operations["getRoutingTable"];
         put?: never;
@@ -407,12 +415,15 @@ export interface paths {
          *       model in seconds; vLLM's silent load is minutes.
          *     * **`idleCheckSeconds`** (`duration`) — how often the gateway
          *       checks each runtime's idle timeout.
-         *     * **`controlUrl`** (`url`, optional) — the control root. When
-         *       set, the agent list comes from its `GET /v1/nodes`; each
-         *       node's agent is then read directly for that node's drivers
-         *       and runtimes, and a stop or start is sent to the agent that
-         *       owns the runtime. Unset means a single-host install and the
-         *       one configured agent.
+         *     * **`controlUrl`** (`url`, optional) — the control root, when
+         *       the gateway should not work it out itself. Unset, the gateway
+         *       asks its own agent on every refresh: the control root the
+         *       node is enrolled to (`GET /v1/node`), else the `control`
+         *       component the agent declares (`GET /v1/components`), else
+         *       this host alone. Set, it is used as given, even when wrong —
+         *       the override for a gateway whose agent is neither enrolled
+         *       nor running a control root, or for an address the agent
+         *       cannot know. Takes effect on the next routing refresh.
          *
          *     The retained-metrics fields (M8):
          *
@@ -1174,6 +1185,49 @@ export interface components {
             slots: components["schemas"]["RoutingSlotView"][];
             /** @description Drivers in the topology that did not answer `/v1/info`. */
             unreachable_drivers?: string[];
+            control_root?: components["schemas"]["ControlRootView"];
+        };
+        /**
+         * @description Where the routing table's node list comes from, and whether that
+         *     source answered on the last refresh. The control root is the one
+         *     thing routing needs from management — which agents exist and
+         *     where — and the one thing that, until 2026-09-13, nothing told
+         *     the gateway. It reads it from its own agent now; this says what
+         *     it found.
+         */
+        ControlRootView: {
+            /**
+             * @description `config` — the `controlUrl` config field, set by an operator
+             *     and used as given, even when wrong. `agent` — derived on
+             *     this refresh from the gateway's own agent: `GET /v1/node`
+             *     (`controlUrl`, when the node is enrolled), else the
+             *     `control` component the agent declares. `none` — neither
+             *     knew of one; the table is built from the one configured
+             *     agent, which is a single-host install.
+             * @enum {string}
+             */
+            source: "config" | "agent" | "none";
+            /**
+             * Format: uri
+             * @description The control root read, or tried. Absent when `source` is `none`.
+             */
+            url?: string;
+            /**
+             * @description Whether `GET /v1/nodes` answered on the last refresh. False
+             *     keeps the previous node list in force — management being
+             *     down must not empty the routing table — and is the state a
+             *     container's sealed root leaves every gateway in after a
+             *     restart. Always false when `source` is `none`.
+             */
+            reachable: boolean;
+            /**
+             * @description Why it did not answer, when it did not: the HTTP status and
+             *     the problem's title when it sent one (`503 Locked`), else
+             *     the transport error.
+             */
+            error?: string;
+            /** @description How many nodes the control root listed on the last read that answered. */
+            nodes?: number;
         };
         RoutingSlotView: {
             /** @description What a client asks for. */
