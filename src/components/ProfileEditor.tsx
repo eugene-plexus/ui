@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, describeError } from "@/lib/api";
+import { configTabHref, describeAdmission } from "@/lib/launchPreview";
 import type { TargetNode } from "@/lib/nodeBudget";
 import type {
+  Admission,
   EngineDescriptor,
   LibraryModel,
   ModelProfile,
@@ -54,6 +57,30 @@ import type {
  */
 type RuntimeCreate = Pick<RuntimeSpec, "name" | "engine" | "modelPath"> &
   Partial<Omit<RuntimeSpec, "name" | "engine" | "modelPath">>;
+
+/**
+ * The composition this whole layering exists for: the model's path from
+ * the library, the flags from the profile, as a runtime declaration.
+ * Field names line up one for one, so nothing here translates.
+ *
+ * `host` and `port` are deliberately absent. The agent binds loopback
+ * and assigns a port from its own range, and restating either here
+ * would put a second source of truth in the UI for something the
+ * supervisor owns. `autoStart` IS sent, because pressing Launch is the
+ * choice it encodes. The same spec goes to the admission dry run, so
+ * what the launch panel predicts is what Launch does.
+ */
+function composeSpec(model: LibraryModel, profile: ModelProfile): RuntimeCreate {
+  return {
+    name: runtimeName(model, profile),
+    engine: profile.engine,
+    modelPath: model.path,
+    flags: profile.flags ?? undefined,
+    extraArgs: profile.extraArgs ?? undefined,
+    env: profile.env ?? undefined,
+    autoStart: true,
+  };
+}
 
 export function ProfileEditor({
   model,
@@ -112,25 +139,7 @@ export function ProfileEditor({
   async function launch(profile: ModelProfile) {
     setError(null);
     setLaunched(null);
-    // The composition this whole layering exists for: the model's path
-    // from the library, the flags from the profile, posted to the
-    // agent as a runtime declaration. Field names line up one for
-    // one, so nothing here translates.
-    //
-    // `host` and `port` are deliberately absent. The agent binds
-    // loopback and assigns a port from its own range, and restating
-    // either here would put a second source of truth in the UI for
-    // something the supervisor owns. `autoStart` IS sent, because
-    // pressing Launch is the choice it encodes.
-    const spec: RuntimeCreate = {
-      name: runtimeName(model, profile),
-      engine: profile.engine,
-      modelPath: model.path,
-      flags: profile.flags ?? undefined,
-      extraArgs: profile.extraArgs ?? undefined,
-      env: profile.env ?? undefined,
-      autoStart: true,
-    };
+    const spec = composeSpec(model, profile);
     try {
       if (node && !node.local && node.name) {
         // Another node: through the control root, which forwards the
@@ -155,6 +164,8 @@ export function ProfileEditor({
   }
 
   const canLaunch = engines.some((e) => e.available) && model.status === "present";
+  // What the panel predicts for: the default profile, else the first.
+  const previewProfile = profiles?.find((p) => p.default) ?? profiles?.[0] ?? null;
 
   return (
     <section className="mt-2">
@@ -173,6 +184,10 @@ export function ProfileEditor({
         pinned to different GPUs is the same profile twice with a different{" "}
         <span className="font-mono">CUDA_VISIBLE_DEVICES</span>.
       </p>
+
+      {canLaunch && node && previewProfile && (
+        <LaunchPreview model={model} profile={previewProfile} node={node} />
+      )}
 
       {error && (
         <p className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs">
@@ -244,6 +259,89 @@ export function ProfileEditor({
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * What Launch will do on the picked node, before it is pressed (M11).
+ *
+ * The agent's admission dry run, with exactly the spec Launch would send,
+ * so there is no second opinion for it to disagree with. Two answers it
+ * gives that the fit panel above cannot: whether the model is ON that
+ * node at all -- the library names a model by its path on the library's
+ * host, and a node elsewhere reaches it through a mapping or not at all
+ * -- and whether THIS profile's context fits beside what is already
+ * running there. Before this, both were learned from a crashed runtime.
+ */
+function LaunchPreview({
+  model,
+  profile,
+  node,
+}: {
+  model: LibraryModel;
+  profile: ModelProfile;
+  node: TargetNode;
+}) {
+  const [admission, setAdmission] = useState<Admission | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAdmission(null);
+    setFailure(null);
+    void (async () => {
+      try {
+        const result = await api.post<Admission>(
+          node.target,
+          "/v1/runtimes/admission",
+          composeSpec(model, profile),
+        );
+        if (!cancelled) setAdmission(result);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) return;
+        if (!cancelled) setFailure(describeError(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [model, profile, node]);
+
+  if (failure) {
+    return (
+      <p className="mt-2 text-xs text-[color:var(--muted)]">
+        Could not ask {node.label} what a launch would do: {failure}
+      </p>
+    );
+  }
+  if (!admission) return null;
+
+  const preview = describeAdmission(admission, node.label, node.target);
+  const tone =
+    preview.tone === "ok" ? "status-ok" : preview.tone === "warn" ? "status-warn" : "status-error";
+  return (
+    <div
+      className={`${tone} mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed`}
+      data-testid="launch-preview"
+    >
+      <p className="font-ui font-semibold">
+        {preview.headline}
+        <span className="ml-2 font-normal opacity-70">
+          profile <span className="font-mono">{profile.name}</span>
+        </span>
+      </p>
+      {preview.detail && <p className="mt-0.5 break-all">{preview.detail}</p>}
+      {preview.fixTarget && (
+        <p className="mt-1">
+          <Link href={configTabHref(preview.fixTarget)} className="underline">
+            Map the library&rsquo;s directory on {node.label}
+          </Link>
+          {" — Config → Agent"}
+          {node.name ? ` @ ${node.name}` : ""}
+          {" → Model directory mappings."}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -588,6 +588,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/directories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a directory on this host, for the model-roots picker.
+         * @description The directory picker `path_list` has promised since M2 — *"an
+         *     add/remove list of directory pickers"* — finally has something
+         *     to list (M11). This is the library's own host: the machine whose
+         *     directories `modelRoots` names, inside its container if it runs
+         *     in one, which on a multi-host install is frequently not the
+         *     machine the browser is on. `host` on the response says which.
+         *
+         *     Without `path`, the places to start: every drive on Windows,
+         *     `/` on POSIX, and the home directory. With it, that directory's
+         *     children — directories only unless `includeFiles`, visible only
+         *     unless `showHidden`. Entries this component may not read are
+         *     left out rather than failing the listing.
+         *
+         *     **Operator-only and unrestricted.** An operator can already type
+         *     any path into `modelRoots`, and `POST /v1/config/test` already
+         *     stats whatever they name; listing what they could type is not a
+         *     new capability. It is still a walk of the host's disk on
+         *     request, so no service token is accepted — reads elsewhere here
+         *     take one, this does not.
+         *
+         *     The agent carries the same endpoint with the same schema, for
+         *     the paths *its* host holds. One picker in the UI, pointed at
+         *     whichever component owns the field.
+         */
+        get: operations["listDirectories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config": {
         parameters: {
             query?: never;
@@ -771,6 +813,14 @@ export interface components {
              *     A `.gguf` file for GGUF (the **first** shard when split), a
              *     directory for safetensors. This is what goes on a runtime's
              *     `modelPath`.
+             *
+             *     **A path on the host this library runs on** — inside its
+             *     container, if it runs in one. A node that runs the engine
+             *     elsewhere reaches the same file through its agent's
+             *     `pathMappings` (M11): the declaration keeps this spelling,
+             *     and the node resolves its own at every spawn. So this string
+             *     is both the model's identity install-wide and the left-hand
+             *     side of any mapping that reaches it.
              */
             path: string;
             /**
@@ -2237,6 +2287,67 @@ export interface components {
          */
         EngineKind: "llama_cpp" | "vllm";
         /**
+         * @description Files appear only when a listing asked for `includeFiles`. A
+         *     directory picker never does; a `file_path` field's picker would,
+         *     which is why the flag exists on the endpoint without a UI yet.
+         * @enum {string}
+         */
+        DirectoryEntryKind: "directory" | "file";
+        DirectoryEntry: {
+            name: string;
+            /** @description Absolute path, ready to be used as a config value. */
+            path: string;
+            kind: components["schemas"]["DirectoryEntryKind"];
+            /**
+             * @description A dot-prefixed name, or the hidden attribute on Windows.
+             *     Only present in a listing that asked for `showHidden`.
+             * @default false
+             */
+            hidden: boolean;
+        };
+        /**
+         * @description One directory on the component's own host, listed for a picker.
+         *
+         *     Returned by `GET /v1/directories` on the library (whose host
+         *     holds the model roots) and on the agent (whose host holds a
+         *     path mapping's `to`, and any engine binary an operator points
+         *     at). The same shape on both, because the UI has one picker and
+         *     the only thing that differs is which machine's disk it is
+         *     looking at — which is why `host` is on the response.
+         *
+         *     This is the endpoint behind the promise `path_list` has carried
+         *     since M2: *"an add/remove list of directory pickers"*. It lists
+         *     what an operator could already type into a path field, on
+         *     request, to the strongest credential there is; it is not a new
+         *     capability and it is not a file browser.
+         */
+        DirectoryListing: {
+            /**
+             * @description The machine whose disk this is. On a multi-host install the
+             *     answer to "browse" is frequently a machine other than the
+             *     one the browser is on.
+             */
+            host: string;
+            /**
+             * @description The directory listed, absolute and as this host spells it.
+             *     Absent when no `path` was asked for, in which case `entries`
+             *     are the places to start from — every drive on Windows, `/`
+             *     on POSIX, and the home directory.
+             */
+            path?: string;
+            /**
+             * @description The directory above `path`, so a picker can go up without
+             *     doing path arithmetic in a browser. Absent at a filesystem
+             *     root and when `path` is absent.
+             */
+            parent?: string;
+            /**
+             * @description Sorted by name, directories first. Entries this component
+             *     may not read are omitted rather than failing the listing.
+             */
+            entries: components["schemas"]["DirectoryEntry"][];
+        };
+        /**
          * @description Current effective config values, keyed by `ConfigField.key`.
          *     Values of fields with `sensitive: true` are returned as the
          *     literal string `"<redacted>"` regardless of whether they are
@@ -2343,9 +2454,21 @@ export interface components {
          *     subscription is a target like any other, because a
          *     `claude_code_cli` driver already serves a model id. UIs without
          *     a structured renderer for it fall back to editing the JSON.
+         *
+         *     `path_mappings` (M11) is an ordered JSON array of `PathMapping`
+         *     — `{"from": <a directory as another machine states it>, "to":
+         *     <the same directory on this host>}`. Its one user is the agent's
+         *     `pathMappings`, which is how a node opens model files a library
+         *     on another host described by *its* path: `/models` on the NAS
+         *     is `Z:\models` here. UIs render it as rows of two directory
+         *     fields, the right-hand one browsable on the component's own
+         *     host, and offer the library's configured roots as suggestions
+         *     for the left. Matching, precedence and translation rules are on
+         *     the agent's field description, not here — the type promises a
+         *     list of pairs and nothing about what they mean.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
@@ -3381,6 +3504,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QuantTable"];
+                };
+            };
+        };
+    };
+    listDirectories: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Absolute path of the directory to list. Omit for the
+                 *     starting points. A UNC path or an unmounted place is typed,
+                 *     not browsed.
+                 */
+                path?: string;
+                /** @description Also list files. The roots picker never asks for this. */
+                includeFiles?: boolean;
+                /** @description Also list dot-prefixed and hidden entries. */
+                showHidden?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The listing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryListing"];
+                };
+            };
+            /** @description `path` exists and is not a directory. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description This component may not read `path`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such directory on this host. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

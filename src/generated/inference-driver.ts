@@ -810,9 +810,21 @@ export interface components {
          *     subscription is a target like any other, because a
          *     `claude_code_cli` driver already serves a model id. UIs without
          *     a structured renderer for it fall back to editing the JSON.
+         *
+         *     `path_mappings` (M11) is an ordered JSON array of `PathMapping`
+         *     — `{"from": <a directory as another machine states it>, "to":
+         *     <the same directory on this host>}`. Its one user is the agent's
+         *     `pathMappings`, which is how a node opens model files a library
+         *     on another host described by *its* path: `/models` on the NAS
+         *     is `Z:\models` here. UIs render it as rows of two directory
+         *     fields, the right-hand one browsable on the component's own
+         *     host, and offer the library's configured roots as suggestions
+         *     for the left. Matching, precedence and translation rules are on
+         *     the agent's field description, not here — the type promises a
+         *     list of pairs and nothing about what they mean.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one

@@ -395,6 +395,17 @@ export interface paths {
          *     only happen on the agent, so this endpoint's failures are largely
          *     relayed from there. A 502 means the agent refused or was
          *     unreachable, and `detail` carries what it said.
+         *
+         *     **`spec.modelPath` is the library's spelling and stays that
+         *     way** (M11). The library names a model by its path on the
+         *     library's host; the target node resolves where the same file is
+         *     on its own disk through its agent's `pathMappings`, at spawn,
+         *     and reports the result as `Runtime.localPath`. Nothing here
+         *     translates the path, and nothing here knows how to — a mount is
+         *     a fact about one host that only that host can check. A node
+         *     that cannot find the file refuses with a 422 naming the path,
+         *     the node and the mapping fix, and that refusal is what the 502
+         *     relays.
          */
         post: operations["createRuntime"];
         delete?: never;
@@ -1504,9 +1515,21 @@ export interface components {
          *     subscription is a target like any other, because a
          *     `claude_code_cli` driver already serves a model id. UIs without
          *     a structured renderer for it fall back to editing the JSON.
+         *
+         *     `path_mappings` (M11) is an ordered JSON array of `PathMapping`
+         *     — `{"from": <a directory as another machine states it>, "to":
+         *     <the same directory on this host>}`. Its one user is the agent's
+         *     `pathMappings`, which is how a node opens model files a library
+         *     on another host described by *its* path: `/models` on the NAS
+         *     is `Z:\models` here. UIs render it as rows of two directory
+         *     fields, the right-hand one browsable on the component's own
+         *     host, and offer the library's configured roots as suggestions
+         *     for the left. Matching, precedence and translation rules are on
+         *     the agent's field description, not here — the type promises a
+         *     list of pairs and nothing about what they mean.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field

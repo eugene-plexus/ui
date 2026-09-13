@@ -368,6 +368,15 @@ export interface paths {
          *     without the declaration. A runtime declared with `autoStart`
          *     false is not measured until it is started.
          *
+         *     **A launch of a model that is not on this host is refused the
+         *     same way** (M11). `modelPath` is resolved through this node's
+         *     `pathMappings` — the library on another host names files by
+         *     *its* path, and a mapping says where the same directory is
+         *     mounted here — and if the resolved path does not exist, the
+         *     422's `detail` names the declared path, this node, what it
+         *     resolved to, and where the mapping goes. Before M11 this case
+         *     was accepted, given a companion driver, and crashed on spawn.
+         *
          *     Accepts the operator **or the control root's own service
          *     audience** (`service:control`, checked exactly — not any service
          *     token), because the control root forwards declarations to the
@@ -402,13 +411,26 @@ export interface paths {
          *     its arithmetic. Declares nothing and spawns nothing.
          *
          *     Required bytes come from the library's fit computation when a
-         *     `library` component is in this agent's topology — the same
-         *     arithmetic the discovery screen shows, at the context this spec
-         *     asks for — and from the model file's size plus a fixed
-         *     allowance otherwise. `basis` says which. Free bytes are the
-         *     largest single target device's, because llama.cpp's default
-         *     split is by layers and a model that fits across two cards and on
-         *     neither is `split`, not `fits`.
+         *     library is reachable — one in this agent's topology, or (M11)
+         *     the install's, found through the control root the way the
+         *     console hop finds it, so a worker with no library of its own is
+         *     measured by metadata too — the same arithmetic the discovery
+         *     screen shows, at the context this spec asks for; and from the
+         *     model file's size plus a fixed allowance otherwise. `basis` says
+         *     which. Free bytes are the largest single target device's,
+         *     because llama.cpp's default split is by layers and a model that
+         *     fits across two cards and on neither is `split`, not `fits`.
+         *
+         *     **It also answers whether the model is here at all.** `location`
+         *     carries `modelPath` resolved through this node's `pathMappings`,
+         *     whether that path exists on this host, and — when the library
+         *     answered — whether the file is the size the library says it is.
+         *     A model that is not here is `refuse` with `fit: unknown`: the
+         *     rule that `unknown` never refuses is about a budget that could
+         *     not be measured, and a file that is not there is a measurement.
+         *     A size that disagrees with the library is a warning, not a
+         *     refusal — a stale scan is likelier than a wrong mapping, and the
+         *     engine will say if the file is broken.
          *
          *     **Refuse, never queue** (decided 2026-09-10). A queue is a
          *     promise about when memory frees that the control plane cannot
@@ -723,6 +745,41 @@ export interface paths {
          *     promotion's announcement.
          */
         post: operations["rekeyNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/directories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a directory on this host, for a path picker.
+         * @description The picker behind every path field in this agent's config —
+         *     a `pathMappings` rule's `to`, and `vllmBinary` — and the same
+         *     endpoint the library carries for its model roots, sharing one
+         *     schema so the UI has one picker (M11).
+         *
+         *     Without `path`, the places to start: every drive on Windows,
+         *     `/` on POSIX, and the home directory. With it, that directory's
+         *     children — directories only unless `includeFiles`, visible only
+         *     unless `showHidden`. Entries this agent may not read are left
+         *     out rather than failing the listing.
+         *
+         *     **Operator-only and unrestricted.** An operator can already type
+         *     any path into config, and the agent already stats what they
+         *     name; listing what they could type is not a new capability. It
+         *     is still a walk of this host's disk on request, so no service
+         *     token is accepted.
+         */
+        get: operations["listDirectories"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1633,6 +1690,15 @@ export interface components {
              *     `path` off a `LibraryModel` and the `flags` are a
              *     `ModelProfile` — but nothing here depends on the library
              *     existing, and a hand-written runtime is still a runtime.
+             *
+             *     **When the library is on another host, this is still the
+             *     library's spelling** (M11). The node resolves where the same
+             *     file is on its own disk through its `pathMappings`, at every
+             *     spawn and never onto this field — so the declaration keeps
+             *     linking to its library entry (`GET /v1/models?path=` is keyed
+             *     to the library's own path), and a changed mapping takes
+             *     effect at the next start with nothing re-declared. What was
+             *     actually opened is reported as `Runtime.localPath`.
              */
             modelPath: string;
             /**
@@ -1781,6 +1847,17 @@ export interface components {
             name: string;
             engine: components["schemas"]["EngineKind"];
             modelPath: string;
+            /**
+             * @description Where **this host** opens the model: `modelPath` resolved
+             *     through this node's `pathMappings`, or `modelPath` itself
+             *     when no mapping applies (M11). Observed, never declared, and
+             *     computed from the current mapping each time it is read — so
+             *     a stopped runtime shows what its next start would open, and
+             *     a mapping changed after declaration is visible before
+             *     anything restarts. Equal to `modelPath` on every single-host
+             *     install.
+             */
+            readonly localPath?: string;
             /** @description Resolved alias — the declared value, or the derived filename. */
             modelAlias?: string;
             host?: string;
@@ -1968,6 +2045,12 @@ export interface components {
          *     about a refusal. They overlap on the verdict words and diverge
          *     on everything else, and sharing them would couple the discovery
          *     screen to the supervisor.
+         *
+         *     Since M11 it also answers the question that comes before memory:
+         *     is the model on this host at all. `location` is where the
+         *     declared path resolves on this node and whether anything is
+         *     there, and a `refuse` with `fit: unknown` is that answer being
+         *     no.
          */
         Admission: {
             decision: components["schemas"]["AdmissionDecision"];
@@ -2005,6 +2088,12 @@ export interface components {
              *     to runtimes that declared `idleUnloadSeconds`.
              */
             blockers?: components["schemas"]["AdmissionBlocker"][];
+            /**
+             * @description Where the declared model is on this host, and whether it is
+             *     (M11). Present on every answer from an agent that computes
+             *     it; absent from an older agent.
+             */
+            location?: components["schemas"]["ModelLocation"];
             /**
              * @description The decision in prose, naming the numbers. A refusal that
              *     does not say why is the complaint this endpoint exists to
@@ -2065,6 +2154,57 @@ export interface components {
              *     true exactly when it declared `idleUnloadSeconds`.
              */
             evictable?: boolean;
+        };
+        /**
+         * @description Where a declared model path lands on this host (M11).
+         *
+         *     The library describes a model by its path on the library's own
+         *     host; a node that runs the engine elsewhere reaches the same
+         *     file through a `pathMappings` rule, or not at all. This is the
+         *     resolution, reported with the declaration so an operator sees
+         *     both spellings — and reported on the admission dry run so the
+         *     launch screen can say what will happen before the button is
+         *     pressed.
+         */
+        ModelLocation: {
+            /** @description The path as declared — the library's spelling. */
+            path: string;
+            /**
+             * @description The path this host would open: `path` through the rule in
+             *     `mapping`, or `path` itself when none applied.
+             */
+            localPath: string;
+            /**
+             * @description Whether `localPath` names a file or directory on this host,
+             *     at the moment of measurement. False is what turns the
+             *     decision to `refuse`.
+             */
+            exists: boolean;
+            /** @description The rule that applied, when one did. */
+            mapping?: components["schemas"]["PathMapping"];
+            /**
+             * Format: int64
+             * @description Bytes at `localPath` on this host — one file, or every file
+             *     under a directory. Absent when it does not exist or could
+             *     not be measured.
+             */
+            sizeBytes?: number;
+            /**
+             * Format: int64
+             * @description What the library says the same thing is: its weights file
+             *     for a file path, its whole `sizeBytes` for a directory.
+             *     Absent when no library answered.
+             */
+            librarySizeBytes?: number;
+            /**
+             * @description Whether the two sizes agree. Absent when either is absent.
+             *     False is a warning and not a refusal: a stale library scan
+             *     after an upstream replacement is likelier than a mapping
+             *     that points at a look-alike, and the engine will say if the
+             *     file is broken. What this cannot catch, and does not
+             *     pretend to, is a different file of the same size.
+             */
+            sizeMatchesLibrary?: boolean;
         };
         /**
          * @description Issued on successful login. The UI stores `sessionToken` as a
@@ -2304,9 +2444,21 @@ export interface components {
          *     subscription is a target like any other, because a
          *     `claude_code_cli` driver already serves a model id. UIs without
          *     a structured renderer for it fall back to editing the JSON.
+         *
+         *     `path_mappings` (M11) is an ordered JSON array of `PathMapping`
+         *     — `{"from": <a directory as another machine states it>, "to":
+         *     <the same directory on this host>}`. Its one user is the agent's
+         *     `pathMappings`, which is how a node opens model files a library
+         *     on another host described by *its* path: `/models` on the NAS
+         *     is `Z:\models` here. UIs render it as rows of two directory
+         *     fields, the right-hand one browsable on the component's own
+         *     host, and offer the library's configured roots as suggestions
+         *     for the left. Matching, precedence and translation rules are on
+         *     the agent's field description, not here — the type promises a
+         *     list of pairs and nothing about what they mean.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -2503,6 +2655,103 @@ export interface components {
              *     surprising.
              */
             memoryFreeBytes?: number;
+        };
+        /**
+         * @description One rule for reading a path that another machine wrote.
+         *
+         *     The library describes each model by its path **on the library's
+         *     own host**, and a runtime declaration copies that string
+         *     verbatim — so when the engine runs elsewhere, the agent there is
+         *     handed a path from a filesystem it does not have. A mapping says
+         *     where the same directory is on this host: the NAS's `/models`
+         *     is `Z:\models` on the Windows box that mounts it. Nothing is
+         *     copied or cached; the operator mounts the share, and this tells
+         *     the agent where they mounted it.
+         *
+         *     Shared here because it appears in two places on the agent: as
+         *     the entries of the `pathMappings` config field, and as
+         *     `ModelLocation.mapping` on an admission answer, which reports
+         *     the rule that applied. Two definitions of one pair would drift.
+         */
+        PathMapping: {
+            /**
+             * @description A directory as the other machine states it — in practice a
+             *     library root, spelled exactly as the library's own
+             *     `GET /v1/config` lists it. Its shape decides how it matches:
+             *     a drive letter or UNC prefix means Windows rules (case-
+             *     insensitive, `/` and `\` interchangeable); a leading `/`
+             *     means POSIX rules. The agent cannot know the library's
+             *     operating system, and the string came from it, so the
+             *     string stands in.
+             */
+            from: string;
+            /**
+             * @description The same directory on the host holding this config. Used
+             *     verbatim, `~` expanded; the remainder of a matched path is
+             *     re-joined onto it with this host's own separator.
+             */
+            to: string;
+        };
+        /**
+         * @description Files appear only when a listing asked for `includeFiles`. A
+         *     directory picker never does; a `file_path` field's picker would,
+         *     which is why the flag exists on the endpoint without a UI yet.
+         * @enum {string}
+         */
+        DirectoryEntryKind: "directory" | "file";
+        DirectoryEntry: {
+            name: string;
+            /** @description Absolute path, ready to be used as a config value. */
+            path: string;
+            kind: components["schemas"]["DirectoryEntryKind"];
+            /**
+             * @description A dot-prefixed name, or the hidden attribute on Windows.
+             *     Only present in a listing that asked for `showHidden`.
+             * @default false
+             */
+            hidden: boolean;
+        };
+        /**
+         * @description One directory on the component's own host, listed for a picker.
+         *
+         *     Returned by `GET /v1/directories` on the library (whose host
+         *     holds the model roots) and on the agent (whose host holds a
+         *     path mapping's `to`, and any engine binary an operator points
+         *     at). The same shape on both, because the UI has one picker and
+         *     the only thing that differs is which machine's disk it is
+         *     looking at — which is why `host` is on the response.
+         *
+         *     This is the endpoint behind the promise `path_list` has carried
+         *     since M2: *"an add/remove list of directory pickers"*. It lists
+         *     what an operator could already type into a path field, on
+         *     request, to the strongest credential there is; it is not a new
+         *     capability and it is not a file browser.
+         */
+        DirectoryListing: {
+            /**
+             * @description The machine whose disk this is. On a multi-host install the
+             *     answer to "browse" is frequently a machine other than the
+             *     one the browser is on.
+             */
+            host: string;
+            /**
+             * @description The directory listed, absolute and as this host spells it.
+             *     Absent when no `path` was asked for, in which case `entries`
+             *     are the places to start from — every drive on Windows, `/`
+             *     on POSIX, and the home directory.
+             */
+            path?: string;
+            /**
+             * @description The directory above `path`, so a picker can go up without
+             *     doing path arithmetic in a browser. Absent at a filesystem
+             *     root and when `path` is absent.
+             */
+            parent?: string;
+            /**
+             * @description Sorted by name, directories first. Entries this component
+             *     may not read are omitted rather than failing the listing.
+             */
+            entries: components["schemas"]["DirectoryEntry"][];
         };
         /**
          * @description Current effective config values, keyed by `ConfigField.key`.
@@ -3053,8 +3302,12 @@ export interface operations {
             };
             /**
              * @description Invalid spec — unknown engine, no adapter, a flag that
-             *     isn't in the adapter's schema, a model path that does not
-             *     exist, or a port already claimed by another runtime.
+             *     isn't in the adapter's schema, or a port already claimed by
+             *     another runtime. **Not** a model path that does not exist:
+             *     that is an admission refusal (422, below), because it is
+             *     decided by the same dry run and carries the same structure
+             *     — until M11 nothing checked it at all, and a launch of a
+             *     path this host did not have was accepted and crashed.
              */
             400: {
                 headers: {
@@ -3079,9 +3332,12 @@ export interface operations {
             };
             /**
              * @description Admission refused: the model will not fit on the device(s)
-             *     this spec targets, and `force` was not set. `detail` carries
-             *     the `Admission` reasoning in prose; `POST
-             *     /v1/runtimes/admission` returns it structured.
+             *     this spec targets — **or is not on this host at all** (M11:
+             *     `modelPath`, after this node's `pathMappings`, names nothing
+             *     here) — and `force` was not set. `detail` carries the
+             *     `Admission` reasoning in prose, naming the fix; `POST
+             *     /v1/runtimes/admission` returns it structured, with the
+             *     resolved `location`.
              */
             422: {
                 headers: {
@@ -3420,6 +3676,64 @@ export interface operations {
              *     names both numbers.
              */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listDirectories: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Absolute path of the directory to list. Omit for the
+                 *     starting points. A UNC path or an unmounted place is typed,
+                 *     not browsed — the picker keeps a path box for exactly this.
+                 */
+                path?: string;
+                /** @description Also list files. A directory picker never asks for this. */
+                includeFiles?: boolean;
+                /** @description Also list dot-prefixed and hidden entries. */
+                showHidden?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The listing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryListing"];
+                };
+            };
+            /** @description `path` exists and is not a directory. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description This agent may not read `path`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such directory on this host. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

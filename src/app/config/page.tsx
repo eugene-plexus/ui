@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ConfigEditor } from "@/components/ConfigEditor";
 import { UIPreferences } from "@/components/UIPreferences";
@@ -10,11 +11,12 @@ import { targetFor } from "@/lib/nodeBudget";
 import type { ComponentList, NodeIdentity } from "@/lib/types";
 
 interface Tab {
+  /** The proxy target the editor talks to, and the `?tab=` value. */
   value: string;
   label: string;
   /** The node this component runs on, when the install spans more
    * than one and it is known. Null for the UI tab and for the local
-   * agent. */
+   * agent on a standalone host. */
   node: string | null;
   kind: "ui" | "agent" | "gateway" | "library" | "control" | "inference-driver";
 }
@@ -42,7 +44,30 @@ async function installPlacement(): Promise<Placement[]> {
   }
 }
 
+/** Every enrolled node, by name. The agent is not a component, so
+ * `/v1/components` cannot list the other nodes' agents; `/v1/nodes` can. */
+async function installNodes(): Promise<string[]> {
+  try {
+    const list = await api.get<{ nodes?: { name?: unknown }[] }>("control", "/v1/nodes");
+    return (list.nodes ?? [])
+      .map((n) => n.name)
+      .filter((name): name is string => typeof name === "string" && name.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 export default function ConfigPage() {
+  // `useSearchParams` suspends during prerender, so the boundary is
+  // required rather than decorative.
+  return (
+    <Suspense fallback={null}>
+      <ConfigPageInner />
+    </Suspense>
+  );
+}
+
+function ConfigPageInner() {
   const [tabs, setTabs] = useState<Tab[]>([
     { value: "ui", label: "UI", node: null, kind: "ui" },
     { value: "agent", label: "Agent", node: null, kind: "agent" },
@@ -50,40 +75,69 @@ export default function ConfigPage() {
   const [localNode, setLocalNode] = useState<string | null>(null);
   const [multiNode, setMultiNode] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [tab, setTab] = useState<string>("ui");
+  // A link can land on a tab — the launch panel's "map it" points at the
+  // node's agent — so the initial tab comes from the URL when there is
+  // one. Applied once; picking another tab afterwards is not fought.
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const [tab, setTab] = useState<string>(requestedTab || "ui");
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
-  // Two sources, deliberately. This host's own topology is where a
+  // Three sources, deliberately. This host's own topology is where a
   // local driver's URL is written down and therefore the list that
   // cannot disagree with what the proxy resolves. The control root adds
   // every component on every OTHER node, each labelled with its node,
   // because two workers can each have a `llama-1` and the proxy resolves
   // a name to the first it finds -- and because "which machine are these
   // paths on" is the question an operator asked and this page did not
-  // answer. Both fail soft: a standalone install has no root to ask.
+  // answer. And the root's node registry adds every other node's AGENT
+  // (M11): an agent is not a component, so the component list cannot
+  // name it, yet its settings -- the advertise address, the engine
+  // binary, and where another host's model directories are mounted --
+  // are exactly the ones an operator at the root's console needs to
+  // reach. All fail soft: a standalone install has no root to ask.
   const load = useCallback(async () => {
     try {
-      const [list, node, placement] = await Promise.all([
+      const [list, node, placement, nodeNames] = await Promise.all([
         api.get<ComponentList>("agent", "/v1/components"),
         api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),
         installPlacement(),
+        installNodes(),
       ]);
       const local = node?.name ?? null;
       setLocalNode(local);
       const nodes = new Set(placement.map((p) => p.node));
+      for (const name of nodeNames) nodes.add(name);
       if (local) nodes.add(local);
       const several = nodes.size > 1;
       setMultiNode(several);
 
       const next: Tab[] = [
         { value: "ui", label: "UI", node: null, kind: "ui" },
-        { value: "agent", label: "Agent", node: null, kind: "agent" },
+        {
+          value: "agent",
+          label: several && local ? `Agent @ ${local}` : "Agent",
+          node: several ? local : null,
+          kind: "agent",
+        },
       ];
+      // The other nodes' agents, addressed as nodes: `node:<name>` is the
+      // proxy target that reaches that agent's own API.
+      for (const name of nodeNames) {
+        if (name === local) continue;
+        next.push({
+          value: targetFor(name, local),
+          label: `Agent @ ${name}`,
+          node: name,
+          kind: "agent",
+        });
+      }
+
       const seen = new Set<string>();
       const localComponents = list.components ?? [];
 
-      // Singletons first, in the order they have always appeared. Local
+      // Singletons next, in the order they have always appeared. Local
       // when this host has one; otherwise wherever the root says it is.
       for (const kind of ["gateway", "library", "control"] as const) {
         const here = localComponents.find((c) => c.kind === kind);

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { Component, ConfigField as ConfigFieldDef } from "@/lib/types";
+import { FolderPicker } from "@/components/FolderPicker";
+import type { Component, ConfigField as ConfigFieldDef, PathMapping } from "@/lib/types";
 
 /**
  * Render a single config field's input based on its `valueType`.
@@ -19,6 +20,8 @@ export function ConfigFieldInput({
   value,
   pending,
   topology,
+  browseTarget,
+  pathSuggestions,
   onChange,
 }: {
   field: ConfigFieldDef;
@@ -30,6 +33,14 @@ export function ConfigFieldInput({
    * has no peer-reference fields). The dropdown falls back to a free-
    * text URL input when topology is unavailable. */
   topology?: Component[] | null;
+  /** The proxy target whose host a path field is about — the component
+   * being edited. When set, `path_list` rows and a mapping's `to` get a
+   * Browse button that lists THAT host's directories (M11). Absent, the
+   * fields stay typeable and nothing is offered to browse. */
+  browseTarget?: string | null;
+  /** The library's configured model roots, offered as suggestions for a
+   * mapping's `from` — which in every case this exists for is one. */
+  pathSuggestions?: string[];
   onChange: (newValue: unknown) => void;
 }) {
   const baseInputClass =
@@ -121,6 +132,22 @@ export function ConfigFieldInput({
           pending={pending}
           onChange={onChange}
           copy={PATH_LIST_COPY}
+          browseTarget={browseTarget ?? null}
+        />
+      );
+    }
+
+    // `path_mappings` (M11): where another machine's model directories
+    // are on this component's host. Rows of `from` → `to`; the left side
+    // offers the library's roots, the right side browses this host.
+    if (field.valueType === "path_mappings") {
+      return (
+        <PathMappingsInput
+          value={value}
+          pending={pending}
+          onChange={onChange}
+          browseTarget={browseTarget ?? null}
+          suggestions={pathSuggestions ?? []}
         />
       );
     }
@@ -382,11 +409,14 @@ function StringListInput({
   pending,
   onChange,
   copy,
+  browseTarget = null,
 }: {
   value: string[];
   pending: boolean;
   onChange: (newValue: unknown) => void;
   copy: ListCopy;
+  /** When set, each row gets a Browse button over this target's host. */
+  browseTarget?: string | null;
 }) {
   // Rows live here, empties included, so a freshly added row survives
   // until it is typed into. The parent only ever sees trimmed, non-empty
@@ -395,6 +425,8 @@ function StringListInput({
   // finished typing.
   const [rows, setRows] = useState<string[]>(value);
   const mirrored = useRef<string>(JSON.stringify(value));
+  // Which row's Browse is open, if any.
+  const [browsing, setBrowsing] = useState<number | null>(null);
 
   // Resync when the value changes from outside: a reload after save, or
   // a revert. Compared against what we last pushed up, so our own
@@ -440,6 +472,17 @@ function StringListInput({
             disabled={pending}
             className={rowClass}
           />
+          {browseTarget !== null && (
+            <button
+              type="button"
+              onClick={() => setBrowsing(index)}
+              disabled={pending}
+              className={buttonClass}
+              title="Pick a directory on the machine this component runs on."
+            >
+              browse
+            </button>
+          )}
           <button
             type="button"
             onClick={() => update(rows.filter((_, i) => i !== index))}
@@ -459,6 +502,183 @@ function StringListInput({
       >
         {copy.addLabel}
       </button>
+      {browsing !== null && browseTarget !== null && (
+        <FolderPicker
+          target={browseTarget}
+          initialPath={rows[browsing] || null}
+          onClose={() => setBrowsing(null)}
+          onPick={(path) => {
+            const next = [...rows];
+            next[browsing] = path;
+            update(next);
+            setBrowsing(null);
+          }}
+        />
+      )}
     </div>
   );
+}
+
+/**
+ * Editor for `path_mappings` (M11): rows of `from` → `to`.
+ *
+ * `from` is a directory as ANOTHER machine states it — the library's
+ * model root, spelled exactly as the library lists it — so the input
+ * offers the library's roots as suggestions and accepts anything typed.
+ * `to` is the same directory on the host this component runs on, so its
+ * Browse lists that host. Both sides are kept in local state until they
+ * are non-empty, the same way the list editor above keeps a half-typed
+ * row: a half-filled mapping must not reach the server as a rejected
+ * patch. The server validates shape (absolute on both sides, no
+ * duplicate `from`) and never existence; the Test button does that,
+ * against the library's real files.
+ */
+function PathMappingsInput({
+  value,
+  pending,
+  onChange,
+  browseTarget,
+  suggestions,
+}: {
+  value: unknown;
+  pending: boolean;
+  onChange: (newValue: unknown) => void;
+  browseTarget: string | null;
+  suggestions: string[];
+}) {
+  const incoming = parseMappings(value);
+  const [rows, setRows] = useState<PathMapping[]>(incoming);
+  const mirrored = useRef<string>(JSON.stringify(incoming));
+  const [browsing, setBrowsing] = useState<number | null>(null);
+
+  useEffect(() => {
+    const serialized = JSON.stringify(parseMappings(value));
+    if (serialized !== mirrored.current) {
+      mirrored.current = serialized;
+      setRows(parseMappings(value));
+    }
+  }, [value]);
+
+  function update(next: PathMapping[]) {
+    setRows(next);
+    const complete = next
+      .map((m) => ({ from: m.from.trim(), to: m.to.trim() }))
+      .filter((m) => m.from.length > 0 && m.to.length > 0);
+    mirrored.current = JSON.stringify(complete);
+    onChange(complete);
+  }
+
+  const inputClass =
+    "min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50";
+  const buttonClass =
+    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  const datalistId = suggestions.length > 0 ? "cf-path-mappings-from" : undefined;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.length === 0 && (
+        <p className="text-xs text-[color:var(--muted)] italic">
+          No mappings. Only needed when the library runs on another machine and its model files are
+          reachable from here over a share: say which of its directories is mounted where.
+        </p>
+      )}
+      {rows.map((mapping, index) => (
+        <div key={index} className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={mapping.from}
+            list={datalistId}
+            spellCheck={false}
+            placeholder="/models  (the library's directory, as it lists it)"
+            aria-label="Directory as the library states it"
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = { ...mapping, from: e.target.value };
+              update(next);
+            }}
+            disabled={pending}
+            className={inputClass}
+          />
+          <span className="text-xs text-[color:var(--muted)]" aria-hidden="true">
+            →
+          </span>
+          <input
+            type="text"
+            value={mapping.to}
+            spellCheck={false}
+            placeholder="Z:\\models  (where it is on this machine)"
+            aria-label="The same directory on this host"
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = { ...mapping, to: e.target.value };
+              update(next);
+            }}
+            disabled={pending}
+            className={inputClass}
+          />
+          {browseTarget !== null && (
+            <button
+              type="button"
+              onClick={() => setBrowsing(index)}
+              disabled={pending}
+              className={buttonClass}
+              title="Pick the directory on the machine this agent runs on."
+            >
+              browse
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => update(rows.filter((_, i) => i !== index))}
+            disabled={pending}
+            className={buttonClass}
+            title="Remove this mapping. Nothing on disk is touched."
+          >
+            remove
+          </button>
+        </div>
+      ))}
+      {datalistId && (
+        <datalist id={datalistId}>
+          {suggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      )}
+      <button
+        type="button"
+        onClick={() => setRows([...rows, { from: suggestions[0] ?? "", to: "" }])}
+        disabled={pending}
+        className={`${buttonClass} w-fit`}
+      >
+        add mapping
+      </button>
+      {browsing !== null && browseTarget !== null && (
+        <FolderPicker
+          target={browseTarget}
+          initialPath={rows[browsing]?.to || null}
+          onClose={() => setBrowsing(null)}
+          onPick={(path) => {
+            const next = [...rows];
+            const row = next[browsing] ?? { from: "", to: "" };
+            next[browsing] = { ...row, to: path };
+            update(next);
+            setBrowsing(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Whatever the server or the draft holds, as rows. Junk entries are
+ * dropped rather than rendered as blanks that would be re-sent. */
+function parseMappings(value: unknown): PathMapping[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item !== "object" || item === null) return [];
+    const record = item as Record<string, unknown>;
+    if (typeof record.from !== "string" || typeof record.to !== "string") return [];
+    return [{ from: record.from, to: record.to }];
+  });
 }

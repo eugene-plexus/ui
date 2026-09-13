@@ -97,6 +97,20 @@ export type EngineDescriptor = AgentComponents["schemas"]["EngineDescriptor"];
 export type NodeIdentity = AgentComponents["schemas"]["NodeIdentity"];
 export type ComputeDevice = AgentComponents["schemas"]["ComputeDevice"];
 
+// The launch dry run and, since M11, where the model is on the node that
+// would launch it. `ModelLocation` is `modelPath` resolved through that
+// node's `pathMappings`: the library names a model by its path on the
+// library's host, and the node says where the same file is on its own.
+export type Admission = AgentComponents["schemas"]["Admission"];
+export type ModelLocation = AgentComponents["schemas"]["ModelLocation"];
+export type PathMapping = AgentComponents["schemas"]["PathMapping"];
+
+// One directory on a component's host, for the picker behind every path
+// field. The same shape on the library and the agent, which is what lets
+// one picker serve both.
+export type DirectoryListing = AgentComponents["schemas"]["DirectoryListing"];
+export type DirectoryEntry = AgentComponents["schemas"]["DirectoryEntry"];
+
 // --- Control: the install-wide views --------------------------------
 //
 // The control root asks every enrolled node's agent and adds the one

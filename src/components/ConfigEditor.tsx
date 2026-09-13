@@ -57,6 +57,10 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   // unfetched / not applicable; the dropdown gracefully falls back
   // to a free-text input when topology is null.
   const [topology, setTopology] = useState<Component[] | null>(null);
+  // The library's configured model roots, offered as suggestions for a
+  // mapping's `from` (M11). Fetched only when the schema has a
+  // `path_mappings` field; empty when the library cannot be asked.
+  const [libraryRoots, setLibraryRoots] = useState<string[]>([]);
 
   // Per-provider draft cache: when the user switches Provider, we
   // snapshot the current values of provider-dependent fields under the
@@ -87,6 +91,17 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         // the fetch entirely when nothing on the schema needs it
         // (the gateway's config has no kind hints, so there's no point
         // pinging the agent while loading it).
+        if (schemaResp.fields.some((f) => f.valueType === "path_mappings")) {
+          try {
+            const library = await api.get<Record<string, unknown>>("library", "/v1/config");
+            const roots = library.modelRoots;
+            if (!cancelled && Array.isArray(roots)) {
+              setLibraryRoots(roots.filter((r): r is string => typeof r === "string"));
+            }
+          } catch {
+            // No library reachable: the `from` box stays a plain input.
+          }
+        }
         const hasKindHint = schemaResp.fields.some((f) => f.componentKindHint != null);
         if (hasKindHint) {
           try {
@@ -401,6 +416,8 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
                     value={draft[f.key]}
                     pending={saving}
                     topology={topology}
+                    browseTarget={target}
+                    pathSuggestions={libraryRoots}
                     onChange={(v) => handleFieldChange(f.key, v)}
                   />
                 ))}
