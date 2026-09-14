@@ -36,7 +36,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { AppHeader } from "@/components/AppNav";
+import { AppShell } from "@/components/AppShell";
 import { ApiError, api } from "@/lib/api";
 
 interface Percentiles {
@@ -180,28 +180,31 @@ export default function MetricsPage() {
   }, [load]);
 
   return (
-    <>
-      <AppHeader href="/metrics">
-        <select
-          value={hours}
-          onChange={(e) => setHours(Number(e.target.value))}
-          aria-label="Time window"
-          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-1 text-xs"
-        >
-          {WINDOWS.map((w) => (
-            <option key={w.hours} value={w.hours}>
-              {w.label}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
-        >
-          Refresh
-        </button>
-      </AppHeader>
+    <AppShell
+      controls={
+        <>
+          <select
+            value={hours}
+            onChange={(e) => setHours(Number(e.target.value))}
+            aria-label="Time window"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-1 text-xs"
+          >
+            {WINDOWS.map((w) => (
+              <option key={w.hours} value={w.hours}>
+                {w.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+          >
+            Refresh
+          </button>
+        </>
+      }
+    >
       <main className="relative z-10 mx-auto max-w-6xl px-6 py-8">
         <p className="mb-6 text-xs text-[color:var(--muted)]">
           What each backend did on <em>this</em> machine. Useful for comparing your own backends
@@ -473,6 +476,6 @@ export default function MetricsPage() {
           </>
         )}
       </main>
-    </>
+    </AppShell>
   );
 }

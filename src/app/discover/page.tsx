@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AppHeader } from "@/components/AppNav";
+import { AppShell } from "@/components/AppShell";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBadge, formatBytes, formatMemory } from "@/components/FitBadge";
 import { ModelCard } from "@/components/ModelCard";
@@ -125,128 +125,127 @@ export default function DiscoverPage() {
   }, [search]);
 
   return (
-    <main className="flex h-screen flex-col">
-      <AppHeader
-        href="/discover"
-        detail={
-          <>
-            <NodePicker nodes={nodes} selected={selected} onSelect={select} />
-            <HardwareSummary budget={budget} hardware={hardware} />
-          </>
-        }
-      >
-        <label className="font-ui flex items-center gap-1.5 text-xs text-[color:var(--muted)]">
-          <span title="Fit verdicts are computed at this context length. The KV cache grows linearly with it, so this is the number that decides which version is recommended.">
-            context
-          </span>
+    <AppShell
+      controls={
+        <>
+          <NodePicker nodes={nodes} selected={selected} onSelect={select} />
+          <HardwareSummary budget={budget} hardware={hardware} />
+          <label className="font-ui flex items-center gap-1.5 text-xs text-[color:var(--muted)]">
+            <span title="Fit verdicts are computed at this context length. The KV cache grows linearly with it, so this is the number that decides which version is recommended.">
+              context
+            </span>
+            <select
+              value={contextLength}
+              onChange={(event) => setContextLength(Number(event.target.value))}
+              className={selectClass}
+            >
+              {CONTEXT_CHOICES.map((value) => (
+                <option key={value} value={value}>
+                  {value >= 1024 ? `${value / 1024}k` : value}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      }
+    >
+      <main className="flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="search models — try a family name, or a publisher"
+            className="font-ui min-w-[220px] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-xs outline-none focus:border-[color:var(--border-hover)]"
+            aria-label="Search the model catalogue"
+          />
           <select
-            value={contextLength}
-            onChange={(event) => setContextLength(Number(event.target.value))}
+            value={format}
+            onChange={(event) => setFormat(event.target.value as ModelFormat | "")}
             className={selectClass}
+            aria-label="Model format"
           >
-            {CONTEXT_CHOICES.map((value) => (
+            <option value="gguf">GGUF</option>
+            <option value="safetensors">safetensors</option>
+            <option value="">any format</option>
+          </select>
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value as CatalogueSort)}
+            className={selectClass}
+            aria-label="Sort order"
+          >
+            {(Object.keys(SORT_LABEL) as CatalogueSort[]).map((value) => (
               <option key={value} value={value}>
-                {value >= 1024 ? `${value / 1024}k` : value}
+                {SORT_LABEL[value]}
               </option>
             ))}
           </select>
-        </label>
-      </AppHeader>
-
-      <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2">
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="search models — try a family name, or a publisher"
-          className="font-ui min-w-[220px] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-xs outline-none focus:border-[color:var(--border-hover)]"
-          aria-label="Search the model catalogue"
-        />
-        <select
-          value={format}
-          onChange={(event) => setFormat(event.target.value as ModelFormat | "")}
-          className={selectClass}
-          aria-label="Model format"
-        >
-          <option value="gguf">GGUF</option>
-          <option value="safetensors">safetensors</option>
-          <option value="">any format</option>
-        </select>
-        <select
-          value={sort}
-          onChange={(event) => setSort(event.target.value as CatalogueSort)}
-          className={selectClass}
-          aria-label="Sort order"
-        >
-          {(Object.keys(SORT_LABEL) as CatalogueSort[]).map((value) => (
-            <option key={value} value={value}>
-              {SORT_LABEL[value]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(260px,340px)_1fr] overflow-hidden">
-        <ResultsList
-          results={results}
-          searching={searching}
-          error={searchError}
-          selected={selectedRepo}
-          onSelect={setSelectedRepo}
-        />
-
-        <div className="min-h-0 overflow-y-auto px-5 py-4">
-          {selectedRepo ? (
-            <RepoDetail
-              key={selectedRepo}
-              repo={selectedRepo}
-              contextLength={contextLength}
-              budget={budget}
-              downloads={downloads}
-              onDownloadStarted={() => {
-                setShowDownloads(true);
-                reloadDownloads();
-              }}
-            />
-          ) : (
-            <EmptyDetail budget={budget} hardware={hardware} />
-          )}
         </div>
-      </div>
 
-      <section className="border-t border-[color:var(--border)] bg-[color:var(--panel)]">
-        <button
-          type="button"
-          onClick={() => setShowDownloads((v) => !v)}
-          className="font-ui flex w-full items-center justify-between px-4 py-2 text-xs"
-          aria-expanded={showDownloads}
-        >
-          <span className="font-semibold">
-            Downloads
-            {downloads.length > 0 && (
-              <span className="ml-2 font-normal text-[color:var(--muted)]">
-                {active > 0 ? `${active} in flight` : `${downloads.length} recorded`}
-              </span>
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(260px,340px)_1fr] overflow-hidden">
+          <ResultsList
+            results={results}
+            searching={searching}
+            error={searchError}
+            selected={selectedRepo}
+            onSelect={setSelectedRepo}
+          />
+
+          <div className="min-h-0 overflow-y-auto px-5 py-4">
+            {selectedRepo ? (
+              <RepoDetail
+                key={selectedRepo}
+                repo={selectedRepo}
+                contextLength={contextLength}
+                budget={budget}
+                downloads={downloads}
+                onDownloadStarted={() => {
+                  setShowDownloads(true);
+                  reloadDownloads();
+                }}
+              />
+            ) : (
+              <EmptyDetail budget={budget} hardware={hardware} />
             )}
-          </span>
-          <span className="text-[color:var(--muted)]">{showDownloads ? "▾" : "▸"}</span>
-        </button>
-        {showDownloads && (
-          <div className="max-h-[38vh] overflow-y-auto px-4 pb-3">
-            <DownloadsPanel
-              downloads={downloads}
-              onChanged={reloadDownloads}
-              emptyHint={
-                <>
-                  Nothing downloading. Files land in the first of your configured model directories,
-                  under their own upstream names — nothing is renamed or hidden in a cache.
-                </>
-              }
-            />
           </div>
-        )}
-      </section>
-    </main>
+        </div>
+
+        <section className="border-t border-[color:var(--border)] bg-[color:var(--panel)]">
+          <button
+            type="button"
+            onClick={() => setShowDownloads((v) => !v)}
+            className="font-ui flex w-full items-center justify-between px-4 py-2 text-xs"
+            aria-expanded={showDownloads}
+          >
+            <span className="font-semibold">
+              Downloads
+              {downloads.length > 0 && (
+                <span className="ml-2 font-normal text-[color:var(--muted)]">
+                  {active > 0 ? `${active} in flight` : `${downloads.length} recorded`}
+                </span>
+              )}
+            </span>
+            <span className="text-[color:var(--muted)]">{showDownloads ? "▾" : "▸"}</span>
+          </button>
+          {showDownloads && (
+            <div className="max-h-[38vh] overflow-y-auto px-4 pb-3">
+              <DownloadsPanel
+                downloads={downloads}
+                onChanged={reloadDownloads}
+                emptyHint={
+                  <>
+                    Nothing downloading. Files land in the first of your configured model
+                    directories, under their own upstream names — nothing is renamed or hidden in a
+                    cache.
+                  </>
+                }
+              />
+            </div>
+          )}
+        </section>
+      </main>
+    </AppShell>
   );
 }
 

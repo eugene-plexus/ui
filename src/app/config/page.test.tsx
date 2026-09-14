@@ -1,16 +1,19 @@
 /**
- * The Config page's tabs on a multi-node install (M11).
+ * Reaching another machine's agent settings, on a multi-node install.
  *
- * Before this, Config's tabs were the local agent, the singletons and
- * the drivers — the control root's component list — and the agent is
- * not a component, so another node's agent settings could not be
- * reached from here at all. A worker's model directory mappings live on
- * that agent; an operator at the root's console needs a tab for it, and
- * a link from the launch panel needs to land on it.
+ * The case is M11's: a worker's model directory mappings live on that
+ * worker's agent, the agent is not a component, and before M11 another
+ * node's agent could not be reached from this page at all.
+ *
+ * **The mechanism changed and the case did not.** Config used to own a
+ * tab per component per node; it now takes one object from `?sel=` and
+ * the tree offers the objects. So these assertions moved from a tab
+ * strip to the tree, and the second one — a link landing on the right
+ * subject — is unchanged, because `?tab=` is in shipped builds and still
+ * has to work.
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ConfigPage from "./page";
@@ -18,8 +21,8 @@ import ConfigPage from "./page";
 let query: string;
 vi.mock("next/navigation", () => ({
   // The shared navigation reads the pathname to mark the current
-  // screen. Added when AppNav landed; without it every page that
-  // renders a header throws on mount.
+  // screen. Added when the shared navigation landed; without it every
+  // page that renders a header throws on mount.
   usePathname: () => "/config",
   useSearchParams: () => new URLSearchParams(query),
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
@@ -74,22 +77,38 @@ afterEach(() => {
 });
 
 describe("ConfigPage", () => {
-  it("offers every node's agent as a tab, addressed as a node", async () => {
+  it("offers every node's agent in the tree, addressed as a node", async () => {
     render(<ConfigPage />);
-    await screen.findByRole("button", { name: "Agent @ Amish_Station" });
-    expect(screen.getByRole("button", { name: "Agent @ root" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Gateway @ root" })).toBeInTheDocument();
+    // Both machines' agents are rows, and the gateway is its own row
+    // rather than a tab belonging to whichever host runs it.
+    const worker = await screen.findByRole("link", { name: /Amish_Station/ });
+    expect(worker).toHaveAttribute("href", expect.stringContaining("sel=agent%3AAmish_Station"));
+    expect(worker).toHaveAttribute("href", expect.stringContaining("tab=node%3AAmish_Station"));
+    expect(screen.getByRole("link", { name: /Gateway/ })).toBeInTheDocument();
+  });
 
-    await userEvent.click(screen.getByRole("button", { name: "Agent @ Amish_Station" }));
+  it("addresses the selected machine's agent through the node proxy", async () => {
+    query = "sel=agent%3AAmish_Station";
+    render(<ConfigPage />);
     await waitFor(() => expect(calls).toContain("/api/proxy/node:Amish_Station/v1/config/schema"));
     expect(calls).toContain("/api/proxy/node:Amish_Station/v1/config");
     // The banner says whose machine these settings are about.
     expect(screen.getByText(/not the machine you are browsing from/)).toBeInTheDocument();
   });
 
-  it("lands on the tab a link asked for", async () => {
+  it("still lands on the subject a legacy ?tab= link asked for", async () => {
+    // The launch panel's "map it" link writes this, and it is in builds
+    // that are already installed.
     query = "tab=node%3AAmish_Station";
     render(<ConfigPage />);
     await waitFor(() => expect(calls).toContain("/api/proxy/node:Amish_Station/v1/config/schema"));
+  });
+
+  it("shows browser preferences on the install root, not a component's settings", async () => {
+    // The old `ui` tab. Nothing may become unreachable in the move.
+    query = "sel=install";
+    render(<ConfigPage />);
+    expect(await screen.findByLabelText("Theme")).toBeInTheDocument();
+    expect(calls.some((c) => c.endsWith("/v1/config/schema"))).toBe(false);
   });
 });

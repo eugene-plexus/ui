@@ -7,7 +7,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBreakdown, formatMemory } from "@/components/FitBadge";
 import { ProfileEditor } from "@/components/ProfileEditor";
-import { AppHeader } from "@/components/AppNav";
+import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
 import { ApiError, api } from "@/lib/api";
 import { type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
@@ -207,89 +207,87 @@ function LibraryPageInner() {
   const current = models?.find((m) => m.id === selected) ?? null;
 
   return (
-    <main className="flex h-screen flex-col">
-      <AppHeader
-        href="/library"
-        detail={
-          <>
-            <NodePicker nodes={picker.nodes} selected={picker.selected} onSelect={picker.select} />
-            {lastScanAt && (
-              <span className="text-xs text-[color:var(--muted)]">
-                scanned {relativeAge(lastScanAt)}
-              </span>
-            )}
-          </>
-        }
-      >
-        {scanning ? (
-          <button type="button" onClick={() => void cancelScan()} className={buttonClass}>
-            cancel scan
-          </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => void startScan(false)}
-              disabled={busy}
-              className={buttonClass}
-              title="Files whose size and timestamp are unchanged keep their metadata and are not reopened."
-            >
-              scan
-            </button>
-            <button
-              type="button"
-              onClick={() => void startScan(true)}
-              disabled={busy}
-              className={buttonClass}
-              title="Re-read every model's metadata, ignoring the cache. Slower; for when the reader has changed rather than the files."
-            >
-              full rescan
-            </button>
-          </>
-        )}
-      </AppHeader>
-
-      {error && (
-        <p className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
-          {error}
-        </p>
-      )}
-
-      <ScanBanner scan={scan} />
-
-      {downloads.length > 0 && (
-        <div className="max-h-[30vh] overflow-y-auto border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2">
-          <p className="font-ui mb-1.5 text-[11px] font-semibold text-[color:var(--muted)]">
-            {activeDownloads > 0
-              ? `${activeDownloads} download${activeDownloads === 1 ? "" : "s"} in flight`
-              : "recent downloads"}
-          </p>
-          <DownloadsPanel downloads={downloads} onChanged={reloadDownloads} />
-        </div>
-      )}
-
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(280px,360px)_1fr] overflow-hidden">
-        <ModelList
-          models={models}
-          selected={selected}
-          onSelect={setSelected}
-          loadableFormats={loadableFormats}
-        />
-        <div className="min-h-0 overflow-y-auto px-5 py-4">
-          {current ? (
-            <ModelDetail
-              key={current.id}
-              model={current}
-              engines={engines ?? []}
-              node={picker.selected}
-              onChanged={() => void loadModels()}
-            />
-          ) : (
-            <EmptyDetail models={models} scan={scan} />
+    <AppShell
+      controls={
+        <>
+          <NodePicker nodes={picker.nodes} selected={picker.selected} onSelect={picker.select} />
+          {lastScanAt && (
+            <span className="text-xs text-[color:var(--muted)]">
+              scanned {relativeAge(lastScanAt)}
+            </span>
           )}
+          {scanning ? (
+            <button type="button" onClick={() => void cancelScan()} className={buttonClass}>
+              cancel scan
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => void startScan(false)}
+                disabled={busy}
+                className={buttonClass}
+                title="Files whose size and timestamp are unchanged keep their metadata and are not reopened."
+              >
+                scan
+              </button>
+              <button
+                type="button"
+                onClick={() => void startScan(true)}
+                disabled={busy}
+                className={buttonClass}
+                title="Re-read every model's metadata, ignoring the cache. Slower; for when the reader has changed rather than the files."
+              >
+                full rescan
+              </button>
+            </>
+          )}
+        </>
+      }
+    >
+      <main className="flex min-h-0 flex-1 flex-col">
+        {error && (
+          <p className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            {error}
+          </p>
+        )}
+
+        <ScanBanner scan={scan} />
+
+        {downloads.length > 0 && (
+          <div className="max-h-[30vh] overflow-y-auto border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2">
+            <p className="font-ui mb-1.5 text-[11px] font-semibold text-[color:var(--muted)]">
+              {activeDownloads > 0
+                ? `${activeDownloads} download${activeDownloads === 1 ? "" : "s"} in flight`
+                : "recent downloads"}
+            </p>
+            <DownloadsPanel downloads={downloads} onChanged={reloadDownloads} />
+          </div>
+        )}
+
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(280px,360px)_1fr] overflow-hidden">
+          <ModelList
+            models={models}
+            selected={selected}
+            onSelect={setSelected}
+            loadableFormats={loadableFormats}
+          />
+          <div className="min-h-0 overflow-y-auto px-5 py-4">
+            {current ? (
+              <ModelDetail
+                key={current.id}
+                model={current}
+                engines={engines ?? []}
+                node={picker.selected}
+                onChanged={() => void loadModels()}
+              />
+            ) : (
+              <EmptyDetail models={models} scan={scan} />
+            )}
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </AppShell>
   );
 }
 

@@ -16,9 +16,11 @@ import MetricsPage from "./page";
 
 vi.mock("next/navigation", () => ({
   // The shared navigation reads the pathname to mark the current
-  // screen. Added when AppNav landed; without it every page that
-  // renders a header throws on mount.
+  // screen. Added when the shared navigation landed; without it every
+  // page that renders a header throws on mount.
   usePathname: () => "/metrics",
+  // The shell reads `?sel=` to know which object the page is about.
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
 }));
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AppHeader } from "@/components/AppNav";
+import { AppShell } from "@/components/AppShell";
 import { ChatInput } from "@/components/ChatInput";
 import { ChatLog, type ToolResult } from "@/components/ChatLog";
 import { DiagnosticPanel, type GatewayMode } from "@/components/DiagnosticPanel";
@@ -455,10 +455,9 @@ export default function PlaygroundPage() {
 
   const selected = models.find((m) => m.id === model);
   return (
-    <main className="relative z-10 flex h-screen flex-col overflow-hidden">
-      <AppHeader
-        href="/"
-        detail={
+    <AppShell
+      controls={
+        <>
           <ModelPicker
             models={models}
             value={model}
@@ -467,78 +466,79 @@ export default function PlaygroundPage() {
             error={modelsError}
             mode={mode}
           />
-        }
-      >
-        <button
-          type="button"
-          data-testid="toggle-diagnostic"
-          onClick={() => setPanelsOpen((o) => !o)}
-          aria-pressed={panelsOpen}
-          className={`font-ui rounded-[var(--radius)] border px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
-            panelsOpen || mode === "direct" || toolsOn
-              ? "border-[color:var(--accent-left)]"
-              : "border-[color:var(--border)]"
-          }`}
-          title="Which path to the gateway, tool definitions, and the request report"
-        >
-          Diagnostic{mode === "direct" ? " · direct" : ""}
-          {toolsOn ? " · tools" : ""}
-        </button>
-        <button
-          type="button"
-          onClick={newConversation}
-          disabled={messages.length === 0}
-          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          New
-        </button>
-      </AppHeader>
+          <button
+            type="button"
+            data-testid="toggle-diagnostic"
+            onClick={() => setPanelsOpen((o) => !o)}
+            aria-pressed={panelsOpen}
+            className={`font-ui rounded-[var(--radius)] border px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
+              panelsOpen || mode === "direct" || toolsOn
+                ? "border-[color:var(--accent-left)]"
+                : "border-[color:var(--border)]"
+            }`}
+            title="Which path to the gateway, tool definitions, and the request report"
+          >
+            Diagnostic{mode === "direct" ? " · direct" : ""}
+            {toolsOn ? " · tools" : ""}
+          </button>
+          <button
+            type="button"
+            onClick={newConversation}
+            disabled={messages.length === 0}
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            New
+          </button>
+        </>
+      }
+    >
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {panelsOpen && (
+          <div className="flex flex-wrap gap-3 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] p-3">
+            <DiagnosticPanel
+              mode={mode}
+              onMode={setMode}
+              baseUrl={baseUrl}
+              onBaseUrl={setBaseUrl}
+              guess={guess}
+              apiKey={apiKey}
+              onApiKey={setApiKey}
+              sessionToken={sessionToken}
+              page={page}
+            />
+            <ToolsPanel
+              enabled={toolsOn}
+              onEnabled={setToolsOn}
+              definitions={toolDefs}
+              onDefinitions={setToolDefs}
+              error={toolsError}
+              toolNames={toolNames}
+              toolChoice={toolChoice}
+              onToolChoice={setToolChoice}
+              responseFormat={responseFormat}
+              onResponseFormat={setResponseFormat}
+              modelToolCalling={selected?.x_eugene_plexus?.tool_calling}
+            />
+          </div>
+        )}
 
-      {panelsOpen && (
-        <div className="flex flex-wrap gap-3 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] p-3">
-          <DiagnosticPanel
-            mode={mode}
-            onMode={setMode}
-            baseUrl={baseUrl}
-            onBaseUrl={setBaseUrl}
-            guess={guess}
-            apiKey={apiKey}
-            onApiKey={setApiKey}
-            sessionToken={sessionToken}
-            page={page}
-          />
-          <ToolsPanel
-            enabled={toolsOn}
-            onEnabled={setToolsOn}
-            definitions={toolDefs}
-            onDefinitions={setToolDefs}
-            error={toolsError}
-            toolNames={toolNames}
-            toolChoice={toolChoice}
-            onToolChoice={setToolChoice}
-            responseFormat={responseFormat}
-            onResponseFormat={setResponseFormat}
-            modelToolCalling={selected?.x_eugene_plexus?.tool_calling}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <ChatLog
+            messages={messages}
+            pending={pending}
+            onRegenerate={handleRegenerate}
+            onEditUserMessage={handleEditUserMessage}
+            onToolResults={handleToolResults}
           />
         </div>
-      )}
 
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <ChatLog
-          messages={messages}
-          pending={pending}
-          onRegenerate={handleRegenerate}
-          onEditUserMessage={handleEditUserMessage}
-          onToolResults={handleToolResults}
-        />
-      </div>
+        {turnInfo && <RoutingBar info={turnInfo} />}
+        {report && <RequestReport report={report} page={page} apiKey={apiKey || null} />}
+        {error && <div className="status-error border-t px-4 py-2 text-xs">{error}</div>}
 
-      {turnInfo && <RoutingBar info={turnInfo} />}
-      {report && <RequestReport report={report} page={page} apiKey={apiKey || null} />}
-      {error && <div className="status-error border-t px-4 py-2 text-xs">{error}</div>}
-
-      <ChatInput onSend={handleSend} disabled={pending || model == null} seed={seed} />
-    </main>
+        <ChatInput onSend={handleSend} disabled={pending || model == null} seed={seed} />
+      </main>
+    </AppShell>
   );
 }
 

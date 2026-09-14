@@ -27,7 +27,7 @@ import { LayerIcon } from "./LayerIcon";
  * cannot describe the system differently.
  *
  * A disclosure, not a route: no URL, no history entry. `Escape` closes it
- * and `AppNav` returns focus to the toggle.
+ * and `AppShell` returns focus to the toggle.
  */
 export function LayerMap({
   id,

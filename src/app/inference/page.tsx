@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { AppHeader } from "@/components/AppNav";
+import { AppShell } from "@/components/AppShell";
 import { ApiError, api, describeError } from "@/lib/api";
 import { describeControlRoot } from "@/lib/controlRoot";
 import { type Row, type Sources, buildRows } from "@/lib/inferenceRows";
@@ -231,84 +231,86 @@ export default function InferencePage() {
   }
 
   return (
-    <main className="flex h-screen flex-col">
-      <AppHeader
-        href="/inference"
-        detail={
+    <AppShell
+      controls={
+        <>
           <span className="font-ui text-xs text-[color:var(--muted)]">
             {rows.length === 0
               ? "nothing serving"
               : `${rows.length} backend${rows.length === 1 ? "" : "s"} across ${nodeOrder.length} node${nodeOrder.length === 1 ? "" : "s"}`}
           </span>
-        }
-      >
-        {/* These two stay here and are not replaced by the navigation's
+          {/* These two stay here and are not replaced by the navigation's
             Library and Config links. They are actions on this screen —
             each carries a sentence saying what it does to the install —
             where the nav says only where a screen lives. */}
-        <Link
-          href="/library"
-          className={buttonClass}
-          title="Pick a model you own, choose the node, and launch it. The agent there declares a companion driver and the gateway starts routing when the engine is ready."
-        >
-          Launch a model
-        </Link>
-        <Link
-          href="/config"
-          className={buttonClass}
-          title="Something you already run — an Ollama, an OpenAI-compatible server, a cloud CLI — joins the install as an inference-driver pointed at it. Today that is declared on the Config page; a guided form is on the list."
-        >
-          Add an external backend
-        </Link>
-      </AppHeader>
+          <Link
+            href="/library"
+            className={buttonClass}
+            title="Pick a model you own, choose the node, and launch it. The agent there declares a companion driver and the gateway starts routing when the engine is ready."
+          >
+            Launch a model
+          </Link>
+          <Link
+            href="/config"
+            className={buttonClass}
+            title="Something you already run — an Ollama, an OpenAI-compatible server, a cloud CLI — joins the install as an inference-driver pointed at it. Today that is declared on the Config page; a guided form is on the list."
+          >
+            Add an external backend
+          </Link>
+        </>
+      }
+    >
+      <main className="flex min-h-0 flex-1 flex-col">
+        {controlRoot && (
+          <div
+            className={
+              controlRoot.tone === "warn"
+                ? "status-warn border-b px-4 py-2 text-xs"
+                : "border-b border-[color:var(--border)] px-4 py-1.5 text-[11px] text-[color:var(--muted)]"
+            }
+            title={controlRoot.detail ?? undefined}
+            data-testid="control-root"
+          >
+            {controlRoot.text}
+          </div>
+        )}
+        {gaps.length > 0 && (
+          <div className="status-warn border-b px-4 py-2 text-xs">
+            <span className="font-semibold">Partial view.</span>{" "}
+            {gaps.map((g, i) => (
+              <span key={g}>
+                {i > 0 ? " · " : ""}
+                {g}
+              </span>
+            ))}
+          </div>
+        )}
+        {actionError && (
+          <div className="status-error border-b px-4 py-2 text-xs">{actionError}</div>
+        )}
 
-      {controlRoot && (
-        <div
-          className={
-            controlRoot.tone === "warn"
-              ? "status-warn border-b px-4 py-2 text-xs"
-              : "border-b border-[color:var(--border)] px-4 py-1.5 text-[11px] text-[color:var(--muted)]"
-          }
-          title={controlRoot.detail ?? undefined}
-          data-testid="control-root"
-        >
-          {controlRoot.text}
-        </div>
-      )}
-      {gaps.length > 0 && (
-        <div className="status-warn border-b px-4 py-2 text-xs">
-          <span className="font-semibold">Partial view.</span>{" "}
-          {gaps.map((g, i) => (
-            <span key={g}>
-              {i > 0 ? " · " : ""}
-              {g}
-            </span>
+        <div className="flex-1 space-y-6 overflow-y-auto p-4">
+          {sources === null ? (
+            <p className="text-xs text-[color:var(--muted)]">Loading…</p>
+          ) : rows.length === 0 && picker.loaded ? (
+            <EmptyState />
+          ) : null}
+
+          {nodeOrder.map((name) => (
+            <NodeSection
+              key={name ?? "__local"}
+              name={name}
+              node={picker.nodes.find((n) => n.name === name) ?? null}
+              localName={localName}
+              rows={byNode.get(name) ?? []}
+              busy={busy}
+              onAct={act}
+              onRemove={remove}
+            />
           ))}
         </div>
-      )}
-      {actionError && <div className="status-error border-b px-4 py-2 text-xs">{actionError}</div>}
-
-      <div className="flex-1 space-y-6 overflow-y-auto p-4">
-        {sources === null ? (
-          <p className="text-xs text-[color:var(--muted)]">Loading…</p>
-        ) : rows.length === 0 && picker.loaded ? (
-          <EmptyState />
-        ) : null}
-
-        {nodeOrder.map((name) => (
-          <NodeSection
-            key={name ?? "__local"}
-            name={name}
-            node={picker.nodes.find((n) => n.name === name) ?? null}
-            localName={localName}
-            rows={byNode.get(name) ?? []}
-            busy={busy}
-            onAct={act}
-            onRemove={remove}
-          />
-        ))}
-      </div>
-    </main>
+      </main>
+    </AppShell>
   );
 }
 

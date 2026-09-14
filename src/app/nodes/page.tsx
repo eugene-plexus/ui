@@ -32,7 +32,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { AppHeader } from "@/components/AppNav";
+import { AppShell } from "@/components/AppShell";
 import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api } from "@/lib/api";
 
@@ -229,16 +229,14 @@ export default function NodesPage() {
     : "";
 
   return (
-    <>
-      <AppHeader
-        href="/nodes"
-        detail={
-          <span className="font-ui text-xs text-[color:var(--muted)]">
-            Every machine in this install.
-            {status?.epoch != null && <> This root is at epoch {status.epoch}.</>}
-          </span>
-        }
-      />
+    <AppShell
+      controls={
+        <span className="font-ui text-xs text-[color:var(--muted)]">
+          Every machine in this install.
+          {status?.epoch != null && <> This root is at epoch {status.epoch}.</>}
+        </span>
+      }
+    >
       <main className="relative z-10 mx-auto max-w-4xl px-6 py-8">
         {error && (
           <div className="status-error mb-6 rounded-[var(--radius)] border px-3 py-2 text-xs">
@@ -467,7 +465,7 @@ export default function NodesPage() {
           )}
         </section>
       </main>
-    </>
+    </AppShell>
   );
 }
 
