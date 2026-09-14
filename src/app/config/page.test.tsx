@@ -17,6 +17,10 @@ import ConfigPage from "./page";
 
 let query: string;
 vi.mock("next/navigation", () => ({
+  // The shared navigation reads the pathname to mark the current
+  // screen. Added when AppNav landed; without it every page that
+  // renders a header throws on mount.
+  usePathname: () => "/config",
   useSearchParams: () => new URLSearchParams(query),
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
 }));

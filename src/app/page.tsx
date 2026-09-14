@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AppHeader } from "@/components/AppNav";
 import { ChatInput } from "@/components/ChatInput";
 import { ChatLog, type ToolResult } from "@/components/ChatLog";
 import { DiagnosticPanel, type GatewayMode } from "@/components/DiagnosticPanel";
@@ -26,7 +26,7 @@ import {
   normalizeBaseUrl,
   parseToolDefinitions,
 } from "@/lib/diagnostic";
-import { clearSessionToken, getSessionToken, hasSessionToken } from "@/lib/session";
+import { getSessionToken, hasSessionToken } from "@/lib/session";
 import type {
   ChatCompletionMessage,
   ComponentList,
@@ -445,16 +445,6 @@ export default function PlaygroundPage() {
     setError(null);
   }
 
-  async function handleLogout() {
-    try {
-      await api.delete("agent", "/v1/auth/sessions/current");
-    } catch {
-      // ignore
-    }
-    clearSessionToken();
-    router.push("/login");
-  }
-
   if (setupGate === "checking") {
     return (
       <main className="relative z-10 flex h-screen items-center justify-center">
@@ -464,21 +454,11 @@ export default function PlaygroundPage() {
   }
 
   const selected = models.find((m) => m.id === model);
-  const navLink =
-    "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
-
   return (
     <main className="relative z-10 flex h-screen flex-col overflow-hidden">
-      <header className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <Image
-            src="/eugene-icon.svg"
-            alt="Eugene Plexus"
-            width={40}
-            height={40}
-            priority
-            className="shrink-0"
-          />
+      <AppHeader
+        href="/"
+        detail={
           <ModelPicker
             models={models}
             value={model}
@@ -487,59 +467,32 @@ export default function PlaygroundPage() {
             error={modelsError}
             mode={mode}
           />
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            data-testid="toggle-diagnostic"
-            onClick={() => setPanelsOpen((o) => !o)}
-            aria-pressed={panelsOpen}
-            className={`font-ui rounded-[var(--radius)] border px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
-              panelsOpen || mode === "direct" || toolsOn
-                ? "border-[color:var(--accent-left)]"
-                : "border-[color:var(--border)]"
-            }`}
-            title="Which path to the gateway, tool definitions, and the request report"
-          >
-            Diagnostic{mode === "direct" ? " · direct" : ""}
-            {toolsOn ? " · tools" : ""}
-          </button>
-          <button
-            type="button"
-            onClick={newConversation}
-            disabled={messages.length === 0}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            New
-          </button>
-          <Link href="/library" className={navLink}>
-            Library
-          </Link>
-          <Link href="/discover" className={navLink}>
-            Discover
-          </Link>
-          <Link href="/inference" className={navLink}>
-            Inference
-          </Link>
-          <Link href="/metrics" className={navLink}>
-            Metrics
-          </Link>
-          <Link href="/nodes" className={navLink}>
-            Nodes
-          </Link>
-          <Link href="/config" className={navLink}>
-            Config
-          </Link>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)]"
-            title="Revoke this session and return to the login screen"
-          >
-            Sign out
-          </button>
-        </div>
-      </header>
+        }
+      >
+        <button
+          type="button"
+          data-testid="toggle-diagnostic"
+          onClick={() => setPanelsOpen((o) => !o)}
+          aria-pressed={panelsOpen}
+          className={`font-ui rounded-[var(--radius)] border px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
+            panelsOpen || mode === "direct" || toolsOn
+              ? "border-[color:var(--accent-left)]"
+              : "border-[color:var(--border)]"
+          }`}
+          title="Which path to the gateway, tool definitions, and the request report"
+        >
+          Diagnostic{mode === "direct" ? " · direct" : ""}
+          {toolsOn ? " · tools" : ""}
+        </button>
+        <button
+          type="button"
+          onClick={newConversation}
+          disabled={messages.length === 0}
+          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          New
+        </button>
+      </AppHeader>
 
       {panelsOpen && (
         <div className="flex flex-wrap gap-3 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] p-3">

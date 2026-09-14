@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AppHeader } from "@/components/AppNav";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBadge, formatBytes, formatMemory } from "@/components/FitBadge";
 import { ModelCard } from "@/components/ModelCard";
@@ -126,40 +126,32 @@ export default function DiscoverPage() {
 
   return (
     <main className="flex h-screen flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/library"
-            className="font-ui text-xs text-[color:var(--muted)] hover:text-[color:var(--foreground)]"
+      <AppHeader
+        href="/discover"
+        detail={
+          <>
+            <NodePicker nodes={nodes} selected={selected} onSelect={select} />
+            <HardwareSummary budget={budget} hardware={hardware} />
+          </>
+        }
+      >
+        <label className="font-ui flex items-center gap-1.5 text-xs text-[color:var(--muted)]">
+          <span title="Fit verdicts are computed at this context length. The KV cache grows linearly with it, so this is the number that decides which version is recommended.">
+            context
+          </span>
+          <select
+            value={contextLength}
+            onChange={(event) => setContextLength(Number(event.target.value))}
+            className={selectClass}
           >
-            ← Library
-          </Link>
-          <h1 className="font-ui text-sm font-semibold tracking-wide">Discover</h1>
-          <NodePicker nodes={nodes} selected={selected} onSelect={select} />
-          <HardwareSummary budget={budget} hardware={hardware} />
-        </div>
-        <div className="flex items-center gap-3">
-          <label className="font-ui flex items-center gap-1.5 text-xs text-[color:var(--muted)]">
-            <span title="Fit verdicts are computed at this context length. The KV cache grows linearly with it, so this is the number that decides which version is recommended.">
-              context
-            </span>
-            <select
-              value={contextLength}
-              onChange={(event) => setContextLength(Number(event.target.value))}
-              className={selectClass}
-            >
-              {CONTEXT_CHOICES.map((value) => (
-                <option key={value} value={value}>
-                  {value >= 1024 ? `${value / 1024}k` : value}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Link href="/config" className={buttonClass}>
-            Config
-          </Link>
-        </div>
-      </header>
+            {CONTEXT_CHOICES.map((value) => (
+              <option key={value} value={value}>
+                {value >= 1024 ? `${value / 1024}k` : value}
+              </option>
+            ))}
+          </select>
+        </label>
+      </AppHeader>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2">
         <input
@@ -818,9 +810,6 @@ function OtherFiles({ files }: { files: CatalogueFile[] }) {
     </div>
   );
 }
-
-const buttonClass =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
 const smallButton =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";

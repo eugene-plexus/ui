@@ -7,6 +7,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBreakdown, formatMemory } from "@/components/FitBadge";
 import { ProfileEditor } from "@/components/ProfileEditor";
+import { AppHeader } from "@/components/AppNav";
 import { NodePicker } from "@/components/NodePicker";
 import { ApiError, api } from "@/lib/api";
 import { type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
@@ -207,57 +208,46 @@ function LibraryPageInner() {
 
   return (
     <main className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/"
-            className="font-ui text-xs text-[color:var(--muted)] hover:text-[color:var(--foreground)]"
-          >
-            ← Back to playground
-          </Link>
-          <h1 className="font-ui text-sm font-semibold tracking-wide">Library</h1>
-          <NodePicker nodes={picker.nodes} selected={picker.selected} onSelect={picker.select} />
-          {lastScanAt && (
-            <span className="text-xs text-[color:var(--muted)]">
-              scanned {relativeAge(lastScanAt)}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {scanning ? (
-            <button type="button" onClick={() => void cancelScan()} className={buttonClass}>
-              cancel scan
+      <AppHeader
+        href="/library"
+        detail={
+          <>
+            <NodePicker nodes={picker.nodes} selected={picker.selected} onSelect={picker.select} />
+            {lastScanAt && (
+              <span className="text-xs text-[color:var(--muted)]">
+                scanned {relativeAge(lastScanAt)}
+              </span>
+            )}
+          </>
+        }
+      >
+        {scanning ? (
+          <button type="button" onClick={() => void cancelScan()} className={buttonClass}>
+            cancel scan
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => void startScan(false)}
+              disabled={busy}
+              className={buttonClass}
+              title="Files whose size and timestamp are unchanged keep their metadata and are not reopened."
+            >
+              scan
             </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => void startScan(false)}
-                disabled={busy}
-                className={buttonClass}
-                title="Files whose size and timestamp are unchanged keep their metadata and are not reopened."
-              >
-                scan
-              </button>
-              <button
-                type="button"
-                onClick={() => void startScan(true)}
-                disabled={busy}
-                className={buttonClass}
-                title="Re-read every model's metadata, ignoring the cache. Slower; for when the reader has changed rather than the files."
-              >
-                full rescan
-              </button>
-            </>
-          )}
-          <Link href="/discover" className={buttonClass}>
-            Discover
-          </Link>
-          <Link href="/config" className={buttonClass}>
-            Config
-          </Link>
-        </div>
-      </header>
+            <button
+              type="button"
+              onClick={() => void startScan(true)}
+              disabled={busy}
+              className={buttonClass}
+              title="Re-read every model's metadata, ignoring the cache. Slower; for when the reader has changed rather than the files."
+            >
+              full rescan
+            </button>
+          </>
+        )}
+      </AppHeader>
 
       {error && (
         <p className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">

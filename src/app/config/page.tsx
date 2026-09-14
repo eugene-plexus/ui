@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
+import { AppHeader } from "@/components/AppNav";
 import { ConfigEditor } from "@/components/ConfigEditor";
 import { UIPreferences } from "@/components/UIPreferences";
 import { ApiError, api, describeError } from "@/lib/api";
@@ -227,22 +227,17 @@ function ConfigPageInner() {
 
   return (
     <main className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/"
-            className="font-ui text-xs text-[color:var(--muted)] hover:text-[color:var(--foreground)]"
-          >
-            ← Back to playground
-          </Link>
-          <h1 className="font-ui text-sm font-semibold tracking-wide">Config</h1>
-        </div>
-        <nav className="flex flex-wrap gap-1">
+      <AppHeader href="/config">
+        {/* A tab strip within one screen, not navigation between screens
+            — hence its own label, so a screen reader can tell it from
+            the main navigation above it. */}
+        <nav className="flex flex-wrap gap-1" aria-label="Component settings">
           {tabs.map((t) => (
             <button
               key={t.value}
               type="button"
               onClick={() => setTab(t.value)}
+              aria-current={tab === t.value ? "true" : undefined}
               className={`font-ui rounded-[var(--radius)] px-3 py-1 text-xs transition-colors ${
                 tab === t.value
                   ? "bg-[color:var(--accent-left)] text-[color:var(--on-accent-left)] hover:brightness-110"
@@ -252,14 +247,8 @@ function ConfigPageInner() {
               {t.label}
             </button>
           ))}
-          <Link
-            href="/inference"
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
-          >
-            Inference →
-          </Link>
         </nav>
-      </header>
+      </AppHeader>
       {loadError && (
         <div className="status-error border-b px-4 py-2 text-xs">
           Component list could not be loaded — {loadError}. Tabs may be missing or stale.

@@ -22,6 +22,7 @@
     "build:python": "npm run build && node scripts/stage-python.mjs"
   },
   "dependencies": {
+    "lucide-react": "1.45.0",
     "next": "^16.2.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

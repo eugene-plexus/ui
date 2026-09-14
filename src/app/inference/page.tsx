@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AppHeader } from "@/components/AppNav";
 import { ApiError, api, describeError } from "@/lib/api";
 import { describeControlRoot } from "@/lib/controlRoot";
 import { type Row, type Sources, buildRows } from "@/lib/inferenceRows";
@@ -231,41 +232,35 @@ export default function InferencePage() {
 
   return (
     <main className="flex h-screen flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/"
-            className="font-ui text-xs text-[color:var(--muted)] hover:text-[color:var(--foreground)]"
-          >
-            ← Back to playground
-          </Link>
-          <h1 className="font-ui text-sm font-semibold tracking-wide">Inference</h1>
+      <AppHeader
+        href="/inference"
+        detail={
           <span className="font-ui text-xs text-[color:var(--muted)]">
             {rows.length === 0
               ? "nothing serving"
               : `${rows.length} backend${rows.length === 1 ? "" : "s"} across ${nodeOrder.length} node${nodeOrder.length === 1 ? "" : "s"}`}
           </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/library"
-            className={buttonClass}
-            title="Pick a model you own, choose the node, and launch it. The agent there declares a companion driver and the gateway starts routing when the engine is ready."
-          >
-            Launch a model
-          </Link>
-          <Link
-            href="/config"
-            className={buttonClass}
-            title="Something you already run — an Ollama, an OpenAI-compatible server, a cloud CLI — joins the install as an inference-driver pointed at it. Today that is declared on the Config page; a guided form is on the list."
-          >
-            Add an external backend
-          </Link>
-          <Link href="/nodes" className={buttonClass}>
-            Nodes
-          </Link>
-        </div>
-      </header>
+        }
+      >
+        {/* These two stay here and are not replaced by the navigation's
+            Library and Config links. They are actions on this screen —
+            each carries a sentence saying what it does to the install —
+            where the nav says only where a screen lives. */}
+        <Link
+          href="/library"
+          className={buttonClass}
+          title="Pick a model you own, choose the node, and launch it. The agent there declares a companion driver and the gateway starts routing when the engine is ready."
+        >
+          Launch a model
+        </Link>
+        <Link
+          href="/config"
+          className={buttonClass}
+          title="Something you already run — an Ollama, an OpenAI-compatible server, a cloud CLI — joins the install as an inference-driver pointed at it. Today that is declared on the Config page; a guided form is on the list."
+        >
+          Add an external backend
+        </Link>
+      </AppHeader>
 
       {controlRoot && (
         <div

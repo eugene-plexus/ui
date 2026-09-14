@@ -43,4 +43,7 @@ CLAUDE.md
 
 # --- Python packaging (staged build output, never committed) ---
 python/eugene_plexus_ui/static/
+# Left behind when the agent imports this package as an editable install,
+# which is how the navigation acceptance run serves this working tree.
+__pycache__/
 *.egg-info/

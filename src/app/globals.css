@@ -35,6 +35,22 @@
   --on-accent-left: #ffffff;
   --on-accent-right: #ffffff;
   --muted: #6a6a73;
+
+  /* ── The two layer colours the architecture page adds to the accents.
+     `--accent-left` and `--accent-right` already carry four of the six
+     roles on https://eugeneplexus.com/architecture (tools, drivers,
+     agent and library are left; gateway and control root are right).
+     Engines and hardware had no token, and the site's literals cannot
+     simply be pasted in: `--accent-left` is BLUE only here. It is teal
+     in cyberpunk and GREEN in editorial, so a hard-coded #2f9e6e would
+     be a second green meaning something else. Each theme therefore
+     picks values that separate inside its own palette, and the ICON
+     (not the colour) is what carries a layer's identity across a theme
+     switch. See lib/navigation.ts and docs/design/ui-navigation.md §4.
+     Modern is the website's palette by name and by value, so modern
+     takes the site's exact hexes. */
+  --accent-engine: #2f9e6e;
+  --accent-hardware: #8a8a93;
   /* Scrollbar not in the design output — derived: muted at the
      same translucency cyberpunk uses; hover at accent-left. */
   --scrollbar-thumb: rgb(106 106 115 / 0.45);
@@ -80,6 +96,12 @@
   --on-accent-left: #062824;
   --on-accent-right: #2a0518;
   --muted: #a094c4;
+
+  /* Engine green has to clear the teal `--accent-left` above, so it is
+     pushed well toward yellow-green; hardware is a desaturated violet
+     grey that reads on #0c0820, where the site's #8a8a93 would not. */
+  --accent-engine: #5ef2a0;
+  --accent-hardware: #9b93bd;
   --scrollbar-thumb: rgb(94 78 132 / 0.55);
   --scrollbar-thumb-hover: rgb(27 217 194 / 0.6);
 
@@ -134,6 +156,15 @@
   --on-accent-left: #ffffff;
   --on-accent-right: #ffffff;
   --muted: #7d7565;
+
+  /* **Editorial's engine role is not green**, deliberately:
+     `--accent-left: #2d6240` is already a deep green here, and two
+     greens a shade apart would read as one thing. An olive-gold is the
+     nearest separable hue that still belongs to this palette. This is
+     the departure that proves the rule above — the `Cloud` icon is what
+     says "engines", in every theme. */
+  --accent-engine: #7d6b1f;
+  --accent-hardware: #9a927f;
 
   /* Scrollbar — derived from panel + accent. */
   --scrollbar-thumb: rgb(165 153 125 / 0.55);
@@ -389,4 +420,27 @@ body {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ─────────────────────────────── skip link ──────────────────────────────
+   The first focusable element on every signed-in screen, added with the
+   shared navigation (docs/design/ui-navigation.md). Before it there was
+   none anywhere in the app, so a keyboard user tabbed the entire header
+   on every page. Off-screen until focused rather than `display: none`,
+   which would remove it from the tab order and defeat the purpose. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 8px 14px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  background: var(--accent-left);
+  color: var(--on-accent-left);
+  border-radius: var(--radius);
+}
+.skip-link:focus {
+  left: 8px;
+  top: 8px;
 }

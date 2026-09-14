@@ -32,6 +32,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { AppHeader } from "@/components/AppNav";
 import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api } from "@/lib/api";
 
@@ -228,250 +229,245 @@ export default function NodesPage() {
     : "";
 
   return (
-    <main className="relative z-10 mx-auto max-w-4xl px-6 py-8">
-      <header className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="font-ui text-xl font-semibold">Nodes</h1>
-          <p className="mt-1 text-sm text-[color:var(--muted)]">
+    <>
+      <AppHeader
+        href="/nodes"
+        detail={
+          <span className="font-ui text-xs text-[color:var(--muted)]">
             Every machine in this install.
             {status?.epoch != null && <> This root is at epoch {status.epoch}.</>}
-          </p>
-        </div>
-        <Link
-          href="/"
-          className="font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
-        >
-          Back
-        </Link>
-      </header>
+          </span>
+        }
+      />
+      <main className="relative z-10 mx-auto max-w-4xl px-6 py-8">
+        {error && (
+          <div className="status-error mb-6 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            {error}
+          </div>
+        )}
 
-      {error && (
-        <div className="status-error mb-6 rounded-[var(--radius)] border px-3 py-2 text-xs">
-          {error}
-        </div>
-      )}
+        {locked && (
+          <section className="mb-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4">
+            <h2 className="font-ui text-sm font-semibold">This control root is locked</h2>
+            <p className="mt-2 text-xs text-[color:var(--muted)]">
+              It is set up and its records are intact — it just holds the install&rsquo;s signing
+              key sealed and has not been given the passphrase since it last started. Nothing is
+              lost. Until it is unlocked the gateway cannot read this install&rsquo;s topology, so{" "}
+              <span className="font-mono">/v1/models</span> is empty and nothing routes.
+            </p>
+            <p className="mt-2 text-xs text-[color:var(--muted)]">
+              Signing in to this web UI unlocks it too, with the same passphrase — since 2026-09-13.
+              You are seeing this form because the root was locked after you signed in (it
+              restarted), or because it holds a different passphrase from the node agent&rsquo;s.
+              This form talks to the control root itself.
+            </p>
+            <form onSubmit={unlock} className="mt-3 flex flex-wrap items-center gap-2">
+              <label htmlFor="unlock-passphrase" className="sr-only">
+                Operator passphrase
+              </label>
+              <input
+                id="unlock-passphrase"
+                type="password"
+                autoComplete="current-password"
+                value={passphrase}
+                onChange={(ev) => setPassphrase(ev.target.value)}
+                placeholder="Operator passphrase"
+                className="min-w-[16rem] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-3 py-1.5 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={unlocking || !passphrase}
+                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
+              >
+                {unlocking ? "Unlocking…" : "Unlock"}
+              </button>
+            </form>
+            {unlockError && (
+              <div className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+                {unlockError}
+              </div>
+            )}
+            <p className="mt-3 text-xs text-[color:var(--muted)]">
+              This happens on every restart unless auto-unlock is on. A host can use its OS keyring;
+              a container has none, so it reads the passphrase from a file you mount — see{" "}
+              <span className="font-mono">securityMode</span> in the control root&rsquo;s settings.
+            </p>
+          </section>
+        )}
 
-      {locked && (
-        <section className="mb-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4">
-          <h2 className="font-ui text-sm font-semibold">This control root is locked</h2>
-          <p className="mt-2 text-xs text-[color:var(--muted)]">
-            It is set up and its records are intact — it just holds the install&rsquo;s signing key
-            sealed and has not been given the passphrase since it last started. Nothing is lost.
-            Until it is unlocked the gateway cannot read this install&rsquo;s topology, so{" "}
-            <span className="font-mono">/v1/models</span> is empty and nothing routes.
-          </p>
-          <p className="mt-2 text-xs text-[color:var(--muted)]">
-            Signing in to this web UI unlocks it too, with the same passphrase — since 2026-09-13.
-            You are seeing this form because the root was locked after you signed in (it restarted),
-            or because it holds a different passphrase from the node agent&rsquo;s. This form talks
-            to the control root itself.
-          </p>
-          <form onSubmit={unlock} className="mt-3 flex flex-wrap items-center gap-2">
-            <label htmlFor="unlock-passphrase" className="sr-only">
-              Operator passphrase
-            </label>
-            <input
-              id="unlock-passphrase"
-              type="password"
-              autoComplete="current-password"
-              value={passphrase}
-              onChange={(ev) => setPassphrase(ev.target.value)}
-              placeholder="Operator passphrase"
-              className="min-w-[16rem] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-3 py-1.5 text-sm"
-            />
-            <button
-              type="submit"
-              disabled={unlocking || !passphrase}
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
-            >
-              {unlocking ? "Unlocking…" : "Unlock"}
-            </button>
-          </form>
-          {unlockError && (
-            <div className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
-              {unlockError}
-            </div>
-          )}
-          <p className="mt-3 text-xs text-[color:var(--muted)]">
-            This happens on every restart unless auto-unlock is on. A host can use its OS keyring; a
-            container has none, so it reads the passphrase from a file you mount — see{" "}
-            <span className="font-mono">securityMode</span> in the control root&rsquo;s settings.
-          </p>
-        </section>
-      )}
-
-      <section className="mb-8">
-        <h2 className="font-ui mb-3 text-sm font-semibold">This install</h2>
-        {nodes === null ? (
-          <p className="text-sm text-[color:var(--muted)]">Loading…</p>
-        ) : locked ? (
-          // Not "no nodes" — we did not get to ask. Saying the registry
-          // is empty here would be a confident wrong answer about the
-          // thing the operator is most likely to act on.
-          <p className="text-sm text-[color:var(--muted)]">Unknown until the root is unlocked.</p>
-        ) : nodes.length === 0 ? (
-          <p className="text-sm text-[color:var(--muted)]">
-            No nodes are enrolled. That is unusual — the machine running the control root enrolls
-            itself like any other.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="font-ui text-xs text-[color:var(--muted)]">
-                <tr>
-                  <th className="py-2 pr-4">Name</th>
-                  <th className="py-2 pr-4">Role</th>
-                  <th className="py-2 pr-4">Address</th>
-                  <th className="py-2 pr-4">Seen</th>
-                  <th className="py-2 pr-4">Host</th>
-                  <th className="py-2 pr-4">Serves</th>
-                </tr>
-              </thead>
-              <tbody>
-                {nodes.map((n) => (
-                  <tr key={n.name} className="border-t border-[color:var(--border)]">
-                    <td className="py-2 pr-4 font-medium">{n.name}</td>
-                    <td className="py-2 pr-4 text-[color:var(--muted)]">{n.role}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">
-                      {n.url ?? <span className="text-[color:var(--muted)]">none recorded</span>}
-                      {/* A node that has re-advertised has moved at least
+        <section className="mb-8">
+          <h2 className="font-ui mb-3 text-sm font-semibold">This install</h2>
+          {nodes === null ? (
+            <p className="text-sm text-[color:var(--muted)]">Loading…</p>
+          ) : locked ? (
+            // Not "no nodes" — we did not get to ask. Saying the registry
+            // is empty here would be a confident wrong answer about the
+            // thing the operator is most likely to act on.
+            <p className="text-sm text-[color:var(--muted)]">Unknown until the root is unlocked.</p>
+          ) : nodes.length === 0 ? (
+            <p className="text-sm text-[color:var(--muted)]">
+              No nodes are enrolled. That is unusual — the machine running the control root enrolls
+              itself like any other.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="font-ui text-xs text-[color:var(--muted)]">
+                  <tr>
+                    <th className="py-2 pr-4">Name</th>
+                    <th className="py-2 pr-4">Role</th>
+                    <th className="py-2 pr-4">Address</th>
+                    <th className="py-2 pr-4">Seen</th>
+                    <th className="py-2 pr-4">Host</th>
+                    <th className="py-2 pr-4">Serves</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nodes.map((n) => (
+                    <tr key={n.name} className="border-t border-[color:var(--border)]">
+                      <td className="py-2 pr-4 font-medium">{n.name}</td>
+                      <td className="py-2 pr-4 text-[color:var(--muted)]">{n.role}</td>
+                      <td className="py-2 pr-4 font-mono text-xs">
+                        {n.url ?? <span className="text-[color:var(--muted)]">none recorded</span>}
+                        {/* A node that has re-advertised has moved at least
                           once. Surfaced because a changed address used to
                           be invisible until routing failed. */}
-                      {n.advertiseSequence ? (
-                        <span className="ml-2 text-[color:var(--muted)]">
-                          (re-advertised ×{n.advertiseSequence})
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="py-2 pr-4">
-                      {n.reachable ? (
-                        <span className="text-[color:var(--ok,inherit)]">reachable</span>
-                      ) : (
-                        <span className="text-[color:var(--muted)]">down</span>
-                      )}
-                      {status?.epoch != null &&
-                      n.lastSeenEpoch != null &&
-                      n.lastSeenEpoch < status.epoch ? (
-                        <span
-                          className="ml-2 text-xs text-[color:var(--muted)]"
-                          title="This node has not yet learned about a promotion. Bounded, self-healing, and deliberately shown rather than hidden."
-                        >
-                          epoch {n.lastSeenEpoch}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="py-2 pr-4 text-xs text-[color:var(--muted)]">
-                      {[n.os, n.arch].filter(Boolean).join("/") || "—"}
-                      {n.devices?.length ? ` · ${n.devices.length} device(s)` : ""}
-                    </td>
-                    <td className="py-2 pr-4 text-xs">
-                      {/* The question this table could not answer: a node was
+                        {n.advertiseSequence ? (
+                          <span className="ml-2 text-[color:var(--muted)]">
+                            (re-advertised ×{n.advertiseSequence})
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {n.reachable ? (
+                          <span className="text-[color:var(--ok,inherit)]">reachable</span>
+                        ) : (
+                          <span className="text-[color:var(--muted)]">down</span>
+                        )}
+                        {status?.epoch != null &&
+                        n.lastSeenEpoch != null &&
+                        n.lastSeenEpoch < status.epoch ? (
+                          <span
+                            className="ml-2 text-xs text-[color:var(--muted)]"
+                            title="This node has not yet learned about a promotion. Bounded, self-healing, and deliberately shown rather than hidden."
+                          >
+                            epoch {n.lastSeenEpoch}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="py-2 pr-4 text-xs text-[color:var(--muted)]">
+                        {[n.os, n.arch].filter(Boolean).join("/") || "—"}
+                        {n.devices?.length ? ` · ${n.devices.length} device(s)` : ""}
+                      </td>
+                      <td className="py-2 pr-4 text-xs">
+                        {/* The question this table could not answer: a node was
                           "reachable" and nothing said what it was for. */}
-                      {(served[n.name] ?? []).length === 0 ? (
-                        <span className="text-[color:var(--muted)]">nothing</span>
-                      ) : (
-                        <ul className="space-y-0.5">
-                          {(served[n.name] ?? []).map((s) => (
-                            <li key={s.driver} className="font-mono">
-                              {s.model ?? s.driver}
-                              <span className="ml-1 font-sans text-[color:var(--muted)]">
-                                via {s.driver}
-                                {s.runtime
-                                  ? ` (runtime ${s.runtime}${s.status ? `, ${s.status}` : ""})`
-                                  : ""}
-                                {s.reachable === false ? " · unreachable" : ""}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      <Link href="/inference" className="mt-1 block text-[11px] underline">
-                        Inference →
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                        {(served[n.name] ?? []).length === 0 ? (
+                          <span className="text-[color:var(--muted)]">nothing</span>
+                        ) : (
+                          <ul className="space-y-0.5">
+                            {(served[n.name] ?? []).map((s) => (
+                              <li key={s.driver} className="font-mono">
+                                {s.model ?? s.driver}
+                                <span className="ml-1 font-sans text-[color:var(--muted)]">
+                                  via {s.driver}
+                                  {s.runtime
+                                    ? ` (runtime ${s.runtime}${s.status ? `, ${s.status}` : ""})`
+                                    : ""}
+                                  {s.reachable === false ? " · unreachable" : ""}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <Link href="/inference" className="mt-1 block text-[11px] underline">
+                          Inference →
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
-      {/* Hidden rather than disabled while locked: minting a join token
+        {/* Hidden rather than disabled while locked: minting a join token
           is a control-root write, so the button could only produce the
           same 503 the panel above already explains. */}
-      <section hidden={locked}>
-        <h2 className="font-ui mb-2 text-sm font-semibold">Add a node</h2>
-        <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
-          Mint a token here, then run the command it produces on the other machine. The token is
-          single-use, short-lived, and <strong>shown once</strong> — it is not stored in a form
-          anything can read back, so a lost one is re-minted rather than looked up.
-        </p>
+        <section hidden={locked}>
+          <h2 className="font-ui mb-2 text-sm font-semibold">Add a node</h2>
+          <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
+            Mint a token here, then run the command it produces on the other machine. The token is
+            single-use, short-lived, and <strong>shown once</strong> — it is not stored in a form
+            anything can read back, so a lost one is re-minted rather than looked up.
+          </p>
 
-        <div className="mb-4 flex flex-wrap items-end gap-3">
-          <label className="font-ui text-xs">
-            <span className="mb-1 block text-[color:var(--muted)]">Node name (optional)</span>
-            <input
-              value={newNodeName}
-              onChange={(e) => setNewNodeName(e.target.value)}
-              placeholder="gpu-box"
-              className="w-56 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 text-sm"
-            />
-          </label>
-          <label className="font-ui text-xs">
-            <span className="mb-1 block text-[color:var(--muted)]">
-              Control root URL the other machine can reach
-            </span>
-            <input
-              value={controlUrl}
-              onChange={(e) => setControlUrl(e.target.value)}
-              placeholder="http://100.64.0.1:8083"
-              className="w-72 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 font-mono text-sm"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => void mint()}
-            disabled={minting}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {minting ? "Minting…" : "Mint a join token"}
-          </button>
-        </div>
-
-        {mintError && (
-          <div className="status-error mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">
-            {mintError}
-          </div>
-        )}
-
-        {minted && (
-          <div className="rounded-[var(--radius)] border border-[color:var(--border)] p-3">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="font-ui text-xs text-[color:var(--muted)]">
-                Run this on the machine you are adding. Expires{" "}
-                {new Date(minted.expiresAt).toLocaleTimeString()}.
+          <div className="mb-4 flex flex-wrap items-end gap-3">
+            <label className="font-ui text-xs">
+              <span className="mb-1 block text-[color:var(--muted)]">Node name (optional)</span>
+              <input
+                value={newNodeName}
+                onChange={(e) => setNewNodeName(e.target.value)}
+                placeholder="gpu-box"
+                className="w-56 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="font-ui text-xs">
+              <span className="mb-1 block text-[color:var(--muted)]">
+                Control root URL the other machine can reach
               </span>
-              <CopyButton text={joinCommand} label="Copy" />
-            </div>
-            <pre className="overflow-x-auto rounded-[var(--radius)] bg-[color:var(--panel)] p-3 font-mono text-xs">
-              {joinCommand}
-            </pre>
-            {!controlUrl && (
-              <p className="mt-2 text-xs text-[color:var(--muted)]">
-                This root has no address other hosts can reach recorded, so the command above needs
-                its URL filled in by hand. Set <code>advertiseUrl</code> in the agent config on this
-                machine.
-              </p>
-            )}
-            <p className="mt-2 text-xs text-[color:var(--muted)]">
-              The other machine will also offer this as a question the first time it starts, if it
-              is started at a terminal.
-            </p>
+              <input
+                value={controlUrl}
+                onChange={(e) => setControlUrl(e.target.value)}
+                placeholder="http://100.64.0.1:8083"
+                className="w-72 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 font-mono text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void mint()}
+              disabled={minting}
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {minting ? "Minting…" : "Mint a join token"}
+            </button>
           </div>
-        )}
-      </section>
-    </main>
+
+          {mintError && (
+            <div className="status-error mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">
+              {mintError}
+            </div>
+          )}
+
+          {minted && (
+            <div className="rounded-[var(--radius)] border border-[color:var(--border)] p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="font-ui text-xs text-[color:var(--muted)]">
+                  Run this on the machine you are adding. Expires{" "}
+                  {new Date(minted.expiresAt).toLocaleTimeString()}.
+                </span>
+                <CopyButton text={joinCommand} label="Copy" />
+              </div>
+              <pre className="overflow-x-auto rounded-[var(--radius)] bg-[color:var(--panel)] p-3 font-mono text-xs">
+                {joinCommand}
+              </pre>
+              {!controlUrl && (
+                <p className="mt-2 text-xs text-[color:var(--muted)]">
+                  This root has no address other hosts can reach recorded, so the command above
+                  needs its URL filled in by hand. Set <code>advertiseUrl</code> in the agent config
+                  on this machine.
+                </p>
+              )}
+              <p className="mt-2 text-xs text-[color:var(--muted)]">
+                The other machine will also offer this as a question the first time it starts, if it
+                is started at a terminal.
+              </p>
+            </div>
+          )}
+        </section>
+      </main>
+    </>
   );
 }
 
