@@ -23,6 +23,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
 import { ApiError, api } from "@/lib/api";
+import { unlockControlRoot } from "@/lib/controlUnlock";
 import { setSessionToken } from "@/lib/session";
 
 interface LoginResponse {
@@ -129,6 +130,15 @@ function LoginForm() {
         { skipAuth: true },
       );
       setSessionToken(resp.sessionToken);
+      // The same passphrase opens the control root, which seals on every
+      // restart and used to ask for it a second time on /nodes. Awaited so
+      // the page we land on already routes; never fatal -- see the module.
+      const unlock = await unlockControlRoot(passphrase, resp.sessionToken);
+      if (unlock === "mismatch") {
+        console.warn(
+          "signed in, but the control root refused the same passphrase; the Nodes screen will ask for its own",
+        );
+      }
       router.replace(safeNext(searchParams.get("next")));
     } catch (e) {
       if (e instanceof ApiError) {

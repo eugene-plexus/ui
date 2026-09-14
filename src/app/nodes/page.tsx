@@ -261,8 +261,10 @@ export default function NodesPage() {
             <span className="font-mono">/v1/models</span> is empty and nothing routes.
           </p>
           <p className="mt-2 text-xs text-[color:var(--muted)]">
-            Signing in to this web UI does not unlock it: that login goes to the node agent, which
-            is not what is sealed. This form talks to the control root itself.
+            Signing in to this web UI unlocks it too, with the same passphrase — since 2026-09-13.
+            You are seeing this form because the root was locked after you signed in (it restarted),
+            or because it holds a different passphrase from the node agent&rsquo;s. This form talks
+            to the control root itself.
           </p>
           <form onSubmit={unlock} className="mt-3 flex flex-wrap items-center gap-2">
             <label htmlFor="unlock-passphrase" className="sr-only">
