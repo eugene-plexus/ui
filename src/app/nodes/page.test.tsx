@@ -113,10 +113,15 @@ describe("nodes page, sealed control root", () => {
     expect(screen.queryByText(/no nodes are enrolled/i)).toBeNull();
   });
 
-  it("says plainly that signing in to the UI does not unlock it", async () => {
+  it("says why the form is still here now that signing in unlocks the root too", async () => {
+    // Until 2026-09-13 this asserted the opposite sentence: "signing in
+    // does not unlock it". The login page posts the passphrase to the root
+    // now, so the panel's job is to explain the two cases it still covers
+    // -- a root that restarted after sign-in, or one keyed differently.
     render(<NodesPage />);
     await screen.findByText(/this control root is locked/i);
-    expect(screen.getByText(/goes to the node agent/i)).toBeTruthy();
+    expect(screen.getByText(/signing in to this web ui unlocks it too/i)).toBeTruthy();
+    expect(screen.getByText(/different passphrase/i)).toBeTruthy();
   });
 
   it("unlocks against the control root and then shows the install", async () => {
