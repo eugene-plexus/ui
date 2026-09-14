@@ -59,6 +59,17 @@ export type ChatCompletionMessage = GatewayComponents["schemas"]["ChatCompletion
 export type CompletionUsage = GatewayComponents["schemas"]["CompletionUsage"];
 export type CompletionRoutingInfo = GatewayComponents["schemas"]["CompletionRoutingInfo"];
 
+// Tool calling and structured output, on the same wire contract. `Tool`
+// is what a harness sends; `ToolCall` is what comes back on an assistant
+// message; `ToolCallDelta` is the streamed fragment a client accumulates
+// by `index`. In the generated module since specs 95dfa8f; consumed by
+// the playground since the diagnostic (install-paths step 8).
+export type Tool = GatewayComponents["schemas"]["Tool"];
+export type ToolCall = GatewayComponents["schemas"]["ToolCall"];
+export type ToolCallDelta = GatewayComponents["schemas"]["ToolCallDelta"];
+export type ToolChoice = NonNullable<ChatCompletionRequest["tool_choice"]>;
+export type ResponseFormat = GatewayComponents["schemas"]["ResponseFormat"];
+
 // The OpenAI error envelope, which the gateway returns instead of RFC
 // 7807 on `/v1/chat/completions` and `/v1/models` — SDKs parse this
 // shape to build their exception types.
