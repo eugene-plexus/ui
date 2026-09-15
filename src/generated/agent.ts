@@ -2145,6 +2145,25 @@ export interface components {
              */
             contextLength?: number;
             /**
+             * @description The largest `contextSize` at which this file fits entirely in
+             *     the target device's free memory, from the library's fit model
+             *     scored against the budget this agent measured. Rounded down
+             *     to a multiple of 256. `null` when the library was not
+             *     consulted (`basis: file_size`), and `0` when the weights
+             *     alone do not fit, so no context makes it true.
+             *
+             *     **This is the number a refusal should hand back.** Added
+             *     2026-09-15 after Discover scored a 27B Q6 as `fits` at its
+             *     8,192-token guidance context, the operator made a default
+             *     profile that left `contextSize` to the engine, and admission
+             *     refused it at the model's own 262,144 — 41 GiB against 30 —
+             *     with advice to "lower contextSize" and no number. The two
+             *     screens had never disagreed about the model, only about the
+             *     context, and neither said so. A profile form prefills from
+             *     this; a refusal offers it as a one-click fix.
+             */
+            maxContextLength?: number | null;
+            /**
              * @description Runtimes currently holding memory on that device, most idle
              *     first. What an operator would stop to make room, and the
              *     list the gateway's opt-in eviction walks — restricted there

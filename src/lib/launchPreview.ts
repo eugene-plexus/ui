@@ -26,6 +26,28 @@ export interface LaunchPreview {
   detail: string | null;
   /** The config tab that fixes a missing mapping, when that is the problem. */
   fixTarget: string | null;
+  /**
+   * A `contextSize` at which the agent says this file WOULD fit entirely
+   * in the device's memory, when the one asked for (or the model's own,
+   * when the profile left it to the engine) does not. Null when it fits
+   * as asked, when the weights alone do not fit, or when the agent did
+   * not say.
+   *
+   * Discover scores at the library's 8,192-token guidance context; a
+   * profile with no `contextSize` is scored at the model's own, which
+   * for a current model is 262,144. Those two screens never disagreed
+   * about the model, only about the context, and until 2026-09-15 the
+   * refusal said "lower contextSize" without a number to lower it to.
+   */
+  suggestedContext: number | null;
+}
+
+function contextSuggestion(admission: Admission): number | null {
+  const max = admission.maxContextLength;
+  if (typeof max !== "number" || max <= 0) return null;
+  const asked = admission.contextLength;
+  if (asked != null && asked <= max) return null;
+  return max;
 }
 
 function gib(bytes: number | null | undefined): string | null {
@@ -59,6 +81,7 @@ export function describeAdmission(
         ? `${location.path} does not exist there${via}. If the Library's files are reachable from ${nodeLabel} over a share, say where that folder is mounted: on the folder itself (every node of that kind inherits it), or as an override for ${nodeLabel}.`
         : `${location.path} resolves to ${location.localPath} there${via}, and nothing is at that path. Check the mount, or fix the folder's mount or ${nodeLabel}'s override.`,
       fixTarget: nodeTarget,
+      suggestedContext: null,
     };
   }
 
@@ -68,6 +91,7 @@ export function describeAdmission(
       headline: `Will not fit on ${nodeLabel}`,
       detail: admission.reason,
       fixTarget: null,
+      suggestedContext: contextSuggestion(admission),
     };
   }
 
@@ -92,6 +116,12 @@ export function describeAdmission(
     );
   }
   if (admission.warning) parts.push(admission.warning);
+  // Admitted, but only with partial offload: the number that would
+  // make it a clean fit is worth more than the warning.
+  const suggested = admission.fit === "fits" ? null : contextSuggestion(admission);
+  if (suggested != null) {
+    parts.push(`Fits entirely in GPU memory up to ${suggested.toLocaleString()} context.`);
+  }
 
   const fitWord =
     admission.fit === "fits"
@@ -104,6 +134,7 @@ export function describeAdmission(
     headline: `Launch on ${nodeLabel}: ${fitWord}`,
     detail: parts.length ? parts.join(" ") : null,
     fixTarget: null,
+    suggestedContext: suggested,
   };
 }
 

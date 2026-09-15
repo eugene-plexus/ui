@@ -143,6 +143,61 @@ describe("describeAdmission", () => {
   });
 });
 
+describe("describeAdmission: the context that would fit", () => {
+  // The live case, 2026-09-15: Discover said `fits` at 8,192, the default
+  // profile left contextSize to the engine, admission refused at 262,144.
+  const REFUSED_AT_FULL_CONTEXT: Admission = {
+    ...TOO_BIG,
+    fit: "split",
+    requiredBytes: 41.1 * 1024 ** 3,
+    freeBytes: 29.7 * 1024 ** 3,
+    contextLength: 262144,
+    maxContextLength: 90112,
+    reason:
+      "refuse: ... needs about 41.1 GiB at 262144 context ... It fits up to 90112 context on this device. ...",
+  };
+
+  it("a refusal carries the agent's number as a one-click suggestion", () => {
+    const preview = describeAdmission(
+      REFUSED_AT_FULL_CONTEXT,
+      "Amish_Station",
+      "node:Amish_Station",
+    );
+    expect(preview.tone).toBe("error");
+    expect(preview.suggestedContext).toBe(90112);
+    expect(preview.detail).toBe(REFUSED_AT_FULL_CONTEXT.reason);
+  });
+
+  it("no number when the weights alone do not fit, or the agent did not say", () => {
+    expect(
+      describeAdmission({ ...REFUSED_AT_FULL_CONTEXT, maxContextLength: 0 }, "n", "agent")
+        .suggestedContext,
+    ).toBeNull();
+    expect(describeAdmission(TOO_BIG, "n", "agent").suggestedContext).toBeNull();
+  });
+
+  it("an admit with partial offload names the context that would fit cleanly", () => {
+    const preview = describeAdmission(
+      { ...ADMIT, fit: "split", contextLength: 131072, maxContextLength: 90112 },
+      "here",
+      "agent",
+    );
+    expect(preview.tone).toBe("warn");
+    expect(preview.suggestedContext).toBe(90112);
+    expect(preview.detail).toContain("Fits entirely in GPU memory up to 90,112 context.");
+  });
+
+  it("a clean fit suggests nothing, even when the agent reports a maximum", () => {
+    const preview = describeAdmission(
+      { ...ADMIT, contextLength: 8192, maxContextLength: 90112 },
+      "here",
+      "agent",
+    );
+    expect(preview.suggestedContext).toBeNull();
+    expect(preview.detail).not.toContain("Fits entirely");
+  });
+});
+
 describe("configTabHref", () => {
   it("links to the node's agent tab", () => {
     expect(configTabHref("node:Amish_Station")).toBe("/config?tab=node%3AAmish_Station");

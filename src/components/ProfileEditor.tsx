@@ -104,6 +104,11 @@ export function ProfileEditor({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [launched, setLaunched] = useState<string | null>(null);
+  // What a NEW profile should start its contextSize at, asked of the
+  // target node before the form renders: undefined while asking, null
+  // when the model's own context fits (or nobody could say), else the
+  // largest context that fits entirely in that node's GPU memory.
+  const [prefillContext, setPrefillContext] = useState<number | null | undefined>(undefined);
 
   const load = useCallback(async () => {
     try {
@@ -122,6 +127,65 @@ export function ProfileEditor({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Discover scored this file at the library's guidance context; a profile
+  // that leaves contextSize to the engine is scored at the model's own. Ask
+  // the node, with the flags the form would otherwise start empty, so the
+  // form can start at a number that fits instead of one that is refused.
+  const probeEngine = engines[0]?.engine ?? null;
+  useEffect(() => {
+    if (!creating || !node || !probeEngine) {
+      setPrefillContext(null);
+      return;
+    }
+    let cancelled = false;
+    setPrefillContext(undefined);
+    void (async () => {
+      let suggestion: number | null = null;
+      try {
+        const probe: RuntimeCreate = {
+          name: "context-probe",
+          engine: probeEngine,
+          modelPath: model.path,
+          autoStart: false,
+        };
+        const answer = await api.post<Admission>(node.target, "/v1/runtimes/admission", probe);
+        const max = answer.maxContextLength;
+        const own = model.contextLength ?? null;
+        if (typeof max === "number" && max > 0 && (own == null || max < own)) suggestion = max;
+      } catch {
+        suggestion = null;
+      }
+      if (!cancelled) setPrefillContext(suggestion);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [creating, node, probeEngine, model.path, model.contextLength]);
+
+  async function setContext(profile: ModelProfile, context: number) {
+    setError(null);
+    const spec: ModelProfileSpec = {
+      name: profile.name,
+      engine: profile.engine,
+      default: profile.default ?? false,
+      flags: { ...(profile.flags ?? {}), contextSize: context },
+      extraArgs: profile.extraArgs ?? undefined,
+      env: profile.env ?? undefined,
+      notes: profile.notes ?? undefined,
+    };
+    try {
+      await api.put<ModelProfile>(
+        "library",
+        `/v1/models/${encodeURIComponent(model.id)}/profiles/${encodeURIComponent(profile.id)}`,
+        spec,
+      );
+      await load();
+      onChanged();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
 
   async function remove(profile: ModelProfile) {
     setError(null);
@@ -187,7 +251,12 @@ export function ProfileEditor({
       </p>
 
       {canLaunch && node && previewProfile && (
-        <LaunchPreview model={model} profile={previewProfile} node={node} />
+        <LaunchPreview
+          model={model}
+          profile={previewProfile}
+          node={node}
+          onSetContext={(context) => setContext(previewProfile, context)}
+        />
       )}
 
       {error && (
@@ -214,8 +283,15 @@ export function ProfileEditor({
         </p>
       )}
 
-      {creating && (
+      {creating && prefillContext === undefined && node && (
+        <p className="mt-3 text-xs text-[color:var(--muted)]" data-testid="context-probe">
+          Asking {node.label} what context fits&hellip;
+        </p>
+      )}
+      {creating && (prefillContext !== undefined || !node) && (
         <ProfileForm
+          suggestedContext={prefillContext ?? null}
+          nodeLabel={node?.label ?? null}
           model={model}
           engines={engines}
           onCancel={() => setCreating(false)}
@@ -280,10 +356,12 @@ function LaunchPreview({
   model,
   profile,
   node,
+  onSetContext,
 }: {
   model: LibraryModel;
   profile: ModelProfile;
   node: TargetNode;
+  onSetContext: (context: number) => Promise<void>;
 }) {
   const [admission, setAdmission] = useState<Admission | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -334,6 +412,21 @@ function LaunchPreview({
         </span>
       </p>
       {preview.detail && <p className="mt-0.5 break-all">{preview.detail}</p>}
+      {preview.suggestedContext != null && (
+        <p className="mt-1.5">
+          <button
+            type="button"
+            className={buttonClass}
+            data-testid="set-context"
+            onClick={() => void onSetContext(preview.suggestedContext as number)}
+          >
+            Set contextSize to {preview.suggestedContext.toLocaleString()} on this profile
+          </button>
+          <span className="ml-2 opacity-70">
+            the largest context at which this file fits entirely in {node.label}&rsquo;s GPU memory
+          </span>
+        </p>
+      )}
       {preview.fixTarget && (
         <p className="mt-1">
           <Link href={libraryFoldersHref(node.name)} className="underline">
@@ -415,18 +508,27 @@ function ProfileForm({
   model,
   engines,
   existing,
+  suggestedContext = null,
+  nodeLabel = null,
   onCancel,
   onSaved,
 }: {
   model: LibraryModel;
   engines: EngineDescriptor[];
   existing?: ModelProfile;
+  /** For a NEW profile: the contextSize to start at, from the target
+   * node's admission dry run. Null when the model's own context fits. */
+  suggestedContext?: number | null;
+  nodeLabel?: string | null;
   onCancel: () => void;
   onSaved: () => void | Promise<void>;
 }) {
   const [name, setName] = useState(existing?.name ?? suggestedName(model));
   const [engine, setEngine] = useState(existing?.engine ?? engines[0]?.engine ?? "llama_cpp");
-  const [flags, setFlags] = useState<Record<string, unknown>>({ ...(existing?.flags ?? {}) });
+  const [flags, setFlags] = useState<Record<string, unknown>>(() => ({
+    ...(existing?.flags ?? {}),
+    ...(!existing && suggestedContext != null ? { contextSize: suggestedContext } : {}),
+  }));
   const [extraArgs, setExtraArgs] = useState((existing?.extraArgs ?? []).join(" "));
   const [env, setEnv] = useState(
     Object.entries(existing?.env ?? {})
@@ -532,6 +634,22 @@ function ProfileForm({
               onChange={(v) => setFlags((prev) => ({ ...prev, [field.key]: v }))}
             />
           ))}
+          {!existing && suggestedContext != null && (
+            <p
+              className="mt-1 text-xs text-[color:var(--muted)]"
+              data-testid="context-prefill-note"
+            >
+              contextSize starts at {suggestedContext.toLocaleString()}: the largest context at
+              which this file fits entirely in {nodeLabel ?? "this node"}&rsquo;s GPU memory.
+              {model.contextLength != null && (
+                <>
+                  {" "}
+                  The model allows {model.contextLength.toLocaleString()}; above the prefilled value
+                  the launch spills into host memory or is refused.
+                </>
+              )}
+            </p>
+          )}
         </div>
       ) : (
         <p className="mt-3 text-xs text-[color:var(--muted)]">
