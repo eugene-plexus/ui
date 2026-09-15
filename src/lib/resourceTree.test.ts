@@ -11,7 +11,7 @@
  * one nobody can produce on demand.
  */
 
-import { readdirSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -247,7 +247,8 @@ describe("it holds the install the tab strip could not", () => {
     expect(drivers?.children).toHaveLength(10);
     expect(drivers?.children.every((g) => g.children.length === 4)).toBe(true);
     const leaves = flatten(tree).filter((n) => n.kind === "leaf");
-    expect(leaves).toHaveLength(40 + 10 + 3);
+    // 40 drivers, 10 agents, 3 singletons, and the 10 machines under Library.
+    expect(leaves).toHaveLength(40 + 10 + 3 + 10);
     // The top level stays five whatever the install does.
     expect(tree.children).toHaveLength(5);
   });
@@ -258,21 +259,21 @@ describe("the page menu", () => {
     const tree = buildTree(TWO_MACHINE);
     const pagesOf = (sel: string) => findNode(tree, sel)?.pages.map((p) => p.label);
     expect(pagesOf("gateway")).toEqual(["Metrics", "Config"]);
-    expect(pagesOf("library")).toEqual(["Models", "Discover", "Config"]);
+    expect(pagesOf("library")).toEqual(["Models", "Folders", "Discover", "Config"]);
+    expect(pagesOf("library:node:nas")).toEqual(["Folders"]);
     expect(pagesOf("control")).toEqual(["Nodes", "Config"]);
     expect(pagesOf("agent:nas")).toEqual(["Config"]);
     expect(pagesOf("driver:ollama-qwen@Amish_Station")).toEqual(["Config"]);
   });
 
   it("points every page at a route that exists", () => {
+    // By page file, not by top-level directory: `/library/folders` is a
+    // nested route (2026-09-14), and a directory listing one level deep
+    // would have called it missing.
     const appDir = resolve(process.cwd(), "src", "app");
-    const routes = new Set(
-      readdirSync(appDir)
-        .filter((e) => !e.startsWith("_") && !e.startsWith("."))
-        .filter((e) => statSync(join(appDir, e)).isDirectory())
-        .map((e) => `/${e}`),
+    const missing = pageRoutes().filter(
+      (r) => r !== "/" && !existsSync(join(appDir, ...r.split("/").filter(Boolean), "page.tsx")),
     );
-    const missing = pageRoutes().filter((r) => r !== "/" && !routes.has(r));
     expect(missing, `page routes with no page: ${missing.join(", ")}`).toEqual([]);
   });
 
@@ -297,6 +298,8 @@ describe("selection round-trips", () => {
     ["control", { type: "control", node: null, name: null }],
     ["agent", { type: "agent", node: null, name: null }],
     ["agent:Amish_Station", { type: "agent", node: "Amish_Station", name: null }],
+    ["library:node", { type: "libraryNode", node: null, name: null }],
+    ["library:node:nas", { type: "libraryNode", node: "nas", name: null }],
     ["driver:qwen3-8b", { type: "driver", node: null, name: "qwen3-8b" }],
     ["driver:llama-1@node-b", { type: "driver", node: "node-b", name: "llama-1" }],
   ])("parses %s", (raw, expected) => {

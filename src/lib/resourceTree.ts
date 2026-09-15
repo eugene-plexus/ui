@@ -134,9 +134,18 @@ const PAGES: Record<string, PageRef[]> = {
   ],
   library: [
     { id: "models", label: "Models", route: "/library", icon: "Database" },
+    // Folders and their reach, every node at once (2026-09-14). Second,
+    // not first: on the commonest install -- one box -- Models is what the
+    // operator came for, and Folders says "same path" three times.
+    { id: "folders", label: "Folders", route: "/library/folders", icon: "FolderTree" },
     { id: "discover", label: "Discover", route: "/discover", icon: "FolderOpen" },
     { id: "config", label: "Config", route: "/config", icon: "Server" },
   ],
+  // A machine under Library: not an instance of the library, but how that
+  // machine reaches it. One page, deliberately -- the object exists so an
+  // operator can set a node's override from the Library branch, with a
+  // picker that browses THAT node, without visiting an agent page.
+  libraryNode: [{ id: "folders", label: "Folders", route: "/library/folders", icon: "FolderTree" }],
   control: [
     { id: "nodes", label: "Nodes", route: "/nodes", icon: "ShieldCheck" },
     { id: "config", label: "Config", route: "/config", icon: "Server" },
@@ -171,6 +180,15 @@ export function buildTree(topology: Topology): TreeNode {
       children.push(driverBranch(layer, branch.label, nodes, components, localNode));
     } else if (branch.layer === "agent") {
       children.push(agentBranch(layer, branch.label, nodes, localNode));
+    } else if (branch.layer === "library") {
+      // The deliberate exception to "machines only under kinds that
+      // multiply" (design §5.1): a machine under Library is how that
+      // machine reaches the Library, and the Folders page for one node
+      // has to hang off something in the Library branch.
+      const singleton = singletonLeaf(layer, branch.label, components, localNode);
+      if (singleton) {
+        children.push({ ...singleton, children: libraryNodeLeaves(layer, nodes, localNode) });
+      }
     } else {
       const singleton = singletonLeaf(layer, branch.label, components, localNode);
       if (singleton) children.push(singleton);
@@ -299,6 +317,42 @@ function agentBranch(
 }
 
 /**
+ * One leaf per machine under the Library: how that machine reaches the
+ * Library's folders (2026-09-14). Same machines, same order and same
+ * names as under Agents, so the two branches read as one list; the
+ * `sel` is `library:node:<name>`, or the bare `library:node` on an
+ * unenrolled box, mirroring `agent`.
+ */
+function libraryNodeLeaves(layer: Layer, nodes: string[], localNode: string | null): TreeNode[] {
+  if (nodes.length === 0) {
+    return [
+      {
+        sel: "library:node",
+        kind: "leaf",
+        label: localNode ?? THIS_MACHINE,
+        layer: layer.id,
+        icon: "FolderTree",
+        node: localNode,
+        children: [],
+        pages: PAGES.libraryNode ?? [],
+        hint: "this machine",
+      },
+    ];
+  }
+  return nodes.map((name) => ({
+    sel: `library:node:${name}`,
+    kind: "leaf" as const,
+    label: name,
+    layer: layer.id,
+    icon: "FolderTree" as const,
+    node: name,
+    children: [],
+    pages: PAGES.libraryNode ?? [],
+    hint: name === localNode ? "this machine" : undefined,
+  }));
+}
+
+/**
  * Node groups, each holding that machine's drivers.
  *
  * **A machine with no drivers still appears, as an empty group.** Hiding
@@ -373,9 +427,9 @@ function driverBranch(
 /* ────────────────────────────── selection ───────────────────────────── */
 
 export interface Selection {
-  /** `install`, `gateway`, `library`, `control`, `agent`, or `driver`. */
-  type: "install" | "gateway" | "library" | "control" | "agent" | "driver";
-  /** The machine, for an agent or a driver. */
+  /** `install`, `gateway`, `library`, `libraryNode`, `control`, `agent`, or `driver`. */
+  type: "install" | "gateway" | "library" | "libraryNode" | "control" | "agent" | "driver";
+  /** The machine, for an agent, a driver, or a node under the Library. */
   node: string | null;
   /** The driver's own name. */
   name: string | null;
@@ -393,6 +447,13 @@ export function parseSelection(raw: string | null | undefined): Selection | null
   if (!raw) return null;
   const value = raw.trim();
   if (value === "install") return { type: "install", node: null, name: null };
+  // A machine under the Library, before the bare `library`: the bare
+  // `library:node` is the local one on a machine with no name yet.
+  if (value === "library:node") return { type: "libraryNode", node: null, name: null };
+  if (value.startsWith("library:node:")) {
+    const node = value.slice("library:node:".length);
+    return node ? { type: "libraryNode", node, name: null } : null;
+  }
   if (value === "gateway" || value === "library" || value === "control") {
     return { type: value, node: null, name: null };
   }
@@ -428,6 +489,8 @@ export function formatSelection(selection: Selection): string {
       return selection.type;
     case "agent":
       return selection.node ? `agent:${selection.node}` : "agent";
+    case "libraryNode":
+      return selection.node ? `library:node:${selection.node}` : "library:node";
     case "driver":
       return selection.node
         ? `driver:${selection.name ?? ""}@${selection.node}`
@@ -506,6 +569,7 @@ export function configTabFor(selection: Selection, localNode: string | null): st
     case "control":
       return selection.type;
     case "agent":
+    case "libraryNode":
       return !selection.node || selection.node === localNode ? "agent" : `node:${selection.node}`;
     case "driver":
       return selection.name;
@@ -542,6 +606,7 @@ export function defaultSelectionFor(
     case "/metrics":
       return "gateway";
     case "/library":
+    case "/library/folders":
     case "/discover":
       return "library";
     case "/nodes":
@@ -599,11 +664,25 @@ export function findSelected(root: TreeNode, sel: string | null): TreeNode | nul
   if (selection.type === "agent" && !selection.node) {
     return rows.find((n) => n.local && n.sel?.startsWith("agent")) ?? null;
   }
+  if (selection.type === "libraryNode" && !selection.node) {
+    // `local` is reserved for the one row that IS the browser's machine
+    // (its agent); the Library leaf for that machine is found by node.
+    return (
+      rows.find(
+        (n) => n.sel?.startsWith("library:node") && (n.node ?? null) === localNodeOf(root),
+      ) ?? null
+    );
+  }
   if (selection.type === "driver" && !selection.node && selection.name) {
     const prefix = `driver:${selection.name}`;
     return rows.find((n) => n.sel === prefix || n.sel?.startsWith(`${prefix}@`)) ?? null;
   }
   return null;
+}
+
+/** The browser's own machine, as the tree knows it: the local agent row's node. */
+function localNodeOf(root: TreeNode): string | null {
+  return flatten(root).find((n) => n.local && n.sel?.startsWith("agent"))?.node ?? null;
 }
 
 /**

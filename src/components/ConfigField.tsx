@@ -3,7 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 
 import { FolderPicker } from "@/components/FolderPicker";
-import type { Component, ConfigField as ConfigFieldDef, PathMapping } from "@/lib/types";
+import { type MountShape, mountFor, parseFolders, shapeOf, withMount } from "@/lib/libraryReach";
+import type {
+  Component,
+  ConfigField as ConfigFieldDef,
+  LibraryFolder,
+  PathMapping,
+} from "@/lib/types";
 
 /**
  * Render a single config field's input based on its `valueType`.
@@ -137,9 +143,24 @@ export function ConfigFieldInput({
       );
     }
 
-    // `path_mappings` (M11): where another machine's model directories
-    // are on this component's host. Rows of `from` → `to`; the left side
-    // offers the library's roots, the right side browses this host.
+    // `library_folders` (2026-09-14): the Library's folders with their
+    // mounts. The generic editor keeps a full editor for it -- GUI
+    // equality -- and points at the Folders page for the per-node grid.
+    if (field.valueType === "library_folders") {
+      return (
+        <LibraryFoldersInput
+          value={value}
+          pending={pending}
+          onChange={onChange}
+          browseTarget={browseTarget ?? null}
+        />
+      );
+    }
+
+    // `path_mappings` (M11; this node's OVERRIDES since 2026-09-14): where
+    // this machine mounts a Library folder somewhere other than the
+    // folder's own mounts say. Rows of `from` → `to`; the left side offers
+    // the library's folders, the right side browses this host.
     if (field.valueType === "path_mappings") {
       return (
         <PathMappingsInput
@@ -578,8 +599,8 @@ function PathMappingsInput({
     <div className="flex flex-col gap-2">
       {rows.length === 0 && (
         <p className="text-xs text-[color:var(--muted)] italic">
-          No mappings. Only needed when the library runs on another machine and its model files are
-          reachable from here over a share: say which of its directories is mounted where.
+          No overrides. This machine inherits each Library folder&rsquo;s mount for its kind of node
+          (Library → Folders). Add a row only if this machine mounts a folder somewhere else.
         </p>
       )}
       {rows.map((mapping, index) => (
@@ -589,8 +610,8 @@ function PathMappingsInput({
             value={mapping.from}
             list={datalistId}
             spellCheck={false}
-            placeholder="/models  (the library's directory, as it lists it)"
-            aria-label="Directory as the library states it"
+            placeholder="/models  (the Library folder, as the Library lists it)"
+            aria-label="Library folder, as the Library states it"
             onChange={(e) => {
               const next = [...rows];
               next[index] = { ...mapping, from: e.target.value };
@@ -632,7 +653,7 @@ function PathMappingsInput({
             onClick={() => update(rows.filter((_, i) => i !== index))}
             disabled={pending}
             className={buttonClass}
-            title="Remove this mapping. Nothing on disk is touched."
+            title="Remove this override; this machine goes back to the folder's mount. Nothing on disk is touched."
           >
             remove
           </button>
@@ -651,7 +672,7 @@ function PathMappingsInput({
         disabled={pending}
         className={`${buttonClass} w-fit`}
       >
-        add mapping
+        add override
       </button>
       {browsing !== null && browseTarget !== null && (
         <FolderPicker
@@ -662,6 +683,166 @@ function PathMappingsInput({
             const next = [...rows];
             const row = next[browsing] ?? { from: "", to: "" };
             next[browsing] = { ...row, to: path };
+            update(next);
+            setBrowsing(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Editor for `library_folders` (2026-09-14): the Library's folders, each
+ * with its path on the Library's host and its mounts -- where Linux/macOS
+ * nodes and Windows nodes find the same directory. Stated once here;
+ * every node inherits the mount of its kind. The Folders page renders
+ * the same field as a grid against every node, with a picker per node;
+ * this is the generic editor's whole-field view of it.
+ */
+function LibraryFoldersInput({
+  value,
+  pending,
+  onChange,
+  browseTarget,
+}: {
+  value: unknown;
+  pending: boolean;
+  onChange: (newValue: unknown) => void;
+  browseTarget: string | null;
+}) {
+  const incoming = parseFolders(value);
+  const [rows, setRows] = useState<LibraryFolder[]>(incoming);
+  const mirrored = useRef<string>(JSON.stringify(incoming));
+  const [browsing, setBrowsing] = useState<number | null>(null);
+
+  useEffect(() => {
+    const serialized = JSON.stringify(parseFolders(value));
+    if (serialized !== mirrored.current) {
+      mirrored.current = serialized;
+      setRows(parseFolders(value));
+    }
+  }, [value]);
+
+  function update(next: LibraryFolder[]) {
+    setRows(next);
+    const complete = next
+      .map((f) => ({ path: f.path.trim(), mounts: (f.mounts ?? []).map((m) => m.trim()) }))
+      .filter((f) => f.path.length > 0)
+      .map((f) => ({ path: f.path, mounts: f.mounts.filter((m) => m.length > 0) }));
+    mirrored.current = JSON.stringify(complete);
+    onChange(complete);
+  }
+
+  function setMount(index: number, shape: MountShape, text: string) {
+    update(rows.map((f, i) => (i === index ? withMount(f, shape, text) : f)));
+  }
+
+  const inputClass =
+    "min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50";
+  const buttonClass =
+    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="library-folders-input">
+      {rows.length === 0 && (
+        <p className="text-xs text-[color:var(--muted)] italic">
+          No folders. Add the directory where your models already are; nothing is moved or copied.
+        </p>
+      )}
+      {rows.map((folder, index) => (
+        <div
+          key={index}
+          className="flex flex-col gap-1.5 rounded-[var(--radius)] border border-[color:var(--border)] p-2"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={folder.path}
+              spellCheck={false}
+              placeholder="/models  (on the machine the Library runs on)"
+              aria-label="Folder on the Library's machine"
+              onChange={(e) => {
+                const next = [...rows];
+                next[index] = { ...folder, path: e.target.value };
+                update(next);
+              }}
+              disabled={pending}
+              className={inputClass}
+            />
+            {browseTarget !== null && (
+              <button
+                type="button"
+                onClick={() => setBrowsing(index)}
+                disabled={pending}
+                className={buttonClass}
+                title="Pick the directory on the machine the Library runs on."
+              >
+                browse
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => update(rows.filter((_, i) => i !== index))}
+              disabled={pending}
+              className={buttonClass}
+              title="Stop cataloguing this folder. Nothing on disk is touched."
+            >
+              remove
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 pl-2 text-[11px] text-[color:var(--muted)]">
+            <span className="w-full sm:w-auto">mounted on Linux/macOS nodes at</span>
+            <input
+              type="text"
+              value={mountFor(folder, "posix") ?? ""}
+              spellCheck={false}
+              placeholder="/mnt/models  (blank: same path, or not reachable)"
+              aria-label="Mount on Linux and macOS nodes"
+              onChange={(e) => setMount(index, "posix", e.target.value)}
+              disabled={pending}
+              className={`${inputClass} ${
+                mountFor(folder, "posix") && shapeOf(mountFor(folder, "posix") ?? "") !== "posix"
+                  ? "border-[color:var(--status-error,#f85149)]"
+                  : ""
+              }`}
+            />
+            <span className="w-full sm:w-auto">on Windows nodes at</span>
+            <input
+              type="text"
+              value={mountFor(folder, "windows") ?? ""}
+              spellCheck={false}
+              placeholder="\\\\NAS\\models"
+              aria-label="Mount on Windows nodes"
+              onChange={(e) => setMount(index, "windows", e.target.value)}
+              disabled={pending}
+              className={inputClass}
+            />
+          </div>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setRows([...rows, { path: "", mounts: [] }])}
+          disabled={pending}
+          className={`${buttonClass} w-fit`}
+        >
+          add folder
+        </button>
+        <a href="/library/folders?sel=library" className="text-[11px] underline">
+          every node&rsquo;s view of these folders: Library → Folders
+        </a>
+      </div>
+      {browsing !== null && browseTarget !== null && (
+        <FolderPicker
+          target={browseTarget}
+          initialPath={rows[browsing]?.path || null}
+          onClose={() => setBrowsing(null)}
+          onPick={(path) => {
+            const next = [...rows];
+            const row = next[browsing] ?? { path: "", mounts: [] };
+            next[browsing] = { ...row, path };
             update(next);
             setBrowsing(null);
           }}

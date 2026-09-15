@@ -99,7 +99,7 @@ test.describe("the resource tree", () => {
   test("the page menu lists the pages each object owns", async ({ page }) => {
     const cases: [string, string[]][] = [
       ["install", ["playground", "inference", "preferences"]],
-      ["library", ["models", "discover", "config"]],
+      ["library", ["models", "folders", "discover", "config"]],
       ["control", ["nodes", "config"]],
       ["gateway", ["metrics", "config"]],
     ];

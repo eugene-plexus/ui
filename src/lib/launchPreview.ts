@@ -49,15 +49,15 @@ export function describeAdmission(
 
   if (location && !location.exists) {
     const via = location.mapping
-      ? ` through the mapping ${location.mapping.from} → ${location.mapping.to}`
+      ? ` through the rule ${location.mapping.from} → ${location.mapping.to}`
       : "";
     const same = location.localPath === location.path;
     return {
       tone: "error",
       headline: `Not on ${nodeLabel}`,
       detail: same
-        ? `${location.path} does not exist there${via}. If the library's files are reachable from ${nodeLabel} over a share, map the library's directory to where it is mounted there.`
-        : `${location.path} resolves to ${location.localPath} there${via}, and nothing is at that path. Check the mount, or fix the mapping.`,
+        ? `${location.path} does not exist there${via}. If the Library's files are reachable from ${nodeLabel} over a share, say where that folder is mounted: on the folder itself (every node of that kind inherits it), or as an override for ${nodeLabel}.`
+        : `${location.path} resolves to ${location.localPath} there${via}, and nothing is at that path. Check the mount, or fix the folder's mount or ${nodeLabel}'s override.`,
       fixTarget: nodeTarget,
     };
   }

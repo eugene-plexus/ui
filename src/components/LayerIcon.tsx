@@ -5,6 +5,7 @@ import {
   Cpu,
   Database,
   FolderOpen,
+  FolderTree,
   HardDrive,
   KeyRound,
   Monitor,
@@ -48,6 +49,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   ShieldCheck,
   Monitor,
   FolderOpen,
+  FolderTree,
   KeyRound,
 };
 

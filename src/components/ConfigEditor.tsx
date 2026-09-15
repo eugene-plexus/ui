@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { api, describeError } from "@/lib/api";
+import { parseFolders } from "@/lib/libraryReach";
 import type { ProxyTarget } from "@/lib/config";
 import type {
   ConfigDocument,
@@ -94,10 +95,9 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         if (schemaResp.fields.some((f) => f.valueType === "path_mappings")) {
           try {
             const library = await api.get<Record<string, unknown>>("library", "/v1/config");
-            const roots = library.modelRoots;
-            if (!cancelled && Array.isArray(roots)) {
-              setLibraryRoots(roots.filter((r): r is string => typeof r === "string"));
-            }
+            // `modelRoots` is a `library_folders` list since 2026-09-14 (a
+            // `path_list` before); `parseFolders` reads either shape.
+            if (!cancelled) setLibraryRoots(parseFolders(library.modelRoots).map((f) => f.path));
           } catch {
             // No library reachable: the `from` box stays a plain input.
           }

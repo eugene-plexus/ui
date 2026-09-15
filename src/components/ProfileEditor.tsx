@@ -5,7 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ApiError, api, describeError } from "@/lib/api";
-import { configTabHref, describeAdmission } from "@/lib/launchPreview";
+import { describeAdmission } from "@/lib/launchPreview";
+import { libraryFoldersHref } from "@/lib/libraryReach";
 import type { TargetNode } from "@/lib/nodeBudget";
 import type {
   Admission,
@@ -333,12 +334,12 @@ function LaunchPreview({
       {preview.detail && <p className="mt-0.5 break-all">{preview.detail}</p>}
       {preview.fixTarget && (
         <p className="mt-1">
-          <Link href={configTabHref(preview.fixTarget)} className="underline">
-            Map the library&rsquo;s directory on {node.label}
+          <Link href={libraryFoldersHref(node.name)} className="underline">
+            Say where {node.label} mounts the Library&rsquo;s folder
           </Link>
-          {" — Config → Agent"}
-          {node.name ? ` @ ${node.name}` : ""}
-          {" → Model directory mappings."}
+          {" — Library → "}
+          {node.label}
+          {" → Folders. Set it on the folder itself to cover every node of that kind."}
         </p>
       )}
     </div>

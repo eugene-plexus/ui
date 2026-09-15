@@ -44,6 +44,7 @@ export type IconName =
   | "ShieldCheck"
   | "Monitor"
   | "FolderOpen"
+  | "FolderTree"
   | "KeyRound";
 
 /**

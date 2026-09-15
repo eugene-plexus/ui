@@ -369,13 +369,31 @@ export interface paths {
          *     false is not measured until it is started.
          *
          *     **A launch of a model that is not on this host is refused the
-         *     same way** (M11). `modelPath` is resolved through this node's
-         *     `pathMappings` — the library on another host names files by
-         *     *its* path, and a mapping says where the same directory is
-         *     mounted here — and if the resolved path does not exist, the
-         *     422's `detail` names the declared path, this node, what it
-         *     resolved to, and where the mapping goes. Before M11 this case
-         *     was accepted, given a companion driver, and crashed on spawn.
+         *     same way** (M11). `modelPath` is resolved through the Library
+         *     folder's `mounts` for this host's OS and this node's
+         *     `pathMappings` overrides — the library on another host names
+         *     files by *its* path, and the folder says where the same
+         *     directory is mounted here — and if the resolved path does not
+         *     exist, the 422's `detail` names the declared path, this node,
+         *     what it resolved to, and where the rule goes. Before M11 this
+         *     case was accepted, given a companion driver, and crashed on
+         *     spawn.
+         *
+         *     **A model that is under no Library folder is refused before any
+         *     of that, as a 400** (2026-09-14). A node runs only what the
+         *     Library catalogues: `modelPath` must lie under the `path` of a
+         *     `LibraryFolder` in the library's `modelRoots`, matched by path
+         *     components with the folder's own shape choosing the rules. The
+         *     400's `detail` names the path and the remedy — add the directory
+         *     that holds it to the Library, then scan. `force` does not
+         *     bypass this; the override is one action away and is not a flag.
+         *     Whether the library has *scanned* the model is not checked — a
+         *     folder just added launches, and admission measures by file size
+         *     as it always has. When this node has never been able to read the
+         *     library's folder list (a worker in its first minute, a library
+         *     that has not started), the check is skipped with a warning
+         *     rather than refusing every launch, and
+         *     `POST /v1/library/folders/check` says `libraryConsulted: false`.
          *
          *     Accepts the operator **or the control root's own service
          *     audience** (`service:control`, checked exactly — not any service
@@ -476,7 +494,9 @@ export interface paths {
          *     spawn time, so any change to a running runtime restarts it —
          *     there is no way to re-flag a live `llama-server`. The response
          *     reports the post-restart state, which will normally be
-         *     `starting` or `loading` rather than `ready`.
+         *     `starting` or `loading` rather than `ready`. A `modelPath`
+         *     under no Library folder is refused exactly as on create (400
+         *     `model-not-in-library`).
          */
         patch: operations["updateRuntime"];
         trace?: never;
@@ -780,6 +800,46 @@ export interface paths {
         get: operations["listDirectories"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/folders/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Where each Library folder is on this host, and whether it is there.
+         * @description One row per folder the Library catalogues (2026-09-14): the
+         *     path this node would open for it, **which rule said so** — the
+         *     folder's own `mounts` (`inherited`), this node's `pathMappings`
+         *     (`override`), or nothing (`same_path`) — whether that path
+         *     exists here and is a directory, and how many of the library's
+         *     models under the folder this host can reach. The structured
+         *     form of `POST /v1/config/test`'s prose for `pathMappings`, and
+         *     the answer the Library's Folders page renders as a cell per
+         *     node.
+         *
+         *     The body is optional. With `pathMappings`, those overrides are
+         *     used instead of the saved ones for this answer only — the Test
+         *     beside an unsaved edit. The folder list is this node's copy of
+         *     the library's `modelRoots`, refreshed by this call when the
+         *     library can be reached (locally, or through the install for a
+         *     worker); `libraryConsulted` says whether it was, and
+         *     `folderListAgeSeconds` how old the copy is otherwise. Stats run
+         *     off the event loop: a dead share blocks for as long as the OS
+         *     takes to give up.
+         *
+         *     Operator-only: it walks this host's disk on request.
+         */
+        post: operations["checkLibraryFolders"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1693,7 +1753,8 @@ export interface components {
              *
              *     **When the library is on another host, this is still the
              *     library's spelling** (M11). The node resolves where the same
-             *     file is on its own disk through its `pathMappings`, at every
+             *     file is on its own disk through the Library folder's
+             *     `mounts` and its own `pathMappings` overrides, at every
              *     spawn and never onto this field — so the declaration keeps
              *     linking to its library entry (`GET /v1/models?path=` is keyed
              *     to the library's own path), and a changed mapping takes
@@ -1849,8 +1910,10 @@ export interface components {
             modelPath: string;
             /**
              * @description Where **this host** opens the model: `modelPath` resolved
-             *     through this node's `pathMappings`, or `modelPath` itself
-             *     when no mapping applies (M11). Observed, never declared, and
+             *     through the Library folder's `mounts` for this OS and this
+             *     node's `pathMappings` overrides, or `modelPath` itself when
+             *     no rule applies (M11; the folder half 2026-09-14). Observed,
+             *     never declared, and
              *     computed from the current mapping each time it is read — so
              *     a stopped runtime shows what its next start would open, and
              *     a mapping changed after declaration is visible before
@@ -2207,6 +2270,90 @@ export interface components {
             sizeMatchesLibrary?: boolean;
         };
         /**
+         * @description Optional overrides for `POST /v1/library/folders/check`. Same
+         *     idea as `ConfigTestRequest`: what is sent stands in for the
+         *     saved value for this answer only.
+         */
+        LibraryFolderCheckRequest: {
+            /**
+             * @description This node's overrides as they would be after an unsaved
+             *     edit. Absent means the saved ones.
+             */
+            pathMappings?: components["schemas"]["PathMapping"][];
+        };
+        /**
+         * @description The answer to "how does this node reach each Library folder",
+         *     one row per folder (2026-09-14).
+         */
+        LibraryFolderReach: {
+            /**
+             * @description Whether the library answered during this call. False means
+             *     the rows come from this node's last copy of its folder
+             *     list, or there are none because it has never been read —
+             *     `folders` is then empty and `folderListAgeSeconds` absent,
+             *     and the declaration check on `POST /v1/runtimes` is being
+             *     skipped with a warning.
+             */
+            libraryConsulted: boolean;
+            /**
+             * @description How long ago the folder list was last read from the library.
+             *     Zero when `libraryConsulted`. Absent when never.
+             */
+            folderListAgeSeconds?: number;
+            /** @description Where the library was, or was looked for. */
+            libraryUrl?: string;
+            folders: components["schemas"]["LibraryFolderStatus"][];
+        };
+        /** @description One Library folder as this host reaches it. */
+        LibraryFolderStatus: {
+            /** @description The folder as the library spells it. */
+            path: string;
+            /** @description The path this host would open for it. */
+            localPath: string;
+            source: components["schemas"]["FolderReachSource"];
+            /**
+             * @description The folder's mount this host's OS shape selected, when the
+             *     source is `inherited`. Absent otherwise.
+             */
+            mount?: string;
+            /** @description The `pathMappings` rule that applied, when one did. */
+            override?: components["schemas"]["PathMapping"];
+            /** @description Whether `localPath` exists on this host, now. */
+            exists: boolean;
+            /** @description Whether it is a directory. Absent when it does not exist. */
+            isDirectory?: boolean;
+            /**
+             * @description How many models the library lists under this folder. Absent
+             *     when the library was not consulted.
+             */
+            modelsUnder?: number;
+            /**
+             * @description How many of those exist at their resolved path here. Absent
+             *     with `modelsUnder`.
+             */
+            modelsReachable?: number;
+            /**
+             * @description What is wrong, in a sentence, when something is: the path
+             *     is missing, not a directory, or models the library lists
+             *     are not where the rule says. Absent when nothing is.
+             */
+            problem?: string;
+        };
+        /**
+         * @description Which rule decided a folder's `localPath` on this host.
+         *
+         *     * `same_path` — no rule applied; the folder's own path is
+         *       opened as written. Every single-host install, and any node
+         *       that mounts the share at the same path the library uses.
+         *     * `inherited` — the folder's `mounts` carried an entry of this
+         *       host's OS shape. Stated once on the Library, nothing on this
+         *       node.
+         *     * `override` — this node's `pathMappings` named the folder, and
+         *       won.
+         * @enum {string}
+         */
+        FolderReachSource: "same_path" | "inherited" | "override";
+        /**
          * @description Issued on successful login. The UI stores `sessionToken` as a
          *     Secure / HttpOnly / SameSite=Strict cookie or in memory; every
          *     subsequent proxy request includes it as
@@ -2456,9 +2603,25 @@ export interface components {
          *     for the left. Matching, precedence and translation rules are on
          *     the agent's field description, not here — the type promises a
          *     list of pairs and nothing about what they mean.
+         *
+         *     `library_folders` (2026-09-14) is an ordered JSON array of
+         *     `LibraryFolder` — `{"path": <a directory on the library's
+         *     host>, "mounts": [<where other machines find the same
+         *     directory>, ...]}`. Its one user is the library's `modelRoots`,
+         *     which was a `path_list` until the reach of a folder moved onto
+         *     the folder: a folder is one exported share, mounted the same
+         *     way on every node of one OS, so the library says where once and
+         *     every node inherits it rather than each node carrying a row per
+         *     folder. A bare string is accepted wherever a `LibraryFolder` is
+         *     expected and means a folder with no mounts — so a config file,
+         *     a PATCH body or a default written for `path_list` still works,
+         *     and `GET /v1/config` always answers in the object form. UIs
+         *     render it as rows of one browsable directory (the library's
+         *     host) plus its mounts; the per-node grid over it is the
+         *     Library's Folders page, not this field.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -3303,11 +3466,14 @@ export interface operations {
             /**
              * @description Invalid spec — unknown engine, no adapter, a flag that
              *     isn't in the adapter's schema, or a port already claimed by
-             *     another runtime. **Not** a model path that does not exist:
-             *     that is an admission refusal (422, below), because it is
-             *     decided by the same dry run and carries the same structure
-             *     — until M11 nothing checked it at all, and a launch of a
-             *     path this host did not have was accepted and crashed.
+             *     another runtime — **or a `modelPath` under no Library
+             *     folder** (`model-not-in-library`, 2026-09-14; `detail`
+             *     names the path and says to add its directory to the
+             *     Library). **Not** a model path that does not exist: that is
+             *     an admission refusal (422, below), because it is decided by
+             *     the same dry run and carries the same structure — until M11
+             *     nothing checked it at all, and a launch of a path this host
+             *     did not have was accepted and crashed.
              */
             400: {
                 headers: {
@@ -3739,6 +3905,30 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    checkLibraryFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LibraryFolderCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description The effective reach of every Library folder from this host. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryFolderReach"];
                 };
             };
         };

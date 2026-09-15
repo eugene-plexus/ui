@@ -39,7 +39,7 @@ export function NodePicker({
 
   return (
     <label className="font-ui flex items-center gap-1.5 text-xs text-[color:var(--muted)]">
-      <span title={title}>node</span>
+      <span title={title}>score &amp; launch on</span>
       <select
         value={selected.name ?? ""}
         onChange={(event) => onSelect(event.target.value === "" ? null : event.target.value)}

@@ -181,6 +181,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Library's folders, with where nodes reach them.
+         * @description `modelRoots` as a resource (2026-09-14): one `LibraryFolder` per
+         *     configured directory, mounts included. **Readable with a
+         *     service token**, unlike the config trio it mirrors, because the
+         *     reader that matters is a node's agent inheriting its path rules
+         *     — a worker with no library of its own reaches this through the
+         *     install (`agent.yaml`, `POST /v1/library/folders/check`) with a
+         *     `service:agent` token, at every launch, and holds a copy for
+         *     spawns the library is not around for. Nothing here is secret:
+         *     the same paths appear on every model in `GET /v1/models`, and
+         *     the mounts are addresses an operator typed for other machines
+         *     to use. Editing them is still `PATCH /v1/config`, operator-only.
+         */
+        get: operations["listFolders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/scan": {
         parameters: {
             query?: never;
@@ -763,6 +793,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description The folders the library catalogues, as `GET /v1/folders` answers
+         *     them — the same objects `modelRoots` holds, one shape on the
+         *     wire whatever shape the config was given in.
+         */
+        LibraryFolderList: {
+            folders: components["schemas"]["LibraryFolder"][];
+        };
         LibraryModelList: {
             models: components["schemas"]["LibraryModel"][];
             /**
@@ -2287,6 +2325,44 @@ export interface components {
          */
         EngineKind: "llama_cpp" | "vllm";
         /**
+         * @description One directory the library catalogues, and where other machines
+         *     find it (2026-09-14).
+         *
+         *     `path` is the directory as the library's own host spells it —
+         *     what the scanner walks, what a `ModelSummary.path` starts with,
+         *     the left-hand side of every rule that reaches it. `mounts` is
+         *     the same directory as **other** machines see it: a POSIX-shaped
+         *     entry is for Linux and macOS nodes, a Windows-shaped one (drive
+         *     letter or UNC) for Windows nodes, and a node takes the first
+         *     entry of its own shape. That is the whole of "how does node X
+         *     reach folder Y" for every node that mounts the share where the
+         *     folder says; a node that mounts it elsewhere carries one
+         *     override in its agent's `pathMappings`, and a node with no
+         *     mount of its shape opens `path` as written — the identical-mount
+         *     convention, and every single-host install.
+         *
+         *     The rule this replaces was per node per folder, on each node's
+         *     agent, and grew as nodes × folders with every row typed by hand.
+         *     This is per folder, stated once. Nothing is copied or cached:
+         *     the operator mounts the share, this says where.
+         */
+        LibraryFolder: {
+            /**
+             * @description Absolute, as the library's host spells it. Immutable in the
+             *     sense that changing it is a different folder: models are
+             *     identified by their path under it.
+             */
+            path: string;
+            /**
+             * @description Absolute paths, each Windows- or POSIX-shaped; the shape
+             *     says which nodes it is for. Order matters only among entries
+             *     of one shape, where the first wins. Empty means "reached at
+             *     `path`, or not at all".
+             * @default []
+             */
+            mounts: string[];
+        };
+        /**
          * @description Files appear only when a listing asked for `includeFiles`. A
          *     directory picker never does; a `file_path` field's picker would,
          *     which is why the flag exists on the endpoint without a UI yet.
@@ -2466,9 +2542,25 @@ export interface components {
          *     for the left. Matching, precedence and translation rules are on
          *     the agent's field description, not here — the type promises a
          *     list of pairs and nothing about what they mean.
+         *
+         *     `library_folders` (2026-09-14) is an ordered JSON array of
+         *     `LibraryFolder` — `{"path": <a directory on the library's
+         *     host>, "mounts": [<where other machines find the same
+         *     directory>, ...]}`. Its one user is the library's `modelRoots`,
+         *     which was a `path_list` until the reach of a folder moved onto
+         *     the folder: a folder is one exported share, mounted the same
+         *     way on every node of one OS, so the library says where once and
+         *     every node inherits it rather than each node carrying a row per
+         *     folder. A bare string is accepted wherever a `LibraryFolder` is
+         *     expected and means a folder with no mounts — so a config file,
+         *     a PATCH body or a default written for `path_list` still works,
+         *     and `GET /v1/config` always answers in the object form. UIs
+         *     render it as rows of one browsable directory (the library's
+         *     host) plus its mounts; the per-node grid over it is the
+         *     Library's Folders page, not this field.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
@@ -3058,6 +3150,26 @@ export interface operations {
             };
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+        };
+    };
+    listFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every configured folder, in the operator's order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryFolderList"];
+                };
+            };
         };
     };
     getScan: {

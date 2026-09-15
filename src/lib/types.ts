@@ -123,6 +123,18 @@ export type PathMapping = AgentComponents["schemas"]["PathMapping"];
 export type DirectoryListing = AgentComponents["schemas"]["DirectoryListing"];
 export type DirectoryEntry = AgentComponents["schemas"]["DirectoryEntry"];
 
+// A Library folder and how each node reaches it (2026-09-14). The
+// folder carries its `mounts` -- where other machines find the same
+// directory, one per OS shape -- and a node inherits the one of its
+// shape; `pathMappings` is that node's overrides. The check endpoint
+// answers per folder what the node would open and which rule said so.
+// From the library document: agent.yaml never references the schema, so the
+// agent's generated types do not carry it.
+export type LibraryFolder = LibraryComponents["schemas"]["LibraryFolder"];
+export type LibraryFolderReach = AgentComponents["schemas"]["LibraryFolderReach"];
+export type LibraryFolderStatus = AgentComponents["schemas"]["LibraryFolderStatus"];
+export type FolderReachSource = AgentComponents["schemas"]["FolderReachSource"];
+
 // --- Control: the install-wide views --------------------------------
 //
 // The control root asks every enrolled node's agent and adds the one

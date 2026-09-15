@@ -48,11 +48,11 @@ describe("PathMappingsInput", () => {
         onChange={onChange}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "add mapping" }));
+    fireEvent.click(screen.getByRole("button", { name: "add override" }));
 
     // The first suggestion pre-fills `from`; `to` is still empty, so the
     // parent has not been told anything.
-    const from = screen.getByLabelText("Directory as the library states it");
+    const from = screen.getByLabelText("Library folder, as the Library states it");
     expect(from).toHaveValue("/models");
     expect(onChange).not.toHaveBeenCalled();
     expect(document.querySelector("datalist option[value='/models']")).not.toBeNull();
@@ -81,7 +81,7 @@ describe("PathMappingsInput", () => {
     );
     expect(
       screen
-        .getAllByLabelText("Directory as the library states it")
+        .getAllByLabelText("Library folder, as the Library states it")
         .map((i) => (i as HTMLInputElement).value),
     ).toEqual(["/models", "/big"]);
     // No target to browse: no Browse button.
