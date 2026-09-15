@@ -160,7 +160,13 @@ test.describe("the auth arc", () => {
     // The control root is reached through the same resolution, and an
     // uninitialized one 503s its whole surface by design. Seeing the
     // install's own node here means the wizard really initialized it.
-    await expect(page.getByRole("heading", { name: "Nodes" })).toBeVisible();
+    // "This install" is the registry section's heading, rendered only
+    // when the root answered; the screen-level "Nodes" heading this once
+    // asserted left with the tree redesign (2026-09-13), which is how this
+    // check went red without anything it tests having changed.
+    await expect(page.getByRole("heading", { name: "This install" })).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(page.locator("table")).toBeVisible({ timeout: 60_000 });
   });
 
