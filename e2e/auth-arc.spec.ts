@@ -31,7 +31,9 @@ import { expect, test, type Page } from "@playwright/test";
 const PASSPHRASE = process.env.EP_PASSPHRASE ?? "m9-acceptance-passphrase";
 
 /**
- * The playground, precisely: an origin and nothing else after the slash.
+ * Home, precisely: an origin and nothing else after the slash. (Until S1
+ * of the hobbyist UX plan the root was the playground, which is now at
+ * `/playground`; the wizard and the login still land on the root.)
  *
  * **This used to be `/\/$|\/#/` and that stopped meaning anything.**
  * When the UI became a static export it took `trailingSlash: true` with
@@ -45,7 +47,7 @@ const PASSPHRASE = process.env.EP_PASSPHRASE ?? "m9-acceptance-passphrase";
  * Same family as the traps M9 recorded: an assertion that matches the
  * failure it was meant to catch.
  */
-const PLAYGROUND = /^https?:\/\/[^/]+\/(?:[?#].*)?$/;
+const HOME = /^https?:\/\/[^/]+\/(?:[?#].*)?$/;
 const MODEL_ROOT = process.env.EP_MODEL_ROOT ?? "";
 
 // Serial: these steps are one arc against one real install, and a first
@@ -105,8 +107,8 @@ test.describe("the auth arc", () => {
     // **And this is the part no script could test.** Initializing makes
     // the master key available, so the agent respawns every supervised
     // child; the page that just authenticated is talking to a fleet that
-    // is going away. It has to land on the playground, not on an error.
-    await expect(page).toHaveURL(PLAYGROUND, { timeout: 120_000 });
+    // is going away. It has to land on Home, not on an error.
+    await expect(page).toHaveURL(HOME, { timeout: 120_000 });
     await expectNoWallOfErrors(page);
   });
 
@@ -119,7 +121,7 @@ test.describe("the auth arc", () => {
     // a page that has not decided yet -- a negative assertion evaluated
     // before its subject exists.
     //
-    // The positive marker is the UNLOCK screen, not the playground: every
+    // The positive marker is the UNLOCK screen, not Home: every
     // test gets a fresh context, so this visit has no session and being
     // sent to login is the right answer. What is being asserted is only
     // that it is not sent to the wizard.
@@ -138,7 +140,7 @@ test.describe("the auth arc", () => {
     await page.locator("#passphrase").fill(PASSPHRASE);
     await page.getByRole("button", { name: /Unlock/i }).click();
 
-    await expect(page).toHaveURL(PLAYGROUND, { timeout: 120_000 });
+    await expect(page).toHaveURL(HOME, { timeout: 120_000 });
     await expectNoWallOfErrors(page);
   });
 
@@ -173,7 +175,10 @@ test.describe("the auth arc", () => {
   test("a completion goes through the playground", async ({ page }) => {
     test.skip(!process.env.EP_CHAT_MODEL, "no EP_CHAT_MODEL; nothing is serving");
     await signIn(page);
-    await page.goto("/");
+    // The playground is `/playground` since Home took the root (S1). Home
+    // has a composer of its own, but this check is about the diagnostic's
+    // routing bar, which only the playground renders.
+    await page.goto("/playground");
 
     const input = page.locator("textarea").first();
     await input.fill("Reply with the single word: ok");
@@ -209,7 +214,7 @@ async function signIn(page: Page): Promise<void> {
   await expect(field).toBeVisible({ timeout: 60_000 });
   await field.fill(PASSPHRASE);
   await page.getByRole("button", { name: /Unlock/i }).click();
-  await expect(page).toHaveURL(PLAYGROUND, { timeout: 120_000 });
+  await expect(page).toHaveURL(HOME, { timeout: 120_000 });
   // And prove it took, rather than assuming the navigation meant it did.
   const token = await page.evaluate(() => sessionStorage.getItem("eugene-session-token"));
   expect(token, "no session token after signing in").toBeTruthy();
@@ -219,7 +224,7 @@ async function signIn(page: Page): Promise<void> {
  * The assertion the restart-on-login question actually needs.
  *
  * "Did it navigate" is not the same as "did it work": a page can land on
- * the playground and render every panel as a failed fetch, because the
+ * Home and render every card as a failed fetch, because the
  * fleet it is talking to is mid-respawn. So look for the symptom rather
  * than the destination.
  */

@@ -172,14 +172,21 @@ export interface Screen {
 }
 
 /**
- * The seven navigable screens.
+ * The eight navigable screens.
  *
  * Order within each group is the diagram's order, not alphabetical:
  * tools → gateway → drivers for the request path, then the rail's
  * Library, Library, Agent, Control root.
  *
- * Three entries are not obvious and are argued in the design's §2.2:
+ * Four entries are not obvious. Three are argued in the design's §2.2;
+ * the first is the hobbyist UX plan's S1:
  *
+ * - **`/`** is Home, and **`/playground`** is the playground that used
+ *   to sit at the root. Home is the install root's first page and the
+ *   playground its second; both file under `tools` because both are
+ *   where a person, rather than a component, talks to the install. Home
+ *   takes `Monitor` — the tree's own icon for the install root — since
+ *   it is that object's landing page and not a client of anything.
  * - **`/inference`** files under `drivers` and spans `engines` and
  *   `hardware`.
  * - **`/config`** files under `agent`, because its addressing is per
@@ -196,6 +203,14 @@ export interface Screen {
 export const SCREENS: readonly Screen[] = [
   {
     href: "/",
+    label: "Home",
+    icon: "Monitor",
+    layer: "tools",
+    spans: [],
+    blurb: "What this machine has, the next thing to do, and a model to try.",
+  },
+  {
+    href: "/playground",
     label: "Playground",
     icon: "Terminal",
     layer: "tools",
@@ -316,11 +331,11 @@ export function layersOf(screen: Screen): readonly Layer[] {
  * should still mark its parent rather than nothing.
  *
  * `/` is special-cased to exact match — as a prefix it would match every
- * path, which would make the playground permanently current.
+ * path, which would make Home permanently current.
  *
  * An unknown path returns `null` rather than falling back to `/`. A
  * screen that is not in the registry should look like what it is —
- * missing — not like the playground.
+ * missing — not like Home.
  */
 export function activeScreen(pathname: string | null | undefined): Screen | null {
   if (!pathname) return null;

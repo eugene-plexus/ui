@@ -48,7 +48,9 @@ test.describe("the playground as a diagnostic", () => {
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
     await signIn(page);
-    await page.goto("/");
+    // The diagnostic lives on the playground, which is `/playground`
+    // since Home took the root (hobbyist UX, S1).
+    await page.goto("/playground");
     await page.getByTestId("toggle-diagnostic").click();
     await expect(page.getByTestId("mode-direct")).toBeVisible();
   });

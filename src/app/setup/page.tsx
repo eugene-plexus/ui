@@ -450,7 +450,7 @@ export default function WizardPage() {
       } catch {
         // ignore
       }
-      setStartMessage("Done — opening the playground…");
+      setStartMessage("Done — opening Home…");
       // Small delay so the operator sees the final message.
       setTimeout(() => router.replace("/"), 500);
     } catch (e) {

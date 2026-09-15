@@ -23,6 +23,7 @@ import { clearSessionToken } from "@/lib/session";
 import { LayerIcon } from "./LayerIcon";
 import { LayerMap } from "./LayerMap";
 import { pageHref, ResourceTree, useTopology } from "./ResourceTree";
+import { TasksTray } from "./TasksTray";
 
 /**
  * The three-column shell: the install tree, the selected object's pages,
@@ -140,6 +141,9 @@ function AppShellInner({
           <Image src="/eugene-icon.svg" alt="" width={22} height={22} priority />
         </Link>
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          {/* Background work, from every signed-in screen (hobbyist UX P7):
+              a download started on Discover is visible from Config. */}
+          <TasksTray />
           <button
             type="button"
             ref={mapToggleRef}

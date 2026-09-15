@@ -256,7 +256,7 @@ export default function MetricsPage() {
             {summary.groups.length === 0 ? (
               <p className="font-ui text-xs text-[color:var(--muted)]">
                 Nothing was served in this window. Send a message from the{" "}
-                <Link href="/" className="underline">
+                <Link href="/playground" className="underline">
                   playground
                 </Link>{" "}
                 and come back.

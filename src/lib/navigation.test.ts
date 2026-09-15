@@ -89,8 +89,26 @@ describe("the registry agrees with the website", () => {
 });
 
 describe("every screen resolves", () => {
-  it("has seven navigable screens", () => {
-    expect(SCREENS).toHaveLength(7);
+  it("has eight navigable screens", () => {
+    expect(SCREENS).toHaveLength(8);
+  });
+
+  it("puts Home at the root and the playground beside it, both under Your tools", () => {
+    // S1 of the hobbyist UX plan: the install root's first page is Home,
+    // its second the playground that used to be the landing page. Both
+    // are where a person talks to the install, so both file under the
+    // site's `tools` layer -- and the layer map must keep rendering with
+    // two screens in one layer.
+    const home = SCREENS.find((s) => s.href === "/");
+    const playground = SCREENS.find((s) => s.href === "/playground");
+    expect(home?.label).toBe("Home");
+    expect(playground?.label).toBe("Playground");
+    expect(home?.layer).toBe("tools");
+    expect(playground?.layer).toBe("tools");
+    expect(SCREENS.filter((s) => s.layer === "tools").map((s) => s.href)).toEqual([
+      "/",
+      "/playground",
+    ]);
   });
 
   it("files each screen under a real layer", () => {
@@ -149,7 +167,12 @@ describe("the groups are the page's two halves", () => {
   });
 
   it("orders the request path down the diagram", () => {
-    expect(NAV_GROUPS.at(0)?.screens.map((s) => s.href)).toEqual(["/", "/metrics", "/inference"]);
+    expect(NAV_GROUPS.at(0)?.screens.map((s) => s.href)).toEqual([
+      "/",
+      "/playground",
+      "/metrics",
+      "/inference",
+    ]);
     expect(NAV_GROUPS.at(1)?.screens.map((s) => s.href)).toEqual([
       "/library",
       "/discover",
@@ -196,10 +219,16 @@ describe("every route under src/app is accounted for", () => {
 });
 
 describe("the active screen", () => {
-  it("matches the playground only on the root", () => {
+  it("matches Home only on the root", () => {
     expect(activeScreen("/")?.href).toBe("/");
     expect(activeScreen("/library")?.href).toBe("/library");
     expect(activeScreen("/library")?.href).not.toBe("/");
+  });
+
+  it("matches the playground on its own route, and not on the root", () => {
+    expect(activeScreen("/playground")?.href).toBe("/playground");
+    expect(activeScreen("/playground/")?.href).toBe("/playground");
+    expect(activeScreen("/")?.href).not.toBe("/playground");
   });
 
   it("tolerates the trailing slash the static export produces", () => {
@@ -219,10 +248,10 @@ describe("the active screen", () => {
     expect(activeScreen("/config/?tab=agent#roots")?.href).toBe("/config");
   });
 
-  it("returns null for a path with no screen, rather than the playground", () => {
+  it("returns null for a path with no screen, rather than Home", () => {
     // A screen missing from the registry should look missing. Falling
-    // back to `/` would mark the playground current on /login and on
-    // every future route nobody registered.
+    // back to `/` would mark Home current on /login and on every future
+    // route nobody registered.
     expect(activeScreen("/login")).toBeNull();
     expect(activeScreen("/setup")).toBeNull();
     expect(activeScreen("/nope")).toBeNull();

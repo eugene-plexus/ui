@@ -1,451 +1,133 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { ChatInput } from "@/components/ChatInput";
-import { ChatLog, type ToolResult } from "@/components/ChatLog";
-import { DiagnosticPanel, type GatewayMode } from "@/components/DiagnosticPanel";
-import { RequestReport } from "@/components/RequestReport";
-import { EXAMPLE_TOOLS_TEXT, type ResponseFormatChoice, ToolsPanel } from "@/components/ToolsPanel";
-import { ApiError, api } from "@/lib/api";
-import {
-  PROXY,
-  type RequestReport as Report,
-  type Transport,
-  errorMessage,
-  listModels,
-  streamChatCompletion,
-} from "@/lib/completions";
-import {
-  type PageLocation,
-  displayBaseUrl,
-  guessGatewayBaseUrl,
-  normalizeBaseUrl,
-  parseToolDefinitions,
-} from "@/lib/diagnostic";
-import { getSessionToken, hasSessionToken } from "@/lib/session";
+import { FirstModelCard } from "@/components/home/FirstModelCard";
+import { MachineStrip } from "@/components/home/MachineStrip";
+import { RunningCard } from "@/components/home/RunningCard";
+import { TryItCard } from "@/components/home/TryItCard";
+import { api } from "@/lib/api";
+import { PROXY, listModels } from "@/lib/completions";
+import { chatModels, firstModelState, machineStrip } from "@/lib/home";
+import { type Sources, buildRows } from "@/lib/inferenceRows";
 import type {
-  ChatCompletionMessage,
-  ComponentList,
-  CompletionRoutingInfo,
-  Model,
-  ToolChoice,
+  ComponentPlacementList,
+  DriversInfo,
+  EngineList,
+  LibraryModelList,
+  ModelList,
+  NodeIdentity,
+  RoutingTableView,
+  RuntimeList,
+  RuntimePlacementList,
 } from "@/lib/types";
-import type { AgentConfigDocument } from "@/lib/agent";
+import { usePolling } from "@/lib/usePolling";
+import { useSetupGate } from "@/lib/useSetupGate";
+import { useTasks } from "@/lib/useTasks";
 
-const STORAGE_KEY = "eugene-playground";
-const DIAGNOSTIC_KEY = "eugene-playground-diagnostic";
-const TOOLS_KEY = "eugene-playground-tools";
+/**
+ * Home: the install root's landing page.
+ *
+ * **Design:** `specs/docs/design/hobbyist-ux.md` §6.1, built as slice S1.
+ * Its §0.3 measured what a new person met here before: the playground,
+ * with a disabled composer reading "Waiting…" and nothing saying what to
+ * do about it. This page is task-shaped instead — this machine, then the
+ * one thing to do next, then a model to try, then what is running — and
+ * each card is present only while it applies (P8: every state has a next
+ * step). The playground is at `/playground`, unchanged, as the install
+ * root's second page.
+ *
+ * **Every source is soft.** This is the page a person lands on after
+ * signing in, which restarts every supervised child, and the page they
+ * open when something is wrong. A component that does not answer costs
+ * its own line and nothing else: the strip says "unknown" for that piece,
+ * the first-model card says the library did not answer, and the Running
+ * card simply has fewer rows. No error banners on landing.
+ *
+ * Two pollers, on the playground's and Inference's cadences: the slow one
+ * (15 s) reads what this machine has and what the gateway routes to; the
+ * fast one (5 s) reads the inference join for the Running card. Both stop
+ * while the tab is hidden. The tasks tray's own poll supplies the
+ * downloads the first-model card shows.
+ *
+ * **Not here yet, by plan:** "Use it from your apps" (S4, needs client
+ * keys), "Reach it from other devices" (S5), "Needs attention" (S7), and
+ * the recommended model in the first card (S6).
+ */
 
-// Generation on a large local quant is slow but not unbounded. Past
-// this, something is wedged and the operator wants an error rather than
-// a spinner.
-const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const SLOW_POLL_MS = 15000;
+const FAST_POLL_MS = 5000;
 
-interface PersistedConversation {
-  model: string | null;
-  messages: ChatCompletionMessage[];
-}
+export default function HomePage() {
+  const gate = useSetupGate();
+  const ready = gate === "ready";
 
-/** What survives a reload of the diagnostic panel. Never the key: it
- * defaults to the session token on every load, and a typed one lives
- * for the tab. */
-interface PersistedDiagnostic {
-  mode?: GatewayMode;
-  baseUrl?: string;
-  open?: boolean;
-}
+  const [node, setNode] = useState<NodeIdentity | null>(null);
+  const [engines, setEngines] = useState<EngineList | null>(null);
+  const [library, setLibrary] = useState<LibraryModelList | null>(null);
+  const [libraryFailed, setLibraryFailed] = useState(false);
+  const [models, setModels] = useState<ModelList | null>(null);
+  const [gatewayFailed, setGatewayFailed] = useState(false);
+  const [sources, setSources] = useState<Sources | null>(null);
+  const { tasks } = useTasks();
 
-interface PersistedTools {
-  enabled?: boolean;
-  definitions?: string;
-}
-
-/** What actually served the last turn, straight off the response's
- * `x_eugene_plexus` extension. The failure mode of a routing layer is
- * opacity — `attempts > 1` is the visible evidence failover fired. */
-interface TurnInfo extends CompletionRoutingInfo {
-  model?: string;
-  promptTokens?: number;
-  completionTokens?: number;
-}
-
-function readJson<T>(key: string): T | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeJson(key: string, value: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Private mode / quota; the panel just does not remember.
-  }
-}
-
-function pageLocation(): PageLocation {
-  if (typeof window === "undefined") return { protocol: "http:", hostname: "127.0.0.1" };
-  return { protocol: window.location.protocol, hostname: window.location.hostname };
-}
-
-export default function PlaygroundPage() {
-  const router = useRouter();
-  const [messages, setMessages] = useState<ChatCompletionMessage[]>([]);
-  const [models, setModels] = useState<Model[]>([]);
-  const [model, setModel] = useState<string | null>(null);
-  const [modelsError, setModelsError] = useState<string | null>(null);
-  const [turnInfo, setTurnInfo] = useState<TurnInfo | null>(null);
-  const [report, setReport] = useState<Report | null>(null);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
-  const [setupGate, setSetupGate] = useState<"checking" | "ready">("checking");
-  const [seed, setSeed] = useState<{ text: string; nonce: number } | undefined>(undefined);
-
-  // The diagnostic: which path to the gateway, and what a harness would
-  // be given. Restored from localStorage after mount, so the first render
-  // matches the server's.
-  const [panelsOpen, setPanelsOpen] = useState(false);
-  const [mode, setMode] = useState<GatewayMode>("proxy");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [guess, setGuess] = useState<string | null>(null);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-
-  // Tools: what a harness sends that a chat box does not.
-  const [toolsOn, setToolsOn] = useState(false);
-  const [toolDefs, setToolDefs] = useState(EXAMPLE_TOOLS_TEXT);
-  const [toolChoice, setToolChoice] = useState<ToolChoice>("auto");
-  const [responseFormat, setResponseFormat] = useState<ResponseFormatChoice>("text");
-
-  const page = useMemo(pageLocation, []);
-  const parsedTools = useMemo(() => parseToolDefinitions(toolDefs), [toolDefs]);
-  const toolNames = "tools" in parsedTools ? parsedTools.tools.map((t) => t.function.name) : [];
-  const toolsError = "error" in parsedTools ? parsedTools.error : null;
-
-  const transport: Transport = useMemo(
-    () =>
-      mode === "direct"
-        ? { kind: "direct", baseUrl: normalizeBaseUrl(baseUrl), key: apiKey }
-        : PROXY,
-    [mode, baseUrl, apiKey],
-  );
-  // Read inside the send path, which we don't want to re-create on every
-  // keystroke-driven re-render.
-  const modelRef = useRef<string | null>(null);
-  modelRef.current = model;
-  const transportRef = useRef<Transport>(PROXY);
-  transportRef.current = transport;
-
-  // Auth + first-run gate. Runs in order:
-  //   1. Probe init state (public endpoint, no auth) — route to /setup
-  //      if uninitialized.
-  //   2. Check for a session token BEFORE making any authed call, so the
-  //      playground never renders for an unauthenticated visitor.
-  //   3. Authed GET /v1/config to honor firstRunComplete.
-  // Agent unreachable falls through to the playground so a dev run
-  // against just the gateway still works.
-  useEffect(() => {
-    let cancelled = false;
-    async function check() {
-      try {
-        const status = await api.get<{ initialized: boolean }>("agent", "/v1/auth/status", {
-          skipAuth: true,
-        });
-        if (cancelled) return;
-        if (!status.initialized) {
-          router.replace("/setup");
-          return;
-        }
-        if (!hasSessionToken()) {
-          const next = encodeURIComponent(window.location.pathname + window.location.search);
-          router.replace(`/login?next=${next}`);
-          return;
-        }
-        const doc = await api.get<AgentConfigDocument>("agent", "/v1/config");
-        if (cancelled) return;
-        if (doc.firstRunComplete === false) {
-          router.replace("/setup");
-          return;
-        }
-        setSetupGate("ready");
-      } catch (e) {
-        if (cancelled) return;
-        if (e instanceof ApiError && e.status === 401) return;
-        setSetupGate("ready");
-      }
-    }
-    void check();
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  // The diagnostic's defaults, once the gate is open: the session token
-  // as the key, and the gateway's probable address from the topology.
-  useEffect(() => {
-    if (setupGate !== "ready") return;
-    const token = getSessionToken();
-    setSessionToken(token);
-    setApiKey((current) => current || token || "");
-    const saved = readJson<PersistedDiagnostic>(DIAGNOSTIC_KEY);
-    if (saved?.mode === "direct" || saved?.mode === "proxy") setMode(saved.mode);
-    if (typeof saved?.baseUrl === "string") setBaseUrl(saved.baseUrl);
-    if (saved?.open) setPanelsOpen(true);
-    const tools = readJson<PersistedTools>(TOOLS_KEY);
-    if (tools?.enabled) setToolsOn(true);
-    if (typeof tools?.definitions === "string" && tools.definitions.trim()) {
-      setToolDefs(tools.definitions);
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const list = await api.get<ComponentList>("agent", "/v1/components");
-        if (cancelled) return;
-        const guessed = guessGatewayBaseUrl(list.components ?? [], page);
-        setGuess(guessed);
-        // Prefill only an empty field: an address the operator typed is
-        // theirs, and a guess overwriting it would be the panel deciding
-        // it knows better than the person who can see the network.
-        if (guessed) setBaseUrl((current) => current || displayBaseUrl(guessed));
-      } catch {
-        // No topology, no guess; the field stays for the operator to fill.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [setupGate, page]);
-
-  useEffect(() => {
-    if (setupGate !== "ready") return;
-    writeJson(DIAGNOSTIC_KEY, { mode, baseUrl, open: panelsOpen } satisfies PersistedDiagnostic);
-  }, [setupGate, mode, baseUrl, panelsOpen]);
-
-  useEffect(() => {
-    if (setupGate !== "ready") return;
-    writeJson(TOOLS_KEY, { enabled: toolsOn, definitions: toolDefs } satisfies PersistedTools);
-  }, [setupGate, toolsOn, toolDefs]);
-
-  // The model list is the gateway's routing table, so it changes as
-  // runtimes come and go. Refresh on a slow interval rather than once at
-  // mount — a model that became routable while the tab was open should
-  // show up without a reload. Listed through the active transport: in
-  // direct mode `/v1/models` is part of the surface under test, and its
-  // failure is a result, not an inconvenience to route around.
-  const loadModels = useCallback(async () => {
-    try {
-      const list = await listModels(transportRef.current);
-      // Chat models only. The library will discover, download and launch
-      // a dedicated embedding model, and the gateway now refuses one on
-      // this surface with a 400 -- so offering it in the picker would be
-      // offering a choice that cannot work. `surfaces` is absent when
-      // talking to a gateway older than call #2, and an absent list must
-      // read as "no opinion" rather than "no chat", or this screen goes
-      // empty against an install that has not been upgraded yet.
-      const data = (list.data ?? []).filter((m) => {
-        const surfaces = m.x_eugene_plexus?.surfaces;
-        return !surfaces || surfaces.includes("chat");
-      });
-      setModels(data);
-      setModelsError(null);
-      setModel((current) => {
-        if (current && data.some((m) => m.id === current)) return current;
-        return data[0]?.id ?? null;
-      });
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401 && transportRef.current.kind === "proxy")
-        return;
-      setModelsError(e instanceof ApiError ? (errorMessage(e.body) ?? e.message) : String(e));
-    }
-  }, []);
-
-  useEffect(() => {
-    if (setupGate !== "ready") return;
-    if (transport.kind === "direct" && (!transport.baseUrl || !transport.key)) return;
-    void loadModels();
-    const id = setInterval(() => void loadModels(), 15000);
-    return () => clearInterval(id);
-  }, [setupGate, loadModels, transport]);
-
-  // Chat history stays browser-side for the first pass — the design's
-  // explicit call. Durable multi-device history needs a component that
-  // doesn't exist yet.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<PersistedConversation>;
-        if (Array.isArray(parsed.messages)) setMessages(parsed.messages);
-        if (typeof parsed.model === "string") setModel(parsed.model);
-      }
-    } catch {
-      // sessionStorage throws in some private modes; start empty.
-    }
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      const payload: PersistedConversation = { model, messages };
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch {
-      // ignore
-    }
-  }, [hydrated, model, messages]);
-
-  /** Send a history and append whatever comes back.
-   *
-   * Factored out of `handleSend` so Regenerate and tool results are the
-   * same code path with a different history rather than parallel ones
-   * that can drift. The gateway and the drivers below it are stateless by
-   * contract, so "resend this turn" really is just "send these messages
-   * again". */
-  async function runTurn(outgoing: ChatCompletionMessage[]) {
-    const chosen = modelRef.current;
-    if (!chosen) {
-      setError("No model selected — the gateway is not routing to anything yet.");
-      return;
-    }
-    if (toolsOn && toolsError) {
-      setError(toolsError);
-      return;
-    }
-    setError(null);
-    setTurnInfo(null);
-    setMessages(outgoing);
-    setPending(true);
-
-    try {
-      // The assistant message is appended empty and then grown in place.
-      // Doing it this way -- rather than accumulating and appending at
-      // the end -- is the whole visible difference M10 makes: the reply
-      // appears as it is generated instead of arriving all at once after
-      // a long silence.
-      let streamed = "";
-      let appended = false;
-      const upsert = (message: ChatCompletionMessage) => {
-        setMessages((prev) => {
-          if (!appended) {
-            appended = true;
-            return [...prev, message];
-          }
-          const next = [...prev];
-          next[next.length - 1] = message;
-          return next;
-        });
-      };
-      const response = await streamChatCompletion(
-        {
-          model: chosen,
-          // Full history every turn: the gateway and the drivers below it
-          // are stateless by contract, so the transcript is the caller's
-          // to carry.
-          messages: outgoing,
-          timeoutMs: REQUEST_TIMEOUT_MS,
-          tools: toolsOn && "tools" in parsedTools ? parsedTools.tools : undefined,
-          toolChoice: toolsOn ? toolChoice : undefined,
-          responseFormat: responseFormat === "json_object" ? { type: "json_object" } : undefined,
-          transport: transportRef.current,
-          reproduceBaseUrl: normalizeBaseUrl(baseUrl) || guess,
-          onReport: setReport,
-          // Cards fill in as fragments land, the way the text does.
-          onToolCalls: (calls) =>
-            upsert({ role: "assistant", content: streamed || null, tool_calls: calls }),
-        },
-        (delta) => {
-          streamed += delta;
-          upsert({ role: "assistant", content: streamed });
-        },
-      );
-      const choice = response.choices?.[0];
-      if (choice) {
-        // The assembled message, tool calls and all -- what a harness
-        // would replay verbatim on the next turn. A backend that answered
-        // without emitting a single delta (a batching backend, whose
-        // stream is one event) lands here too.
-        upsert(choice.message);
-      }
-      if (response.truncatedBy) {
-        // The text above is real but incomplete. Showing it without
-        // saying so would present a truncated answer as a finished one,
-        // which is exactly what the gateway's commit-point rule trades
-        // away for early delivery.
-        setError(`The answer was cut short: ${response.truncatedBy}`);
-      }
-      setTurnInfo({
-        ...(response.x_eugene_plexus ?? {}),
-        model: response.model,
-        promptTokens: response.usage?.prompt_tokens,
-        completionTokens: response.usage?.completion_tokens,
-      });
-    } catch (e) {
-      const detail =
-        e instanceof ApiError
-          ? (errorMessage(e.body) ?? `${e.status} ${e.statusText}`)
-          : e instanceof Error
-            ? e.message
-            : String(e);
-      setError(detail);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  function handleSend(text: string) {
-    void runTurn([...messages, { role: "user", content: text }]);
-  }
-
-  /** The operator answered the model's tool calls: one `tool` message per
-   * call, then the next turn -- the sequence a harness performs. */
-  function handleToolResults(results: ToolResult[]) {
-    void runTurn([
-      ...messages,
-      ...results.map(
-        (r): ChatCompletionMessage => ({
-          role: "tool",
-          content: r.content,
-          tool_call_id: r.tool_call_id,
-        }),
-      ),
+  const loadSlow = useCallback(async () => {
+    const [nodeResult, enginesResult, libraryResult, modelsResult] = await Promise.all([
+      api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),
+      api.get<EngineList>("agent", "/v1/engines").catch(() => null),
+      api.get<LibraryModelList>("library", "/v1/models").catch(() => null),
+      listModels(PROXY).catch(() => null),
     ]);
-  }
+    setNode(nodeResult);
+    setEngines(enginesResult);
+    // The last good answer is kept and the failure is flagged beside it,
+    // so the card can say "did not answer" without the count flickering
+    // to zero on one missed poll.
+    if (libraryResult !== null) setLibrary(libraryResult);
+    setLibraryFailed(libraryResult === null);
+    if (modelsResult !== null) setModels(modelsResult);
+    setGatewayFailed(modelsResult === null);
+  }, []);
 
-  /** Ask again for the last turn: drop the reply, resend what preceded it. */
-  function handleRegenerate() {
-    const lastUser = messages.map((m) => m.role).lastIndexOf("user");
-    if (lastUser < 0) return;
-    void runTurn(messages.slice(0, lastUser + 1));
-  }
+  // The Inference screen's four soft reads, for the Running card.
+  const loadFast = useCallback(async () => {
+    const [drivers, routing, placement, runtimes] = await Promise.all([
+      api.get<DriversInfo>("gateway", "/v1/admin/drivers").catch(() => null),
+      api.get<RoutingTableView>("gateway", "/v1/admin/routing").catch(() => null),
+      api.get<ComponentPlacementList>("control", "/v1/components").catch(() => null),
+      api.get<RuntimePlacementList>("control", "/v1/runtimes").catch(() => null),
+    ]);
+    const localRuntimes =
+      runtimes === null
+        ? await api.get<RuntimeList>("agent", "/v1/runtimes").catch(() => null)
+        : null;
+    setSources({ drivers, routing, placement, runtimes, localRuntimes });
+  }, []);
 
-  /** Put an earlier message back in the composer and drop everything from it
-   * onward. Destructive by design and by expectation - an edited message with
-   * the old replies still under it would be a transcript that never happened. */
-  function handleEditUserMessage(index: number, content: string) {
-    setMessages(messages.slice(0, index));
-    setTurnInfo(null);
-    setError(null);
-    setSeed({ text: content, nonce: Date.now() });
-  }
+  usePolling(loadSlow, SLOW_POLL_MS, ready);
+  usePolling(loadFast, FAST_POLL_MS, ready);
 
-  function newConversation() {
-    setMessages([]);
-    setTurnInfo(null);
-    setReport(null);
-    setError(null);
-  }
+  const chat = useMemo(() => chatModels(models), [models]);
+  // Null until the gateway has answered once; a gateway that fails on the
+  // first read counts as "routes to nothing", because waiting on it would
+  // leave a person with models on disk looking at an empty page.
+  const routable = models !== null ? chat.length : gatewayFailed ? 0 : null;
+  const strip = useMemo(
+    () => machineStrip({ node, engines, library, libraryFailed }),
+    [node, engines, library, libraryFailed],
+  );
+  const state = useMemo(
+    () => firstModelState({ library, libraryFailed, routable }),
+    [library, libraryFailed, routable],
+  );
+  const rows = useMemo(
+    () => (sources ? buildRows(sources, node?.name ?? null) : []),
+    [sources, node],
+  );
+  const downloads = useMemo(() => tasks.filter((t) => t.kind === "download"), [tasks]);
 
-  if (setupGate === "checking") {
+  if (gate === "checking") {
     return (
       <main className="relative z-10 flex h-screen items-center justify-center">
         <p className="font-ui text-xs text-[color:var(--muted)]">Checking setup state…</p>
@@ -453,198 +135,16 @@ export default function PlaygroundPage() {
     );
   }
 
-  const selected = models.find((m) => m.id === model);
   return (
-    <AppShell
-      controls={
-        <>
-          <ModelPicker
-            models={models}
-            value={model}
-            onChange={setModel}
-            disabled={pending}
-            error={modelsError}
-            mode={mode}
-          />
-          <button
-            type="button"
-            data-testid="toggle-diagnostic"
-            onClick={() => setPanelsOpen((o) => !o)}
-            aria-pressed={panelsOpen}
-            className={`font-ui rounded-[var(--radius)] border px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
-              panelsOpen || mode === "direct" || toolsOn
-                ? "border-[color:var(--accent-left)]"
-                : "border-[color:var(--border)]"
-            }`}
-            title="Which path to the gateway, tool definitions, and the request report"
-          >
-            Diagnostic{mode === "direct" ? " · direct" : ""}
-            {toolsOn ? " · tools" : ""}
-          </button>
-          <button
-            type="button"
-            onClick={newConversation}
-            disabled={messages.length === 0}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            New
-          </button>
-        </>
-      }
-    >
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {panelsOpen && (
-          <div className="flex flex-wrap gap-3 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] p-3">
-            <DiagnosticPanel
-              mode={mode}
-              onMode={setMode}
-              baseUrl={baseUrl}
-              onBaseUrl={setBaseUrl}
-              guess={guess}
-              apiKey={apiKey}
-              onApiKey={setApiKey}
-              sessionToken={sessionToken}
-              page={page}
-            />
-            <ToolsPanel
-              enabled={toolsOn}
-              onEnabled={setToolsOn}
-              definitions={toolDefs}
-              onDefinitions={setToolDefs}
-              error={toolsError}
-              toolNames={toolNames}
-              toolChoice={toolChoice}
-              onToolChoice={setToolChoice}
-              responseFormat={responseFormat}
-              onResponseFormat={setResponseFormat}
-              modelToolCalling={selected?.x_eugene_plexus?.tool_calling}
-            />
-          </div>
-        )}
-
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <ChatLog
-            messages={messages}
-            pending={pending}
-            onRegenerate={handleRegenerate}
-            onEditUserMessage={handleEditUserMessage}
-            onToolResults={handleToolResults}
-          />
+    <AppShell>
+      <main data-testid="home" className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
+          <MachineStrip strip={strip} />
+          <FirstModelCard state={state} downloads={downloads} />
+          {chat.length > 0 && <TryItCard models={chat} />}
+          <RunningCard rows={rows} />
         </div>
-
-        {turnInfo && <RoutingBar info={turnInfo} />}
-        {report && <RequestReport report={report} page={page} apiKey={apiKey || null} />}
-        {error && <div className="status-error border-t px-4 py-2 text-xs">{error}</div>}
-
-        <ChatInput onSend={handleSend} disabled={pending || model == null} seed={seed} />
       </main>
     </AppShell>
-  );
-}
-
-function ModelPicker({
-  models,
-  value,
-  onChange,
-  disabled,
-  error,
-  mode,
-}: {
-  models: Model[];
-  value: string | null;
-  onChange: (id: string) => void;
-  disabled: boolean;
-  error: string | null;
-  mode: GatewayMode;
-}) {
-  if (error) {
-    return (
-      <p className="font-ui truncate text-xs text-[color:var(--muted)]" title={error}>
-        Gateway unreachable{mode === "direct" ? " (direct)" : ""} — {error}
-      </p>
-    );
-  }
-  if (models.length === 0) {
-    return (
-      <p className="font-ui text-xs text-[color:var(--muted)]">
-        No routable models.{" "}
-        <Link href="/inference" className="underline">
-          See what is serving
-        </Link>
-        .
-      </p>
-    );
-  }
-  const selected = models.find((m) => m.id === value);
-  const replicas = selected?.x_eugene_plexus?.drivers?.length ?? 0;
-  return (
-    <div className="flex min-w-0 flex-col gap-0.5">
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className="font-ui max-w-[420px] rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 text-xs outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50"
-      >
-        {models.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.id}
-          </option>
-        ))}
-      </select>
-      <p className="font-ui truncate text-[11px] text-[color:var(--muted)]">
-        {selected?.owned_by ?? "unknown provider"}
-        {selected?.x_eugene_plexus?.context_length != null &&
-          ` · ${selected.x_eugene_plexus.context_length.toLocaleString()} ctx`}
-        {selected?.x_eugene_plexus?.tool_calling === true && " · tools"}
-        {replicas > 1 && ` · ${replicas} replicas`}
-      </p>
-    </div>
-  );
-}
-
-/** Where the last turn actually went. Cheap to render, and the first
- * thing worth knowing when a reply looks wrong. */
-function RoutingBar({ info }: { info: TurnInfo }) {
-  const parts: string[] = [];
-  if (info.model) parts.push(info.model);
-  if (info.driver) parts.push(`driver ${info.driver}`);
-  if (info.runtime) parts.push(`runtime ${info.runtime}`);
-  if (info.backend) parts.push(info.backend);
-  if (info.latency_ms != null) parts.push(`${(info.latency_ms / 1000).toFixed(1)}s`);
-  if (info.promptTokens != null && info.completionTokens != null) {
-    parts.push(`${info.promptTokens}→${info.completionTokens} tok`);
-  }
-  // The window that applied to *this* turn, which is not the smallest
-  // across every replica -- that one is on the model picker above.
-  if (info.context_length != null) {
-    parts.push(`${info.context_length.toLocaleString()} ctx`);
-  }
-  return (
-    <div className="flex items-center gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[11px] text-[color:var(--muted)]">
-      <span className="truncate">{parts.join(" · ")}</span>
-      {info.attempts != null && info.attempts > 1 && (
-        <span className="status-error px-1" title="An earlier backend failed and the cascade fired">
-          {info.attempts} attempts
-        </span>
-      )}
-      {/* The answer above is about whatever survived, and nothing else
-          says so -- the backend returned 200 and no flag of its own.
-          This is the one screen where a human reads a completion's
-          envelope, so it is the one place the warning can land. Only
-          `true` renders: `null` means we could not check, which is not
-          the same claim and must not look like reassurance. */}
-      {info.prompt_truncated === true && (
-        <span
-          className="status-error px-1"
-          title={
-            "The backend discarded most of the prompt to make it fit and answered anyway. " +
-            "The reply is about what survived, not what you sent. Raise the backend's " +
-            "context window, or send less."
-          }
-        >
-          input truncated
-        </span>
-      )}
-    </div>
   );
 }

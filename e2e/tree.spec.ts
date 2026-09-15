@@ -9,8 +9,11 @@
  * colours resolve to the website's.
  *
  * Runner: `specs/scripts/navigation-acceptance.sh`, which declares a
- * driver first so the deepest path in the tree (type → node → driver)
- * has something in it.
+ * driver first so the deepest path in the tree has something in it. How
+ * deep that is depends on the install: the machine level renders only
+ * once there is more than one machine (hobbyist-ux.md §6.4), so on the
+ * runner's one box the path is type → driver, and the tests here read
+ * the registry to know which shape to hold the tree to.
  */
 
 import { expect, test, type Page } from "@playwright/test";
@@ -55,6 +58,26 @@ async function loaded(page: Page): Promise<void> {
   await expect(tree(page)).toHaveAttribute("data-ready", "true");
 }
 
+/**
+ * How many machines the install has, from the registry and not from the
+ * tree — a test that counted the tree's own rows to decide what the tree
+ * should show would pass a tree that collapsed two machines into one.
+ *
+ * An unenrolled box has no registry to ask (no root, or `503 Locked`)
+ * and is one machine. The runner declares its driver on this machine, so
+ * the one way a machine can exist outside the registry — a driver naming
+ * one — does not arise here.
+ */
+async function machineCount(page: Page): Promise<number> {
+  const token = await page.evaluate(() => sessionStorage.getItem("eugene-session-token"));
+  const res = await page.request.get("/api/proxy/control/v1/nodes", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok()) return 1;
+  const body = (await res.json()) as { nodes?: unknown[] };
+  return Math.max(1, body.nodes?.length ?? 0);
+}
+
 test.describe("the resource tree", () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page);
@@ -65,8 +88,19 @@ test.describe("the resource tree", () => {
     await loaded(page);
     const t = tree(page);
     await expect(t).toContainText("Eugene Plexus");
-    for (const branch of ["Gateway", "Inference drivers", "Agents", "Library", "Control root"]) {
+    for (const branch of ["Gateway", "Inference drivers", "Library", "Control root"]) {
       await expect(t, `the tree has no ${branch}`).toContainText(branch);
+    }
+    // The fifth branch is plural only when there is more than one
+    // machine; alone, it is the machine's one Agent leaf, and "Agent" is
+    // a substring of "Agents", so the singular case asserts the row.
+    if ((await machineCount(page)) > 1) {
+      await expect(t, "the tree has no Agents").toContainText("Agents");
+    } else {
+      const agent = t.locator('a[data-tree-sel^="agent"]');
+      await expect(agent, "one machine has one Agent leaf").toHaveCount(1);
+      await expect(agent).toContainText("Agent");
+      await expect(t, "one machine is not a fleet").not.toContainText("Agents");
     }
   });
 
@@ -98,7 +132,7 @@ test.describe("the resource tree", () => {
 
   test("the page menu lists the pages each object owns", async ({ page }) => {
     const cases: [string, string[]][] = [
-      ["install", ["playground", "inference", "preferences"]],
+      ["install", ["home", "playground", "inference", "preferences"]],
       ["library", ["models", "folders", "discover", "config"]],
       ["control", ["nodes", "config"]],
       ["gateway", ["metrics", "config"]],
@@ -106,6 +140,12 @@ test.describe("the resource tree", () => {
     for (const [sel, pages] of cases) {
       await page.goto(`/?sel=${sel}`);
       const menu = page.getByTestId("page-menu");
+      // The shell renders after the setup gate answers, and `goto` returns
+      // at the load event, which the gate's fetch can outlive. Reading the
+      // menu the instant the page loaded returned [] once Home carried more
+      // script than the playground did (S1's first navigation run); wait
+      // for the first entry, then read the list.
+      await expect(menu.locator("a[data-page]").first()).toBeVisible({ timeout: 60_000 });
       const ids = await menu
         .locator("a[data-page]")
         .evaluateAll((els) => els.map((e) => e.getAttribute("data-page")!));
@@ -125,25 +165,44 @@ test.describe("the resource tree", () => {
     );
   });
 
-  test("a driver sits under its machine and opens its own settings", async ({ page }) => {
+  test("a driver sits under its machine once there are two, straight under its type with one, and opens its own settings", async ({
+    page,
+  }) => {
     await page.goto("/");
     await loaded(page);
     const leaf = tree(page).locator(`a[data-tree-sel^="driver:${DRIVER}"]`);
     await expect(leaf, `no ${DRIVER} leaf in the tree`).toBeVisible();
-
-    // **It is under a machine, not hanging off the type.** The first
-    // version of this test asserted only that the leaf existed, and so
-    // passed against a tree with the node level removed entirely — a
-    // check that did not test the thing its name claims. The node group
-    // is the row whose `sel` the leaf's own `sel` names after the `@`.
     const sel = await leaf.getAttribute("data-tree-sel");
-    const node = sel!.slice(sel!.lastIndexOf("@") + 1);
-    expect(node, "the driver's sel carries no machine").toBeTruthy();
-    const group = tree(page).locator(`[data-tree-children$="/nodeGroup:${node}"]`);
-    await expect(
-      group.locator(`a[data-tree-sel="${sel}"]`),
-      `${DRIVER} is not nested under ${node}`,
-    ).toBeVisible();
+
+    if ((await machineCount(page)) > 1) {
+      // **It is under a machine, not hanging off the type.** The first
+      // version of this test asserted only that the leaf existed, and so
+      // passed against a tree with the node level removed entirely — a
+      // check that did not test the thing its name claims. The node group
+      // is the row whose `sel` the leaf's own `sel` names after the `@`.
+      const node = sel!.slice(sel!.lastIndexOf("@") + 1);
+      expect(node, "the driver's sel carries no machine").toBeTruthy();
+      const group = tree(page).locator(`[data-tree-children$="/nodeGroup:${node}"]`);
+      await expect(
+        group.locator(`a[data-tree-sel="${sel}"]`),
+        `${DRIVER} is not nested under ${node}`,
+      ).toBeVisible();
+    } else {
+      // **One machine: no node level, by design** (hobbyist-ux.md §6.4).
+      // The leaf is a direct child of the type branch — the wrapper names
+      // the branch, and a nested leaf would sit two rows deeper — and no
+      // node row exists anywhere in the tree. A leaf that merely exists
+      // would pass either shape, which is the check this replaced.
+      const branch = tree(page).locator('[data-tree-children$="/branch:Inference drivers"]');
+      await expect(
+        branch.locator(`:scope > div > div > a[data-tree-sel="${sel}"]`),
+        `${DRIVER} is not a direct child of Inference drivers`,
+      ).toBeVisible();
+      await expect(
+        tree(page).locator('[data-tree-group*="/nodeGroup:"]'),
+        "a node row rendered on a one-machine install",
+      ).toHaveCount(0);
+    }
 
     await leaf.click();
     await expect(page).toHaveURL(/\/config/);

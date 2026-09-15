@@ -29,6 +29,21 @@
  * 3. **A leaf's identity is `name@node`, never `name`.** Two workers can
  *    each have a `llama-1`, and the proxy resolves a bare name to the
  *    first it finds.
+ *
+ * And one that came later, from the hobbyist UX plan
+ * (`specs/docs/design/hobbyist-ux.md` §6.4, decision #10, Troy,
+ * 2026-09-15):
+ *
+ * 4. **The machine level renders only once there is more than one
+ *    machine.** The commonest install there is — one box — showed four
+ *    rows reading "This machine" under three branches, describing a
+ *    fleet the user does not have. With one machine, drivers hang
+ *    straight off their type, `Agents` is a leaf and Library has no
+ *    machine rows; a second machine, enrolled or merely named by a
+ *    driver, restores the level everywhere at once. The `sel` tokens do
+ *    not change shape across that flip, so every link, every bookmark
+ *    and every `parseSelection` case keeps working. `machineKeys` is the
+ *    one place the count is taken.
  */
 
 import { layerOf, type IconName, type Layer, type LayerId } from "./navigation";
@@ -121,7 +136,14 @@ const BRANCH_ORDER: ReadonlyArray<{ layer: LayerId; label: string }> = [
  */
 const PAGES: Record<string, PageRef[]> = {
   install: [
-    { id: "playground", label: "Playground", route: "/", icon: "Terminal" },
+    // Home is the install's front page since the hobbyist UX plan (S1):
+    // what is running, what to do next. The playground moved to its own
+    // route to make room — it is a diagnostic, and a diagnostic is not
+    // what a first-time user should land on. The icon vocabulary lives in
+    // `navigation.ts`; Home wears the install root's own until a house is
+    // added there.
+    { id: "home", label: "Home", route: "/", icon: "Monitor" },
+    { id: "playground", label: "Playground", route: "/playground", icon: "Terminal" },
     { id: "inference", label: "Inference", route: "/inference", icon: "Cpu" },
     // Theme and font size. Browser-local, not install-wide, and the page
     // says so -- but it has to hang somewhere in a tree of objects, and
@@ -172,14 +194,18 @@ export function pageRoutes(): string[] {
 export function buildTree(topology: Topology): TreeNode {
   const { localNode, components } = topology;
   const nodes = allNodes(topology);
+  const drivers = components.filter((c) => c.kind === "inference-driver");
+  // Taken once, here, so the three branches that show machines cannot
+  // disagree about how many there are.
+  const machines = machineKeys(nodes, drivers, localNode);
 
   const children: TreeNode[] = [];
   for (const branch of BRANCH_ORDER) {
     const layer = layerOf(branch.layer);
     if (branch.layer === "drivers") {
-      children.push(driverBranch(layer, branch.label, nodes, components, localNode));
+      children.push(driverBranch(layer, branch.label, nodes, machines, drivers, localNode));
     } else if (branch.layer === "agent") {
-      children.push(agentBranch(layer, branch.label, nodes, localNode));
+      children.push(agentBranch(layer, branch.label, nodes, machines, localNode));
     } else if (branch.layer === "library") {
       // The deliberate exception to "machines only under kinds that
       // multiply" (design §5.1): a machine under Library is how that
@@ -187,7 +213,10 @@ export function buildTree(topology: Topology): TreeNode {
       // has to hang off something in the Library branch.
       const singleton = singletonLeaf(layer, branch.label, components, localNode);
       if (singleton) {
-        children.push({ ...singleton, children: libraryNodeLeaves(layer, nodes, localNode) });
+        children.push({
+          ...singleton,
+          children: libraryNodeLeaves(layer, nodes, machines, localNode),
+        });
       }
     } else {
       const singleton = singletonLeaf(layer, branch.label, components, localNode);
@@ -228,6 +257,36 @@ function allNodes(topology: Topology): string[] {
 }
 
 /**
+ * Every machine that has a place in the tree, as the keys the driver
+ * groups are built on: the registry (this machine first), then any
+ * machine a driver names that the registry does not, then the nameless
+ * local one when nothing else exists. A key is `null` for a machine with
+ * no name, which is what an unenrolled box is; the list is never empty.
+ *
+ * **One entry means one machine, and that decides the tree's shape**
+ * (hobbyist-ux.md §6.4, decision #10). A machine a driver names but the
+ * registry lacks still counts: it is a second machine as far as the
+ * operator can see, and hiding the level would hide the `no node in the
+ * registry` flag that says something is wrong. What does NOT count is
+ * the nameless local machine when a named registry exists and no driver
+ * lives here — there is no evidence of a second machine in that, only of
+ * a browser that has not enrolled yet.
+ */
+function machineKeys(
+  nodes: string[],
+  drivers: ComponentPlacement[],
+  localNode: string | null,
+): (string | null)[] {
+  const keys: (string | null)[] = [...nodes];
+  for (const d of drivers) {
+    const key = d.node ?? localNode;
+    if (!keys.includes(key)) keys.push(key);
+  }
+  if (keys.length === 0) keys.push(localNode);
+  return keys;
+}
+
+/**
  * A singleton is its own leaf — clicking `Gateway` gives the gateway's
  * pages with no node level, because there is exactly one.
  *
@@ -261,21 +320,49 @@ function singletonLeaf(
 }
 
 /**
- * One leaf per machine. An agent is not a component, so the node
- * registry is the source rather than `/v1/components`.
+ * One leaf per machine — or, with one machine, the branch IS the leaf.
+ *
+ * An agent is not a component, so the node registry is the source rather
+ * than `/v1/components`; a machine a driver names but the registry lacks
+ * gets no agent leaf, because the UI has no evidence of an agent there
+ * (design §14.2).
  *
  * **A standalone install has no node name at all** — it is not enrolled,
  * so `GET /v1/node` carries none and the registry is empty. That is the
  * commonest shape there is (one box, first run), and it still has an
- * agent to configure, so it gets one leaf whose `sel` is the bare
- * `agent` that the Config page has always used for the local one.
+ * agent to configure, so its leaf's `sel` is the bare `agent` that the
+ * Config page has always used for the local one. An enrolled node that
+ * is alone gets `agent:<name>` — the same token the two-machine shape
+ * gives that row — so the flip from one machine to two moves the row and
+ * changes nothing about how it is addressed. `findSelected` still maps
+ * the bare `agent` a query-less `/config` asks for onto the `local` row,
+ * whichever shape it is in (design §13.2).
  */
 function agentBranch(
   layer: Layer,
   label: string,
   nodes: string[],
+  machines: ReadonlyArray<string | null>,
   localNode: string | null,
 ): TreeNode {
+  if (machines.length === 1) {
+    const machine = machines[0] ?? null;
+    return {
+      sel: machine ? `agent:${machine}` : "agent",
+      kind: "leaf",
+      // Singular: one machine has one agent, and a plural over a single
+      // row is exactly the "fleet you do not have" the design removes.
+      label: "Agent",
+      layer: layer.id,
+      icon: layer.icon,
+      node: machine,
+      children: [],
+      pages: PAGES.agent ?? [],
+      hint: machine === localNode ? "this machine" : (machine ?? undefined),
+      local: machine === localNode,
+    };
+  }
+
   const children: TreeNode[] =
     nodes.length === 0
       ? [
@@ -322,8 +409,20 @@ function agentBranch(
  * names as under Agents, so the two branches read as one list; the
  * `sel` is `library:node:<name>`, or the bare `library:node` on an
  * unenrolled box, mirroring `agent`.
+ *
+ * **None with one machine.** How the only machine reaches the Library is
+ * the Library's own Folders page — the grid has one column — so there
+ * is no second object to hang a row on, and a row would say "same path"
+ * about itself. A `library:node...` link from before the flip resolves
+ * to the Library leaf in `findSelected`.
  */
-function libraryNodeLeaves(layer: Layer, nodes: string[], localNode: string | null): TreeNode[] {
+function libraryNodeLeaves(
+  layer: Layer,
+  nodes: string[],
+  machines: ReadonlyArray<string | null>,
+  localNode: string | null,
+): TreeNode[] {
+  if (machines.length === 1) return [];
   if (nodes.length === 0) {
     return [
       {
@@ -353,44 +452,71 @@ function libraryNodeLeaves(layer: Layer, nodes: string[], localNode: string | nu
 }
 
 /**
- * Node groups, each holding that machine's drivers.
+ * Node groups, each holding that machine's drivers — or, with one
+ * machine, the drivers themselves straight under the type.
  *
  * **A machine with no drivers still appears, as an empty group.** Hiding
  * it would make "this machine is running nothing" indistinguishable from
  * "this machine is not in the install", which is the ambiguity the
- * Inference screen was built to remove.
+ * Inference screen was built to remove. With one machine the same fact
+ * moves onto the branch itself as the hint `none`.
  *
  * Grouping is by the driver's *resolved* machine — its own `node`, else
  * this one — and that key may legitimately be **null**, because a
  * standalone install has no node name. An earlier version of this
  * function matched group labels against that key and so dropped every
  * driver on an unenrolled box, which is the commonest install there is.
+ *
+ * **A leaf's `sel` is the same in both shapes**: `driver:<name>@<node>`
+ * when the machine has a name, `driver:<name>` when it has none. The
+ * machine is carried in the token, not in the row above it, which is
+ * what lets a link written on one shape land on the other.
  */
 function driverBranch(
   layer: Layer,
   label: string,
   nodes: string[],
-  components: ComponentPlacement[],
+  machines: ReadonlyArray<string | null>,
+  drivers: ComponentPlacement[],
   localNode: string | null,
 ): TreeNode {
-  const drivers = components.filter((c) => c.kind === "inference-driver");
-  const keyOf = (d: ComponentPlacement): string | null => d.node ?? localNode ?? null;
+  const keyOf = (d: ComponentPlacement): string | null => d.node ?? localNode;
+  const byName = (a: ComponentPlacement, b: ComponentPlacement) => a.name.localeCompare(b.name);
+  const leaf = (d: ComponentPlacement, key: string | null): TreeNode => ({
+    sel: key ? `driver:${d.name}@${key}` : `driver:${d.name}`,
+    kind: "leaf",
+    label: d.name,
+    layer: layer.id,
+    icon: layer.icon,
+    node: key,
+    children: [],
+    pages: PAGES.driver ?? [],
+  });
+  const hintFor = (key: string | null, count: number): string | undefined =>
+    !(key === null || nodes.includes(key))
+      ? "no node in the registry"
+      : count === 0
+        ? "none"
+        : undefined;
 
-  // Every machine that should have a group: the ones in the registry,
-  // then any a driver names that the registry does not, then the
-  // nameless local one when that is where a driver lives.
-  const keys: (string | null)[] = [...nodes];
-  for (const d of drivers) {
-    const key = keyOf(d);
-    if (!keys.includes(key)) keys.push(key);
+  if (machines.length === 1) {
+    // Every driver resolves to the one machine — `machineKeys` put each
+    // driver's key in the list, and the list has one entry.
+    const key = machines[0] ?? null;
+    return {
+      sel: null,
+      kind: "branch",
+      label,
+      layer: layer.id,
+      icon: layer.icon,
+      children: [...drivers].sort(byName).map((d) => leaf(d, key)),
+      pages: [],
+      hint: hintFor(key, drivers.length),
+    };
   }
-  if (keys.length === 0) keys.push(localNode);
 
-  const groups: TreeNode[] = keys.map((key) => {
-    const mine = drivers
-      .filter((d) => keyOf(d) === key)
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const known = key === null || nodes.includes(key);
+  const groups: TreeNode[] = machines.map((key) => {
+    const mine = drivers.filter((d) => keyOf(d) === key).sort(byName);
     return {
       sel: null,
       kind: "nodeGroup" as const,
@@ -398,18 +524,9 @@ function driverBranch(
       layer: layer.id,
       icon: layer.icon,
       node: key,
-      children: mine.map((d) => ({
-        sel: key ? `driver:${d.name}@${key}` : `driver:${d.name}`,
-        kind: "leaf" as const,
-        label: d.name,
-        layer: layer.id,
-        icon: layer.icon,
-        node: key,
-        children: [],
-        pages: PAGES.driver ?? [],
-      })),
+      children: mine.map((d) => leaf(d, key)),
       pages: [],
-      hint: !known ? "no node in the registry" : mine.length === 0 ? "none" : undefined,
+      hint: hintFor(key, mine.length),
     };
   });
 
@@ -600,7 +717,10 @@ export function defaultSelectionFor(
   if (!pathname) return null;
   const path = pathname.replace(/[?#].*$/, "").replace(/\/+$/, "") || "/";
   switch (path) {
+    // `/` is Home and `/playground` is where the playground went (S1);
+    // both are the install's own pages.
     case "/":
+    case "/playground":
     case "/inference":
       return "install";
     case "/metrics":
@@ -664,14 +784,18 @@ export function findSelected(root: TreeNode, sel: string | null): TreeNode | nul
   if (selection.type === "agent" && !selection.node) {
     return rows.find((n) => n.local && n.sel?.startsWith("agent")) ?? null;
   }
-  if (selection.type === "libraryNode" && !selection.node) {
+  if (selection.type === "libraryNode") {
+    const machineRows = rows.filter((n) => n.sel?.startsWith("library:node"));
+    // One machine: Library has no machine rows at all, so a
+    // `library:node...` link — a bookmark from before the flip, or from a
+    // second machine that has since left — lands on the Library leaf,
+    // whose Folders page is the same page with one column. On two or
+    // more machines a name no row carries is stale and selects nothing.
+    if (machineRows.length === 0) return findNode(root, "library");
+    if (selection.node) return null;
     // `local` is reserved for the one row that IS the browser's machine
     // (its agent); the Library leaf for that machine is found by node.
-    return (
-      rows.find(
-        (n) => n.sel?.startsWith("library:node") && (n.node ?? null) === localNodeOf(root),
-      ) ?? null
-    );
+    return machineRows.find((n) => (n.node ?? null) === localNodeOf(root)) ?? null;
   }
   if (selection.type === "driver" && !selection.node && selection.name) {
     const prefix = `driver:${selection.name}`;
