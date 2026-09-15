@@ -280,6 +280,41 @@ export const SCREENS: readonly Screen[] = [
  */
 export const ROUTES_WITHOUT_NAV: readonly string[] = ["/login", "/setup", "/runtimes"] as const;
 
+/**
+ * Routes that render inside the shell as pages **of the install root**
+ * without a slot in its page menu.
+ *
+ * `/backends/add` is the first (hobbyist UX S2): the form that adds an
+ * app the person already runs — Ollama, a cloud CLI — reached from Home's
+ * first-model card and from Inference. It is a task, not a place anyone
+ * returns to, so a permanent menu entry would be a third "add" beside
+ * Discover and Library. But the shell still has to know which object the
+ * page is about: a page that selects nothing renders an empty page menu
+ * and a tree with no row lit, silently — the exact defect the tree
+ * design's §13 found in a bare `/config`. `defaultSelectionFor` in
+ * `resourceTree.ts` answers for the pages in the menu; this set answers
+ * for the ones under the root that are not, and the shell asks it second.
+ *
+ * Prefixes, matched on a segment boundary: `/backends` covers
+ * `/backends/add` and would cover a future `/backends/<name>`, and never
+ * `/backendsmith`.
+ */
+export const ROUTES_UNDER_INSTALL: readonly string[] = ["/backends"] as const;
+
+/**
+ * `"install"` for a pathname under `ROUTES_UNDER_INSTALL`, else `null`.
+ * The same normalisation as `activeScreen`, so the static export's
+ * trailing slash and a query string change nothing.
+ */
+export function installSubrouteSelection(pathname: string | null | undefined): "install" | null {
+  if (!pathname) return null;
+  const path = normalizePath(pathname);
+  const under = ROUTES_UNDER_INSTALL.some(
+    (route) => path === route || path.startsWith(`${route}/`),
+  );
+  return under ? "install" : null;
+}
+
 export interface NavGroup {
   readonly side: LayerSide;
   readonly label: string;

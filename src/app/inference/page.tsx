@@ -251,9 +251,9 @@ export default function InferencePage() {
             Launch a model
           </Link>
           <Link
-            href="/config"
+            href="/backends/add"
             className={buttonClass}
-            title="Something you already run — an Ollama, an OpenAI-compatible server, a cloud CLI — joins the install as an inference-driver pointed at it. Today that is declared on the Config page; a guided form is on the list."
+            title="Something you already run — Ollama, LM Studio, an OpenAI-compatible server, a cloud CLI — joins the install so the gateway can send requests to it. A short form asks which app it is and what it needs."
           >
             Add an external backend
           </Link>

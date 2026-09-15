@@ -1,12 +1,15 @@
 "use client";
 
 /**
- * Wizard screen: the passphrase, and whether Eugene starts on its own after
- * a reboot.
+ * Wizard screen 1: the passphrase, and whether Eugene starts on its own
+ * after a reboot.
  *
- * One screen per module since M9. Nothing here reads or writes the
- * install - a screen renders the draft and reports edits upwards, and
- * every write happens once, in `page.tsx`, when Start is pressed.
+ * One screen per module since M9. A screen renders the draft and reports
+ * edits upwards; the write happens in `page.tsx`, when the footer's button
+ * is pressed. Since S2 that press is this screen's Continue, which
+ * initializes the install and enrolls this machine — so the sentence at
+ * the top does the Welcome screen's old job in one line, because the next
+ * click is the one that commits.
  *
  * S0 of the hobbyist UX plan (2026-09-15) replaced two radio buttons and
  * two paragraphs with one checkbox and one line. The old copy described
@@ -19,7 +22,7 @@
 import type { SecurityMode } from "../draft";
 import { Checkbox, Field, SecretInput } from "../fields";
 
-export function ScreenSecurity({
+export function ScreenPassphrase({
   passphrase,
   passphraseConfirm,
   securityMode,
@@ -42,10 +45,10 @@ export function ScreenSecurity({
   const noKeyring = keyringAvailable === false;
   return (
     <section>
-      <h2 className="font-ui mb-2 text-xl font-semibold">Security</h2>
+      <h2 className="font-ui mb-2 text-xl font-semibold">Choose a passphrase</h2>
       <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
-        Eugene locks the secrets it stores, such as API keys, with a passphrase you choose here. You
-        will also use it to sign in. Pick something you can remember: Eugene cannot reset it.
+        It protects the keys and settings Eugene stores on this machine. You will also use it to
+        sign in. Pick something you can remember: Eugene cannot reset it.
       </p>
       <Field
         label="Passphrase"

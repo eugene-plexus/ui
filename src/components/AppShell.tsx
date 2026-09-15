@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
-import { accentVar, layerOf } from "@/lib/navigation";
+import { accentVar, installSubrouteSelection, layerOf } from "@/lib/navigation";
 import {
   activePage,
   buildTree,
@@ -73,8 +73,13 @@ function AppShellInner({
   // An explicit `sel` wins; otherwise the route says which object it is
   // about, so every URL that worked before the tree still works — a
   // bookmark, the launch panel's `?tab=` link, the `/runtimes` redirect.
+  // A page under the install root that is not in its menu (`/backends/add`)
+  // is answered last, by the registry, so it lights the root rather than
+  // nothing.
   const requested =
-    searchParams.get("sel") ?? defaultSelectionFor(pathname, searchParams.get("tab"));
+    searchParams.get("sel") ??
+    defaultSelectionFor(pathname, searchParams.get("tab")) ??
+    installSubrouteSelection(pathname);
 
   // One topology, one tree, both consumers reading the same object. The
   // first build had the tree and the page menu fetch separately, and

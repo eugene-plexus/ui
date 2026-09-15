@@ -3,135 +3,99 @@
 /**
  * First-run wizard — the orchestrator.
  *
- * Five screens. At M9 this file stopped containing them: it was 1548
- * lines holding eight screens, the
- * persisted draft, the backend-creation logic, port allocation, topology
- * validation and seven leaf inputs, so **nothing in it could be tested
- * without mounting the whole wizard** — which is why its test was 258
- * lines asserting a call sequence, and why the four bugs Troy found on
- * 2026-09-10 were all found by hand and none by tests.
+ * Two screens since S2 of the hobbyist UX plan (2026-09-15). At M9 this
+ * file stopped containing its screens: it was 1548 lines holding eight of
+ * them, the persisted draft, the backend-creation logic, port allocation,
+ * topology validation and seven leaf inputs, so **nothing in it could be
+ * tested without mounting the whole wizard** — which is why its test was
+ * 258 lines asserting a call sequence, and why the four bugs Troy found
+ * on 2026-09-10 were all found by hand and none by tests.
  *
  * Now:
  *
  *   draft.ts          the shape, the defaults, and what finishes a screen
- *   start.ts          what Start does, minus the rendering
- *   chrome.tsx        the step indicator and the navigation buttons
+ *   start.ts          the transaction's helpers, minus the rendering
+ *   chrome.tsx        the step indicator and the footer button
  *   fields.tsx        the leaf inputs
  *   screens/*.tsx     one file per screen
  *   page.tsx          this — the flow, and the one place that writes
  *
- * Screen order, cut from eight to five on 2026-09-11:
+ * **The two screens, and what each one's button commits:**
  *
- *   1. Welcome       — plain-language framing of what gets set up
- *   2. Security      — passphrase + securityMode
- *   3. Models        — the operator's model directories
- *   4. Backend       — one external backend, optional
- *   5. Done          — summary + Start (or the model picker, if a backend
- *                      was created and can be asked what it serves)
+ *   1. Choose a passphrase   Continue: initialize the agent, check the
+ *                            components are there, initialize the trust
+ *                            root, enroll this machine, write the reboot
+ *                            choice to both processes.
+ *   2. Where should models   Finish: point the library at the folder(s),
+ *      live?                 flip firstRunComplete, open Home.
  *
- * **What went, and why it is not a matter of taste.** Deployment and
- * Gateway collected `deployment`, `gatewayHost` and `gatewayPort`, which
- * the Start transaction below never wrote to anything — grep them and the
- * only reader was the Ready screen's own summary. So the wizard asked two
- * questions, discarded both answers, and then printed one of them back as
- * if it were configuration: set `0.0.0.0:9000` there and you got an
- * install on `127.0.0.1:8080` and a summary claiming otherwise. In the
- * default local path the Gateway screen also rendered no inputs at all.
- * Look & feel wrote only `localStorage`, and `UIPreferences` on `/config`
- * has been the same two controls all along.
+ * **Why the write moved from one Start at the end to two buttons.** The
+ * five-screen wizard held everything until a Start on a summary screen,
+ * so screen 2 could not browse a disk — there was no session yet. Enrolling
+ * on screen 1 gives screen 2 a session, and with it a folder picker over
+ * the library's host and a proposed folder under that host's home, which
+ * is what the design's §0.4 asked for: stop asking a new user where their
+ * files are when they have none.
  *
- * **And Welcome was third**, which is how the split found it: a
- * plain-language "here is what is about to happen" arriving after the
- * operator had already chosen a font size and committed a passphrase.
- * Either it is first or it is nothing.
+ * **The price is two wizards' worth of state (§10 trap 8).** A tab closed
+ * after Continue leaves an initialized, enrolled install with no models
+ * folder. So which screen a visit opens on is decided by the INSTALL, not
+ * by a saved step: `GET /v1/auth/status` says whether the passphrase step
+ * is committed, and if it is, the wizard opens on screen 2 with nothing to
+ * redo. A visit with a committed passphrase and no session is sent to sign
+ * in and comes straight back here.
  *
- * What remains is what cannot be derived or defaulted: the passphrase,
- * where the model files already are, and optionally one backend the agent
- * does not supervise (which has no runtime, so nothing declares a
- * companion driver for it).
- *
- * State lives in React (with a sessionStorage mirror so a tab refresh
- * doesn't lose progress). **The actual write-to-install happens only on
- * Start** — the wizard treats the whole flow as one transaction and
- * either commits everything or commits nothing.
- *
- * Transactional order on Start:
- *   1. POST /v1/auth/initialize on the agent → session token, master key.
- *   1b. Read the topology for real, now that there is a token, and stop
- *      if a required component is missing. The first moment an empty
- *      install is distinguishable from an unauthorized read.
- *   2. POST /v1/auth/initialize on the control root. Separate because it
- *      is the trust root and mints its own auth; until it has a
- *      passphrase it answers 503 across its whole surface, by design.
- *   3. Patch securityMode, if it is not the default.
- *   4. Patch the library's model directories, if any were given.
- *   5. Create and configure the external backend's driver, if chosen,
- *      then ask it what models it has.
- *   6. Flip firstRunComplete: true.
+ * What is gone: the Welcome screen (its one sentence is screen 1's
+ * header), the summary screen, and the Backend screen, which is a task
+ * and not a setup step — it lives at `/backends/add`, reachable from Home
+ * once the install exists.
  *
  * The passphrase is never written to sessionStorage — it lives only in
- * component state and is dropped from the saved draft. A mid-wizard
- * refresh re-prompts.
+ * component state and is dropped from the saved draft. Screen 2's choices
+ * are saved, so a refresh there keeps them.
  */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { api } from "@/lib/api";
-import { setSessionToken } from "@/lib/session";
-import type { Component, ComponentList } from "@/lib/types";
+import { ApiError, api } from "@/lib/api";
+import { homeFrom, proposedModelsFolder } from "@/lib/proposedModelsFolder";
+import { hasSessionToken, setSessionToken } from "@/lib/session";
+import type { ComponentList, DirectoryListing } from "@/lib/types";
 
 import { WizardFooter, WizardHeader } from "./chrome";
 import {
   type AuthStatusView,
   DRAFT_KEY,
-  TOTAL_SCREENS,
   blankDraft,
   canContinue,
-  requiredKindsMissing,
+  chosenFolders,
   type InitializeResponse,
+  requiredKindsMissing,
+  restoreDraft,
   type WizardDraft,
 } from "./draft";
-import { ScreenBackend } from "./screens/Backend";
-import { ScreenDone } from "./screens/Done";
-import { ScreenModels } from "./screens/Models";
-import { ScreenPickModel } from "./screens/PickModel";
-import { ScreenSecurity } from "./screens/Security";
-import { ScreenWelcome } from "./screens/Welcome";
+import { type FolderProposal, ScreenFolders } from "./screens/Folders";
+import { ScreenPassphrase } from "./screens/Passphrase";
 import {
-  buildBackendPatch,
   controlUrlFrom,
-  driverNameFor,
   enrollLocalAgent,
-  fetchBackendModels,
   formatStartError,
-  freeDriverPort,
   initializeControlRoot,
   withRetry,
 } from "./start";
 
 export default function WizardPage() {
   const router = useRouter();
-  const [screen, setScreen] = useState(1);
+  // `null` until the status probe has said which screen this visit opens
+  // on. Rendering screen 1 first and then jumping would flash a passphrase
+  // form at a person whose passphrase is already set.
+  const [screen, setScreen] = useState<1 | 2 | null>(null);
   const [draft, setDraft] = useState<WizardDraft>(blankDraft());
   const [hydrated, setHydrated] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [startError, setStartError] = useState<string | null>(null);
-  const [startMessage, setStartMessage] = useState<string | null>(null);
-  const [knownComponents, setKnownComponents] = useState<Component[]>([]);
-  // Whether that list is an answer or just an absence. Before a passphrase
-  // exists the agent 401s this read, so an empty list means "not told",
-  // not "nothing there" - and reporting the difference wrongly accused a
-  // perfectly good install of missing every component.
-  const [topologyKnown, setTopologyKnown] = useState(false);
-  // Set once a backend driver has been created and asked what it can serve.
-  // Its presence turns the last screen into a model picker: the driver has to
-  // exist before it can list models, so this is the earliest the operator can
-  // be offered a real list instead of a text box.
-  const [pendingBackend, setPendingBackend] = useState<{
-    name: string;
-    models: string[];
-  } | null>(null);
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   // Passphrase state lives OUTSIDE the persisted draft — never written
   // to sessionStorage. A mid-wizard refresh re-prompts for it.
   const [passphrase, setPassphrase] = useState("");
@@ -140,10 +104,21 @@ export default function WizardPage() {
   // the status probe answers, or forever against an agent that predates
   // the field - either way the draft keeps the passphrase prompt.
   const [keyringAvailable, setKeyringAvailable] = useState<boolean | null>(null);
+  // The folder Eugene offers to make, once the library has been asked for
+  // its home. Asked only on screen 2, because only then is there a session.
+  const [proposal, setProposal] = useState<FolderProposal>({ status: "loading" });
   // Whether a saved draft was restored on mount. The probe may only set
   // the securityMode DEFAULT - a choice the operator made before a tab
   // refresh is theirs, and the status read resolves after hydration.
   const hadStoredDraft = useRef(false);
+  // The router, for the probe below to redirect with. Behind a ref so the
+  // probe can run exactly once: a router whose identity changes per render
+  // (the test double's does, and Next's does not promise otherwise) would
+  // re-run it after Continue and put a committed install back on screen 1.
+  const routerRef = useRef(router);
+  useEffect(() => {
+    routerRef.current = router;
+  }, [router]);
 
   // Hydrate from sessionStorage so a tab refresh mid-wizard doesn't
   // throw away typed values.
@@ -151,23 +126,10 @@ export default function WizardPage() {
     if (typeof window === "undefined") return;
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<WizardDraft> & { screen?: number };
-        // A draft saved by an earlier wizard has a `driver` object (or a
-        // `drivers` tuple, older still) and no `modelRoots`. Merging one
-        // produces a half-shaped draft that renders undefined fields, so
-        // ignore it and start clean. The shape check moves with the shape.
-        if (Array.isArray(parsed.modelRoots)) {
-          hadStoredDraft.current = true;
-          setDraft((prev) => ({ ...prev, ...parsed }));
-          if (
-            typeof parsed.screen === "number" &&
-            parsed.screen >= 1 &&
-            parsed.screen <= TOTAL_SCREENS
-          ) {
-            setScreen(parsed.screen);
-          }
-        }
+      const restored = raw ? restoreDraft(JSON.parse(raw)) : null;
+      if (restored) {
+        hadStoredDraft.current = true;
+        setDraft(restored);
       }
     } catch {
       // ignore — start from defaults
@@ -181,62 +143,72 @@ export default function WizardPage() {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, screen }));
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch {
       // ignore
     }
-  }, [hydrated, draft, screen]);
+  }, [hydrated, draft]);
 
-  // Pull the agent's current component list once. The final screen
-  // uses it for the summary and to decide what to PATCH vs. skip. The
-  // endpoint is auth-protected; the wizard hasn't initialized the
-  // install yet so we skip auth and tolerate a 401 — an empty list is
-  // fine, Start surfaces real errors later.
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const list = await api.get<ComponentList>("agent", "/v1/components", { skipAuth: true });
-        if (cancelled) return;
-        setKnownComponents(list.components ?? []);
-        setTopologyKnown(true);
-      } catch {
-        // Agent unreachable or auth-required — leave empty.
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Ask the agent whether this host can keep Eugene unlocked across a
-  // reboot, and default the wizard to it where it can. Unauthenticated by
-  // design - this is the one probe the UI makes before a passphrase exists.
-  // The old default was prompt_on_startup on every host, while the screen's
-  // own copy called the keyring "best for AI hobbyists" (decision #9 of the
-  // hobbyist UX plan).
+  // One probe, two answers. Unauthenticated by design - this is the one
+  // call the UI makes before a passphrase exists.
+  //
+  // First: can this host keep Eugene unlocked across a reboot? Default the
+  // checkbox to it where it can (decision #9 of the hobbyist UX plan; the
+  // old default was prompt_on_startup on every host while the copy called
+  // the keyring "best for AI hobbyists").
+  //
+  // Second: is the passphrase step already committed? If so this visit
+  // opens on screen 2 - the install exists, this machine is enrolled, and
+  // the only thing missing is where models live (§10 trap 8). With no
+  // session to do that under, sign in first; the login page returns here.
   useEffect(() => {
     let cancelled = false;
     async function probe() {
+      let status: AuthStatusView | null = null;
       try {
-        const status = await api.get<AuthStatusView>("agent", "/v1/auth/status", {
-          skipAuth: true,
-        });
-        if (cancelled) return;
-        const available = status.keyringAvailable ?? null;
-        setKeyringAvailable(available);
-        if (available === true && !hadStoredDraft.current) {
-          setDraft((prev) => ({ ...prev, securityMode: "os_keyring" }));
-        }
-        if (available === false) {
-          // Not a choice here: the screen says why, and the value written
-          // must match what the screen showed.
-          setDraft((prev) => ({ ...prev, securityMode: "prompt_on_startup" }));
-        }
+        status = await api.get<AuthStatusView>("agent", "/v1/auth/status", { skipAuth: true });
       } catch {
-        // Agent unreachable or an older build: the default stays.
+        // Agent unreachable or an older build: open on screen 1 and let
+        // Continue surface the real error.
       }
+      if (cancelled) return;
+
+      const available = status?.keyringAvailable ?? null;
+      setKeyringAvailable(available);
+      if (available === true && !hadStoredDraft.current) {
+        setDraft((prev) => ({ ...prev, securityMode: "os_keyring" }));
+      }
+      if (available === false) {
+        // Not a choice here: the screen says why, and the value written
+        // must match what the screen showed.
+        setDraft((prev) => ({ ...prev, securityMode: "prompt_on_startup" }));
+      }
+
+      if (!status?.initialized) {
+        setScreen(1);
+        return;
+      }
+      if (!hasSessionToken()) {
+        routerRef.current.replace(`/login?next=${encodeURIComponent("/setup")}`);
+        return;
+      }
+      // A finished install has nothing for this page to do, and Finish
+      // here would overwrite the folders it already has with the proposal.
+      try {
+        const doc = await api.get<{ firstRunComplete?: boolean }>("agent", "/v1/config");
+        if (cancelled) return;
+        if (doc.firstRunComplete === true) {
+          routerRef.current.replace("/");
+          return;
+        }
+      } catch (e) {
+        if (cancelled) return;
+        // A 401 means the api client has already cleared the session and
+        // is bouncing to /login; anything else is the agent mid-restart,
+        // and Finish will say so if it persists.
+        if (e instanceof ApiError && e.status === 401) return;
+      }
+      setScreen(2);
     }
     void probe();
     return () => {
@@ -244,22 +216,48 @@ export default function WizardPage() {
     };
   }, []);
 
+  // Screen 2 asks the library for its host's home and proposes a folder
+  // under it. Retried, because screen 1's Continue restarted every child
+  // (initializing, then enrolling) and the library is one of them; a
+  // connection refused in that window is not an answer. Ten refusals is:
+  // the first radio is disabled and the second selected, so the person
+  // types or browses instead of waiting on a proposal that will not come.
+  useEffect(() => {
+    if (screen !== 2 || proposal.status !== "loading") return;
+    let cancelled = false;
+    async function lookUpHome() {
+      try {
+        const roots = await withRetry(() =>
+          api.get<DirectoryListing>("library", "/v1/directories"),
+        );
+        if (cancelled) return;
+        const path = proposedModelsFolder(roots);
+        const home = homeFrom(roots);
+        if (path && home) {
+          setProposal({ status: "ready", path, home });
+          return;
+        }
+      } catch {
+        // fall through
+      }
+      if (cancelled) return;
+      setProposal({ status: "unavailable" });
+      setDraft((prev) => ({ ...prev, folderChoice: "own" }));
+    }
+    void lookUpHome();
+    return () => {
+      cancelled = true;
+    };
+  }, [screen, proposal.status]);
+
   function patchDraft(patch: Partial<WizardDraft>) {
     setDraft((prev) => ({ ...prev, ...patch }));
   }
 
-  function next() {
-    setScreen((s) => Math.min(s + 1, TOTAL_SCREENS));
-  }
-  function back() {
-    setScreen((s) => Math.max(s - 1, 1));
-  }
-
   function cancel() {
-    // Cancel only fires from screen 1; bail-out from later screens goes
-    // back to 1 first. Stopping already-spawned children belongs to a
-    // agent endpoint that doesn't exist; here we just clear the draft
-    // and return so the operator can decide what to do next.
+    // Cancel only fires from screen 1 before Continue, so nothing has been
+    // written. Clear the draft and return; the setup gate will bring the
+    // person back here until the install exists.
     try {
       sessionStorage.removeItem(DRAFT_KEY);
     } catch {
@@ -268,16 +266,16 @@ export default function WizardPage() {
     router.replace("/");
   }
 
-  async function start() {
-    setStarting(true);
-    setStartError(null);
+  /** Screen 1's Continue: the passphrase step, committed. */
+  async function commitPassphrase() {
+    setWorking(true);
+    setError(null);
     try {
       // Step 1: initialize the install. Sets the passphrase hash + master
       // salt on the agent, derives the master key into memory, and
       // returns a session token. After this call, the rest of the
-      // wizard's PATCHes are authenticated by the api client's
-      // auto-attach.
-      setStartMessage("Setting your passphrase and deriving keys…");
+      // wizard's calls are authenticated by the api client's auto-attach.
+      setMessage("Setting your passphrase and deriving keys…");
       const initResp = await api.post<InitializeResponse>(
         "agent",
         "/v1/auth/initialize",
@@ -293,9 +291,10 @@ export default function WizardPage() {
       // gateway and library on its first boot, so a missing one means its
       // package is absent from the agent's environment - unfixable from
       // here, and worth stopping for rather than reporting success.
-      setStartMessage("Checking this node's components…");
+      setMessage("Checking this node's components…");
       const live = await api.get<ComponentList>("agent", "/v1/components");
-      const missing = requiredKindsMissing(live.components ?? []);
+      const components = live.components ?? [];
+      const missing = requiredKindsMissing(components);
       if (missing.length > 0) {
         throw new Error(
           `This node has no ${missing.join(", ")}. The agent declares those on its ` +
@@ -314,7 +313,7 @@ export default function WizardPage() {
       // own /v1/config) and by design it does not fall open. A first run that
       // skipped this produced an install the wizard called finished with an
       // inert trust root: only scripts/dev-seed.ps1 ever set it.
-      setStartMessage("Setting up the trust root…");
+      setMessage("Setting up the trust root…");
       await initializeControlRoot(passphrase);
 
       // Step 2b: enroll THIS host's agent with the root it just spawned.
@@ -331,9 +330,9 @@ export default function WizardPage() {
       //
       // It replaces the session, because the key it was signed with is
       // gone - the same price a rotation charges, for the same reason.
-      const controlUrl = controlUrlFrom(live.components ?? []);
+      const controlUrl = controlUrlFrom(components);
       if (controlUrl) {
-        setStartMessage("Joining this machine to the install…");
+        setMessage("Joining this machine to the install…");
         setSessionToken(await enrollLocalAgent(passphrase, controlUrl));
       }
 
@@ -351,98 +350,41 @@ export default function WizardPage() {
       // enrollment on purpose: the session this browser holds now verifies
       // at the root, so one credential reaches both.
       if (draft.securityMode !== "prompt_on_startup") {
-        setStartMessage("Applying security mode…");
-        await api.patch("agent", "/v1/config", {
-          securityMode: draft.securityMode,
-        });
-        await api.patch("control", "/v1/config", {
-          securityMode: draft.securityMode,
-        });
+        setMessage("Applying security mode…");
+        await api.patch("agent", "/v1/config", { securityMode: draft.securityMode });
+        await api.patch("control", "/v1/config", { securityMode: draft.securityMode });
       }
 
-      // Step 4: point the library at the operator's model directories.
-      // Their files stay exactly where they are - this only says where to
-      // look. No driver is configured here: since M6 the agent declares one
-      // companion inference-driver per runtime, so there is no driver to
-      // configure until a model is launched. Asking about one up front was
-      // asking about a component that could not exist yet, which is how a
-      // first run could finish against an empty install.
-      const roots = draft.modelRoots.map((r) => r.trim()).filter(Boolean);
-      if (roots.length > 0) {
-        setStartMessage("Pointing the library at your models…");
-        // Retried, because step 1 caused a restart: making the master key
-        // available makes the agent respawn every supervised child so they
-        // pick it up, and the library is one of them. Patching it in that
-        // window gets a connection refusal that has nothing to do with the
-        // operator's input.
-        await withRetry(() => api.patch("library", "/v1/config", { modelRoots: roots }));
-      }
-
-      // Step 5: create the external backend's driver, if one was chosen.
-      // CREATE, not just configure: nothing declares a driver for a backend
-      // the agent doesn't supervise, so the previous wizard's PATCH had
-      // nothing to patch on a fresh install and silently did nothing.
-      if (draft.backend.provider) {
-        setStartMessage("Adding your backend…");
-        const name = driverNameFor(draft.backend.provider, live.components ?? []);
-        const port = freeDriverPort(live.components ?? []);
-        await api.post("agent", "/v1/components", {
-          name,
-          kind: "inference-driver",
-          url: `http://127.0.0.1:${port}`,
-          spawn: { configFile: `${name}.yaml` },
-        });
-        // Its config is its own file, written once it is up. Retried for the
-        // same reason as the library: this install is mid restart-on-login.
-        setStartMessage("Configuring your backend…");
-        await withRetry(() => api.patch(name, "/v1/config", buildBackendPatch(draft.backend)));
-        // A driver reads its provider and model at startup, so PATCH alone
-        // leaves `pendingRestart` and a driver still serving nothing. The
-        // previous wizard called this "best-effort"; it is not optional.
-        setStartMessage("Restarting your backend so it picks up the settings…");
-        await withRetry(() =>
-          api.post("agent", `/v1/components/${encodeURIComponent(name)}/restart`, {}),
-        );
-
-        // Now that it exists and is talking to the backend, ask it what it
-        // can serve. The driver publishes discovered models as `suggestions`
-        // on the modelId field of its own config schema - the same list the
-        // Config page renders as a dropdown. Nothing earlier in the wizard
-        // could have obtained this: there was no driver to ask, and before
-        // Start there is not even a session token.
-        setStartMessage("Asking your backend which models it has…");
-        const models = await withRetry(() => fetchBackendModels(name));
-        setPendingBackend({ name, models });
-        setStarting(false);
-        setStartMessage(null);
-        return;
-      }
-
-      await finishSetup(null, "");
+      // Committed. The passphrase has done its job and need not stay in
+      // memory for screen 2.
+      setPassphrase("");
+      setPassphraseConfirm("");
+      setMessage(null);
+      setWorking(false);
+      setScreen(2);
     } catch (e) {
-      setStartError(formatStartError(e));
-      setStarting(false);
+      setError(formatStartError(e));
+      setWorking(false);
     }
   }
 
-  /** The last write. Separate because a backend needs a model chosen first,
-   * and `firstRunComplete` must not flip until everything has landed. */
-  async function finishSetup(driverName: string | null, modelId: string) {
-    setStarting(true);
-    setStartError(null);
+  /** Screen 2's Finish: where models live, then the install is set up. */
+  async function finish() {
+    setWorking(true);
+    setError(null);
     try {
-      if (driverName && modelId.trim()) {
-        setStartMessage("Setting the model…");
-        await withRetry(() => api.patch(driverName, "/v1/config", { modelId: modelId.trim() }));
-        // Read at startup, like the provider: without this the gateway lists
-        // nothing and the backend is silently inert.
-        setStartMessage("Restarting your backend…");
-        await withRetry(() =>
-          api.post("agent", `/v1/components/${encodeURIComponent(driverName)}/restart`, {}),
-        );
-      }
+      const roots = chosenFolders(draft, proposal.status === "ready" ? proposal.path : null);
+      // Their files stay exactly where they are - this only says where to
+      // look, and where downloads land. A proposed folder that does not
+      // exist yet is fine: the library makes it when the first download
+      // starts, and reports it "missing" until then, which is the truth.
+      setMessage("Saving where models live…");
+      // Retried, because screen 1 caused restarts and the library is one of
+      // the children that came back; a refusal in that window has nothing
+      // to do with the person's input.
+      await withRetry(() => api.patch("library", "/v1/config", { modelRoots: roots }));
 
-      setStartMessage("Finalizing setup…");
+      setMessage("Finalizing setup…");
       await api.patch("agent", "/v1/config", { firstRunComplete: true });
 
       try {
@@ -450,19 +392,19 @@ export default function WizardPage() {
       } catch {
         // ignore
       }
-      setStartMessage("Done — opening Home…");
-      // Small delay so the operator sees the final message.
+      setMessage("Done — opening Home…");
+      // Small delay so the person sees the final message.
       setTimeout(() => router.replace("/"), 500);
     } catch (e) {
-      setStartError(formatStartError(e));
-      setStarting(false);
+      setError(formatStartError(e));
+      setWorking(false);
     }
   }
 
-  // Don't render screen content until hydration finishes, otherwise the
-  // first paint shows defaults and overwrites whatever the user typed
-  // before refresh.
-  if (!hydrated) {
+  // Don't render screen content until hydration finishes and the probe has
+  // said which screen this is, otherwise the first paint shows a form the
+  // person may not need and overwrites whatever they typed before refresh.
+  if (!hydrated || screen === null) {
     return (
       <main className="relative z-10 flex h-screen items-center justify-center">
         <p className="font-ui text-xs text-[color:var(--muted)]">Loading setup…</p>
@@ -470,14 +412,15 @@ export default function WizardPage() {
     );
   }
 
+  const proposedPath = proposal.status === "ready" ? proposal.path : null;
+
   return (
     <main className="relative z-10 flex h-screen flex-col">
       <WizardHeader screen={screen} />
       <div className="flex-1 overflow-y-auto px-6 py-8">
         <div className="mx-auto max-w-2xl">
-          {screen === 1 && <ScreenWelcome />}
-          {screen === 2 && (
-            <ScreenSecurity
+          {screen === 1 && (
+            <ScreenPassphrase
               passphrase={passphrase}
               passphraseConfirm={passphraseConfirm}
               securityMode={draft.securityMode}
@@ -487,54 +430,30 @@ export default function WizardPage() {
               onSecurityMode={(v) => patchDraft({ securityMode: v })}
             />
           )}
-          {screen === 3 && (
-            <ScreenModels
-              roots={draft.modelRoots}
-              onChange={(modelRoots) => patchDraft({ modelRoots })}
-            />
+          {screen === 2 && (
+            <ScreenFolders draft={draft} proposal={proposal} onChange={patchDraft} />
           )}
-          {screen === 4 && (
-            <ScreenBackend
-              backend={draft.backend}
-              onChange={(patch) => patchDraft({ backend: { ...draft.backend, ...patch } })}
-            />
+          {working && message && (
+            <p
+              data-testid="wizard-status"
+              className="mt-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--muted)]"
+            >
+              {message}
+            </p>
           )}
-          {screen === 5 && pendingBackend && (
-            <ScreenPickModel
-              driverName={pendingBackend.name}
-              models={pendingBackend.models}
-              value={draft.backend.modelId}
-              onChange={(v) => patchDraft({ backend: { ...draft.backend, modelId: v } })}
-              starting={starting}
-              startMessage={startMessage}
-              startError={startError}
-            />
-          )}
-          {screen === 5 && !pendingBackend && (
-            <ScreenDone
-              draft={draft}
-              knownComponents={knownComponents}
-              topologyKnown={topologyKnown}
-              starting={starting}
-              startMessage={startMessage}
-              startError={startError}
-            />
+          {error && (
+            <p className="status-error mt-6 rounded-[var(--radius)] border px-3 py-2 text-xs">
+              {error}
+            </p>
           )}
         </div>
       </div>
       <WizardFooter
         screen={screen}
+        working={working}
+        canProceed={canContinue(screen, draft, passphrase, passphraseConfirm, proposedPath)}
         onCancel={cancel}
-        onBack={back}
-        onNext={next}
-        onStart={
-          pendingBackend
-            ? () => void finishSetup(pendingBackend.name, draft.backend.modelId)
-            : start
-        }
-        startLabel={pendingBackend ? "Finish" : "Start"}
-        starting={starting}
-        canContinue={canContinue(screen, draft, passphrase, passphraseConfirm)}
+        onPrimary={screen === 1 ? () => void commitPassphrase() : () => void finish()}
       />
     </main>
   );

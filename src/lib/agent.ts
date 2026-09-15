@@ -52,9 +52,11 @@ export const WIZARD_PROVIDERS: WizardProvider[] = [
   // way as any other OpenAI-compatible endpoint — the driver points its
   // `baseUrl` at the runtime's `url`. That is the whole integration:
   // fronting a runtime is configuration, not a distinct provider kind.
+  // The label says none of that: it is read on `/backends/add`, in the
+  // person's words (hobbyist UX P5), and "runtime" is this project's.
   {
     key: "openai_compat_custom",
-    label: "Local engine runtime, or any OpenAI-compatible URL",
+    label: "Any OpenAI-compatible server, by its URL",
     credentials: ["base_url", "api_key"],
   },
   {

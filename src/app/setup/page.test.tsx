@@ -2,9 +2,17 @@
  * What the first-run wizard actually asks of the install.
  *
  * These tests drive the real screens and assert the *sequence of HTTP calls*
- * Start makes, because that sequence is where every wizard defect so far has
- * lived: a screen that looked right and quietly wrote nothing, or wrote to a
- * component that could not exist yet. Layout is not the subject here.
+ * each button makes, because that sequence is where every wizard defect so
+ * far has lived: a screen that looked right and quietly wrote nothing, or
+ * wrote to a component that could not exist yet. Layout is not the subject
+ * here.
+ *
+ * Two screens since S2 of the hobbyist UX plan, each with a button that
+ * writes: Continue commits the passphrase step (initialize, components,
+ * trust root, enroll, reboot choice) and Finish commits where models live.
+ * The tests below are split the same way, plus the one property the split
+ * created: a visit to an install whose passphrase is already set opens on
+ * screen 2 (§10 trap 8).
  *
  * `fetch` is mocked at the boundary the api client uses, so a call's target is
  * readable straight off the URL: `/api/proxy/<target>/<path>`.
@@ -19,8 +27,8 @@ import WizardPage from "./page";
 /**
  * Router and recorder are rebound per test rather than shared and cleared.
  *
- * Start is a long async transaction, and a test that fails partway leaves it
- * in flight: the component unmounts but the promise chain keeps going and
+ * Continue is a long async transaction, and a test that fails partway leaves
+ * it in flight: the component unmounts but the promise chain keeps going and
  * keeps calling. Shared-and-cleared doubles cause that stray work to land in
  * the *next* test's assertions, which is how one real failure here first
  * presented as four. Binding at render/stub time sends it to the test that
@@ -46,6 +54,8 @@ type Handler = () => { status: number; body?: unknown };
 
 let calls: Call[];
 let handlers: Map<string, Handler>;
+
+const PROPOSED = "C:\\Users\\sam\\Eugene Models";
 
 /** Every route the wizard touches on the shortest complete path, answered the
  * way a healthy fresh install answers it. Individual tests override one entry
@@ -76,7 +86,8 @@ function healthyInstall(): Map<string, Handler> {
     // S0: the wizard asks, before it has a token, whether this host can
     // keep Eugene unlocked across a reboot. The healthy fixture says no -
     // the CI runner's truth - so the sequence tests below see the default
-    // path; the keyring tests flip it.
+    // path; the keyring tests flip it. `initialized: false` is what opens
+    // the wizard on screen 1; the resume test flips that too.
     [
       "GET agent/v1/auth/status",
       () => ({
@@ -84,6 +95,7 @@ function healthyInstall(): Map<string, Handler> {
         body: { initialized: false, unlocked: false, keyringAvailable: false },
       }),
     ],
+    ["GET agent/v1/config", () => ({ status: 200, body: { firstRunComplete: false } })],
     ["PATCH control/v1/config", () => ({ status: 200, body: {} })],
     // The control host's agent enrolls with the root it just spawned -
     // "every node enrolls the same way, including the control host's",
@@ -102,6 +114,22 @@ function healthyInstall(): Map<string, Handler> {
     ],
     ["PATCH agent/v1/config", () => ({ status: 200, body: {} })],
     ["PATCH library/v1/config", () => ({ status: 200, body: {} })],
+    // S2: screen 2 asks the library for its host's starting points and
+    // proposes a folder under the `Home` entry. A Windows home here, so a
+    // wrong separator in the proposal cannot pass as a POSIX one.
+    [
+      "GET library/v1/directories",
+      () => ({
+        status: 200,
+        body: {
+          host: "sam-pc",
+          entries: [
+            { name: "C:\\", path: "C:\\", kind: "directory" },
+            { name: "Home", path: "C:\\Users\\sam", kind: "directory" },
+          ],
+        },
+      }),
+    ],
   ]);
 }
 
@@ -166,80 +194,75 @@ function newUser() {
   return userEvent.setup({ delay: null });
 }
 
-/** Click through to the last screen with a passphrase set and nothing else
- * chosen: the shortest path a real operator can take, and the likeliest shape
- * of an actual first run. */
-async function walkToLastScreen(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole("button", { name: "Continue →" }));
-
-  // Screen 2, Security, is the only screen that gates Continue.
-  await user.type(
-    await screen.findByPlaceholderText(/a line of poetry/i),
-    "correct horse battery staple",
-  );
+/** Screen 1 with a passphrase typed and Continue pressed: the shortest path a
+ * real person can take, and the likeliest shape of an actual first run.
+ * Resolves once screen 2 has rendered. */
+async function continuePastPassphrase(user: ReturnType<typeof userEvent.setup>) {
+  await screen.findByRole("heading", { name: /^Choose a passphrase$/ });
+  await user.type(screen.getByPlaceholderText(/a line of poetry/i), "correct horse battery staple");
   await user.type(
     screen.getByPlaceholderText(/repeat the passphrase/i),
     "correct horse battery staple",
   );
-
-  // Screens 3 and 4 are accept-the-default. Asserted by heading rather
-  // than counted: a loop of clicks lands on whatever screen the flow
-  // happens to have, which is how a test keeps passing while looking at
-  // something other than its subject.
-  await user.click(screen.getByRole("button", { name: "Continue →" }));
-  await screen.findByRole("heading", { name: /^Your models$/ });
-  await user.click(screen.getByRole("button", { name: "Continue →" }));
-  await screen.findByRole("heading", { name: /^Add a backend$/ });
-  await user.click(screen.getByRole("button", { name: "Continue →" }));
-  await screen.findByRole("heading", { name: /^Ready$/ });
-  return screen.findByRole("button", { name: "Start" });
+  await user.click(screen.getByRole("button", { name: "Continue" }));
+  // Asserted by heading rather than assumed: a click that lands on whatever
+  // screen the flow happens to have is how a test keeps passing while
+  // looking at something other than its subject.
+  await screen.findByRole("heading", { name: /^Where should models live\?$/ }, { timeout: 5000 });
 }
 
-describe("first-run wizard: what Start writes", () => {
-  it("initializes the control root, not just the agent", async () => {
+async function finish(user: ReturnType<typeof userEvent.setup>) {
+  // Finish is disabled until the proposal has arrived (or a folder is
+  // typed), so wait for the button to be pressable rather than clicking a
+  // disabled one and asserting on silence.
+  const button = screen.getByRole("button", { name: "Finish" });
+  await waitFor(() => expect(button).toBeEnabled());
+  await user.click(button);
+}
+
+describe("screen 1: what Continue commits", () => {
+  it("initializes the agent, checks the components, initializes the trust root and enrolls - and writes nothing about models", async () => {
     const user = newUser();
     render(<WizardPage />);
-    await user.click(await walkToLastScreen(user));
+    await continuePastPassphrase(user);
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"), { timeout: 5000 });
-
-    // The defect this test exists for: a first run set the operator passphrase
-    // on the agent and left the trust root with none, so control sat degraded
-    // and 503'd its whole surface - node registry, join tokens, even its own
-    // /v1/config - on an install the wizard had called finished.
-    expect(routesFrom(["POST control/v1/auth/initialize"])).toEqual([
-      "POST control/v1/auth/initialize",
-    ]);
-
-    // The same passphrase as the agent. A second secret for the same operator
-    // is a second thing to lose, and losing this one loses every sealed secret
-    // in the install.
+    // The defect the trust-root step exists for: a first run set the
+    // operator passphrase on the agent and left the trust root with none,
+    // so control sat degraded and 503'd its whole surface - node registry,
+    // join tokens, even its own /v1/config - on an install the wizard had
+    // called finished.
     const init = calls.find((c) => key(c) === "POST control/v1/auth/initialize");
     expect(init?.body).toEqual({ passphrase: "correct horse battery staple" });
 
-    // Order matters twice over: the trust root is initialized only after the
-    // topology read has confirmed there is one, and before firstRunComplete
-    // declares the install set up.
-    //
-    // The topology is read twice on purpose and the first one leads. On mount
-    // the wizard asks unauthenticated, for the summary, and tolerates the 401
-    // a fresh install gives it; the read that decides anything is the one
-    // after a token exists. Conflating the two is what once let the wizard
-    // accuse a healthy install of having no components at all.
+    // Order matters: the trust root is initialized only after the topology
+    // read has confirmed there is one, and enrollment follows it.
     expect(
       routesFrom([
         "POST agent/v1/auth/initialize",
         "GET agent/v1/components",
         "POST control/v1/auth/initialize",
-        "PATCH agent/v1/config",
+        "POST control/v1/auth/login",
+        "POST control/v1/nodes/join-token",
+        "POST agent/v1/node/enroll",
+        "POST agent/v1/auth/login",
       ]),
     ).toEqual([
-      "GET agent/v1/components",
       "POST agent/v1/auth/initialize",
       "GET agent/v1/components",
       "POST control/v1/auth/initialize",
-      "PATCH agent/v1/config",
+      "POST control/v1/auth/login",
+      "POST control/v1/nodes/join-token",
+      "POST agent/v1/node/enroll",
+      "POST agent/v1/auth/login",
     ]);
+
+    // Continue is half the transaction. Where models live is screen 2's
+    // question, and the install is not finished until it is answered.
+    expect(calls.map(key)).not.toContain("PATCH library/v1/config");
+    expect(calls.map(key)).not.toContain("PATCH agent/v1/config");
+    expect(replace).not.toHaveBeenCalled();
+    // The session it holds now is the one signed with the install's key.
+    expect(sessionStorage.getItem("eugene-session-token")).toBe("post-enroll-token");
   });
 
   it("treats an already-initialized control root as done, not as a failure", async () => {
@@ -252,13 +275,11 @@ describe("first-run wizard: what Start writes", () => {
 
     const user = newUser();
     render(<WizardPage />);
-    await user.click(await walkToLastScreen(user));
-
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"), { timeout: 5000 });
+    await continuePastPassphrase(user);
     expect(calls.filter((c) => key(c) === "POST control/v1/auth/initialize")).toHaveLength(1);
   });
 
-  it("does not call the install finished when the trust root will not initialize", async () => {
+  it("stops before enrolling and before screen 2 when the trust root will not initialize", async () => {
     // Deliberately wordless about what went wrong, so the assertion below
     // is about the wizard's own explanation and cannot be satisfied by this
     // fixture's phrasing leaking through.
@@ -269,13 +290,29 @@ describe("first-run wizard: what Start writes", () => {
 
     const user = newUser();
     render(<WizardPage />);
-    await user.click(await walkToLastScreen(user));
+    await screen.findByRole("heading", { name: /^Choose a passphrase$/ });
+    await user.type(
+      screen.getByPlaceholderText(/a line of poetry/i),
+      "correct horse battery staple",
+    );
+    await user.type(
+      screen.getByPlaceholderText(/repeat the passphrase/i),
+      "correct horse battery staple",
+    );
+    await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    await screen.findByText(/trust root would not accept a passphrase/i, {}, { timeout: 20000 });
+    const error = await screen.findByText(
+      /trust root would not accept a passphrase/i,
+      {},
+      { timeout: 20000 },
+    );
+    expect(error).toHaveClass("status-error");
     // The install is half-made either way - the agent's passphrase is set
-    // and cannot be unset from here - so the honest outcome is to say so,
-    // not to flip firstRunComplete and send the operator to a dashboard
-    // backed by an inert trust root.
+    // and cannot be unset from here - so the honest outcome is to say so on
+    // the screen the person is on, not to enroll, move on, or flip
+    // firstRunComplete.
+    expect(screen.getByRole("heading", { name: /^Choose a passphrase$/ })).toBeInTheDocument();
+    expect(calls.map(key)).not.toContain("POST agent/v1/node/enroll");
     expect(calls.map(key)).not.toContain("PATCH agent/v1/config");
     expect(replace).not.toHaveBeenCalledWith("/");
   }, 30000);
@@ -288,7 +325,6 @@ describe("first-run wizard: what Start writes", () => {
 
     const user = newUser();
     render(<WizardPage />);
-    await user.click(await screen.findByRole("button", { name: "Continue →" }));
 
     // The default follows the measurement, not the platform and not a
     // hard-coded "prompt".
@@ -297,49 +333,24 @@ describe("first-run wizard: what Start writes", () => {
     expect(box).toBeEnabled();
     expect(screen.queryByTestId("no-keyring-note")).toBeNull();
 
-    await user.type(
-      screen.getByPlaceholderText(/a line of poetry/i),
-      "correct horse battery staple",
-    );
-    await user.type(
-      screen.getByPlaceholderText(/repeat the passphrase/i),
-      "correct horse battery staple",
-    );
-    await user.click(screen.getByRole("button", { name: "Continue →" }));
-    await screen.findByRole("heading", { name: /^Your models$/ });
-    await user.click(screen.getByRole("button", { name: "Continue →" }));
-    await screen.findByRole("heading", { name: /^Add a backend$/ });
-    await user.click(screen.getByRole("button", { name: "Continue →" }));
-    await screen.findByRole("heading", { name: /^Ready$/ });
-    await user.click(await screen.findByRole("button", { name: "Start" }));
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"), { timeout: 5000 });
+    await continuePastPassphrase(user);
 
     // Both processes hold a master key on this host, and both read the
     // field. The stale comment this replaced said the root ignored it.
-    const agentPatches = calls.filter(
-      (c) => key(c) === "PATCH agent/v1/config" && c.body?.securityMode !== undefined,
-    );
+    const agentPatches = calls.filter((c) => key(c) === "PATCH agent/v1/config");
     const controlPatches = calls.filter((c) => key(c) === "PATCH control/v1/config");
     expect(agentPatches.map((c) => c.body)).toEqual([{ securityMode: "os_keyring" }]);
     expect(controlPatches.map((c) => c.body)).toEqual([{ securityMode: "os_keyring" }]);
 
-    // After enrollment, so one credential reaches both; before the library
-    // and before firstRunComplete.
+    // After enrollment, so one credential reaches both.
     expect(
       routesFrom(["POST agent/v1/node/enroll", "PATCH control/v1/config", "PATCH agent/v1/config"]),
-    ).toEqual([
-      "POST agent/v1/node/enroll",
-      "PATCH agent/v1/config",
-      "PATCH control/v1/config",
-      "PATCH agent/v1/config",
-    ]);
+    ).toEqual(["POST agent/v1/node/enroll", "PATCH agent/v1/config", "PATCH control/v1/config"]);
   });
 
   it("says plainly when there is no keyring, and writes nothing about it", async () => {
     // healthyInstall() already answers keyringAvailable: false.
-    const user = newUser();
     render(<WizardPage />);
-    await user.click(await screen.findByRole("button", { name: "Continue →" }));
 
     const box = await screen.findByRole("checkbox", { name: /start eugene on its own/i });
     await waitFor(() => expect(screen.getByTestId("no-keyring-note")).toBeVisible());
@@ -357,9 +368,9 @@ describe("first-run wizard: what Start writes", () => {
       "eugene-wizard-draft",
       JSON.stringify({
         modelRoots: [],
-        backend: { provider: "" },
+        folderChoice: "make",
+        customFolder: null,
         securityMode: "prompt_on_startup",
-        screen: 2,
       }),
     );
     render(<WizardPage />);
@@ -369,12 +380,126 @@ describe("first-run wizard: what Start writes", () => {
     expect(box).not.toBeChecked();
   });
 
-  it("points the library at model directories only when some were given", async () => {
+  it("never writes the passphrase to storage", async () => {
     const user = newUser();
     render(<WizardPage />);
-    await user.click(await walkToLastScreen(user));
+    await screen.findByRole("heading", { name: /^Choose a passphrase$/ });
+    await user.type(screen.getByPlaceholderText(/a line of poetry/i), "hunter2");
+    await waitFor(() => expect(sessionStorage.getItem("eugene-wizard-draft")).not.toBeNull());
+    expect(sessionStorage.getItem("eugene-wizard-draft")).not.toContain("hunter2");
+  });
+});
 
+describe("screen 2: what Finish commits", () => {
+  it("proposes a folder under the library host's home, and Finish writes it, then firstRunComplete, then opens Home", async () => {
+    const user = newUser();
+    render(<WizardPage />);
+    await continuePastPassphrase(user);
+
+    // The default: a folder Eugene will make, named and placed where the
+    // person can find it in a file manager. Joined with the separator the
+    // home path's shape implies - this one is Windows.
+    const make = screen.getByRole("radio", { name: /make a folder for me/i });
+    expect(make).toBeChecked();
+    await waitFor(() => expect(screen.getByTestId("proposed-folder")).toHaveTextContent(PROPOSED));
+    expect(
+      screen.getByText(/nothing is created until the first download lands there/i),
+    ).toBeInTheDocument();
+
+    await finish(user);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"), { timeout: 5000 });
-    expect(calls.map(key)).not.toContain("PATCH library/v1/config");
+
+    const roots = calls.find((c) => key(c) === "PATCH library/v1/config");
+    expect(roots?.body).toEqual({ modelRoots: [PROPOSED] });
+    const done = calls.filter((c) => key(c) === "PATCH agent/v1/config");
+    expect(done.map((c) => c.body)).toEqual([{ firstRunComplete: true }]);
+    // The folder lands before the install calls itself set up.
+    expect(routesFrom(["PATCH library/v1/config", "PATCH agent/v1/config"])).toEqual([
+      "PATCH library/v1/config",
+      "PATCH agent/v1/config",
+    ]);
+    expect(sessionStorage.getItem("eugene-wizard-draft")).toBeNull();
+  });
+
+  it("writes an edited proposal as typed", async () => {
+    const user = newUser();
+    render(<WizardPage />);
+    await continuePastPassphrase(user);
+    await waitFor(() => expect(screen.getByTestId("proposed-folder")).toHaveTextContent(PROPOSED));
+
+    await user.click(screen.getByRole("button", { name: "change" }));
+    const field = screen.getByRole("textbox", { name: "Folder to make" });
+    expect(field).toHaveValue(PROPOSED);
+    await user.clear(field);
+    await user.type(field, "D:\\LLM");
+
+    await finish(user);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"), { timeout: 5000 });
+    expect(calls.find((c) => key(c) === "PATCH library/v1/config")?.body).toEqual({
+      modelRoots: ["D:\\LLM"],
+    });
+  });
+
+  it("writes the folder a person who already has models typed, and not the proposal", async () => {
+    const user = newUser();
+    render(<WizardPage />);
+    await continuePastPassphrase(user);
+
+    await user.click(screen.getByRole("radio", { name: /i already have models/i }));
+    // The proposal is off the table the moment the other radio is chosen,
+    // so an empty row here must disable Finish rather than write nothing.
+    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
+    await user.type(screen.getByPlaceholderText(/D:\\models/), "/srv/models");
+
+    await finish(user);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"), { timeout: 5000 });
+    expect(calls.find((c) => key(c) === "PATCH library/v1/config")?.body).toEqual({
+      modelRoots: ["/srv/models"],
+    });
+  });
+
+  it("opens on screen 2 when the passphrase step is already committed", async () => {
+    // §10 trap 8: a tab closed after Continue left an initialized,
+    // enrolled install with no models folder. The next visit has nothing
+    // to redo on screen 1 and must not offer a passphrase form for an
+    // install whose passphrase exists.
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: { initialized: true, unlocked: true, keyringAvailable: false },
+    }));
+    sessionStorage.setItem("eugene-session-token", "existing-session");
+
+    render(<WizardPage />);
+    await screen.findByRole("heading", { name: /^Where should models live\?$/ });
+    expect(screen.queryByRole("heading", { name: /^Choose a passphrase$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    // Nothing from screen 1 is re-run.
+    expect(calls.map(key)).not.toContain("POST agent/v1/auth/initialize");
+    expect(calls.map(key)).not.toContain("POST control/v1/auth/initialize");
+    // And the folder proposal is asked for, under the session that exists.
+    await waitFor(() => expect(screen.getByTestId("proposed-folder")).toHaveTextContent(PROPOSED));
+  });
+
+  it("sends a committed install with no session to sign in, and returns here", async () => {
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: { initialized: true, unlocked: true, keyringAvailable: false },
+    }));
+    render(<WizardPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login?next=%2Fsetup"));
+  });
+
+  it("leaves a finished install alone", async () => {
+    // A wander to /setup on an install that is set up must not offer to
+    // overwrite its folders with the proposal.
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: { initialized: true, unlocked: true, keyringAvailable: false },
+    }));
+    handlers.set("GET agent/v1/config", () => ({ status: 200, body: { firstRunComplete: true } }));
+    sessionStorage.setItem("eugene-session-token", "existing-session");
+    render(<WizardPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
+    expect(calls.map(key)).not.toContain("GET library/v1/directories");
   });
 });

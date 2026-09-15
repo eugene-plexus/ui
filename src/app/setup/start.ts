@@ -1,9 +1,8 @@
 /**
- * What pressing Start actually does, minus the rendering.
+ * What the wizard's buttons actually do, minus the rendering.
  *
- * The wizard treats the whole flow as one transaction, and these are its
- * steps' helpers. Extracted at M9 with the bodies unchanged - each one
- * carries a lesson that a rewrite would have had to relearn:
+ * Extracted at M9 with the bodies unchanged - each one carries a lesson
+ * that a rewrite would have had to relearn:
  *
  * - `withRetry` exists because **initializing restarts every child**, so
  *   anything the wizard does next can land in that window.
@@ -11,8 +10,15 @@
  *   root is skipped by `restart_all` on purpose, and its 409 is a final
  *   answer, not a race.
  * - `driverNameFor` / `freeDriverPort` exist because nothing declares a
- *   driver for a backend the agent does not supervise, so the wizard has
- *   to create one rather than patch one that is not there.
+ *   driver for a backend the agent does not supervise, so a form that adds
+ *   one has to create the component rather than patch one that is not
+ *   there.
+ *
+ * Since S2 of the hobbyist UX plan the backend half of this file has no
+ * caller in the wizard: adding an app the person already runs is a task,
+ * not a setup step, and it lives at `/backends/add`. Those helpers stay
+ * here rather than moving, because the lessons above were learned here
+ * and the page imports them by name.
  */
 
 import { WIZARD_PROVIDERS } from "@/lib/agent";
@@ -186,6 +192,21 @@ export async function fetchBackendModels(driverName: string): Promise<string[]> 
   }>(driverName, "/v1/config/schema");
   const field = (schema.fields ?? []).find((f) => f.key === "modelId");
   return field?.suggestions ?? [];
+}
+
+/**
+ * Whether a chosen backend carries the credentials its provider needs.
+ * "None chosen" is false here: the caller is a form whose button does
+ * nothing useful without a provider. The model id is deliberately NOT
+ * required - a driver has to exist before it can be asked what it
+ * serves, so the model is picked afterwards from a real list.
+ */
+export function backendCredentialsComplete(b: BackendDraft): boolean {
+  if (!b.provider) return false;
+  const credentials = WIZARD_PROVIDERS.find((p) => p.key === b.provider)?.credentials ?? [];
+  if (credentials.includes("api_key") && !b.apiKey.trim()) return false;
+  if (credentials.includes("base_url") && !b.baseUrl.trim()) return false;
+  return true;
 }
 
 export function buildBackendPatch(b: BackendDraft): Record<string, unknown> {

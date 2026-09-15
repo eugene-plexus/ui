@@ -64,16 +64,13 @@ test.describe("the auth arc", () => {
     // Continue in a counted loop, which would have kept passing against
     // the five-screen one while filling in whatever field happened to be
     // under it — the same shape of defect as the three M9 found, where a
-    // check reported confidently on somewhere its subject was not.
+    // check reported confidently on somewhere its subject was not. Two
+    // screens since S2 of the hobbyist UX plan, and each one's button
+    // writes.
 
-    // Screen 1 — Welcome. Prose; nothing required.
-    await expect(page.getByRole("heading", { name: /^Welcome$/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Continue/ })).toBeEnabled();
-    await page.getByRole("button", { name: /Continue/ }).click();
-
-    // Screen 2 — the passphrase. Continue must stay disabled until both
+    // Screen 1 — the passphrase. Continue must stay disabled until both
     // halves match, which is the one rule on this screen.
-    await expect(page.getByRole("heading", { name: /^Security$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Choose a passphrase$/ })).toBeVisible();
     const fields = page.locator('input[type="password"]');
     await expect(fields).toHaveCount(2);
     await fields.nth(0).fill(PASSPHRASE);
@@ -81,33 +78,41 @@ test.describe("the auth arc", () => {
     await expect(page.getByRole("button", { name: /Continue/ })).toBeDisabled();
     await fields.nth(1).fill(PASSPHRASE);
     await expect(page.getByRole("button", { name: /Continue/ })).toBeEnabled();
-    await page.getByRole("button", { name: /Continue/ }).click();
 
-    // Screen 3 — model directories, if the harness gave us one.
-    await expect(page.getByRole("heading", { name: /^Your models$/ })).toBeVisible();
+    // Continue is the first half of the transaction: passphrase on the
+    // agent, topology check, passphrase on the trust root, enrolling this
+    // node with the control root, the reboot choice on both. Initializing
+    // and enrolling each respawn every supervised child, so the next
+    // heading arrives once the fleet is back.
+    await page.getByRole("button", { name: /Continue/ }).click();
+    await expect(page.getByRole("heading", { name: /^Where should models live\?$/ })).toBeVisible({
+      timeout: 120_000,
+    });
+
+    // Screen 2 — the default is a folder Eugene proposes to make, under the
+    // home of the machine the library runs on. Asserted by its name so a
+    // proposal that came back as a bare home directory cannot pass.
+    await expect(page.getByRole("radio", { name: /Make a folder for me/ })).toBeChecked();
+    await expect(page.getByTestId("proposed-folder")).toHaveText(/Eugene Models$/, {
+      timeout: 60_000,
+    });
     if (MODEL_ROOT) {
+      // The harness has models: say so, and type where.
+      await page.getByRole("radio", { name: /I already have models/ }).check();
       await page
         .getByPlaceholder(/models/i)
         .first()
         .fill(MODEL_ROOT);
     }
-    await page.getByRole("button", { name: /Continue/ }).click();
 
-    // Screen 4 — backend. Skipped: the acceptance run declares its own,
-    // and a wizard-created one would be a second path to the same state.
-    await expect(page.getByRole("heading", { name: /^Add a backend$/ })).toBeVisible();
-    await page.getByRole("button", { name: /Continue/ }).click();
+    // Finish is the second half: the folder(s) on the library, then
+    // firstRunComplete. An external backend is not part of setup any more;
+    // the acceptance run declares its own.
+    await page.getByRole("button", { name: /^Finish$/ }).click();
 
-    // Screen 5 — Start. This is the transaction: passphrase on the agent,
-    // topology check, passphrase on the trust root, enrolling this node
-    // with the control root, model directories, firstRunComplete.
-    await expect(page.getByRole("heading", { name: /^Ready$/ })).toBeVisible();
-    await page.getByRole("button", { name: /^Start$/ }).click();
-
-    // **And this is the part no script could test.** Initializing makes
-    // the master key available, so the agent respawns every supervised
-    // child; the page that just authenticated is talking to a fleet that
-    // is going away. It has to land on Home, not on an error.
+    // **And this is the part no script could test.** The page that just
+    // authenticated is talking to a fleet that has been going away and
+    // coming back since Continue. It has to land on Home, not on an error.
     await expect(page).toHaveURL(HOME, { timeout: 120_000 });
     await expectNoWallOfErrors(page);
   });

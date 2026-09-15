@@ -225,6 +225,13 @@ describe("Home on a fresh install", () => {
       "href",
       "/library/folders?sel=library",
     );
+    // S2 moved the wizard's backend step out to a page; the card is where
+    // a person who runs an Ollama finds it. Third and quiet, so the one
+    // primary stays one.
+    expect(within(card).getByRole("link", { name: "Add an app you already run" })).toHaveAttribute(
+      "href",
+      "/backends/add",
+    );
     // §0.3: the old landing page was a disabled text box. This one has none.
     expect(screen.queryByTestId("home-try-it")).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
@@ -331,10 +338,14 @@ describe("Home with a model routable", () => {
   it("replaces the first-model card with Try it, the model already chosen", async () => {
     render(<HomePage />);
     const card = await screen.findByTestId("home-try-it");
-    expect(screen.queryByTestId("home-first-model")).toBeNull();
+    // The two cards swap on separate state updates (models, then the
+    // library's answer), so the first-model card can outlive Try it's
+    // arrival by a tick; wait for the swap rather than asserting the
+    // instant. This assertion was the suite's one flake (1 in 3 runs).
+    await waitFor(() => expect(screen.queryByTestId("home-first-model")).toBeNull());
     const picker = within(card).getByTestId("home-model") as HTMLSelectElement;
     await waitFor(() => expect(picker.value).toBe("qwen3-14b"));
-    expect(within(card).getByTestId("home-composer")).toBeEnabled();
+    await waitFor(() => expect(within(card).getByTestId("home-composer")).toBeEnabled());
     expect(within(card).getByTestId("home-continue")).toHaveAttribute("href", "/playground");
     expectPlainWords();
   });

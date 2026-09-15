@@ -73,6 +73,12 @@ export function FirstModelCard({
             Choose a model to run
           </Link>
         )}
+        {/* Third, and quiet: an Ollama or a cloud CLI the person already
+            runs is a way to a first answer that needs no download (S2 moved
+            this out of the wizard). Tertiary so the one primary stays one. */}
+        <Link href="/backends/add" className={tertiary}>
+          Add an app you already run
+        </Link>
       </div>
       {downloads.length > 0 && (
         <ul data-testid="home-downloads" className="mt-3 flex flex-col gap-2">
@@ -115,3 +121,5 @@ const primary =
   "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110";
 const secondary =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
+const tertiary =
+  "font-ui px-2 py-2 text-sm text-[color:var(--muted)] underline-offset-2 transition-colors hover:text-[color:var(--foreground)] hover:underline";
