@@ -73,6 +73,18 @@ function healthyInstall(): Map<string, Handler> {
       }),
     ],
     ["POST control/v1/auth/initialize", () => ({ status: 204 })],
+    // S0: the wizard asks, before it has a token, whether this host can
+    // keep Eugene unlocked across a reboot. The healthy fixture says no -
+    // the CI runner's truth - so the sequence tests below see the default
+    // path; the keyring tests flip it.
+    [
+      "GET agent/v1/auth/status",
+      () => ({
+        status: 200,
+        body: { initialized: false, unlocked: false, keyringAvailable: false },
+      }),
+    ],
+    ["PATCH control/v1/config", () => ({ status: 200, body: {} })],
     // The control host's agent enrolls with the root it just spawned -
     // "every node enrolls the same way, including the control host's",
     // which nothing outside an acceptance script had ever done. Skipping
@@ -267,6 +279,95 @@ describe("first-run wizard: what Start writes", () => {
     expect(calls.map(key)).not.toContain("PATCH agent/v1/config");
     expect(replace).not.toHaveBeenCalledWith("/");
   }, 30000);
+
+  it("defaults to the keyring where the host has one, and writes it to BOTH processes", async () => {
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: { initialized: false, unlocked: false, keyringAvailable: true },
+    }));
+
+    const user = newUser();
+    render(<WizardPage />);
+    await user.click(await screen.findByRole("button", { name: "Continue →" }));
+
+    // The default follows the measurement, not the platform and not a
+    // hard-coded "prompt".
+    const box = await screen.findByRole("checkbox", { name: /start eugene on its own/i });
+    await waitFor(() => expect(box).toBeChecked());
+    expect(box).toBeEnabled();
+    expect(screen.queryByTestId("no-keyring-note")).toBeNull();
+
+    await user.type(
+      screen.getByPlaceholderText(/a line of poetry/i),
+      "correct horse battery staple",
+    );
+    await user.type(
+      screen.getByPlaceholderText(/repeat the passphrase/i),
+      "correct horse battery staple",
+    );
+    await user.click(screen.getByRole("button", { name: "Continue →" }));
+    await screen.findByRole("heading", { name: /^Your models$/ });
+    await user.click(screen.getByRole("button", { name: "Continue →" }));
+    await screen.findByRole("heading", { name: /^Add a backend$/ });
+    await user.click(screen.getByRole("button", { name: "Continue →" }));
+    await screen.findByRole("heading", { name: /^Ready$/ });
+    await user.click(await screen.findByRole("button", { name: "Start" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"), { timeout: 5000 });
+
+    // Both processes hold a master key on this host, and both read the
+    // field. The stale comment this replaced said the root ignored it.
+    const agentPatches = calls.filter(
+      (c) => key(c) === "PATCH agent/v1/config" && c.body?.securityMode !== undefined,
+    );
+    const controlPatches = calls.filter((c) => key(c) === "PATCH control/v1/config");
+    expect(agentPatches.map((c) => c.body)).toEqual([{ securityMode: "os_keyring" }]);
+    expect(controlPatches.map((c) => c.body)).toEqual([{ securityMode: "os_keyring" }]);
+
+    // After enrollment, so one credential reaches both; before the library
+    // and before firstRunComplete.
+    expect(
+      routesFrom(["POST agent/v1/node/enroll", "PATCH control/v1/config", "PATCH agent/v1/config"]),
+    ).toEqual([
+      "POST agent/v1/node/enroll",
+      "PATCH agent/v1/config",
+      "PATCH control/v1/config",
+      "PATCH agent/v1/config",
+    ]);
+  });
+
+  it("says plainly when there is no keyring, and writes nothing about it", async () => {
+    // healthyInstall() already answers keyringAvailable: false.
+    const user = newUser();
+    render(<WizardPage />);
+    await user.click(await screen.findByRole("button", { name: "Continue →" }));
+
+    const box = await screen.findByRole("checkbox", { name: /start eugene on its own/i });
+    await waitFor(() => expect(screen.getByTestId("no-keyring-note")).toBeVisible());
+    expect(box).toBeDisabled();
+    expect(box).not.toBeChecked();
+    expect(screen.getByTestId("no-keyring-note").textContent).toMatch(/ask for the passphrase/i);
+  });
+
+  it("keeps a choice the operator made before a tab refresh", async () => {
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: { initialized: false, unlocked: false, keyringAvailable: true },
+    }));
+    sessionStorage.setItem(
+      "eugene-wizard-draft",
+      JSON.stringify({
+        modelRoots: [],
+        backend: { provider: "" },
+        securityMode: "prompt_on_startup",
+        screen: 2,
+      }),
+    );
+    render(<WizardPage />);
+    const box = await screen.findByRole("checkbox", { name: /start eugene on its own/i });
+    // Give the probe every chance to (wrongly) flip it.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(box).not.toBeChecked();
+  });
 
   it("points the library at model directories only when some were given", async () => {
     const user = newUser();

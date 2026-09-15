@@ -63,8 +63,8 @@ export function ScreenDone({
       label: "Security",
       value:
         draft.securityMode === "os_keyring"
-          ? "master key in the OS keyring (auto-unlock)"
-          : "passphrase prompt on startup",
+          ? "starts on its own after a reboot (key kept in the OS password manager)"
+          : "asks for the passphrase after every restart",
     },
   ];
 

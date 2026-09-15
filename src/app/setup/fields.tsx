@@ -97,6 +97,45 @@ export function Radio({
   );
 }
 
+export function Checkbox({
+  checked,
+  disabled = false,
+  onChange,
+  label,
+  description,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  description: string;
+}) {
+  const tone = disabled
+    ? "cursor-not-allowed border-[color:var(--border)] opacity-70"
+    : checked
+      ? "cursor-pointer border-[color:var(--accent-left)] bg-[color:var(--panel-soft)]"
+      : "cursor-pointer border-[color:var(--border)] hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
+  return (
+    <label
+      className={`mb-3 flex items-start gap-3 rounded-[var(--radius)] border px-4 py-3 transition-colors ${tone}`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-1 accent-[color:var(--accent-left)]"
+      />
+      <span>
+        <span className="font-ui block text-sm font-medium">{label}</span>
+        <span className="mt-1 block text-xs leading-relaxed text-[color:var(--muted)]">
+          {description}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 export function SecretInput({
   value,
   onChange,

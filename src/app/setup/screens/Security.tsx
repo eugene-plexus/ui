@@ -1,20 +1,29 @@
 "use client";
 
 /**
- * Wizard screen: The passphrase, and whether the OS keyring holds the key.
+ * Wizard screen: the passphrase, and whether Eugene starts on its own after
+ * a reboot.
  *
  * One screen per module since M9. Nothing here reads or writes the
  * install - a screen renders the draft and reports edits upwards, and
  * every write happens once, in `page.tsx`, when Start is pressed.
+ *
+ * S0 of the hobbyist UX plan (2026-09-15) replaced two radio buttons and
+ * two paragraphs with one checkbox and one line. The old copy described
+ * the keyring option as "best for AI hobbyists" and defaulted to the
+ * other one; now the default follows what the agent measured about this
+ * host (`keyringAvailable`), and where there is no keyring the screen
+ * says what will happen instead of offering a choice that cannot work.
  */
 
 import type { SecurityMode } from "../draft";
-import { Field, Radio, SecretInput } from "../fields";
+import { Checkbox, Field, SecretInput } from "../fields";
 
 export function ScreenSecurity({
   passphrase,
   passphraseConfirm,
   securityMode,
+  keyringAvailable,
   onPassphrase,
   onPassphraseConfirm,
   onSecurityMode,
@@ -22,22 +31,25 @@ export function ScreenSecurity({
   passphrase: string;
   passphraseConfirm: string;
   securityMode: SecurityMode;
+  /** What the agent measured about this host's OS keyring; `null` while
+   * unknown (still loading, or an agent that predates the field). */
+  keyringAvailable: boolean | null;
   onPassphrase: (v: string) => void;
   onPassphraseConfirm: (v: string) => void;
   onSecurityMode: (v: SecurityMode) => void;
 }) {
   const mismatch = passphraseConfirm.length > 0 && passphrase !== passphraseConfirm;
+  const noKeyring = keyringAvailable === false;
   return (
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Security</h2>
       <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
-        Eugene Plexus protects sensitive config (like provider API keys) with an encryption key
-        derived from a passphrase you set here. You&rsquo;ll use the same passphrase to sign in from
-        a fresh browser tab. Pick something you can remember — Eugene can&rsquo;t reset it.
+        Eugene locks the secrets it stores, such as API keys, with a passphrase you choose here. You
+        will also use it to sign in. Pick something you can remember: Eugene cannot reset it.
       </p>
       <Field
         label="Passphrase"
-        description="Used to derive the encryption key. Anything non-empty works; a longer phrase is stronger."
+        description="Anything non-empty works; a longer phrase is stronger."
       >
         <SecretInput
           value={passphrase}
@@ -45,7 +57,7 @@ export function ScreenSecurity({
           placeholder="A line of poetry, a sentence, a long phrase…"
         />
       </Field>
-      <Field label="Confirm passphrase" description="Same again — guard against typos.">
+      <Field label="Confirm passphrase" description="Same again, to guard against typos.">
         <SecretInput
           value={passphraseConfirm}
           onChange={onPassphraseConfirm}
@@ -56,35 +68,29 @@ export function ScreenSecurity({
         <p className="text-status-error -mt-2 mb-4 text-xs">Passphrases don&rsquo;t match yet.</p>
       )}
       <hr className="my-6 border-[color:var(--border)]" />
-      <h3 className="font-ui mb-3 text-sm font-semibold">Auto-unlock</h3>
-      <p className="mb-4 text-xs leading-relaxed text-[color:var(--muted)]">
-        How Eugene should handle its encryption key between restarts. You can change this later from
-        the Config page.
-      </p>
-      <Radio
-        checked={securityMode === "os_keyring"}
-        onChange={() => onSecurityMode("os_keyring")}
-        label="OS keyring auto-unlock"
+      <h3 className="font-ui mb-3 text-sm font-semibold">After a reboot</h3>
+      {noKeyring ? (
+        <p
+          className="mb-4 text-xs leading-relaxed text-[color:var(--muted)]"
+          data-testid="no-keyring-note"
+        >
+          This machine has no password manager Eugene can use, so Eugene will ask for the passphrase
+          after every restart before it can open its stored secrets. A server or a container can
+          read the passphrase from a file instead: Config &rarr; Control root &rarr; Security, once
+          setup is done.
+        </p>
+      ) : null}
+      <Checkbox
+        checked={!noKeyring && securityMode === "os_keyring"}
+        disabled={noKeyring}
+        onChange={(checked) => onSecurityMode(checked ? "os_keyring" : "prompt_on_startup")}
+        label="Start Eugene on its own after a reboot"
         description={
-          "Best for: home / personal-use installs, AI hobbyists, anyone " +
-          "who wants Eugene to auto-recover after a power outage. " +
-          "Eugene's encryption key is stored in your OS's password " +
-          "manager (Windows Credential Manager / macOS Keychain / Linux " +
-          "Secret Service) and unlocked automatically when you log in. " +
-          "Anyone with access to your user account can also start Eugene."
-        }
-      />
-      <Radio
-        checked={securityMode === "prompt_on_startup"}
-        onChange={() => onSecurityMode("prompt_on_startup")}
-        label="Prompt on startup"
-        description={
-          "Best for: shared environments, sensitive conversations, " +
-          "security-conscious operators. Eugene's encryption key is " +
-          "never written to disk. You'll type the passphrase by hand " +
-          "every time the agent starts. A power outage means Eugene " +
-          "stays offline until you re-enter the passphrase. Stronger " +
-          "security; less convenience."
+          "Eugene keeps its key in your OS's password manager (Windows Credential Manager, " +
+          "macOS Keychain or Linux Secret Service) so it comes back working without you. " +
+          "Untick to be asked for the passphrase every time it starts. Anyone who can sign " +
+          "in to this user account could otherwise start Eugene. You can change this later " +
+          "under Config."
         }
       />
     </section>

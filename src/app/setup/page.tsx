@@ -75,7 +75,7 @@
  */
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { setSessionToken } from "@/lib/session";
@@ -83,6 +83,7 @@ import type { Component, ComponentList } from "@/lib/types";
 
 import { WizardFooter, WizardHeader } from "./chrome";
 import {
+  type AuthStatusView,
   DRAFT_KEY,
   TOTAL_SCREENS,
   blankDraft,
@@ -135,6 +136,14 @@ export default function WizardPage() {
   // to sessionStorage. A mid-wizard refresh re-prompts for it.
   const [passphrase, setPassphrase] = useState("");
   const [passphraseConfirm, setPassphraseConfirm] = useState("");
+  // What the agent measured about this host's OS keyring (S0). `null` until
+  // the status probe answers, or forever against an agent that predates
+  // the field - either way the draft keeps the passphrase prompt.
+  const [keyringAvailable, setKeyringAvailable] = useState<boolean | null>(null);
+  // Whether a saved draft was restored on mount. The probe may only set
+  // the securityMode DEFAULT - a choice the operator made before a tab
+  // refresh is theirs, and the status read resolves after hydration.
+  const hadStoredDraft = useRef(false);
 
   // Hydrate from sessionStorage so a tab refresh mid-wizard doesn't
   // throw away typed values.
@@ -149,6 +158,7 @@ export default function WizardPage() {
         // produces a half-shaped draft that renders undefined fields, so
         // ignore it and start clean. The shape check moves with the shape.
         if (Array.isArray(parsed.modelRoots)) {
+          hadStoredDraft.current = true;
           setDraft((prev) => ({ ...prev, ...parsed }));
           if (
             typeof parsed.screen === "number" &&
@@ -195,6 +205,40 @@ export default function WizardPage() {
       }
     }
     void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Ask the agent whether this host can keep Eugene unlocked across a
+  // reboot, and default the wizard to it where it can. Unauthenticated by
+  // design - this is the one probe the UI makes before a passphrase exists.
+  // The old default was prompt_on_startup on every host, while the screen's
+  // own copy called the keyring "best for AI hobbyists" (decision #9 of the
+  // hobbyist UX plan).
+  useEffect(() => {
+    let cancelled = false;
+    async function probe() {
+      try {
+        const status = await api.get<AuthStatusView>("agent", "/v1/auth/status", {
+          skipAuth: true,
+        });
+        if (cancelled) return;
+        const available = status.keyringAvailable ?? null;
+        setKeyringAvailable(available);
+        if (available === true && !hadStoredDraft.current) {
+          setDraft((prev) => ({ ...prev, securityMode: "os_keyring" }));
+        }
+        if (available === false) {
+          // Not a choice here: the screen says why, and the value written
+          // must match what the screen showed.
+          setDraft((prev) => ({ ...prev, securityMode: "prompt_on_startup" }));
+        }
+      } catch {
+        // Agent unreachable or an older build: the default stays.
+      }
+    }
+    void probe();
     return () => {
       cancelled = true;
     };
@@ -293,20 +337,25 @@ export default function WizardPage() {
         setSessionToken(await enrollLocalAgent(passphrase, controlUrl));
       }
 
-      // Step 3: persist the chosen securityMode. Default is
-      // prompt_on_startup; skip the patch if unchanged so we don't touch
-      // the keyring needlessly. Flipping to os_keyring with the session
-      // active triggers the agent's keyring write.
+      // Step 3: persist the chosen securityMode - on BOTH processes that
+      // hold a master key on this host. Default is prompt_on_startup on
+      // both, so an unchanged choice is skipped rather than written.
       //
-      // Deliberately not sent to the control root as well. It declares the
-      // same field and depends on `keyring`, but nothing in it reads either -
-      // so patching it would record a preference that does nothing, and the
-      // root would still ask for the passphrase after a restart. Implementing
-      // it belongs in that repo, not in a wizard step that would look like it
-      // already works.
+      // Both, because the control root reads the same field: its lifespan
+      // recovers its key from the OS keyring under os_keyring, its login
+      // and its config PATCH both store the key, and a flip while unlocked
+      // stores it at once - all built 2026-09-10. An earlier comment here
+      // said the root ignored the field; it was stale, and its consequence
+      // was a root that asked for the passphrase after every restart on an
+      // install whose wizard had promised otherwise. Written after
+      // enrollment on purpose: the session this browser holds now verifies
+      // at the root, so one credential reaches both.
       if (draft.securityMode !== "prompt_on_startup") {
         setStartMessage("Applying security mode…");
         await api.patch("agent", "/v1/config", {
+          securityMode: draft.securityMode,
+        });
+        await api.patch("control", "/v1/config", {
           securityMode: draft.securityMode,
         });
       }
@@ -432,6 +481,7 @@ export default function WizardPage() {
               passphrase={passphrase}
               passphraseConfirm={passphraseConfirm}
               securityMode={draft.securityMode}
+              keyringAvailable={keyringAvailable}
               onPassphrase={setPassphrase}
               onPassphraseConfirm={setPassphraseConfirm}
               onSecurityMode={(v) => patchDraft({ securityMode: v })}

@@ -31,6 +31,7 @@ describe("the security screen", () => {
         passphrase=""
         passphraseConfirm=""
         securityMode="prompt_on_startup"
+        keyringAvailable={true}
         onPassphrase={onPassphrase}
         onPassphraseConfirm={onConfirm}
         onSecurityMode={vi.fn()}

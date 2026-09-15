@@ -1235,6 +1235,15 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * @description Whether this trust root has been through first-run setup,
+         *     whether its sealed values are open right now, and whether this
+         *     host's OS keyring can keep them open across a restart. Same
+         *     shape as the agent's, for the same reader: the first-run wizard
+         *     writes `securityMode` to both processes on this host, and the
+         *     UI's Issues list reads `unlocked` here to say "sealed" in words
+         *     instead of a 503.
+         */
         AuthStatus: {
             /**
              * @description True once a passphrase has been set. False means every
@@ -1242,6 +1251,22 @@ export interface components {
              *     `POST /v1/auth/initialize` will refuse.
              */
             initialized: boolean;
+            /**
+             * @description True while the master key is in memory and the install's
+             *     signing key is open. False is the sealed root that answers
+             *     `503 Locked` across its surface — the state a container comes
+             *     back in after every restart under `prompt_on_startup`.
+             *     Absent from a root that predates the field.
+             */
+            unlocked?: boolean;
+            /**
+             * @description Whether this host's OS keyring accepted a write, read and
+             *     delete of a probe entry from this process — measured once per
+             *     process run. False in a container or on a headless box, where
+             *     `passphrase_file` is the unattended answer. Absent when the
+             *     probe was not run or did not finish within its budget.
+             */
+            keyringAvailable?: boolean;
         };
         AuthInitializeRequest: {
             /**

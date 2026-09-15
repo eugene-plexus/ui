@@ -38,6 +38,18 @@ export const TOTAL_SCREENS = 5;
 
 export type SecurityMode = "prompt_on_startup" | "os_keyring";
 
+/**
+ * What `GET /v1/auth/status` answers before the wizard has a token. The two
+ * optional fields arrived with S0 of the hobbyist UX plan; an agent that
+ * predates them leaves both absent, and the wizard then keeps the
+ * passphrase prompt rather than guessing.
+ */
+export interface AuthStatusView {
+  initialized: boolean;
+  unlocked?: boolean | null;
+  keyringAvailable?: boolean | null;
+}
+
 export interface InitializeResponse {
   sessionToken: string;
   expiresAt: string;
