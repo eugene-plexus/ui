@@ -230,8 +230,10 @@ export function ProfileEditor({
       <div className="mt-3 flex flex-col gap-2">
         {profiles?.length === 0 && !creating && (
           <p className="text-xs text-[color:var(--muted)] italic">
-            None yet. A profile is optional — a runtime can be declared by hand on the Inference
-            page — but it is the thing that stops you retuning the same model twice.
+            None yet. Launching from here needs one: a profile is the saved engine flags for this
+            file, so the same model is never retuned twice. Nothing in the UI declares a runtime
+            without one; a backend you already run (Ollama, a cloud CLI) joins on the Config page
+            instead, and the API takes a hand-written <code>POST /v1/runtimes</code>.
           </p>
         )}
         {profiles?.map((p) =>
