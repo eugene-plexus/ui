@@ -1,9 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { FolderPicker } from "@/components/FolderPicker";
-import { type MountShape, mountFor, parseFolders, shapeOf, withMount } from "@/lib/libraryReach";
+import {
+  type MountShape,
+  libraryFoldersHref,
+  mountFor,
+  parseFolders,
+  shapeOf,
+  withMount,
+} from "@/lib/libraryReach";
 import type {
   Component,
   ConfigField as ConfigFieldDef,
@@ -599,8 +607,16 @@ function PathMappingsInput({
     <div className="flex flex-col gap-2">
       {rows.length === 0 && (
         <p className="text-xs text-[color:var(--muted)] italic">
-          No overrides. This machine inherits each Library folder&rsquo;s mount for its kind of node
-          (Library → Folders). Add a row only if this machine mounts a folder somewhere else.
+          No overrides. This machine inherits each Library folder&rsquo;s mount for its kind of
+          node, set once on{" "}
+          <Link
+            href={libraryFoldersHref(null)}
+            className="underline"
+            data-testid="folder-mounts-link"
+          >
+            Library &rarr; Folders
+          </Link>
+          . Add a row only if this machine mounts a folder somewhere else.
         </p>
       )}
       {rows.map((mapping, index) => (
@@ -750,6 +766,18 @@ function LibraryFoldersInput({
           No folders. Add the directory where your models already are; nothing is moved or copied.
         </p>
       )}
+      <p className="text-xs text-[color:var(--muted)]">
+        A folder&rsquo;s mounts cover every node of that kind. A machine that mounts a folder
+        somewhere else gets an <em>override</em> of its own, under that machine on{" "}
+        <Link
+          href={libraryFoldersHref(null)}
+          className="underline"
+          data-testid="node-overrides-link"
+        >
+          Library &rarr; Folders
+        </Link>
+        , or as <em>Library folder overrides</em> in that machine&rsquo;s agent Config.
+      </p>
       {rows.map((folder, index) => (
         <div
           key={index}

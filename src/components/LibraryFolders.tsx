@@ -285,14 +285,30 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
               A node runs a model only from one of these folders. Each folder is a directory on the
               machine the Library runs on; its <em>mounts</em> say where other machines find the
               same directory, once, and every node of that kind inherits it. A cell is what that
-              node would open. Click a node&rsquo;s column to set an override for it alone.
+              node would open.{" "}
+              <strong>
+                Set a mount here when every node of that kind mounts the share at the same place.
+              </strong>{" "}
+              A machine that mounts it somewhere else gets an <em>override</em> instead, on its own
+              column: click the node&rsquo;s name in the header, or pick it under Library in the
+              tree.
             </>
           ) : (
             <>
-              What this machine opens for each Library folder, and which rule says so. An override
-              is only for a machine that mounts a share somewhere other than the folder&rsquo;s own
-              mounts say; leave it empty otherwise. Browse lists <strong>this node&rsquo;s</strong>{" "}
-              disk, wherever you are reading this from.
+              What this machine opens for each Library folder, and which rule says so.{" "}
+              <strong>The folder&rsquo;s own mounts</strong> &mdash; where every Windows node, and
+              every Linux or macOS node, finds it &mdash; are set once on{" "}
+              <Link
+                href={libraryFoldersHref(null)}
+                className="underline"
+                data-testid="folder-mounts-link"
+              >
+                Library &rarr; Folders
+              </Link>
+              , and this machine inherits them. An override here is only for a machine that mounts a
+              share somewhere other than the folder&rsquo;s own mounts say; leave it empty
+              otherwise. Browse lists <strong>this node&rsquo;s</strong> disk, wherever you are
+              reading this from.
             </>
           )}
         </p>
