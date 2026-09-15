@@ -68,7 +68,7 @@ export function TasksTrayView({ tasks }: { tasks: Task[] }) {
         className={`font-ui flex items-center gap-1.5 rounded-[var(--radius)] border px-2.5 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
           count > 0 ? "border-[color:var(--accent-left)]" : "border-[color:var(--border)]"
         }`}
-        title="Downloads, installs and models loading, wherever they were started"
+        title="Downloads, installs, models loading and runs you started, wherever they were started"
       >
         <Activity size={14} aria-hidden="true" data-icon="Activity" />
         Tasks
@@ -110,36 +110,66 @@ export function TasksTrayView({ tasks }: { tasks: Task[] }) {
 
 function TaskRow({ task, onFollow }: { task: Task; onFollow: () => void }) {
   const percent = task.progress !== undefined ? Math.round(task.progress * 100) : null;
+  const detailClass =
+    task.tone === "error"
+      ? "text-status-error"
+      : task.tone === "ok"
+        ? "text-status-success"
+        : "text-[color:var(--muted)]";
   return (
-    <Link
-      href={task.href}
-      onClick={onFollow}
-      data-task-kind={task.kind}
-      className="font-ui block rounded-[var(--radius)] px-2 py-1.5 text-xs transition-colors hover:bg-[color:var(--panel-hover)]"
-    >
-      <span className="block truncate" title={task.title}>
-        {task.title}
-      </span>
-      {task.detail && (
-        <span className="block truncate text-[11px] text-[color:var(--muted)] tabular-nums">
-          {task.detail}
+    // The dismiss is a sibling of the link, not a child: a button inside
+    // an anchor is not valid HTML and screen readers read it as one thing.
+    <div className="relative">
+      <Link
+        href={task.href}
+        onClick={onFollow}
+        data-task-kind={task.kind}
+        data-task-tone={task.tone}
+        className="font-ui block rounded-[var(--radius)] px-2 py-1.5 text-xs transition-colors hover:bg-[color:var(--panel-hover)]"
+      >
+        <span className={`block truncate ${task.dismiss ? "pr-6" : ""}`} title={task.title}>
+          {task.title}
         </span>
-      )}
-      {percent !== null && (
-        <span
-          className="mt-1 block h-1 overflow-hidden rounded-full bg-[color:var(--panel-hover)]"
-          role="progressbar"
-          aria-label={task.title}
-          aria-valuenow={percent}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
+        {task.detail && (
+          // A failure is the one line here that must not truncate: it is
+          // the component's own sentence naming the fix.
           <span
-            className="block h-full rounded-full bg-[color:var(--accent-left)] transition-[width] duration-300"
-            style={{ width: `${percent}%` }}
-          />
-        </span>
+            className={`block text-[11px] tabular-nums ${detailClass} ${task.tone === "error" ? "" : "truncate"}`}
+            title={task.detail}
+          >
+            {task.detail}
+          </span>
+        )}
+        {percent !== null && (
+          <span
+            className="mt-1 block h-1 overflow-hidden rounded-full bg-[color:var(--panel-hover)]"
+            role="progressbar"
+            aria-label={task.title}
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <span
+              className="block h-full rounded-full bg-[color:var(--accent-left)] transition-[width] duration-300"
+              style={{ width: `${percent}%` }}
+            />
+          </span>
+        )}
+      </Link>
+      {task.dismiss && (
+        // The browser's own finished task: dismissing it changes nothing
+        // on any component, which is why this verb is allowed here and
+        // pause / cancel are not.
+        <button
+          type="button"
+          aria-label={`Dismiss: ${task.title}`}
+          data-testid="task-dismiss"
+          onClick={() => task.dismiss?.()}
+          className="absolute top-1 right-1 rounded px-1 text-[11px] text-[color:var(--muted)] hover:bg-[color:var(--border)] hover:text-[color:var(--foreground)]"
+        >
+          ×
+        </button>
       )}
-    </Link>
+    </div>
   );
 }

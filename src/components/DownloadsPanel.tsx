@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { formatBytes } from "@/components/FitBadge";
+import { RunButton } from "@/components/RunButton";
 import { ApiError, api } from "@/lib/api";
-import type { Download, DownloadList, DownloadState } from "@/lib/types";
+import type { TargetNode } from "@/lib/nodeBudget";
+import type { Download, DownloadList, DownloadState, LibraryModel } from "@/lib/types";
 
 /**
  * Downloads in flight, and the ones that finished.
@@ -25,6 +27,12 @@ import type { Download, DownloadList, DownloadState } from "@/lib/types";
  * That is why cancel asks first. A paused 40 GB download is an hour of
  * bandwidth sitting on the disk, and the two buttons are next to each
  * other.
+ *
+ * **A finished download offers Run in place** (hobbyist UX §7 S3). The
+ * library fills `modelId` after its post-completion scan, which is what
+ * closes download → library → launch without the person walking to the
+ * Library and finding the file again; the row reads the model by that
+ * id and hands it to `RunButton` for the node the screen is about.
  */
 
 const POLL_MS = 800;
@@ -46,10 +54,13 @@ export function DownloadsPanel({
   downloads,
   onChanged,
   emptyHint,
+  node = null,
 }: {
   downloads: Download[];
   onChanged: () => void;
   emptyHint?: React.ReactNode;
+  /** Where Run goes for a finished download. Absent: no Run is offered. */
+  node?: TargetNode | null;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +108,7 @@ export function DownloadsPanel({
         <DownloadRow
           key={download.id}
           download={download}
+          node={node}
           busy={busy === download.id}
           confirming={confirmCancel === download.id}
           onPause={() => void act(download.id, "pause")}
@@ -112,6 +124,7 @@ export function DownloadsPanel({
 
 function DownloadRow({
   download,
+  node,
   busy,
   confirming,
   onPause,
@@ -121,6 +134,7 @@ function DownloadRow({
   onCancel,
 }: {
   download: Download;
+  node: TargetNode | null;
   busy: boolean;
   confirming: boolean;
   onPause: () => void;
@@ -136,7 +150,11 @@ function DownloadRow({
   const resumable = download.state === "paused" || download.state === "failed";
 
   return (
-    <div className="space-y-1.5 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2">
+    <div
+      className="space-y-1.5 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2"
+      data-testid="download-row"
+      data-download-state={download.state}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-ui truncate text-xs font-semibold" title={download.repo}>
@@ -255,20 +273,55 @@ function DownloadRow({
       )}
 
       {download.state === "done" && (
-        <p className="text-[11px]">
+        <div className="flex flex-wrap items-start gap-3 text-[11px]">
           {download.modelId ? (
-            <Link href={`/library?model=${download.modelId}`} className="underline">
-              open in the library
-            </Link>
+            <>
+              {node && <FinishedRun modelId={download.modelId} node={node} />}
+              <Link
+                href={`/library?model=${download.modelId}`}
+                className="self-center underline"
+                data-testid="download-open-library"
+              >
+                open in the library
+              </Link>
+            </>
           ) : (
             <span className="text-[color:var(--muted)]">
               on disk — it will appear in the library on the next scan
             </span>
           )}
-        </p>
+        </div>
       )}
     </div>
   );
+}
+
+/**
+ * Run, on a finished download. The library entry is read once by the id
+ * the download record carries; a read that fails leaves the link to the
+ * Library, which is where the same button lives.
+ */
+function FinishedRun({ modelId, node }: { modelId: string; node: TargetNode }) {
+  const [model, setModel] = useState<LibraryModel | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const entry = await api.get<LibraryModel>(
+          "library",
+          `/v1/models/${encodeURIComponent(modelId)}`,
+        );
+        if (!cancelled) setModel(entry);
+      } catch {
+        // The link beside this button still leads to the model.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [modelId]);
+  if (!model) return null;
+  return <RunButton model={model} node={node} size="small" className="min-w-0 flex-1" />;
 }
 
 const smallButton =

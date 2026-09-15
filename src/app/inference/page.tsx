@@ -350,6 +350,10 @@ function NodeSection({
   onRemove: (row: Row) => void;
 }) {
   const label = name ?? node?.label ?? "this host";
+  // The node's engines, lifted here from the engines line so a stopped
+  // runtime's row can say the reason it cannot start (S3: Skip leaves a
+  // runtime declared with no engine to run it, and the reason is here).
+  const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
   return (
     <section>
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -370,7 +374,11 @@ function NodeSection({
           <span className="text-xs text-[color:var(--muted)]">{describeBudget(node.budget)}</span>
         )}
       </div>
-      <EnginesLine target={targetFor(name, localName)} reachable={node?.reachable ?? true} />
+      <EnginesLine
+        target={targetFor(name, localName)}
+        reachable={node?.reachable ?? true}
+        onEngines={setEngines}
+      />
       {rows.length === 0 ? (
         <p className="mt-2 text-xs text-[color:var(--muted)]">Nothing serving on this node.</p>
       ) : (
@@ -387,7 +395,14 @@ function NodeSection({
             </thead>
             <tbody>
               {rows.map((row) => (
-                <RowView key={row.key} row={row} busy={busy} onAct={onAct} onRemove={onRemove} />
+                <RowView
+                  key={row.key}
+                  row={row}
+                  engines={engines}
+                  busy={busy}
+                  onAct={onAct}
+                  onRemove={onRemove}
+                />
               ))}
             </tbody>
           </table>
@@ -399,11 +414,14 @@ function NodeSection({
 
 function RowView({
   row,
+  engines,
   busy,
   onAct,
   onRemove,
 }: {
   row: Row;
+  /** The node's engines, or null while unknown. */
+  engines: EngineDescriptor[] | null;
   busy: string | null;
   onAct: (node: string | null, runtime: string, action: "start" | "stop" | "restart") => void;
   onRemove: (row: Row) => void;
@@ -411,6 +429,7 @@ function RowView({
   const status = row.runtimeStatus as RuntimeStatus | null;
   const known = status !== null && status in STATUS_TONE;
   const prefix = `${row.node ?? ""}/${row.runtime ?? ""}:`;
+  const missingEngine = stoppedForWantOfEngine(row, engines);
   return (
     <tr className="border-t border-[color:var(--border)]">
       <td className="py-1.5 pr-4 font-mono">
@@ -460,6 +479,12 @@ function RowView({
           <span style={{ color: "var(--status-error, #f85149)" }} title={row.error ?? undefined}>
             unreachable
           </span>
+        )}
+        {missingEngine && (
+          <div className="text-[11px]" data-testid="stopped-reason">
+            {engineWord(missingEngine)} is not installed on this machine, so this cannot start.
+            Install it above, then press start.
+          </div>
         )}
         {row.eligible === false && row.ineligibleReason && (
           <div className="text-[11px] text-[color:var(--muted)]">
@@ -551,7 +576,16 @@ function RowView({
  * build says so and why (Linux with NVIDIA is a permanent answer, not a
  * transient failure).
  */
-function EnginesLine({ target, reachable }: { target: string; reachable: boolean }) {
+function EnginesLine({
+  target,
+  reachable,
+  onEngines,
+}: {
+  target: string;
+  reachable: boolean;
+  /** The node's engines as last read, for the rows above this line. */
+  onEngines?: (engines: EngineDescriptor[]) => void;
+}) {
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
   const [installs, setInstalls] = useState<Record<string, EngineInstall | null>>({});
   const [error, setError] = useState<string | null>(null);
@@ -560,12 +594,13 @@ function EnginesLine({ target, reachable }: { target: string; reachable: boolean
     try {
       const list = await api.get<EngineList>(target, "/v1/engines");
       setEngines(list.engines ?? []);
+      onEngines?.(list.engines ?? []);
       setError(null);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return;
       setError(describeError(err));
     }
-  }, [target]);
+  }, [target, onEngines]);
 
   useEffect(() => {
     if (!reachable) return;
@@ -643,6 +678,23 @@ function EnginesLine({ target, reachable }: { target: string; reachable: boolean
       })}
     </p>
   );
+}
+
+/**
+ * A runtime that is stopped and whose engine the node does not have: the
+ * state Skip leaves (S3), and the one state in which "press start" is
+ * not the advice. Null otherwise, including while the engines are unknown.
+ */
+function stoppedForWantOfEngine(row: Row, engines: EngineDescriptor[] | null): string | null {
+  if (!row.runtime || !row.engine || engines === null) return null;
+  if (row.runtimeStatus !== "stopped" && row.runtimeStatus !== "crashed") return null;
+  const descriptor = engines.find((e) => e.engine === row.engine);
+  if (!descriptor || descriptor.available) return null;
+  return row.engine;
+}
+
+function engineWord(engine: string): string {
+  return engine === "llama_cpp" ? "llama.cpp" : engine === "vllm" ? "vLLM" : engine;
 }
 
 function inFlight(state: string | undefined): boolean {

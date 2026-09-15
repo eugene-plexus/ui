@@ -9,7 +9,15 @@
 
 import { describe, expect, it } from "vitest";
 
-import { basename, formatBytesShort, formatDuration, tasksFrom, type TaskSources } from "./tasks";
+import {
+  basename,
+  formatBytesShort,
+  formatDuration,
+  mergeTasks,
+  tasksFrom,
+  type Task,
+  type TaskSources,
+} from "./tasks";
 import type { Download } from "./types";
 
 const NOTHING: TaskSources = {
@@ -329,5 +337,57 @@ describe("formatting", () => {
     expect(formatDuration(240)).toBe("4 min");
     expect(formatDuration(4800)).toBe("1 h 20 min");
     expect(formatDuration(7200)).toBe("2 h");
+  });
+});
+
+describe("mergeTasks", () => {
+  const install: Task = {
+    id: "install:llama_cpp",
+    kind: "install",
+    title: "Installing llama.cpp b10948",
+    detail: "50% of 500 MB",
+    progress: 0.5,
+    href: "/inference",
+  };
+  const load: Task = {
+    id: "load:Amish_Station/qwen3-14b",
+    kind: "load",
+    title: "Loading qwen3-14b on Amish_Station",
+    detail: "reading the model into memory",
+    href: "/inference",
+  };
+  const otherLoad: Task = { ...load, id: "load:node-b/gemma", title: "Loading gemma on node-b" };
+  const run = (claims: Task["claims"]): Task => ({
+    id: "run:m1@agent",
+    kind: "run",
+    title: "Run Qwen3-14B on this machine",
+    detail: "installing llama.cpp",
+    href: "/inference",
+    claims,
+  });
+
+  it("puts the browser's own runs first and keeps every endpoint task it does not claim", () => {
+    expect(mergeTasks([install, load], [run({})]).map((t) => t.id)).toEqual([
+      "run:m1@agent",
+      "install:llama_cpp",
+      "load:Amish_Station/qwen3-14b",
+    ]);
+  });
+
+  it("drops the tray's own install row while a run installs that engine", () => {
+    expect(mergeTasks([install, load], [run({ engine: "llama_cpp" })]).map((t) => t.id)).toEqual([
+      "run:m1@agent",
+      "load:Amish_Station/qwen3-14b",
+    ]);
+  });
+
+  it("drops the tray's own load row for the runtime a run is starting, whichever node it is on", () => {
+    expect(
+      mergeTasks([install, load, otherLoad], [run({ runtime: "qwen3-14b" })]).map((t) => t.id),
+    ).toEqual(["run:m1@agent", "install:llama_cpp", "load:node-b/gemma"]);
+  });
+
+  it("is the endpoint list when there are no runs", () => {
+    expect(mergeTasks([install, load], [])).toEqual([install, load]);
   });
 });

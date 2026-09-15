@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import { PROXY, listModels } from "@/lib/completions";
 import { chatModels, firstModelState, machineStrip } from "@/lib/home";
 import { type Sources, buildRows } from "@/lib/inferenceRows";
+import { localTargetNode } from "@/lib/nodeBudget";
 import type {
   ComponentPlacementList,
   DriversInfo,
@@ -50,6 +51,10 @@ import { useTasks } from "@/lib/useTasks";
  * fast one (5 s) reads the inference join for the Running card. Both stop
  * while the tab is hidden. The tasks tray's own poll supplies the
  * downloads the first-model card shows.
+ *
+ * **Since S3:** when exactly one model is on disk, the first card runs it
+ * in one click — the state a person is in the moment their first download
+ * finishes — and the run's progress renders in the card and in the tray.
  *
  * **Not here yet, by plan:** "Use it from your apps" (S4, needs client
  * keys), "Reach it from other devices" (S5), "Needs attention" (S7), and
@@ -118,9 +123,12 @@ export default function HomePage() {
     [node, engines, library, libraryFailed],
   );
   const state = useMemo(
-    () => firstModelState({ library, libraryFailed, routable }),
-    [library, libraryFailed, routable],
+    () => firstModelState({ library, libraryFailed, routable, engines }),
+    [library, libraryFailed, routable, engines],
   );
+  // Home is about the machine the browser is served from, so Run from
+  // here runs here (S3). Another node is chosen on the Library's picker.
+  const here = useMemo(() => localTargetNode(node), [node]);
   const rows = useMemo(
     () => (sources ? buildRows(sources, node?.name ?? null) : []),
     [sources, node],
@@ -140,7 +148,7 @@ export default function HomePage() {
       <main data-testid="home" className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
           <MachineStrip strip={strip} />
-          <FirstModelCard state={state} downloads={downloads} />
+          <FirstModelCard state={state} downloads={downloads} node={here} />
           {chat.length > 0 && <TryItCard models={chat} />}
           <RunningCard rows={rows} />
         </div>

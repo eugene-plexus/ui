@@ -17,7 +17,14 @@
  * "download", "loading". A test on the page asserts the banned list.
  */
 
-import type { EngineList, LibraryModelList, Model, ModelList, NodeIdentity } from "./types";
+import type {
+  EngineList,
+  LibraryModel,
+  LibraryModelList,
+  Model,
+  ModelList,
+  NodeIdentity,
+} from "./types";
 import { engineLabel } from "./tasks";
 
 // --- the first-model card --------------------------------------------
@@ -38,8 +45,13 @@ export type FirstModelState =
   | { kind: "library-unreachable" }
   /** The library answered, and there is nothing on disk. */
   | { kind: "no-models" }
-  /** Models are on disk and the gateway routes to none of them. */
-  | { kind: "none-running"; count: number }
+  /**
+   * Models are on disk and the gateway routes to none of them. `only` is
+   * the one model when there is exactly one this machine has an engine
+   * for (S3): the card offers to run it in one click rather than sending
+   * the person to the Library to choose from a list of one.
+   */
+  | { kind: "none-running"; count: number; only: LibraryModel | null }
   /** Something is routable, so the Try it card takes over. */
   | { kind: "hidden" };
 
@@ -51,6 +63,9 @@ export function firstModelState(args: {
   /** How many chat models the gateway will route to; null until it has
    * answered (or failed) once. */
   routable: number | null;
+  /** This machine's engines, for whether the one model on disk can run
+   * here at all; null when the agent has not answered. */
+  engines?: EngineList | null;
 }): FirstModelState {
   if (args.routable !== null && args.routable > 0) return { kind: "hidden" };
   // A library that stopped answering after it had answered still gets the
@@ -58,18 +73,37 @@ export function firstModelState(args: {
   // failure P4 forbids, and the person can still reach Inference.
   if (args.libraryFailed) return { kind: "library-unreachable" };
   if (args.library === null) return { kind: "loading" };
-  const count = modelsOnDisk(args.library);
+  const present = presentModels(args.library);
+  const count = present.length;
   if (count === 0) return { kind: "no-models" };
   // Models on disk, and the gateway has not said yet whether any is
   // routable: "none running" would be a guess. Wait for its first answer.
   if (args.routable === null) return { kind: "loading" };
-  return { kind: "none-running", count };
+  const only =
+    count === 1 && present[0] && runnableHere(present[0], args.engines ?? null) ? present[0] : null;
+  return { kind: "none-running", count, only };
 }
 
 /** Models the library can see right now. A `missing` entry keeps its
  * profile but its file is gone, which is not "on disk". */
 export function modelsOnDisk(library: LibraryModelList | null): number {
-  return (library?.models ?? []).filter((m) => m.status !== "missing").length;
+  return presentModels(library).length;
+}
+
+function presentModels(library: LibraryModelList | null): LibraryModel[] {
+  return (library?.models ?? []).filter((m) => m.status !== "missing");
+}
+
+/**
+ * Whether an engine on this machine can load this model's format — not
+ * whether one is installed, since Run offers to install one. Unknown
+ * engines (the agent has not answered) read as "yes": Run explains a
+ * real failure better than this card predicts one.
+ */
+function runnableHere(model: LibraryModel, engines: EngineList | null): boolean {
+  if (model.status !== "present") return false;
+  if (engines === null) return true;
+  return (engines.engines ?? []).some((e) => (e.modelFormats ?? []).includes(model.format));
 }
 
 // --- routable models --------------------------------------------------

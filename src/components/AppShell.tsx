@@ -23,6 +23,7 @@ import { clearSessionToken } from "@/lib/session";
 import { LayerIcon } from "./LayerIcon";
 import { LayerMap } from "./LayerMap";
 import { pageHref, ResourceTree, useTopology } from "./ResourceTree";
+import { RunDialog } from "./RunDialog";
 import { TasksTray } from "./TasksTray";
 
 /**
@@ -176,6 +177,9 @@ function AppShellInner({
       </header>
 
       {mapOpen && <LayerMap id={mapId} current={null} onClose={closeMap} />}
+      {/* One-click run's one question, wherever the person is when a run
+          reaches it (S3). Renders nothing until a run is asking. */}
+      <RunDialog />
 
       <div className="relative flex min-h-0 flex-1">
         {/* Desk width: a column. Narrow: a drawer over the content, because

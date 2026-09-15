@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 
 import { chatModels, firstModelState, gb, machineStrip, modelsOnDisk } from "./home";
-import type { LibraryModelList, ModelList, NodeIdentity } from "./types";
+import type { EngineList, LibraryModelList, ModelList, NodeIdentity } from "./types";
 
 const AMISH_STATION: NodeIdentity = {
   enrolled: true,
@@ -66,7 +66,53 @@ describe("firstModelState", () => {
     expect(firstModelState({ library: TWO_MODELS, libraryFailed: false, routable: 0 })).toEqual({
       kind: "none-running",
       count: 2,
+      only: null,
     });
+  });
+
+  // S3: one model on disk is the state a person is in the moment their
+  // first download finishes, and the card runs it in one click.
+  const ONE_MODEL: LibraryModelList = { models: [TWO_MODELS.models![0]!] };
+  const LLAMA: EngineList = {
+    engines: [{ engine: "llama_cpp", available: false, modelFormats: ["gguf"] }],
+  };
+
+  it("offers to run THE model when there is exactly one this machine can load", () => {
+    const state = firstModelState({
+      library: ONE_MODEL,
+      libraryFailed: false,
+      routable: 0,
+      engines: LLAMA,
+    });
+    expect(state).toEqual({ kind: "none-running", count: 1, only: ONE_MODEL.models![0] });
+  });
+
+  it("offers the one model even while the engine is not installed: Run asks to install it", () => {
+    expect(
+      firstModelState({ library: ONE_MODEL, libraryFailed: false, routable: 0, engines: LLAMA }),
+    ).toMatchObject({ only: { id: "a" } });
+  });
+
+  it("sends the person to the Library when no engine here reads the one model's format", () => {
+    const safetensors: LibraryModelList = {
+      models: [{ ...TWO_MODELS.models![0]!, format: "safetensors" }],
+    };
+    expect(
+      firstModelState({ library: safetensors, libraryFailed: false, routable: 0, engines: LLAMA }),
+    ).toEqual({ kind: "none-running", count: 1, only: null });
+  });
+
+  it("offers the one model when the engines are still unknown, rather than predicting a failure", () => {
+    expect(
+      firstModelState({ library: ONE_MODEL, libraryFailed: false, routable: 0, engines: null }),
+    ).toMatchObject({ only: { id: "a" } });
+  });
+
+  it("does not count a missing file as the one model", () => {
+    const missingOnly: LibraryModelList = { models: [TWO_MODELS.models![2]!] };
+    expect(
+      firstModelState({ library: missingOnly, libraryFailed: false, routable: 0, engines: LLAMA }),
+    ).toEqual({ kind: "no-models" });
   });
 
   it("does not call models 'not running' before the gateway has answered", () => {

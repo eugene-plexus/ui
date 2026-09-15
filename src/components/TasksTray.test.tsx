@@ -8,7 +8,7 @@
  */
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Task } from "@/lib/tasks";
 
@@ -89,5 +89,34 @@ describe("TasksTrayView", () => {
     expect(screen.getByTestId("tasks-popover")).toBeInTheDocument();
     fireEvent.mouseDown(screen.getByTestId("elsewhere"));
     expect(screen.queryByTestId("tasks-popover")).toBeNull();
+  });
+
+  it("gives a finished run a dismiss beside the link, and colours a failure", () => {
+    const dismiss = vi.fn();
+    const failed: Task = {
+      id: "run:m1@agent",
+      kind: "run",
+      title: "Run Qwen3-14B on this machine",
+      detail: "Installing llama.cpp failed: release b10931 has no asset for 'win-cuda-13.3-x64'",
+      href: "/inference",
+      tone: "error",
+      dismiss,
+    };
+    render(<TasksTrayView tasks={[failed, DOWNLOAD]} />);
+    fireEvent.click(screen.getByTestId("tasks-tray"));
+    const popover = screen.getByTestId("tasks-popover");
+    // The failure is the component's sentence: it must not truncate.
+    const row = popover.querySelector('a[data-task-kind="run"]');
+    expect(row).toHaveAttribute("data-task-tone", "error");
+    expect(row).toHaveTextContent("has no asset for 'win-cuda-13.3-x64'");
+    // Exactly one dismiss — the download is not the browser's to dismiss.
+    const dismisses = screen.getAllByTestId("task-dismiss");
+    expect(dismisses).toHaveLength(1);
+    // A sibling of the link, not inside it.
+    expect(dismisses[0]!.closest("a")).toBeNull();
+    fireEvent.click(dismisses[0]!);
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    // Dismissing does not follow the link: the popover stays open.
+    expect(screen.getByTestId("tasks-popover")).toBeInTheDocument();
   });
 });

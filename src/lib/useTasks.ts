@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { api } from "./api";
+import { runTask, useRuns } from "./oneClickRun";
 import { hasSessionToken } from "./session";
-import { tasksFrom, type Task, type TaskSources } from "./tasks";
+import { mergeTasks, tasksFrom, type Task, type TaskSources } from "./tasks";
 import type {
   DownloadList,
   EngineInstall,
@@ -41,8 +42,11 @@ const POLL_MS = 5000;
  * the login page.
  */
 export function useTasks(): { tasks: Task[]; loaded: boolean } {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [polled, setPolled] = useState<Task[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // The browser's own runs (one-click run, S3) are not polled: the store
+  // pushes them, and they sit first because they are the person's action.
+  const runs = useRuns();
 
   const load = useCallback(async () => {
     if (!hasSessionToken()) return;
@@ -76,11 +80,12 @@ export function useTasks(): { tasks: Task[]; loaded: boolean } {
             )
           ).filter((i): i is EngineInstall => i !== null);
     const sources: TaskSources = { downloads, scan, runtimes, localRuntimes, installs };
-    setTasks(tasksFrom(sources));
+    setPolled(tasksFrom(sources));
     setLoaded(true);
   }, []);
 
   usePolling(load, POLL_MS);
 
+  const tasks = useMemo(() => mergeTasks(polled, runs.map(runTask)), [polled, runs]);
   return { tasks, loaded };
 }

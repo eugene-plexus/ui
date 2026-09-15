@@ -6,6 +6,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ApiError, api, describeError } from "@/lib/api";
 import { describeAdmission } from "@/lib/launchPreview";
+import {
+  DEFAULT_PROFILE_NAME,
+  composeSpec,
+  contextPrefill,
+  type RuntimeCreate,
+} from "@/lib/launchSpec";
 import { libraryFoldersHref } from "@/lib/libraryReach";
 import type { TargetNode } from "@/lib/nodeBudget";
 import type {
@@ -17,7 +23,6 @@ import type {
   ModelProfileSpec,
   Runtime,
   RuntimePlacement,
-  RuntimeSpec,
 } from "@/lib/types";
 
 /**
@@ -43,45 +48,20 @@ import type {
  * are `RuntimeSpec`'s field names precisely so this is a copy rather
  * than a translation, which is what lets the library hold no engine
  * knowledge and never call the agent.
+ *
+ * ## This is the expert path
+ *
+ * Since S3 of the hobbyist UX plan, **Run** (`RunButton`, above this
+ * section on the model detail) does all of this with one click: it makes
+ * the `default` profile at the context that fits when the model has
+ * none, installs the engine if the person says yes, and starts the
+ * runtime. What this editor adds is *several* profiles — a long-context
+ * one and a fast one on the same file, two copies pinned to two GPUs —
+ * and a hand on every flag. Nothing here is required for a first run.
  */
 
-/**
- * What `POST /v1/runtimes` genuinely requires.
- *
- * The spec's `RuntimeSpec.required` is `[name, engine, modelPath]`;
- * everything else is optional with a server-side default. The generated
- * type disagrees — openapi-typescript marks a property non-optional as
- * soon as it carries a `default`, which is right for a response and
- * wrong for a request body. Narrowing here rather than satisfying the
- * generated shape keeps `host` out of the UI, where a second copy of
- * "engines bind loopback" would eventually disagree with the agent's.
- */
-type RuntimeCreate = Pick<RuntimeSpec, "name" | "engine" | "modelPath"> &
-  Partial<Omit<RuntimeSpec, "name" | "engine" | "modelPath">>;
-
-/**
- * The composition this whole layering exists for: the model's path from
- * the library, the flags from the profile, as a runtime declaration.
- * Field names line up one for one, so nothing here translates.
- *
- * `host` and `port` are deliberately absent. The agent binds loopback
- * and assigns a port from its own range, and restating either here
- * would put a second source of truth in the UI for something the
- * supervisor owns. `autoStart` IS sent, because pressing Launch is the
- * choice it encodes. The same spec goes to the admission dry run, so
- * what the launch panel predicts is what Launch does.
- */
-function composeSpec(model: LibraryModel, profile: ModelProfile): RuntimeCreate {
-  return {
-    name: runtimeName(model, profile),
-    engine: profile.engine,
-    modelPath: model.path,
-    flags: profile.flags ?? undefined,
-    extraArgs: profile.extraArgs ?? undefined,
-    env: profile.env ?? undefined,
-    autoStart: true,
-  };
-}
+// `RuntimeCreate` and `composeSpec` live in `lib/launchSpec.ts` since S3,
+// shared with one-click Run so the two paths declare the same runtime.
 
 export function ProfileEditor({
   model,
@@ -150,9 +130,7 @@ export function ProfileEditor({
           autoStart: false,
         };
         const answer = await api.post<Admission>(node.target, "/v1/runtimes/admission", probe);
-        const max = answer.maxContextLength;
-        const own = model.contextLength ?? null;
-        if (typeof max === "number" && max > 0 && (own == null || max < own)) suggestion = max;
+        suggestion = contextPrefill(answer.maxContextLength, model.contextLength);
       } catch {
         suggestion = null;
       }
@@ -235,7 +213,12 @@ export function ProfileEditor({
   return (
     <section className="mt-2">
       <div className="flex items-center justify-between">
-        <h3 className="font-ui text-xs font-semibold tracking-wide uppercase">Launch profiles</h3>
+        <h3 className="font-ui text-xs font-semibold tracking-wide uppercase">
+          Launch profiles
+          <span className="ml-2 font-normal tracking-normal text-[color:var(--muted)] normal-case">
+            for experts
+          </span>
+        </h3>
         {!creating && (
           <button type="button" onClick={() => setCreating(true)} className={buttonClass}>
             new profile
@@ -244,10 +227,11 @@ export function ProfileEditor({
       </div>
 
       <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted)]">
-        The settings that worked, saved against the model instead of retyped. Several are useful: a
-        long-context profile and a fast one are different flags on the same file, and two copies
-        pinned to different GPUs is the same profile twice with a different{" "}
-        <span className="font-mono">CUDA_VISIBLE_DEVICES</span>.
+        The settings that worked, saved against the model instead of retyped. Run makes one called{" "}
+        <span className="font-mono">{DEFAULT_PROFILE_NAME}</span> for you at the context that fits;
+        several are useful once you are tuning: a long-context profile and a fast one are different
+        flags on the same file, and two copies pinned to different GPUs is the same profile twice
+        with a different <span className="font-mono">CUDA_VISIBLE_DEVICES</span>.
       </p>
 
       {canLaunch && node && previewProfile && (
@@ -306,10 +290,15 @@ export function ProfileEditor({
       <div className="mt-3 flex flex-col gap-2">
         {profiles?.length === 0 && !creating && (
           <p className="text-xs text-[color:var(--muted)] italic">
-            None yet. Launching from here needs one: a profile is the saved engine flags for this
-            file, so the same model is never retuned twice. Nothing in the UI declares a runtime
-            without one; a backend you already run (Ollama, a cloud CLI) joins on the Config page
-            instead, and the API takes a hand-written <code>POST /v1/runtimes</code>.
+            None yet. Press Run above and one called{" "}
+            <span className="font-mono not-italic">{DEFAULT_PROFILE_NAME}</span> is made for you at
+            the context that fits this machine; make one here only to choose the flags yourself. A
+            profile is the saved engine flags for this file, so the same model is never retuned
+            twice. An app you already run (Ollama, a cloud CLI) joins from{" "}
+            <Link href="/backends/add" className="underline">
+              Add an app you already run
+            </Link>{" "}
+            instead.
           </p>
         )}
         {profiles?.map((p) =>
@@ -737,26 +726,7 @@ function parseEnv(text: string): Record<string, string> {
 }
 
 function suggestedName(model: LibraryModel): string {
-  return (model.profileCount ?? 0) === 0 ? "default" : "";
-}
-
-/**
- * A runtime name derived from the model and profile.
- *
- * Runtime names are unique per install and operator-facing, so this aims
- * for recognisable rather than clever. A collision surfaces as a 409
- * from the agent with a message saying so, which is a better outcome
- * than silently adopting an existing runtime that has different flags.
- */
-function runtimeName(model: LibraryModel, profile: ModelProfile): string {
-  const base = model.name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  const suffix = profile.default
-    ? ""
-    : `-${profile.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-  return `${base}${suffix}`.slice(0, 60).replace(/-$/, "");
+  return (model.profileCount ?? 0) === 0 ? DEFAULT_PROFILE_NAME : "";
 }
 
 function errorText(err: unknown): string {

@@ -233,6 +233,7 @@ export default function DiscoverPage() {
               <DownloadsPanel
                 downloads={downloads}
                 onChanged={reloadDownloads}
+                node={selected}
                 emptyHint={
                   <>
                     Nothing downloading. Files land in the first of your configured model

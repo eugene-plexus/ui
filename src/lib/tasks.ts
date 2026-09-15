@@ -45,7 +45,7 @@ import type {
   Scan,
 } from "./types";
 
-export type TaskKind = "download" | "install" | "load" | "scan";
+export type TaskKind = "download" | "install" | "load" | "scan" | "run";
 
 export interface Task {
   /** Stable across polls, so a list can keep its order and React its keys. */
@@ -59,6 +59,21 @@ export interface Task {
   progress?: number;
   /** Where to go to see more or act on it. */
   href: string;
+  /** A failed task reads red; a finished one green; in flight, neither. */
+  tone?: "ok" | "error";
+  /**
+   * Endpoint-reported work this task is the story of (S3's one-click run):
+   * the tray drops its own `install:<engine>` row while a run installs
+   * that engine, and its `load:<node>/<runtime>` row while a run starts that
+   * runtime, so one thing happening is one line.
+   */
+  claims?: { engine?: string; runtime?: string };
+  /**
+   * Present on a task the browser itself owns (a run) once it has ended:
+   * the tray shows a dismiss for it. Endpoint tasks never carry one — a
+   * download is paused or cancelled where it was started, not here.
+   */
+  dismiss?: () => void;
 }
 
 /** The raw bodies, each `null` when its source did not answer. */
@@ -109,6 +124,30 @@ export function tasksFrom(sources: TaskSources): Task[] {
     ...loadTasks(sources.runtimes, sources.localRuntimes),
     ...scanTasks(sources.scan),
   ];
+}
+
+/**
+ * The tray's list: the browser's own runs first — they are the person's
+ * most recent action — then what the endpoints report, minus the rows a
+ * run already tells the story of (`Task.claims`).
+ */
+export function mergeTasks(endpoint: Task[], runs: Task[]): Task[] {
+  const engines = new Set<string>();
+  const runtimes = new Set<string>();
+  for (const run of runs) {
+    if (run.claims?.engine) engines.add(`install:${run.claims.engine}`);
+    if (run.claims?.runtime) runtimes.add(run.claims.runtime);
+  }
+  const rest = endpoint.filter((task) => {
+    if (task.kind === "install" && engines.has(task.id)) return false;
+    if (task.kind === "load") {
+      const slash = task.id.indexOf("/");
+      const runtime = slash >= 0 ? task.id.slice(slash + 1) : task.id;
+      if (runtimes.has(runtime)) return false;
+    }
+    return true;
+  });
+  return [...runs, ...rest];
 }
 
 // --- downloads --------------------------------------------------------

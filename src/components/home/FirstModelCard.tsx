@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 
+import { RunButton } from "@/components/RunButton";
 import type { FirstModelState } from "@/lib/home";
+import type { TargetNode } from "@/lib/nodeBudget";
 import type { Task } from "@/lib/tasks";
 
 /**
@@ -23,10 +25,13 @@ import type { Task } from "@/lib/tasks";
 export function FirstModelCard({
   state,
   downloads,
+  node,
 }: {
   state: FirstModelState;
   /** The tray's download tasks, rendered inside the card while any run. */
   downloads: Task[];
+  /** This machine, as Run's target (S3). Home runs models here. */
+  node: TargetNode;
 }) {
   if (state.kind === "loading" || state.kind === "hidden") return null;
 
@@ -56,7 +61,9 @@ export function FirstModelCard({
       <p className="mt-1 text-sm text-[color:var(--muted)]">
         {state.kind === "no-models"
           ? "Nothing is on disk yet. Find a model to download, or point Eugene at a folder that already has some."
-          : `${state.count} model${state.count === 1 ? "" : "s"} on disk, none running.`}
+          : state.only
+            ? `${state.only.name} is on disk and not running.`
+            : `${state.count} model${state.count === 1 ? "" : "s"} on disk, none running.`}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {state.kind === "no-models" ? (
@@ -66,6 +73,21 @@ export function FirstModelCard({
             </Link>
             <Link href="/library/folders?sel=library" className={secondary}>
               I already have models
+            </Link>
+          </>
+        ) : state.only ? (
+          <>
+            {/* One model, one click (S3): Run is the primary action, and
+                its status line renders under it. The Library is where a
+                different engine or hand-chosen flags live. */}
+            <RunButton
+              model={state.only}
+              node={node}
+              label={`Run ${state.only.name}`}
+              className="min-w-0 flex-1 basis-full"
+            />
+            <Link href={`/library?model=${encodeURIComponent(state.only.id)}`} className={tertiary}>
+              Choose settings in the Library
             </Link>
           </>
         ) : (

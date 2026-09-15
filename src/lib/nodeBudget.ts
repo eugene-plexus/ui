@@ -141,6 +141,25 @@ export function describeBudget(budget: NodeBudget | null): string {
   return `${budget.gpu.name} · ${gib} GiB free${budget.gpuCount > 1 ? ` · ${budget.gpuCount} GPUs` : ""}`;
 }
 
+/**
+ * This machine as a launch target, from the agent's own `/v1/node` (or
+ * nothing, before it has answered). What Home's Run uses: Home is about
+ * the machine the browser is served from, and a launch from it runs
+ * there. The Library's picker is where another node is chosen.
+ */
+export function localTargetNode(identity: NodeIdentity | null): TargetNode {
+  const name = identity?.name ?? null;
+  return {
+    name,
+    label: name ?? "this machine",
+    local: true,
+    target: "agent",
+    reachable: true,
+    lastError: null,
+    budget: identity ? budgetFromNode(identity) : null,
+  };
+}
+
 /** The proxy target for a node: the local agent by name, otherwise the
  * node-addressed hop. Exported so a screen that already knows which node
  * it wants (the inference screen, acting on a row) reaches it the same

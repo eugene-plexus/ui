@@ -13,6 +13,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resetRunsForTests } from "@/lib/oneClickRun";
+
 import HomePage from "./page";
 
 let replace = vi.fn();
@@ -178,6 +180,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetRunsForTests();
   vi.unstubAllGlobals();
 });
 
@@ -495,5 +498,91 @@ describe("Home's gate", () => {
       expect(replace).toHaveBeenCalledWith(expect.stringMatching(/^\/login\?next=/)),
     );
     expect(screen.queryByTestId("home")).toBeNull();
+  });
+});
+
+describe("Home with exactly one model on disk (S3)", () => {
+  const ONE = { models: [LIBRARY_WITH_TWO.models[0]] };
+  const RUNTIME = "qwen3-14b";
+
+  beforeEach(() => {
+    handlers.set("GET library/v1/models", () => ({ status: 200, body: ONE }));
+    handlers.set("GET library/v1/models/a/profiles", () => ({
+      status: 200,
+      body: { profiles: [] },
+    }));
+    handlers.set("POST agent/v1/runtimes/admission", () => ({
+      status: 200,
+      body: {
+        decision: "admit",
+        fit: "fits",
+        basis: "metadata",
+        reason: "",
+        maxContextLength: 32768,
+      },
+    }));
+    handlers.set("POST library/v1/models/a/profiles", () => ({
+      status: 201,
+      body: {
+        id: "p1",
+        name: "default",
+        default: true,
+        engine: "llama_cpp",
+        flags: { contextSize: 32768 },
+      },
+    }));
+    handlers.set("GET agent/v1/runtimes", () => ({ status: 200, body: { runtimes: [] } }));
+    handlers.set("POST agent/v1/runtimes", () => ({
+      status: 201,
+      body: { name: RUNTIME, engine: "llama_cpp", modelPath: "/models/a.gguf", status: "starting" },
+    }));
+    handlers.set(`GET agent/v1/runtimes/${RUNTIME}`, () => ({
+      status: 200,
+      body: { name: RUNTIME, engine: "llama_cpp", modelPath: "/models/a.gguf", status: "ready" },
+    }));
+  });
+
+  it("runs it in one click, on this machine, and reports the run in the card", async () => {
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-first-model");
+    await waitFor(() => expect(card).toHaveAttribute("data-state", "none-running"));
+    expect(card).toHaveTextContent("Qwen3-14B is on disk and not running.");
+    const run = within(card).getByTestId("run-button");
+    expect(run).toHaveTextContent("Run Qwen3-14B");
+    expect(run).toBeEnabled();
+    // The list-of-one link is gone; the Library is the expert path.
+    expect(within(card).queryByRole("link", { name: "Choose a model to run" })).toBeNull();
+    expect(
+      within(card).getByRole("link", { name: "Choose settings in the Library" }),
+    ).toHaveAttribute("href", "/library?model=a");
+    expectPlainWords();
+
+    fireEvent.click(run);
+    const status = await within(card).findByTestId("run-status");
+    await waitFor(() => expect(status).toHaveAttribute("data-step", "ready"), { timeout: 5000 });
+    expect(status).toHaveTextContent("ready — try it on Home");
+    // What went to the agent is the profile editor's own composition,
+    // for THIS machine, started.
+    const declared = calls.find((c) => key(c) === "POST agent/v1/runtimes");
+    expect(declared?.body).toEqual({
+      name: RUNTIME,
+      engine: "llama_cpp",
+      modelPath: "/models/a.gguf",
+      flags: { contextSize: 32768 },
+      autoStart: true,
+    });
+    expectPlainWords();
+  });
+
+  it("keeps the list link when the one model's format has no engine here", async () => {
+    handlers.set("GET library/v1/models", () => ({
+      status: 200,
+      body: { models: [{ ...LIBRARY_WITH_TWO.models[0], format: "safetensors" }] },
+    }));
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-first-model");
+    await waitFor(() => expect(card).toHaveAttribute("data-state", "none-running"));
+    expect(within(card).getByRole("link", { name: "Choose a model to run" })).toBeInTheDocument();
+    expect(within(card).queryByTestId("run-button")).toBeNull();
   });
 });

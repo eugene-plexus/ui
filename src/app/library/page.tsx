@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -9,6 +8,7 @@ import { FitBreakdown, formatMemory } from "@/components/FitBadge";
 import { ProfileEditor } from "@/components/ProfileEditor";
 import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
+import { RunButton } from "@/components/RunButton";
 import { ApiError, api } from "@/lib/api";
 import { type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import type {
@@ -261,7 +261,11 @@ function LibraryPageInner() {
                 ? `${activeDownloads} download${activeDownloads === 1 ? "" : "s"} in flight`
                 : "recent downloads"}
             </p>
-            <DownloadsPanel downloads={downloads} onChanged={reloadDownloads} />
+            <DownloadsPanel
+              downloads={downloads}
+              onChanged={reloadDownloads}
+              node={picker.selected}
+            />
           </div>
         )}
 
@@ -555,23 +559,49 @@ function ModelDetail({
       {model.status === "present" && <FitPanel model={model} />}
 
       {/* The format/engine join. Two distinct answers: no adapter exists
-          for this format at all, or one does but no binary is installed. */}
+          for this format at all, or one does but no binary is installed.
+          Since S3 the second is not a detour: Run asks to install it. */}
       {capable.length === 0 ? (
         <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
           No engine here can load a <span className="font-mono">{model.format}</span> model.
-          llama.cpp reads GGUF only; safetensors needs vLLM, which is not wired up yet. You can
+          llama.cpp reads GGUF only; safetensors needs vLLM, which is installed by hand. You can
           still keep profiles against this model — they just have nothing to launch into.
         </p>
-      ) : usable.length === 0 ? (
+      ) : usable.length === 0 && !capable.some((e) => e.acquisition?.installable) ? (
         <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
           <span className="font-mono">{capable.map((e) => e.engine).join(", ")}</span> can load
-          this, but no binary is installed. Install one from the{" "}
-          <Link href="/inference" className="underline">
-            Inference
-          </Link>{" "}
-          page.
+          this, but it is not installed on {node?.label ?? "this machine"} and Eugene cannot install
+          it there
+          {capable[0]?.acquisition?.reason ? `: ${capable[0].acquisition.reason}` : "."}{" "}
+          {capable[0]?.acquisition?.manualInstall?.command && (
+            <>
+              To install it yourself:{" "}
+              <code className="break-all">{capable[0].acquisition.manualInstall.command}</code>
+            </>
+          )}
         </p>
       ) : null}
+
+      {/* One click from a file to `ready` (S3). The profile editor below is
+          the expert path; this is the one a first run takes. */}
+      {model.status === "present" && capable.length > 0 && (
+        <div data-testid="model-run">
+          <RunButton
+            model={model}
+            node={node}
+            disabledReason={
+              usable.length === 0 && !capable.some((e) => e.acquisition?.installable)
+                ? `${capable.map((e) => e.engine).join(", ")} is not installed on ${node?.label ?? "this machine"}, and cannot be installed from here.`
+                : null
+            }
+          />
+          <p className="mt-1 text-[11px] text-[color:var(--muted)]">
+            {usable.length > 0
+              ? `Starts ${model.name} on ${node?.local ? "this machine" : (node?.label ?? "this machine")} with settings that fit. Once it says ready, it is on Home.`
+              : `${capable.map((e) => engineName(e.engine)).join(", ")} is not installed on ${node?.local ? "this machine" : (node?.label ?? "this machine")} yet; Run asks before installing it.`}
+          </p>
+        </div>
+      )}
 
       <ProfileEditor
         model={model}
@@ -810,6 +840,11 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <dd>{children}</dd>
     </div>
   );
+}
+
+/** Engine names as a person says them. */
+function engineName(engine: string): string {
+  return engine === "llama_cpp" ? "llama.cpp" : engine === "vllm" ? "vLLM" : engine;
 }
 
 function round(n: number): string {
