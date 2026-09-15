@@ -358,8 +358,12 @@ function NodeSection({
           {node?.local ? " · here" : ""}
         </h2>
         {node && !node.reachable && (
-          <span className="text-xs" style={{ color: "var(--status-error, #f85149)" }}>
-            down
+          <span
+            className="text-xs"
+            style={{ color: "var(--status-error, #f85149)" }}
+            title={node.lastError ?? undefined}
+          >
+            down{node.lastError ? ` — ${node.lastError}` : ""}
           </span>
         )}
         {node && (

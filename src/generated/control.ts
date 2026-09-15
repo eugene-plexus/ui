@@ -674,6 +674,21 @@ export interface components {
             enrolledAt?: string;
             /** Format: date-time */
             lastSeenAt?: string;
+            /**
+             * @description Why the last probe of this node did not come back with an
+             *     identity, in the probe client's words -- an HTTP status and
+             *     the body's title, or a transport error. `null` when the node
+             *     answered, and when nothing has polled yet.
+             *
+             *     Added 2026-09-15 because `reachable: false` on its own sent an
+             *     operator looking at enrollment, keys and firewalls when the
+             *     cause was a worker refusing this root's tokens as "not yet
+             *     valid (iat)" over half a second of clock skew. The probe
+             *     client had the reason the whole time; this surface dropped
+             *     it. Observation, not applied state: a standby has not seen
+             *     what this root saw, so it is never replicated.
+             */
+            lastError?: string | null;
         };
         /**
          * @description * `control` — the active control root. Exactly one.

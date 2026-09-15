@@ -75,6 +75,8 @@ export interface TargetNode {
   target: string;
   /** As the control root last saw it; always true for the local node. */
   reachable: boolean;
+  /** Why the root's last probe failed, in its words; null when it did not. */
+  lastError: string | null;
   budget: NodeBudget | null;
 }
 
@@ -151,6 +153,7 @@ interface ControlNodeRow {
   name: string;
   url?: string | null;
   reachable?: boolean;
+  lastError?: string | null;
   devices?: ComputeDevice[] | null;
 }
 
@@ -223,6 +226,7 @@ export function useTargetNode(): {
         local: true,
         target: "agent",
         reachable: true,
+        lastError: null,
         budget: local ? budgetFromNode(local) : null,
       });
       for (const row of rows) {
@@ -233,6 +237,7 @@ export function useTargetNode(): {
           local: false,
           target: targetFor(row.name, localName),
           reachable: row.reachable ?? true,
+          lastError: row.lastError ?? null,
           budget: budgetFromNode(row),
         });
       }

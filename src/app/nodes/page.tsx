@@ -46,6 +46,7 @@ interface NodeRow {
   arch?: string | null;
   lastSeenEpoch?: number | null;
   lastSeenAt?: string | null;
+  lastError?: string | null;
   signingPublicKey?: string | null;
   advertiseSequence?: number | null;
   devices?: { kind?: string; name?: string | null; memoryTotalBytes?: number | null }[] | null;
@@ -342,6 +343,18 @@ export default function NodesPage() {
                         ) : (
                           <span className="text-[color:var(--muted)]">down</span>
                         )}
+                        {/* The root's own words for why. Until 2026-09-15 this
+                            column said only "down" while the probe client held
+                            "HTTP 401: ... not yet valid (iat)" -- half a second
+                            of clock skew that read as a key problem. */}
+                        {!n.reachable && n.lastError ? (
+                          <div
+                            className="mt-0.5 max-w-md text-xs text-[color:var(--muted)]"
+                            data-testid="node-last-error"
+                          >
+                            {n.lastError}
+                          </div>
+                        ) : null}
                         {status?.epoch != null &&
                         n.lastSeenEpoch != null &&
                         n.lastSeenEpoch < status.epoch ? (
