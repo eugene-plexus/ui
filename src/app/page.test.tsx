@@ -586,3 +586,161 @@ describe("Home with exactly one model on disk (S3)", () => {
     expect(within(card).queryByTestId("run-button")).toBeNull();
   });
 });
+
+// --------------------------------------------------------------------- //
+// Reach (S5)
+// --------------------------------------------------------------------- //
+
+const LOOPBACK_ONLY = {
+  enabled: false,
+  restartRequired: false,
+  proposedUrl: "http://192.168.1.20:8079/",
+  boundAddresses: [{ process: "agent", host: "127.0.0.1", port: 8079, reachableOffHost: false }],
+  restart: { mechanism: "logon_task", canSelfRestart: true, command: "schtasks ..." },
+  firewall: {
+    supported: true,
+    enabled: true,
+    defaultInbound: "block",
+    activeProfiles: ["Private"],
+    ports: [],
+  },
+};
+
+function withReach(reach: unknown) {
+  const previous = handlers.get("GET agent/v1/node")!();
+  handlers.set("GET agent/v1/node", () => ({
+    status: 200,
+    body: { ...(previous.body as object), reach },
+  }));
+}
+
+describe("Reach it from other devices", () => {
+  it("offers the address a phone would use, and turning it on asks for the firewall too", async () => {
+    withReach(LOOPBACK_ONLY);
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-reach");
+    expect(within(card).getByTestId("reach-headline")).toHaveTextContent(
+      "http://192.168.1.20:8079",
+    );
+    const toggle = within(card).getByTestId("reach-switch");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expectPlainWords();
+
+    handlers.set("POST agent/v1/node/reach", () => ({
+      status: 200,
+      body: {
+        reach: { ...LOOPBACK_ONLY, enabled: true, restartRequired: true },
+        steps: [],
+        restarted: false,
+      },
+    }));
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(calls.some((c) => key(c) === "POST agent/v1/node/reach")).toBe(true),
+    );
+    // The firewall is asked for in the same click. A person who has said
+    // "let my phone reach this" has answered the firewall question too,
+    // and making them click twice is the second half they would skip.
+    const sent = calls.find((c) => key(c) === "POST agent/v1/node/reach");
+    expect(sent?.body).toEqual({ enabled: true, allowFirewall: true });
+  });
+
+  it("says the change is half done rather than reporting success", async () => {
+    // The state that would otherwise be a silent failure: the setting
+    // moved, the agent's socket did not, and every surface looks healthy
+    // while the phone still gets connection refused.
+    withReach({
+      ...LOOPBACK_ONLY,
+      enabled: true,
+      restartRequired: true,
+      advertiseUrl: "http://192.168.1.20:8079/",
+    });
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-reach");
+    expect(within(card).getByTestId("reach-headline")).toHaveTextContent("needs to restart");
+    expect(within(card).getByTestId("reach-restart")).toBeEnabled();
+    expectPlainWords();
+  });
+
+  it("will not offer to restart an agent nothing would start again", async () => {
+    withReach({
+      ...LOOPBACK_ONLY,
+      enabled: true,
+      restartRequired: true,
+      advertiseUrl: "http://192.168.1.20:8079/",
+      restart: { mechanism: "none", canSelfRestart: false, command: "eugene-plexus-agent" },
+    });
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-reach");
+    expect(within(card).queryByTestId("reach-restart")).toBeNull();
+    expect(card).toHaveTextContent("cannot restart itself");
+    expect(card).toHaveTextContent("eugene-plexus-agent");
+  });
+
+  it("names the firewall, and never says restart, when the firewall is what is in the way", async () => {
+    withReach({
+      ...LOOPBACK_ONLY,
+      enabled: true,
+      advertiseUrl: "http://192.168.1.20:8079/",
+      boundAddresses: [{ process: "agent", host: "0.0.0.0", port: 8079, reachableOffHost: true }],
+      firewall: {
+        supported: true,
+        enabled: true,
+        defaultInbound: "block",
+        activeProfiles: ["Private"],
+        ports: [
+          {
+            port: 8079,
+            verdict: "blocked",
+            remedy: 'New-NetFirewallRule -DisplayName "Eugene Plexus" ...',
+          },
+        ],
+      },
+    });
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-reach");
+    expect(within(card).getByTestId("reach-headline")).toHaveTextContent("firewall");
+    expect(within(card).getByTestId("reach-remedy")).toHaveTextContent("New-NetFirewallRule");
+    expect(within(card).queryByTestId("reach-restart")).toBeNull();
+    expectPlainWords();
+  });
+
+  it("shows the one kind of proof there is, and only when it exists", async () => {
+    withReach({
+      ...LOOPBACK_ONLY,
+      enabled: true,
+      advertiseUrl: "http://192.168.1.20:8079/",
+      boundAddresses: [{ process: "agent", host: "0.0.0.0", port: 8079, reachableOffHost: true }],
+      firewall: { supported: true, ports: [{ port: 8079, verdict: "allowed" }] },
+      lastReachedFrom: "192.168.1.55",
+      lastReachedAt: new Date().toISOString(),
+    });
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-reach");
+    expect(within(card).getByTestId("reach-evidence")).toHaveTextContent("192.168.1.55");
+    expectPlainWords();
+  });
+
+  it("is absent entirely on an agent that does not report reach", async () => {
+    // Every source on Home is soft, and an agent a pin behind is the
+    // ordinary case during an upgrade. No card beats a broken one.
+    render(<HomePage />);
+    await screen.findByTestId("home");
+    expect(screen.queryByTestId("home-reach")).toBeNull();
+  });
+});
+
+describe("the two halves of one setting name each other", () => {
+  // `cross-link-related-settings` (Troy, standing). The switch and the
+  // agent's Advertise address field are one setting with two front
+  // doors, and somebody who stumbles into either should find the other.
+  it("the card points at the Config field", async () => {
+    withReach(LOOPBACK_ONLY);
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-reach");
+    expect(within(card).getByRole("link", { name: /advertise address/i })).toHaveAttribute(
+      "href",
+      "/config?sel=agent",
+    );
+  });
+});

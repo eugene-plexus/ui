@@ -774,6 +774,13 @@ export interface paths {
          *     the control root plus its own bind port. It is what the agent sent
          *     the control root as the node's URL, reported here so a wrong guess
          *     is visible and overridable.
+         *
+         *     `reach` answers the separate question *can anything else on the
+         *     network get here at all* — what each process is actually
+         *     listening on, what the host firewall says about those ports, and
+         *     whether the address this node would advertise differs from the
+         *     one it is bound to. It is evidence rather than a setting; the
+         *     setting is `POST /v1/node/reach`.
          */
         get: operations["getNode"];
         put?: never;
@@ -861,6 +868,73 @@ export interface paths {
          *     were signed with has been replaced.
          */
         post: operations["unenrollNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/node/reach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Let other devices on the network reach this machine, or stop them.
+         * @description The one switch behind "Reach it from other devices". Turning it
+         *     **on** writes a non-loopback `advertiseUrl` (the address this
+         *     host would use on its own network, derived from the routing
+         *     table, unless the caller supplies one), tells the control root
+         *     if this node is enrolled, restarts the supervised components so
+         *     they bind an interface other hosts can reach, and — when asked,
+         *     and when the platform allows it — adds the host firewall rule.
+         *     Turning it **off** is the exact inverse: the config field is
+         *     cleared, components come back on loopback, and a firewall rule
+         *     this agent added is removed.
+         *
+         *     **It is a convenience over settings that remain settings.**
+         *     Everything here can be done by hand through
+         *     `PATCH /v1/config {"advertiseUrl": …}` plus the firewall command
+         *     the card prints, and the config field stays the expert override
+         *     that wins — including with a value that will not work
+         *     (`easy-default-expert-override`). What this endpoint adds is
+         *     doing the four steps in one order, and reporting which of them
+         *     actually happened.
+         *
+         *     ### The agent's own socket is the part that needs a restart
+         *
+         *     Supervised components take their bind host from the environment
+         *     at spawn, so restarting them is enough and this endpoint does
+         *     it. **This agent's own listening socket is fixed for the life of
+         *     the process**, so an agent that was started while the node
+         *     advertised loopback keeps answering only on loopback until it is
+         *     started again. That is reported rather than hidden:
+         *     `NodeReach.restartRequired` is true until the socket and the
+         *     setting agree, and `NodeReach.restart` says whether this agent
+         *     can arrange its own restart and, when it cannot, the command a
+         *     person runs.
+         *
+         *     `restartAgent` asks for that restart. It is **not** the default:
+         *     the browser making this call is talking to the process that
+         *     would go away, and an agent that cannot come back takes the
+         *     console with it. The response is sent before the restart begins.
+         *
+         *     ### Turning it on does not make it reachable
+         *
+         *     Binding an interface, advertising an address and being allowed
+         *     through a firewall are three different things, and only the
+         *     third is outside this process. The response carries the fresh
+         *     `NodeReach`, so a caller can show the firewall verdict that
+         *     still stands in the way. A verdict is never upgraded to
+         *     `allowed` because we changed something; it is re-read.
+         *
+         *     Operator-only.
+         */
+        post: operations["setNodeReach"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1343,6 +1417,291 @@ export interface components {
              */
             devices?: components["schemas"]["ComputeDevice"][];
             agentVersion?: string;
+            reach?: components["schemas"]["NodeReach"];
+        };
+        /**
+         * @description Whether other devices can reach this machine, as **evidence**
+         *     rather than as a setting.
+         *
+         *     Three separate things have to be true, and every surface before
+         *     this one reported at most one of them: a process has to be
+         *     listening on an address other than loopback, the node has to be
+         *     advertising that address so the rest of the install and the
+         *     person's phone know to use it, and the host firewall has to let
+         *     the connection in. Each is reported on its own here, because
+         *     each fails on its own and the symptom of all three is the same
+         *     — *connection refused*.
+         *
+         *     **Nothing here is inferred from a setting.** `boundAddresses`
+         *     comes from the sockets, the firewall verdict from the host
+         *     firewall, and `lastReachedByRoot` from a connection another
+         *     machine actually made. Where a thing cannot be determined the
+         *     answer is `unknown`, never `allowed`.
+         *
+         *     Not to be confused with `LibraryFolderReach`, which answers a
+         *     different question with the same word: whether *this node* can
+         *     open a folder on *another* machine. This one is whether another
+         *     machine can open a socket on this one.
+         */
+        NodeReach: {
+            /**
+             * @description This node advertises an address other hosts can use. It is a
+             *     statement about the **setting**, not about whether anything
+             *     got through — read `boundAddresses` and `firewall` for that.
+             */
+            enabled: boolean;
+            /**
+             * Format: uri
+             * @description The address currently advertised, repeated from
+             *     `NodeIdentity.advertiseUrl` so a caller rendering this object
+             *     has everything it needs.
+             */
+            advertiseUrl?: string;
+            /**
+             * Format: uri
+             * @description The address this host would advertise if reach were turned on
+             *     now: its own address on the network it routes through, plus
+             *     the port this agent binds. Derived from the routing table
+             *     (no packet is sent), so it is available on a machine that has
+             *     never enrolled and on one whose control root is on loopback —
+             *     which is every standalone install, and exactly where the
+             *     enrollment-time derivation answers `127.0.0.1`.
+             *
+             *     Absent when this host has no non-loopback address at all.
+             */
+            proposedUrl?: string;
+            /**
+             * @description What each process of this install is actually listening on,
+             *     this agent included — read from the process, not from its
+             *     configuration. This is where "the setting says one thing and
+             *     the socket says another" becomes visible.
+             */
+            boundAddresses?: components["schemas"]["BoundAddress"][];
+            /**
+             * @description This agent's own socket does not match what the node
+             *     advertises. A listening socket is fixed for the life of the
+             *     process, so an agent started while the node advertised
+             *     loopback answers only on loopback however the setting is
+             *     changed afterwards. Supervised components do not have this
+             *     problem — they are restarted when the setting changes.
+             */
+            restartRequired: boolean;
+            restart?: components["schemas"]["AgentRestart"];
+            firewall?: components["schemas"]["HostFirewall"];
+            /**
+             * @description The address of the last connection to this agent that came
+             *     from somewhere other than this machine.
+             *
+             *     **The only proof from outside.** Static inspection of a
+             *     firewall says what *should* happen; a connection that
+             *     arrived says what did. Deliberately *any* off-host caller
+             *     rather than the control root specifically: on a standalone
+             *     install there is no root probing from elsewhere, and the
+             *     person opening this page on their phone is both the test
+             *     they were told to run and the evidence it passed. The
+             *     control root's own view of the same fact is
+             *     `Node.lastSeenAt` in `control.yaml`, which is where a
+             *     multi-machine console should read it.
+             *
+             *     Absent until something off this machine connects. Not
+             *     persisted: it describes this process, and a restart is
+             *     exactly when a person wants to know whether reach still
+             *     works rather than whether it once did.
+             */
+            lastReachedFrom?: string;
+            /**
+             * Format: date-time
+             * @description When that connection arrived.
+             */
+            lastReachedAt?: string;
+        };
+        BoundAddress: {
+            /**
+             * @description `agent`, or a `ComponentKind`. Engines are not listed: they
+             *     are deliberately never widened.
+             */
+            process: string;
+            /** @description The interface bound — `127.0.0.1`, `0.0.0.0`, or one address. */
+            host: string;
+            port: number;
+            /**
+             * @description Whether this bind can be reached from another machine at all,
+             *     before the firewall gets a say. False for a loopback bind,
+             *     which no rule can rescue.
+             */
+            reachableOffHost?: boolean;
+        };
+        /**
+         * @description How this agent would come back if it stopped — which decides
+         *     whether a switch may restart it, and what a person is told when
+         *     it may not.
+         */
+        AgentRestart: {
+            /**
+             * @description What starts this agent. `none` means nothing does — it was
+             *     launched by hand, and stopping it ends the install until
+             *     somebody types the command again.
+             * @enum {string}
+             */
+            mechanism: "service" | "logon_task" | "systemd" | "launchd" | "none" | "unknown";
+            /**
+             * @description This agent can ask its own supervisor to restart it. False is
+             *     not a failure; it is the case where the switch changes the
+             *     setting and says plainly that the person has to restart it.
+             */
+            canSelfRestart: boolean;
+            /**
+             * @description The command a person runs to restart this agent, for the
+             *     case above and for a card to print either way.
+             */
+            command?: string;
+            detail?: string;
+        };
+        /**
+         * @description What the host firewall says about the ports this install
+         *     publishes. Read per request and cached no longer than the node
+         *     view; a stale verdict is worse than a slow one.
+         */
+        HostFirewall: {
+            /**
+             * @description This platform has a firewall this agent knows how to read.
+             *     False is a first-class answer: every other field is then
+             *     absent and every port's verdict is `unknown`.
+             */
+            supported: boolean;
+            /**
+             * @description The firewall being described — `Windows Defender Firewall`,
+             *     `ufw`, `firewalld`, `Application Firewall`.
+             */
+            product?: string;
+            enabled?: boolean;
+            /**
+             * @description What happens to an inbound connection no rule matches.
+             *     **`unknown` is not `allow`.** Windows reports this as
+             *     `NotConfigured` through its PowerShell cmdlets, which means
+             *     *block*, and reads as *not blocking* to anyone who compares
+             *     the string to `Block`.
+             * @enum {string}
+             */
+            defaultInbound?: "block" | "allow" | "unknown";
+            /**
+             * @description The firewall profiles in force on the interfaces this host is
+             *     connected through — on Windows, `Private`, `Public` or
+             *     `Domain`. A home network Windows has classified as `Public`
+             *     is the commonest cause of "it worked here yesterday", so the
+             *     classification is reported even when every verdict is
+             *     `allowed`.
+             */
+            activeProfiles?: string[];
+            /**
+             * @description Firewalls registered with the OS that are **not** the one
+             *     described above. A third-party firewall makes every verdict
+             *     here `unknown`, however confident the built-in firewall's own
+             *     answer looks: "Windows Firewall is off" says nothing about
+             *     whether Norton is letting us through.
+             */
+            thirdPartyProducts?: string[];
+            ports?: components["schemas"]["FirewallPort"][];
+            /**
+             * @description Why the answer is what it is, in a sentence — including why a
+             *     read failed, which is the difference between `unknown` and a
+             *     blank card.
+             */
+            detail?: string;
+        };
+        FirewallPort: {
+            port: number;
+            /**
+             * @description `allowed` — an enabled Allow rule covers this port, or this
+             *     program, in every profile currently in force.
+             *     `blocked` — the firewall is on, unmatched inbound traffic is
+             *     blocked, and nothing covers us; or an explicit Block rule
+             *     names this program.
+             *     `unknown` — a third-party firewall is registered, the read
+             *     failed, or the platform cannot answer. **A verdict is never
+             *     upgraded to `allowed` by inference.**
+             * @enum {string}
+             */
+            verdict: "allowed" | "blocked" | "unknown";
+            /** @description The name of the rule that decided it, when one did. */
+            rule?: string;
+            /**
+             * @description What the deciding rule is bound to. Worth surfacing rather
+             *     than hiding: the rule Windows creates from its own *Windows
+             *     Security Alert* dialog is bound to the **program**, and this
+             *     install's program is a versioned interpreter path under the
+             *     install directory — so an allow a person clicked once stops
+             *     covering us the day the interpreter is upgraded, with no
+             *     message anywhere. A rule this agent adds is bound to the
+             *     **port**, for that reason.
+             * @enum {string}
+             */
+            scope?: "port" | "program";
+            /** @description The profiles the deciding rule applies to. */
+            profiles?: string[];
+            /**
+             * @description The command that would change a `blocked` verdict, ready to
+             *     run. Present on `blocked`, and on `unknown` where a command
+             *     would settle it.
+             */
+            remedy?: string;
+        };
+        NodeReachRequest: {
+            /**
+             * @description True to advertise and bind an address other hosts can use;
+             *     false to return to loopback.
+             */
+            enabled: boolean;
+            /**
+             * Format: uri
+             * @description The address to advertise, for the case the derived one is
+             *     wrong — a host with several interfaces, or a container
+             *     published on a different port. Defaults to
+             *     `NodeReach.proposedUrl`. A loopback address is refused here:
+             *     it is what `enabled: false` means, and accepting it would
+             *     leave a switch that reads *on* and does nothing.
+             */
+            url?: string;
+            /**
+             * @description Ask the host firewall to allow this install's ports. Adding a
+             *     rule needs administrator rights everywhere: an agent running
+             *     as a service has them, and an agent running in a person's own
+             *     session raises a prompt on the desktop. Where neither is
+             *     possible the step is reported as not taken, with the command.
+             * @default false
+             */
+            allowFirewall: boolean;
+            /**
+             * @description Restart this agent afterwards, so its own socket picks up the
+             *     change. The response is sent first. Refused with
+             *     `restarted: false` when `AgentRestart.canSelfRestart` is
+             *     false — this agent will not stop itself with nothing to start
+             *     it again.
+             * @default false
+             */
+            restartAgent: boolean;
+        };
+        NodeReachResult: {
+            reach: components["schemas"]["NodeReach"];
+            /**
+             * @description One entry per thing that was attempted, in the order it was
+             *     attempted. A step that failed does not roll back the ones
+             *     before it — a firewall rule that could not be added is not a
+             *     reason to stop advertising — so this list, not the status
+             *     code, is how a caller learns what actually happened.
+             */
+            steps: components["schemas"]["ReachStep"][];
+            /**
+             * @description A restart of this agent has been scheduled. The caller should
+             *     expect this connection to close.
+             */
+            restarted?: boolean;
+        };
+        ReachStep: {
+            /** @enum {string} */
+            step: "advertise" | "announce" | "restart_components" | "firewall" | "restart_agent";
+            ok: boolean;
+            detail?: string;
         };
         EnrollRequest: {
             /**
@@ -4209,6 +4568,57 @@ export interface operations {
             401: components["responses"]["Problem"];
             /** @description This agent is not enrolled, so there is nothing to leave. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setNodeReach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeReachRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description What was done, and the reach as it now stands. A step that
+             *     could not be taken is named in `steps`, not raised as an
+             *     error: adding a firewall rule can fail for reasons the rest
+             *     of the change should not be rolled back for.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeReachResult"];
+                };
+            };
+            /**
+             * @description `enabled` is true, `url` was not given, and this host has no
+             *     non-loopback address to propose.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description The supplied `url` is not a URL, or is a loopback address. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

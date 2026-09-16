@@ -109,6 +109,21 @@ export type EngineDescriptor = AgentComponents["schemas"]["EngineDescriptor"];
 export type NodeIdentity = AgentComponents["schemas"]["NodeIdentity"];
 export type ComputeDevice = AgentComponents["schemas"]["ComputeDevice"];
 
+// Whether anything else on the network can get to this machine (S5).
+// Three separate answers, because three separate things have to be true
+// and all three fail as "connection refused": something is listening off
+// loopback, the node advertises that address, and the host firewall lets
+// the connection in. `reach.ts` turns them into the sentences a card
+// says; `NodeReachResult` is what the switch answers.
+export type NodeReach = AgentComponents["schemas"]["NodeReach"];
+export type BoundAddress = AgentComponents["schemas"]["BoundAddress"];
+export type AgentRestart = AgentComponents["schemas"]["AgentRestart"];
+export type HostFirewall = AgentComponents["schemas"]["HostFirewall"];
+export type FirewallPort = AgentComponents["schemas"]["FirewallPort"];
+export type NodeReachRequest = AgentComponents["schemas"]["NodeReachRequest"];
+export type NodeReachResult = AgentComponents["schemas"]["NodeReachResult"];
+export type ReachStep = AgentComponents["schemas"]["ReachStep"];
+
 // The launch dry run and, since M11, where the model is on the node that
 // would launch it. `ModelLocation` is `modelPath` resolved through that
 // node's `pathMappings`: the library names a model by its path on the

@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { FirstModelCard } from "@/components/home/FirstModelCard";
 import { MachineStrip } from "@/components/home/MachineStrip";
+import { ReachCard } from "@/components/home/ReachCard";
 import { RunningCard } from "@/components/home/RunningCard";
 import { TryItCard } from "@/components/home/TryItCard";
 import { UseFromAppsCard } from "@/components/home/UseFromAppsCard";
@@ -63,8 +64,14 @@ import { useTasks } from "@/lib/useTasks";
  * and the model id, with a recipe per app — appears as soon as the
  * gateway routes to something. §0.8 measured what it replaces: nothing.
  *
- * **Not here yet, by plan:** "Reach it from other devices" (S5), "Needs
- * attention" (S7), and the recommended model in the first card (S6).
+ * **Since S5:** "Reach it from other devices" — one switch, and three
+ * honest lines about the three separate things that have to be true
+ * before a phone can open this page. It sits below the apps card because
+ * it is the answer to "it works here, why not there", which is a
+ * question a person only has once the first two cards have worked.
+ *
+ * **Not here yet, by plan:** "Needs attention" (S7), and the recommended
+ * model in the first card (S6).
  */
 
 const SLOW_POLL_MS = 15000;
@@ -189,6 +196,7 @@ export default function HomePage() {
               localNode={node?.name ?? null}
             />
           )}
+          <ReachCard reach={node?.reach ?? null} onChanged={() => void loadSlow()} />
           <RunningCard rows={rows} />
         </div>
       </main>

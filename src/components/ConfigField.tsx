@@ -306,6 +306,22 @@ export function ConfigFieldInput({
         {field.description && (
           <p className="text-xs leading-relaxed text-[color:var(--muted)]">{field.description}</p>
         )}
+        {field.key === "advertiseUrl" && (
+          // `cross-link-related-settings` (Troy, standing): the other
+          // half of this setting is Home's "Reach it from other
+          // devices", which writes this field, restarts the components
+          // and settles the firewall in one click. Somebody who found
+          // the expert control should be told the easy one exists; a
+          // half added without its link is a defect.
+          <p className="text-xs text-[color:var(--muted)]">
+            The one-click version of this is{" "}
+            <Link href="/" className="underline">
+              Reach it from other devices
+            </Link>{" "}
+            on Home, which also restarts what has to restart and offers to settle the firewall. What
+            you type here wins over what it would have chosen.
+          </p>
+        )}
       </div>
     </div>
   );
