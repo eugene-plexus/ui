@@ -11,6 +11,13 @@ import {
   keyStatus,
   recipes as buildRecipes,
 } from "@/lib/clientKeys";
+import type { BoundAddressLike, Verdict } from "@/lib/gatewayAddress";
+import {
+  describeRemap,
+  describeVerdict,
+  portRemapEvidence,
+  verifyGatewayAddress,
+} from "@/lib/gatewayAddress";
 import type {
   ClientKey,
   ClientKeyCreated,
@@ -20,6 +27,13 @@ import type {
 } from "@/lib/types";
 
 const BASE_URL_OVERRIDE = "eugene-gateway-base-url";
+
+/** Semantic tone -> the theme-aware status classes in `globals.css`. */
+const TONE_CLASS = {
+  ok: "status-success",
+  warn: "status-warn",
+  error: "status-error",
+} as const;
 
 /**
  * "Use it from your apps": the second job, which had no path at all.
@@ -41,6 +55,27 @@ const BASE_URL_OVERRIDE = "eugene-gateway-base-url";
  * browser (`easy-default-expert-override`: detect, and always leave a
  * way to override).
  *
+ * **And since 2026-09-16 the card stops guessing out loud and checks.**
+ * Saying "this is a guess" in muted 11px turned out to be nowhere near
+ * enough: the address was pasted into an OpenAI client, the container's
+ * published port was 8280 rather than the guessed 8080, and qBittorrent
+ * answered on 8080 with a bare `400 Bad Request`. Every layer was
+ * behaving correctly and the afternoon was gone. Two additions, both in
+ * `lib/gatewayAddress.ts`, which has the reasoning:
+ *
+ * - `portRemapEvidence` compares the port this page was reached on with
+ *   the agent's own listening socket. Disagreement is proof that ports
+ *   are rewritten in front of this install, so the guess below is
+ *   probably wrong; agreement proves nothing and says nothing.
+ * - `verifyGatewayAddress` calls the address the way a harness would.
+ *   It needs **no key** — an unauthenticated `/v1/models` comes back as
+ *   a readable 401 naming `component: "gateway"`, because the front
+ *   door's CORS header is added whatever the status — so the check runs
+ *   the moment the card renders, which is before anyone has minted
+ *   anything.
+ *
+ * The verdict is the only thing here allowed to call the address right.
+ *
  * **The key is minted on the gateway's node**, because that is the agent
  * the gateway asks about revocations. Minting anywhere else would leave
  * a Remove button that changes nothing. `clientKeyTarget` works out
@@ -51,6 +86,7 @@ export function UseFromAppsCard({
   gatewayPortUrl,
   placement,
   localNode,
+  boundAddresses,
 }: {
   /** The models the gateway routes to; the first is proposed. */
   models: Model[];
@@ -60,6 +96,8 @@ export function UseFromAppsCard({
   placement: ComponentPlacementList | null;
   /** This machine's node name, or null when it is not enrolled. */
   localNode: string | null;
+  /** S5's `reach.boundAddresses`: what this install is really listening on. */
+  boundAddresses?: BoundAddressLike[] | null;
 }) {
   const [keys, setKeys] = useState<ClientKey[] | null>(null);
   const [fresh, setFresh] = useState<ClientKeyCreated | null>(null);
@@ -122,6 +160,41 @@ export function UseFromAppsCard({
     key: keyString ?? liveKeys[0]?.id ?? null,
     model,
   });
+
+  // Read after mount rather than in a `useMemo`: this is a static
+  // export, so a `window` read during render is a hydration mismatch
+  // between a server frame that has no location and a client one that
+  // does. Same reason the override above is read in an effect.
+  const [remap, setRemap] = useState<string | null>(null);
+  useEffect(() => {
+    setRemap(describeRemap(portRemapEvidence(window.location, boundAddresses)));
+  }, [boundAddresses]);
+
+  const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [checking, setChecking] = useState(false);
+  const check = useCallback(async () => {
+    if (!baseUrl) return;
+    setChecking(true);
+    try {
+      // The key when there is one -- it upgrades the answer from "the
+      // gateway is there" to "and it serves these models", which is the
+      // other half of the same class of bug: a client configured with a
+      // model id that names nothing.
+      setVerdict(await verifyGatewayAddress(baseUrl, { key: keyString }));
+    } finally {
+      setChecking(false);
+    }
+  }, [baseUrl, keyString]);
+
+  // On every change of address or key, not on a button. A check nobody
+  // presses is a check nobody gets, and this one costs one GET to a
+  // host the page is already talking to.
+  useEffect(() => {
+    setVerdict(null);
+    void check();
+  }, [check]);
+
+  const verdictText = verdict ? describeVerdict(verdict, display) : null;
 
   async function mint(event: React.FormEvent) {
     event.preventDefault();
@@ -229,12 +302,50 @@ export function UseFromAppsCard({
             </>
           )}
         </Row>
-        <p className="font-ui pl-[5.5rem] text-[11px] text-[color:var(--muted)]">
-          {override
-            ? "You corrected this address; this browser will remember it."
-            : "Worked out from the gateway's port and this page's address. If your install publishes " +
-              "that port differently — a container remap, for instance — correct it here."}
-        </p>
+        <div className="flex flex-col gap-1 pl-[5.5rem]">
+          {display && (
+            <p
+              data-testid="base-url-verdict"
+              data-verdict={verdict?.kind ?? (checking ? "checking" : "none")}
+              className={
+                verdictText
+                  ? `${TONE_CLASS[verdictText.tone]} font-ui rounded-[var(--radius)] px-2 py-1 text-[11px]`
+                  : "font-ui text-[11px] text-[color:var(--muted)]"
+              }
+            >
+              {verdictText?.text ?? "Checking this address…"}{" "}
+              {!checking && (
+                <button
+                  type="button"
+                  onClick={() => void check()}
+                  data-testid="base-url-recheck"
+                  className="underline"
+                >
+                  Check again
+                </button>
+              )}
+            </p>
+          )}
+
+          {/* Suppressed once the address is proven: the check outranks
+              the doubt, and leaving a warning under a confirmation is
+              how a person learns to ignore both. */}
+          {remap && verdict?.kind !== "confirmed" && (
+            <p
+              data-testid="base-url-remap"
+              className="status-warn font-ui rounded-[var(--radius)] px-2 py-1 text-[11px]"
+            >
+              {remap}
+            </p>
+          )}
+
+          <p className="font-ui text-[11px] text-[color:var(--muted)]">
+            {override
+              ? "You corrected this address; this browser will remember it."
+              : "Worked out from the gateway's port and this page's address. If your install publishes " +
+                "that port differently — a container remap, for instance — correct it here."}
+          </p>
+        </div>
 
         <Row label="Model">
           {models.length > 1 ? (

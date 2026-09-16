@@ -179,3 +179,71 @@ test.describe("client keys", () => {
     expect(await asHarness(page, key)).toBe(200);
   });
 });
+
+test.describe("the address is checked, not just guessed", () => {
+  test.beforeEach(async ({ page }) => {
+    await signIn(page);
+  });
+
+  /**
+   * The check runs on its own, before a key exists, and it is a real
+   * cross-origin call: this page is served by the agent on one port and
+   * the gateway answers on another, so the browser sends a genuine
+   * preflight-free CORS request and reads the answer only because
+   * `cors.py` allowed it.
+   */
+  test("confirms the guessed address against the live gateway", async ({ page }) => {
+    await page.goto("/");
+    const card = page.getByTestId("home-use-from-apps");
+    await expect(card).toBeVisible({ timeout: 60_000 });
+
+    const verdict = card.getByTestId("base-url-verdict");
+    await expect(verdict).toHaveAttribute("data-verdict", "confirmed", { timeout: 60_000 });
+    await expect(verdict).toContainText(/Checked/i);
+
+    // No key was made in this test. The confirmation came off the
+    // gateway's own 401 or its model list, both of which are proof.
+    await expect(card.getByTestId("fresh-key")).toHaveCount(0);
+
+    // Page port and the agent's bound port agree here, so there is no
+    // doubt to raise. A remap warning on this install would be false.
+    await expect(card.getByTestId("base-url-remap")).toHaveCount(0);
+  });
+
+  /**
+   * The negative, and the reason this slice exists.
+   *
+   * The agent's own port is listening and speaking HTTP and is **not**
+   * the gateway — the same shape as the qBittorrent that answered
+   * `400 Bad Request` on the live install's 8080. The check must not
+   * call this confirmed, and must not say nothing is there.
+   *
+   * Written because a check that only ever sees the happy install is a
+   * check that cannot fail — M10's check 7 and step 6's fragmentation
+   * assertions are the two this project has already paid for.
+   */
+  test("refuses to confirm something that is listening but is not the gateway", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const card = page.getByTestId("home-use-from-apps");
+    await expect(card).toBeVisible({ timeout: 60_000 });
+    await expect(card.getByTestId("base-url-verdict")).toHaveAttribute(
+      "data-verdict",
+      "confirmed",
+      { timeout: 60_000 },
+    );
+
+    // Point it at this page's own origin: the agent, which serves the UI
+    // and has no /v1/models.
+    await card.getByRole("button", { name: /Not right\?|Change/ }).click();
+    await card.getByTestId("base-url-input").fill(new URL(page.url()).origin);
+    await card.getByRole("button", { name: "Save" }).click();
+
+    const verdict = card.getByTestId("base-url-verdict");
+    await expect(verdict).not.toHaveAttribute("data-verdict", "confirmed", { timeout: 60_000 });
+    // It says something is there. "Nothing answered" would send a
+    // person to their firewall for a port that is answering fine.
+    await expect(verdict).toContainText(/not this gateway|listening/i);
+  });
+});

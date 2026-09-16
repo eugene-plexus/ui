@@ -250,6 +250,7 @@ export default function HomePage() {
               gatewayPortUrl={gatewayPortUrl}
               placement={sources?.placement ?? null}
               localNode={node?.name ?? null}
+              boundAddresses={node?.reach?.boundAddresses ?? null}
             />
           )}
           <ReachCard reach={node?.reach ?? null} onChanged={() => void loadSlow()} />
