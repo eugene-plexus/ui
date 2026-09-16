@@ -534,6 +534,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/downloads/{id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take responsibility for what a finished download was started for.
+         * @description Atomically clears `runWhenReady` and reports whether this caller
+         *     was the one who cleared it.
+         *
+         *     **It exists because two browsers are two browsers.** A person
+         *     starts a download in order to run a model, closes the tab, and
+         *     opens the UI again — possibly on another machine, possibly
+         *     twice. Every console can see the finished download and its
+         *     intent; without this, every console would create a profile and
+         *     launch a runtime for the same model. First caller wins, the
+         *     rest get `claimed: false` and do nothing.
+         *
+         *     **It is also what stops a deliberate stop from being undone.**
+         *     Without the clear, a console opening a week after the operator
+         *     stopped that runtime on purpose would see the same finished
+         *     download with the same intent and start it again.
+         *
+         *     Idempotent: claiming a download that has no intent, or has
+         *     already been claimed, is a `200` with `claimed: false` rather
+         *     than an error. Nothing about the transfer changes.
+         */
+        post: operations["claimDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/downloads/{id}/pause": {
         parameters: {
             query?: never;
@@ -2052,6 +2090,25 @@ export interface components {
              */
             subdirectory?: string;
             /**
+             * @description The operator asked for this model to be **run** when it
+             *     lands, not merely fetched.
+             *
+             *     **This component records it and never acts on it.** The
+             *     library does not launch anything — a launch is a profile, an
+             *     engine and a runtime on some node's agent, and which node is
+             *     a question the library has no business answering. What this
+             *     field buys is that the *intent* outlives the browser tab
+             *     that expressed it: a 16 GB download takes long enough that
+             *     the person will close the laptop lid, and a console opening
+             *     later can see that a download was started in order to run
+             *     something and carry on from there.
+             *
+             *     Exactly one console should carry on, which is what
+             *     `POST /v1/downloads/{id}/claim` is for.
+             * @default false
+             */
+            runWhenReady: boolean;
+            /**
              * @description Override the written name of the **single-file** case. Rarely
              *     wanted: the upstream name is what the operator recognises,
              *     what the library will call it, and what
@@ -2089,6 +2146,13 @@ export interface components {
             /** @description Recent rate, not an average over the whole job. */
             bytesPerSecond?: number;
             etaSeconds?: number;
+            /**
+             * @description The operator asked for this model to be run when it lands.
+             *     Recorded, never acted on here — see `DownloadSpec`. Cleared
+             *     by `POST /v1/downloads/{id}/claim`, so a finished download
+             *     whose flag is still set is one nobody has picked up yet.
+             */
+            runWhenReady?: boolean;
             /**
              * @description How many times the transfer has been (re)started, including
              *     automatic retries. Visible because a 40 GB fetch over a
@@ -2151,6 +2215,20 @@ export interface components {
             verified?: boolean;
             role?: components["schemas"]["ModelFileRole"];
             error?: string;
+        };
+        /**
+         * @description The answer to "am I the one who continues this?". `claimed` is
+         *     true for exactly one caller per download.
+         */
+        DownloadClaim: {
+            claimed: boolean;
+            /**
+             * @description The local model the download produced, when the scan that
+             *     follows a completed transfer has named it. Absent while the
+             *     scan is still running, which is a reason to wait rather than
+             *     a reason to give up — the claim is already yours.
+             */
+            modelId?: string;
         };
         /**
          * @description Named phases rather than a percentage, following M1's engine
@@ -3807,6 +3885,37 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Problem"];
+        };
+    };
+    claimDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether this caller took it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadClaim"];
+                };
+            };
+            /** @description No such download. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     pauseDownload: {

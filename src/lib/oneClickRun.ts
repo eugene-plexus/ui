@@ -71,6 +71,7 @@ import type { TargetNode } from "./nodeBudget";
 import { engineLabel, formatBytesShort, type Task } from "./tasks";
 import type {
   Admission,
+  Download,
   EngineDescriptor,
   EngineInstall,
   EngineList,
@@ -84,6 +85,10 @@ import type {
 } from "./types";
 
 export type RunStep =
+  /** Fetching the file first. Only a run that began as "Download and
+   * run" passes through this; a run of a model already on disk starts
+   * at `checking`. */
+  | "downloading"
   | "checking"
   | "awaiting-install"
   | "installing"
@@ -95,9 +100,27 @@ export type RunStep =
   | "failed";
 
 /** Which step a failure belongs to; "names which one failed if one does". */
-export type FailedStep = "check" | "install" | "settings" | "launch" | "load";
+export type FailedStep = "download" | "check" | "install" | "settings" | "launch" | "load";
+
+/** What a run needs to know about the transfer it is waiting on. */
+export interface RunDownload {
+  id: string;
+  repo: string;
+  /** The basename a person recognises. */
+  file: string;
+  bytesTotal: number | null;
+  bytesDownloaded: number | null;
+  state: string;
+}
 
 export interface RunModel {
+  /**
+   * The local model's id — **empty while a chained run is still
+   * downloading**, because the model does not exist until the file
+   * lands and the library's post-download scan names it. Everything
+   * that keys off a model id has to tolerate that, which is why
+   * `findRun` scans rather than looking up by key.
+   */
   id: string;
   name: string;
   path: string;
@@ -125,6 +148,8 @@ export interface RunTask {
   engine: string | null;
   /** The agent's install record while installing, for the bytes. */
   install: EngineInstall | null;
+  /** The transfer this run is waiting on, while it is waiting. */
+  download: RunDownload | null;
   /** The runtime's name once declared or found. */
   runtime: string | null;
   runtimeStatus: RuntimeStatus | null;
@@ -197,6 +222,22 @@ export function useRuns(): RunTask[] {
 
 export function runId(modelId: string, target: string): string {
   return `run:${modelId}@${target}`;
+}
+
+/**
+ * A run for this model on this node, whatever key it is filed under.
+ *
+ * A scan rather than a lookup, because a chained run is filed under its
+ * DOWNLOAD's id until the file lands and the model gets one — and the
+ * moment it does, the Library and Home would otherwise offer Run for a
+ * model that is already being run by the task above it.
+ */
+export function findRunFor(modelId: string, target: string): RunTask | null {
+  if (!modelId) return null;
+  for (const task of tasks.values()) {
+    if (task.model.id === modelId && task.node.target === target) return task;
+  }
+  return null;
 }
 
 export function findRun(modelId: string, target: string): RunTask | null {
@@ -283,6 +324,7 @@ export function startRun(model: LibraryModel, node: TargetNode, options: RunOpti
     failedStep: null,
     engine: null,
     install: null,
+    download: null,
     runtime: null,
     runtimeStatus: null,
     error: null,
@@ -294,6 +336,310 @@ export function startRun(model: LibraryModel, node: TargetNode, options: RunOpti
   emit();
   void orchestrate(task, model, { ...DEFAULTS, ...options });
   return id;
+}
+
+/** What `startDownloadAndRun` fetches: one repo, one file. */
+export interface RunDownloadSpec {
+  repo: string;
+  file: string;
+  /** For the tray line before the download record comes back. */
+  label: string;
+  sizeBytes?: number | null;
+  format?: string;
+}
+
+/**
+ * **Download and run** — §6.3's one action, as one task.
+ *
+ * Posts the download with `runWhenReady`, which is what makes the intent
+ * outlive this tab: a 16 GB transfer takes long enough that the person
+ * will close the laptop, and a console opening later claims the record
+ * and carries on from `resumeRun`. Here, with the tab still open, the
+ * same task simply continues into the ordinary run.
+ *
+ * Keyed by the DOWNLOAD's id, because the model has none until the file
+ * lands.
+ */
+export function startDownloadAndRun(
+  spec: RunDownloadSpec,
+  node: TargetNode,
+  options: RunOptions = {},
+): string {
+  const id = `dl:${spec.repo}/${spec.file}@${node.target}`;
+  const existing = tasks.get(id);
+  if (existing && !isTerminal(existing.step)) return id;
+  dismissRun(id);
+  const task: RunTask = {
+    id,
+    model: {
+      id: "",
+      name: spec.label,
+      path: "",
+      format: spec.format ?? "gguf",
+      contextLength: null,
+    },
+    node: runNodeOf(node),
+    step: "downloading",
+    failedStep: null,
+    engine: null,
+    install: null,
+    download: {
+      id: "",
+      repo: spec.repo,
+      file: spec.file,
+      bytesTotal: spec.sizeBytes ?? null,
+      bytesDownloaded: 0,
+      state: "queued",
+    },
+    runtime: null,
+    runtimeStatus: null,
+    error: null,
+    startedAt: Date.now(),
+    finishedAt: null,
+    generation: ++generations,
+  };
+  tasks.set(id, task);
+  emit();
+  void orchestrateDownload(task, spec, { ...DEFAULTS, ...options });
+  return id;
+}
+
+/**
+ * Continue what a previous console started: a finished download whose
+ * intent this browser has already claimed.
+ *
+ * The claim is the caller's to make and to have won — this function
+ * does not check, because checking again would be a second claim and
+ * the answer would be `false`.
+ */
+export function resumeRun(
+  download: Download,
+  node: TargetNode,
+  options: RunOptions = {},
+): string | null {
+  const modelId = download.modelId;
+  if (!modelId) return null;
+  const id = runId(modelId, node.target);
+  const existing = tasks.get(id);
+  if (existing && !isTerminal(existing.step)) return id;
+  dismissRun(id);
+  const task: RunTask = {
+    id,
+    model: {
+      id: modelId,
+      name: downloadLabel(download),
+      path: "",
+      format: "gguf",
+      contextLength: null,
+    },
+    node: runNodeOf(node),
+    step: "checking",
+    failedStep: null,
+    engine: null,
+    install: null,
+    download: null,
+    runtime: null,
+    runtimeStatus: null,
+    error: null,
+    startedAt: Date.now(),
+    finishedAt: null,
+    generation: ++generations,
+  };
+  tasks.set(id, task);
+  emit();
+  void continueFromModel(task, modelId, { ...DEFAULTS, ...options });
+  return id;
+}
+
+/** The basename a person recognises, out of a download record. */
+export function downloadLabel(download: Download): string {
+  const first = (download.files ?? [])[0];
+  const path = first?.destinationPath || first?.path || download.repo;
+  return path.split(/[\\/]/).pop() || download.repo;
+}
+
+async function orchestrateDownload(
+  started: RunTask,
+  spec: RunDownloadSpec,
+  options: Required<RunOptions>,
+): Promise<void> {
+  const { id, generation } = started;
+  const live: Live = () => tasks.get(id)?.generation === generation;
+  const patch: Patch = (p) => {
+    if (live()) update(id, p);
+  };
+  const failNow = (step: FailedStep, error: string): void => {
+    patch({ step: "failed", failedStep: step, error, finishedAt: Date.now() });
+  };
+
+  let record: Download;
+  try {
+    record = await api.post<Download>("library", "/v1/downloads", {
+      repo: spec.repo,
+      files: [spec.file],
+      runWhenReady: true,
+    });
+  } catch (err) {
+    return failNow("download", `Could not start the download: ${describeError(err)}`);
+  }
+  if (!live()) return;
+  patch({ download: runDownloadOf(record) });
+
+  // Watch it. The record is the truth, not this loop: if the tab closes,
+  // `runWhenReady` is still on the record and another console picks it up.
+  let current = record;
+  while (live() && !DOWNLOAD_TERMINAL.includes(current.state)) {
+    await sleep(options.pollMs);
+    if (!live()) return;
+    try {
+      current = await api.get<Download>("library", `/v1/downloads/${enc(record.id)}`);
+    } catch {
+      // A missed poll is not a failed download. The next one may answer,
+      // and if it never does the tray row simply stops moving.
+      continue;
+    }
+    patch({ download: runDownloadOf(current) });
+  }
+  if (!live()) return;
+  if (current.state !== "done") {
+    return failNow(
+      "download",
+      `The download ${current.state === "cancelled" ? "was cancelled" : "failed"}${
+        current.message ? `: ${current.message}` : ""
+      }`,
+    );
+  }
+
+  // The library scans after a completed transfer and names the entry.
+  // Without the id there is no model to run, so wait a bounded while.
+  let modelId = current.modelId ?? "";
+  for (let i = 0; !modelId && i < 40 && live(); i += 1) {
+    await sleep(options.pollMs);
+    try {
+      current = await api.get<Download>("library", `/v1/downloads/${enc(record.id)}`);
+      modelId = current.modelId ?? "";
+    } catch {
+      /* keep waiting */
+    }
+  }
+  if (!live()) return;
+  if (!modelId) {
+    return failNow(
+      "download",
+      "The file downloaded, but the library has not catalogued it yet. It is on disk — " +
+        "run it from the Library once the scan finishes.",
+    );
+  }
+
+  // Ours already: nobody else can have claimed it, because this tab has
+  // been holding the record since it was created. Claim it anyway, so
+  // the flag comes down and a console opening tomorrow does not start a
+  // second run of a model this one is already running.
+  try {
+    await api.post("library", `/v1/downloads/${enc(record.id)}/claim`, {});
+  } catch {
+    // A claim that could not be made is not a reason to stop: this tab
+    // is the one running it, and the worst case is a duplicate the
+    // orchestrator below already refuses.
+  }
+  if (!live()) return;
+  patch({ download: null, step: "checking", model: { ...started.model, id: modelId } });
+  await continueFromModel(tasks.get(id)!, modelId, options);
+}
+
+/** Fetch the library's record for a model, then run it. */
+async function continueFromModel(
+  task: RunTask,
+  modelId: string,
+  options: Required<RunOptions>,
+): Promise<void> {
+  const { id, generation } = task;
+  const live: Live = () => tasks.get(id)?.generation === generation;
+  let model: LibraryModel;
+  try {
+    model = await api.get<LibraryModel>("library", `/v1/models/${enc(modelId)}`);
+  } catch (err) {
+    if (!live()) return;
+    return update(id, {
+      step: "failed",
+      failedStep: "check",
+      error: `Could not read the model back from the library: ${describeError(err)}`,
+      finishedAt: Date.now(),
+    });
+  }
+  if (!live()) return;
+  update(id, { model: runModelOf(model) });
+  await orchestrate(tasks.get(id)!, model, options);
+}
+
+function runDownloadOf(record: Download): RunDownload {
+  return {
+    id: record.id,
+    repo: record.repo,
+    file: downloadLabel(record),
+    bytesTotal: record.bytesTotal ?? null,
+    bytesDownloaded: record.bytesDownloaded ?? null,
+    state: record.state,
+  };
+}
+
+const DOWNLOAD_TERMINAL = ["done", "failed", "cancelled"];
+
+/**
+ * Downloads that were started in order to run something, finished, and
+ * that nobody is running — the work a console picks up when the tab
+ * that asked for it is long gone.
+ *
+ * Pure, so the cases that matter can be asserted without a browser: the
+ * one that has already been claimed, the one whose run is still in
+ * flight in this tab, and the one the person cancelled.
+ */
+export function pendingChainedRuns(
+  downloads: readonly Download[],
+  runs: readonly RunTask[],
+  target: string,
+): Download[] {
+  const busy = new Set(
+    runs.filter((r) => r.node.target === target && !isTerminal(r.step)).map((r) => r.model.id),
+  );
+  return downloads.filter(
+    (d) => d.state === "done" && d.runWhenReady === true && !!d.modelId && !busy.has(d.modelId),
+  );
+}
+
+/**
+ * Claim each and run what we won. Returns the ids started.
+ *
+ * **The claim is what makes this safe to call from every console**, and
+ * it is a write: two browsers polling the same install both see the same
+ * finished download, and exactly one of them gets `claimed: true`. A
+ * claim that fails for any other reason is skipped rather than retried
+ * into a loop — the next poll will try again.
+ */
+export async function resumeClaimedRuns(
+  downloads: readonly Download[],
+  runs: readonly RunTask[],
+  node: TargetNode,
+  options: RunOptions = {},
+): Promise<string[]> {
+  const started: string[] = [];
+  for (const download of pendingChainedRuns(downloads, runs, node.target)) {
+    let claimed = false;
+    try {
+      const outcome = await api.post<{ claimed?: boolean }>(
+        "library",
+        `/v1/downloads/${enc(download.id)}/claim`,
+        {},
+      );
+      claimed = outcome?.claimed === true;
+    } catch {
+      continue;
+    }
+    if (!claimed) continue;
+    const id = resumeRun(download, node, options);
+    if (id) started.push(id);
+  }
+  return started;
 }
 
 // --- the orchestration --------------------------------------------------
@@ -655,6 +1001,19 @@ function stepWord(task: RunTask): string {
 export function describeRunDetail(task: RunTask): { detail: string; progress?: number } {
   const label = engineLabel(task.engine ?? "llama_cpp");
   switch (task.step) {
+    case "downloading": {
+      const d = task.download;
+      const total = d?.bytesTotal ?? 0;
+      const got = d?.bytesDownloaded ?? 0;
+      const fraction = total > 0 ? Math.min(1, got / total) : undefined;
+      return {
+        detail:
+          fraction !== undefined
+            ? `downloading · ${Math.round(fraction * 100)}% of ${formatBytesShort(total)}`
+            : "downloading",
+        ...(fraction !== undefined ? { progress: fraction } : {}),
+      };
+    }
     case "checking":
       return { detail: `asking ${task.node.label} what it has` };
     case "awaiting-install":
@@ -714,10 +1073,12 @@ export function runHref(task: RunTask): string {
   switch (task.step) {
     case "ready":
       return "/";
+    case "downloading":
+      return "/discover";
     case "settings":
     case "checking":
     case "awaiting-install":
-      return `/library?model=${enc(task.model.id)}`;
+      return task.model.id ? `/library?model=${enc(task.model.id)}` : "/";
     case "failed":
       return task.failedStep === "settings" || task.failedStep === "check"
         ? `/library?model=${enc(task.model.id)}`
@@ -734,12 +1095,19 @@ export function runTask(task: RunTask): Task {
   return {
     id: task.id,
     kind: "run",
-    title: `Run ${task.model.name} on ${task.node.label}`,
+    title:
+      task.step === "downloading"
+        ? `Getting ${task.model.name} to run on ${task.node.label}`
+        : `Run ${task.model.name} on ${task.node.label}`,
     detail,
     ...(progress !== undefined ? { progress } : {}),
     href: runHref(task),
     tone: task.step === "failed" ? "error" : task.step === "ready" ? "ok" : undefined,
     claims: {
+      // Same for the transfer: §6.3 asks for ONE task-tray entry for
+      // "download and run", and this is how it is one — the run's row
+      // absorbs the download's for as long as it is waiting on it.
+      ...(task.step === "downloading" && task.download?.id ? { download: task.download.id } : {}),
       // While this run installs the engine or starts the runtime, the
       // tray's own rows for the same install and load say the same thing
       // twice; the run's row is the one with the step in it.

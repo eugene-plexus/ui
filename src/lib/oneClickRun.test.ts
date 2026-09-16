@@ -621,6 +621,7 @@ describe("the words", () => {
     failedStep: null,
     engine: "llama_cpp",
     install: { engine: "llama_cpp", state: "downloading", bytesTotal: 10, bytesDownloaded: 5 },
+    download: null,
     runtime: "qwen3-14b",
     runtimeStatus: "loading",
     error: null,

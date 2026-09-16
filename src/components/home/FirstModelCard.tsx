@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { RunButton } from "@/components/RunButton";
-import { api } from "@/lib/api";
 import type { FirstModelState } from "@/lib/home";
+import { startDownloadAndRun } from "@/lib/oneClickRun";
 import { downloadSize, shortName } from "@/lib/starter";
 import type { TargetNode } from "@/lib/nodeBudget";
 import type { Task } from "@/lib/tasks";
@@ -66,6 +66,7 @@ export function FirstModelCard({
         model={state.model}
         reason={state.reason}
         downloads={downloads}
+        node={node}
         onDownloadStarted={onDownloadStarted}
       />
     );
@@ -158,44 +159,56 @@ export function FirstModelCard({
 /**
  * Nothing on disk, and one model named for this machine.
  *
- * **One primary button, and it fetches a specific file** — not "open the
- * catalogue". §0.2 measured first chat at fifteen clicks after install
- * and most of them were choosing: a size, a quant, a publisher, a
- * context. The starter set has already made every one of those choices
- * against this machine's own memory, and says why in a sentence the
- * person can argue with. Choosing differently is one click away and
- * stays a link, not a second button (P3).
+ * **One primary button, and it goes all the way to a running model** —
+ * not "open the catalogue", and not "download and then come back".
+ * §0.2 measured first chat at fifteen clicks after install and most of
+ * them were choosing: a size, a quant, a publisher, a context. The
+ * starter set has already made every one of those choices against this
+ * machine's own memory, and says why in a sentence the person can argue
+ * with. Choosing differently is one click away and stays a link, not a
+ * second button (P3).
+ *
+ * **The chain survives this tab** (§6.3): the download carries
+ * `runWhenReady`, so a person who closes the laptop across a 16 GB
+ * transfer comes back to a console that claims the record and carries
+ * on. Which is why there is no local error state here — the run store
+ * owns the whole thing from the click, and the tray row is where it
+ * says what happened.
  */
 function SuggestedModelCard({
   model,
   reason,
   downloads,
+  node,
   onDownloadStarted,
 }: {
   model: NonNullable<Extract<FirstModelState, { kind: "no-models-recommended" }>["model"]>;
   reason: string;
   downloads: Task[];
+  /** This machine, as the chain's target. Home runs models here. */
+  node: TargetNode;
   onDownloadStarted?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const started = downloads.length > 0;
 
-  async function download() {
+  function downloadAndRun() {
     setBusy(true);
-    setError(null);
-    try {
-      await api.post("library", "/v1/downloads", {
+    // One action, one task: the download, the engine question, the
+    // profile and the launch are one tray entry from here (§6.3). The
+    // store owns the failure from this point, so there is no local
+    // error state -- the tray row says what went wrong and where.
+    startDownloadAndRun(
+      {
         repo: model.repo,
-        revision: "main",
-        files: [model.file],
-      });
-      onDownloadStarted?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
+        file: model.file,
+        label: shortName(model.baseModel),
+        sizeBytes: model.sizeBytes,
+      },
+      node,
+    );
+    onDownloadStarted?.();
+    setBusy(false);
   }
 
   return (
@@ -206,24 +219,19 @@ function SuggestedModelCard({
         for this machine.
       </p>
       {reason && <p className="mt-1 text-xs text-[color:var(--muted)]">{reason}</p>}
-      {error && (
-        <p className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs">
-          {error}
-        </p>
-      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => void download()}
+          onClick={downloadAndRun}
           disabled={busy || started}
           className={primary}
           data-testid="home-primary"
         >
           {started
-            ? "Downloading…"
+            ? "Getting it…"
             : busy
               ? "Starting…"
-              : `Download ${shortName(model.baseModel)} · ${downloadSize(model.sizeBytes)}`}
+              : `Download and run · ${downloadSize(model.sizeBytes)}`}
         </button>
         <Link href="/discover" className={tertiary}>
           Choose a different model

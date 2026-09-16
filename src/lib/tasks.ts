@@ -67,7 +67,7 @@ export interface Task {
    * that engine, and its `load:<node>/<runtime>` row while a run starts that
    * runtime, so one thing happening is one line.
    */
-  claims?: { engine?: string; runtime?: string };
+  claims?: { engine?: string; runtime?: string; download?: string };
   /**
    * Present on a task the browser itself owns (a run) once it has ended:
    * the tray shows a dismiss for it. Endpoint tasks never carry one — a
@@ -134,11 +134,14 @@ export function tasksFrom(sources: TaskSources): Task[] {
 export function mergeTasks(endpoint: Task[], runs: Task[]): Task[] {
   const engines = new Set<string>();
   const runtimes = new Set<string>();
+  const downloads = new Set<string>();
   for (const run of runs) {
     if (run.claims?.engine) engines.add(`install:${run.claims.engine}`);
     if (run.claims?.runtime) runtimes.add(run.claims.runtime);
+    if (run.claims?.download) downloads.add(`download:${run.claims.download}`);
   }
   const rest = endpoint.filter((task) => {
+    if (task.kind === "download" && downloads.has(task.id)) return false;
     if (task.kind === "install" && engines.has(task.id)) return false;
     if (task.kind === "load") {
       const slash = task.id.indexOf("/");

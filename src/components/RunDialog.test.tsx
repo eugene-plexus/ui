@@ -18,6 +18,7 @@ const ASKING: RunTask = {
   failedStep: null,
   engine: "llama_cpp",
   install: null,
+  download: null,
   runtime: null,
   runtimeStatus: null,
   error: null,
