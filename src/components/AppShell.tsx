@@ -24,6 +24,7 @@ import { LayerIcon } from "./LayerIcon";
 import { LayerMap } from "./LayerMap";
 import { pageHref, ResourceTree, useTopology } from "./ResourceTree";
 import { RunDialog } from "./RunDialog";
+import { IssuesBadge } from "./IssuesBadge";
 import { TasksTray } from "./TasksTray";
 
 /**
@@ -150,6 +151,12 @@ function AppShellInner({
           {/* Background work, from every signed-in screen (hobbyist UX P7):
               a download started on Discover is visible from Config. */}
           <TasksTray />
+          {/* Things that need a person (hobbyist UX P7's second half),
+              from every signed-in screen -- including the sealed control
+              root, whose unlock is inside the list because every other
+              screen is useless while it is shut. Renders nothing at all
+              when there is nothing to say. */}
+          <IssuesBadge />
           <button
             type="button"
             ref={mapToggleRef}
