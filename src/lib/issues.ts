@@ -39,6 +39,8 @@
  */
 
 import type {
+  Component,
+  ComponentList,
   ComputeDevice,
   ControlRootView,
   EngineList,
@@ -50,6 +52,7 @@ import type {
 
 export type IssueKind =
   | "control-sealed"
+  | "component-down"
   | "node-down"
   | "folder-unreachable"
   | "clock-skew"
@@ -110,6 +113,16 @@ export interface NodeFacts {
   runtimes: RuntimeList | null;
   engines: EngineList | null;
   folders: LibraryFolderReach | null;
+  /**
+   * What this machine's agent supervises, and how each one is doing.
+   *
+   * Added for R1.5 (review §6.1 #7). The gateway's driver list says
+   * nothing about the gateway, and the control root's
+   * `ComponentPlacement` carries no `lastError` — so the only place a
+   * crash-looping component's own diagnosis exists is the owning
+   * agent's `GET /v1/components`, which no golden-path screen read.
+   */
+  components: ComponentList | null;
 }
 
 /** A row of the control root's `GET /v1/nodes`, narrowed to what this
@@ -164,6 +177,7 @@ export function issuesFrom(sources: IssueSources): Issue[] {
   ];
   for (const node of sources.perNode) {
     issues.push(
+      ...componentDownIssues(node),
       ...folderIssues(node),
       ...engineIssues(node),
       ...staleBuildIssues(node),
@@ -335,6 +349,84 @@ function formatSkew(seconds: number): string {
   if (seconds < 90) return `${Math.round(seconds)} seconds`;
   const minutes = seconds / 60;
   return `${minutes >= 10 ? Math.round(minutes) : minutes.toFixed(1)} minutes`;
+}
+
+// --- components ---------------------------------------------------------
+
+/** Plain names for the four kinds, because "inference-driver" is our
+ * word and `gateway` reads as jargon on a card somebody opens when they
+ * are already unhappy. */
+const COMPONENT_LABELS: Record<string, string> = {
+  gateway: "The gateway",
+  library: "The model library",
+  control: "The control root",
+  "inference-driver": "A backend connection",
+};
+
+/** Where each kind is configured. A driver's port and command live on
+ * the Inference screen; the three singletons have a Config page each. */
+function componentHref(component: Component): string {
+  if (component.kind === "inference-driver") return "/inference";
+  return `/config?sel=${encodeURIComponent(String(component.kind))}`;
+}
+
+/**
+ * A component the agent supervises that is not running.
+ *
+ * **The issue kind this list needed most, and the one it did not have**
+ * (R1.5, review §6.1 #7). Take 8080 — the commonest occupied port on any
+ * development box — before first-run setup, and the wizard *completes*:
+ * the gateway crash-loops, `GET /v1/models` is empty, Home offers
+ * nothing routable, Try it never appears, and the Needs-attention card
+ * says **nothing**. The diagnosis existed the whole time, in
+ * `Component.lastError`, and `ports.explain_collision` had already
+ * turned it into a sentence naming the port and the holding process. No
+ * screen on the golden path rendered it.
+ *
+ * **`starting` is excluded and that is not a detail.** Every boot passes
+ * through it, so counting it would put a blocking issue on every install
+ * for the first seconds after every restart — which is how a list of
+ * things needing attention becomes a list people close. `exited` is
+ * excluded for the same reason: the contract calls it a transient state
+ * the agent is in the middle of respawning out of.
+ *
+ * `safe_mode` is a warning rather than blocking: the process is up and
+ * answering, it is just running on defaults instead of its own config,
+ * which is a thing to fix rather than a thing that is broken now.
+ */
+function componentDownIssues(node: NodeFacts): Issue[] {
+  const out: Issue[] = [];
+  for (const component of node.components?.components ?? []) {
+    const name = COMPONENT_LABELS[String(component.kind)] ?? component.name;
+    if (component.status === "safe_mode") {
+      out.push({
+        id: `component-safe-mode:${node.name ?? "local"}:${component.name}`,
+        kind: "component-down",
+        severity: "warning",
+        title: `${name} is running on default settings`,
+        detail:
+          "It was started with its own configuration ignored, so it will not do its real " +
+          "job until that is fixed and it is restarted.",
+        href: componentHref(component),
+        node: node.name,
+      });
+      continue;
+    }
+    if (component.status !== "crashed" && component.status !== "unreachable") continue;
+    out.push({
+      id: `component-down:${node.name ?? "local"}:${component.name}`,
+      kind: "component-down",
+      severity: "blocking",
+      title: `${name} is not running on ${node.label}`,
+      detail: component.lastError
+        ? `It stopped and has not come back. The last thing it said was: ${component.lastError}`
+        : "It is not answering, and no reason was recorded. Its own log, beside the " +
+          "configuration file, is the next place to look.",
+      href: componentHref(component),
+      node: node.name,
+    });
+  }
+  return out;
 }
 
 // --- library folders ----------------------------------------------------

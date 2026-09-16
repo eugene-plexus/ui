@@ -65,6 +65,23 @@ function standalone(): Map<string, Handler> {
     ["GET control/v1/nodes", () => ({ status: 503, body: { detail: { title: "Unavailable" } } })],
     ["GET agent/v1/runtimes", () => ({ status: 200, body: { runtimes: [] } })],
     [
+      "GET agent/v1/components",
+      () => ({
+        status: 200,
+        body: {
+          components: [
+            {
+              name: "gateway",
+              kind: "gateway",
+              url: "http://127.0.0.1:8080/",
+              spawn: { configFile: "/x/gateway.yaml" },
+              status: "running",
+            },
+          ],
+        },
+      }),
+    ],
+    [
       "GET agent/v1/engines",
       () => ({
         status: 200,
@@ -200,9 +217,12 @@ describe("useIssues on a healthy standalone install", () => {
     expect(result.current.worst).toBeNull();
   });
 
-  it("asks the four per-node reads, plus the routing view and the roster", async () => {
+  it("asks the five per-node reads, plus the routing view and the roster", async () => {
+    // `/v1/components` is the fifth, added by R1.5: a crash-looping
+    // component's own `lastError` exists nowhere else.
     await poll();
     expect(routes().sort()).toEqual([
+      "GET agent/v1/components",
       "GET agent/v1/engines",
       "GET agent/v1/node",
       "GET agent/v1/runtimes",

@@ -37,6 +37,7 @@ import {
   type NodeFacts,
 } from "./issues";
 import type {
+  ComponentList,
   ComputeDevice,
   ControlRootView,
   EngineList,
@@ -68,6 +69,7 @@ function facts(over: Partial<NodeFacts> & Pick<NodeFacts, "name" | "label">): No
     runtimes: null,
     engines: null,
     folders: null,
+    components: null,
     ...over,
   };
 }
@@ -93,6 +95,115 @@ describe("issuesFrom with nothing to go on", () => {
         perNode: [facts({ name: "Amish_Station", label: "Amish_Station" })],
       }),
     ).toEqual([]);
+  });
+});
+
+// --- components ---------------------------------------------------------
+
+/**
+ * A real `GET /v1/components` body, with the gateway crash-looping on a
+ * port something else holds and the library beside it healthy.
+ *
+ * The `lastError` is verbatim what `ports.explain_collision` produces,
+ * which is the point: the diagnosis was always on the wire and no
+ * golden-path screen rendered it (R1.5, review §6.1 #7).
+ */
+const GATEWAY_CRASHED = body<ComponentList>(
+  '{"components":[' +
+    '{"name":"gateway","kind":"gateway","url":"http://127.0.0.1:8080/",' +
+    '"spawn":{"configFile":"/x/gateway.yaml"},"status":"crashed",' +
+    '"lastError":"exited with code 1: port 8080 is already held by pid 4242 (node.exe)."},' +
+    '{"name":"library","kind":"library","url":"http://127.0.0.1:8082/",' +
+    '"spawn":{"configFile":"/x/library.yaml"},"status":"running"}]}',
+);
+
+describe("a component the agent supervises that is not running", () => {
+  const node = { name: "Amish_Station", label: "Amish_Station" };
+
+  it("is one blocking issue naming the component and the reason", () => {
+    const issues = issuesFrom({
+      ...NOTHING,
+      perNode: [facts({ ...node, components: GATEWAY_CRASHED })],
+    });
+    expect(kinds(issues)).toEqual(["component-down"]);
+    expect(issues[0]!.severity).toBe("blocking");
+    expect(issues[0]!.title).toContain("gateway");
+    expect(issues[0]!.detail).toContain("port 8080 is already held by pid 4242");
+    expect(issues[0]!.href).toBe("/config?sel=gateway");
+    expect(issues[0]!.node).toBe("Amish_Station");
+  });
+
+  it("says nothing about the healthy one beside it", () => {
+    const issues = issuesFrom({
+      ...NOTHING,
+      perNode: [facts({ ...node, components: GATEWAY_CRASHED })],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.detail).not.toContain("library");
+  });
+
+  it("ignores `starting`, which every boot passes through", () => {
+    // Counting it would put a blocking issue on every install for the
+    // first seconds after every restart.
+    const starting = body<ComponentList>(
+      '{"components":[{"name":"gateway","kind":"gateway","url":"http://127.0.0.1:8080/",' +
+        '"spawn":{"configFile":"/x/gateway.yaml"},"status":"starting"}]}',
+    );
+    expect(issuesFrom({ ...NOTHING, perNode: [facts({ ...node, components: starting })] })).toEqual(
+      [],
+    );
+  });
+
+  it("ignores `exited`, which the contract calls a transient respawn", () => {
+    const exited = body<ComponentList>(
+      '{"components":[{"name":"gateway","kind":"gateway","url":"http://127.0.0.1:8080/",' +
+        '"spawn":{"configFile":"/x/gateway.yaml"},"status":"exited"}]}',
+    );
+    expect(issuesFrom({ ...NOTHING, perNode: [facts({ ...node, components: exited })] })).toEqual(
+      [],
+    );
+  });
+
+  it("reports a component in safe mode as a warning, not as down", () => {
+    const safe = body<ComponentList>(
+      '{"components":[{"name":"library","kind":"library","url":"http://127.0.0.1:8082/",' +
+        '"spawn":{"configFile":"/x/library.yaml"},"status":"safe_mode","safeMode":true}]}',
+    );
+    const issues = issuesFrom({ ...NOTHING, perNode: [facts({ ...node, components: safe })] });
+    expect(kinds(issues)).toEqual(["component-down"]);
+    expect(issues[0]!.severity).toBe("warning");
+    expect(issues[0]!.href).toBe("/config?sel=library");
+  });
+
+  it("sends a driver to Inference, where its port and command live", () => {
+    const driver = body<ComponentList>(
+      '{"components":[{"name":"qwen-driver","kind":"inference-driver",' +
+        '"url":"http://127.0.0.1:8090/","spawn":{"configFile":"/x/d.yaml"},' +
+        '"status":"crashed","lastError":"exited with code 1"}]}',
+    );
+    const issues = issuesFrom({ ...NOTHING, perNode: [facts({ ...node, components: driver })] });
+    expect(issues[0]!.href).toBe("/inference");
+  });
+
+  it("still says something when no reason was recorded", () => {
+    // An issue with no next step is a status light, and this project
+    // has enough of those.
+    const quiet = body<ComponentList>(
+      '{"components":[{"name":"control","kind":"control","url":"http://127.0.0.1:8083/",' +
+        '"spawn":{"configFile":"/x/control.yaml"},"status":"unreachable"}]}',
+    );
+    const issues = issuesFrom({ ...NOTHING, perNode: [facts({ ...node, components: quiet })] });
+    expect(issues[0]!.detail.length).toBeGreaterThan(20);
+    expect(issues[0]!.detail).toContain("log");
+  });
+
+  it("puts a down component above a warning from the same node", () => {
+    const issues = issuesFrom({
+      ...NOTHING,
+      perNode: [facts({ ...node, components: GATEWAY_CRASHED })],
+    });
+    expect(issues[0]!.severity).toBe("blocking");
+    expect(worstSeverity(issues)).toBe("blocking");
   });
 });
 

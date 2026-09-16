@@ -108,6 +108,23 @@ export function extractCopy(source: string): ExtractedCopy {
   for (const m of body.matchAll(/"([^"\\\n]{4,})"/g)) if (m[1]) visible.push(m[1]);
   // JSX text between tags, with no braces in it (so no expressions).
   for (const m of body.matchAll(/>([^<>{}\n]{6,})</g)) if (m[1]) visible.push(m[1]);
+  // **A single-line template literal** (R1.5, review §6.3 #35). This was
+  // the hole, and it was not the file list: `app/setup` has always been
+  // in the golden path and `start.ts` has always been read, so the
+  // wizard's worst sentence -- the one a first-time user meets when the
+  // trust root will not start -- was scanned and matched nothing,
+  // because it is written in backticks to interpolate the underlying
+  // error. Copy that needs a value in it has no other quoting to use.
+  //
+  // `${...}` is blanked rather than excluded: a sentence built around an
+  // interpolation is still a sentence, and dropping the whole literal
+  // would put every message with a value in it back out of reach. What
+  // is left has to still look like prose, which is what keeps
+  // `` `${base}/v1/models` `` out.
+  for (const m of body.matchAll(/`([^`\\\n]{4,})`/g)) {
+    const text = m[1]?.replace(/\$\{[^}]*\}/g, " ").trim();
+    if (text && looksLikeProse(text)) visible.push(text);
+  }
 
   return { visible, tooltips };
 }

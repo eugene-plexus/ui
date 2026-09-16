@@ -280,7 +280,7 @@ describe("screen 1: what Continue commits", () => {
     expect(calls.filter((c) => key(c) === "POST control/v1/auth/initialize")).toHaveLength(1);
   });
 
-  it("stops before enrolling and before screen 2 when the trust root will not initialize", async () => {
+  it("stops before enrolling and before screen 2 when the control root will not initialize", async () => {
     // Deliberately wordless about what went wrong, so the assertion below
     // is about the wizard's own explanation and cannot be satisfied by this
     // fixture's phrasing leaking through.
@@ -302,12 +302,18 @@ describe("screen 1: what Continue commits", () => {
     );
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
+    // R1.5 rewrote this sentence (review §6.3 #35): it named the "trust
+    // root", ran to seventy words, and ended by telling somebody in a
+    // browser to POST JSON and read a PowerShell script.
     const error = await screen.findByText(
-      /trust root would not accept a passphrase/i,
+      /control root did not take the passphrase/i,
       {},
       { timeout: 20000 },
     );
     expect(error).toHaveClass("status-error");
+    // And it points at the diagnosis instead of at a shell.
+    expect(error).toHaveTextContent(/Needs attention/i);
+    expect(error.textContent ?? "").not.toMatch(/POST|\/v1\/auth\/initialize|dev-seed/i);
     // The install is half-made either way - the agent's passphrase is set
     // and cannot be unset from here - so the honest outcome is to say so on
     // the screen the person is on, not to enroll, move on, or flip

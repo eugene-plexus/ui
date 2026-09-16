@@ -162,19 +162,24 @@ export async function initializeControlRoot(passphrase: string): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
-  // Named as the trust root rather than reported as a bare HTTP error, because
-  // the consequence is specific and worth saying: the agent has a passphrase
-  // and the root does not, so every install-wide operation will refuse.
+  // **Rewritten for R1.5, review §6.3 #35 and §6.1 #7.** The old version
+  // of this sentence was the worst copy in the product and it was
+  // invisible to S8's checker, because a backtick literal matched
+  // neither extractor pattern -- so it named the "trust root", ran to
+  // seventy words, and ended by telling a first-time user in a browser
+  // to POST JSON to an endpoint and to look at a PowerShell script in a
+  // repository they may not have. The commonest cause is that something
+  // else already holds the control root's port, which the install now
+  // reports as an issue of its own with the holder named.
+  //
+  // Three short sentences: what happened, what not to do, where the
+  // diagnosis is.
   const because = lastError instanceof Error ? lastError.message : String(lastError);
   throw new Error(
-    `The trust root would not accept a passphrase (${because}). Your passphrase ` +
-      `is set on this node's agent, but the control root has none, so it will ` +
-      `refuse node enrollment, join tokens and its own configuration until it ` +
-      `does. Setup cannot simply be repeated from here — the agent's passphrase ` +
-      `is already set and it will refuse a second one — so check the control ` +
-      `component's logs, then finish the job by POSTing the same passphrase to ` +
-      `the control root's /v1/auth/initialize (scripts/dev-seed.ps1 does exactly ` +
-      `this).`,
+    `The control root did not take the passphrase (${because}).` +
+      ` Your passphrase is saved on this machine, so do not run setup again: it will be` +
+      ` refused.` +
+      ` Open Needs attention on the home page — it names what is wrong and what to do.`,
   );
 }
 

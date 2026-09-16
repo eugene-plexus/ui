@@ -778,6 +778,98 @@ describe("Home's Needs attention card (S7)", () => {
   });
 });
 
+describe("Home names a component that is down (R1.5, review §6.1 #7)", () => {
+  /**
+   * **This is the check the finding is about, and it is on the page
+   * deliberately.** Take 8080 before the wizard runs and the wizard
+   * COMPLETES: the gateway never comes up, Home shows nothing routable,
+   * Try it never appears, and the Needs-attention card is empty --
+   * because `IssueKind` had no member for a supervised component that
+   * is down, although the diagnosis was already on the wire in
+   * `Component.lastError` and no golden-path screen rendered it.
+   *
+   * Driven through the page rather than through `issuesFrom`, because
+   * S7 produced the "a component test is not a wiring test" lesson
+   * twice in one slice: the reads have to include `/v1/components` for
+   * any of this to arrive.
+   */
+  function crashedGateway(lastError: string) {
+    handlers.set("GET agent/v1/components", () => ({
+      status: 200,
+      body: {
+        components: [
+          {
+            name: "gateway",
+            kind: "gateway",
+            url: "http://127.0.0.1:8080",
+            spawn: { configFile: "/x/gateway.yaml" },
+            status: "crashed",
+            lastError,
+          },
+          {
+            name: "library",
+            kind: "library",
+            url: "http://127.0.0.1:8082",
+            spawn: { configFile: "/x/library.yaml" },
+            status: "running",
+          },
+        ],
+      },
+    }));
+  }
+
+  it("reports the gateway, with the reason the agent recorded", async () => {
+    crashedGateway(
+      "exited with code 1: port 8080 is already held by pid 4242 (node.exe). Stop it, or " +
+        "point this component at another port.",
+    );
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-needs-attention");
+    await waitFor(() => expect(card).toHaveTextContent(/gateway is not running/i));
+    expect(card).toHaveTextContent("8080");
+    expect(card).toHaveTextContent("pid 4242");
+  });
+
+  it("links to the screen that owns the fix", async () => {
+    crashedGateway("exited with code 1");
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-needs-attention");
+    await waitFor(() => expect(card).toHaveTextContent(/gateway is not running/i));
+    // `IssueRow`'s link is labelled "Go and fix it" for every kind, so
+    // the row is found by its kind and the link read out of it.
+    const row = card.querySelector('[data-issue-kind="component-down"]');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByRole("link")).toHaveAttribute(
+      "href",
+      "/config?sel=gateway",
+    );
+    expect(row).toHaveAttribute("data-issue-severity", "blocking");
+  });
+
+  it("says nothing about a component that is merely starting", async () => {
+    // Every boot passes through `starting`, so counting it would put a
+    // blocking issue on every install for the first few seconds after
+    // every restart -- which is how a list becomes one people close.
+    handlers.set("GET agent/v1/components", () => ({
+      status: 200,
+      body: {
+        components: [
+          {
+            name: "gateway",
+            kind: "gateway",
+            url: "http://127.0.0.1:8080",
+            spawn: { configFile: "/x/gateway.yaml" },
+            status: "starting",
+          },
+        ],
+      },
+    }));
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-needs-attention");
+    await waitFor(() => expect(card).toHaveAttribute("data-issue-count", "0"));
+  });
+});
+
 describe("unlocking the control root from Home", () => {
   it("clears the issue instead of leaving it on screen until the next poll", async () => {
     // The sabotage this pins: Home can render the card without passing

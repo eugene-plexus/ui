@@ -96,6 +96,41 @@ describe("the extractor, before anything is asserted with it", () => {
     expect(checkCopy(classy).filter((o) => o.kind === "long")).toEqual([]);
   });
 
+  it("finds a banned term in a single-line backtick literal", () => {
+    // **R1.5, review §6.3 #35.** The review's mechanism was wrong in one
+    // respect and running the extractor proved it: `app/setup` IS in the
+    // golden path and `start.ts` IS scanned, so patching the file list
+    // would have changed nothing. What was missed is the quoting. A
+    // template literal matched neither the double-quoted-string pattern
+    // nor the JSX-text one, and the wizard's control-root failure is
+    // written as backtick-delimited lines because it interpolates the
+    // underlying error.
+    const src = "throw new Error(`The trust root would not accept a passphrase (${e}). `);";
+    const { visible } = extractCopy(src);
+    expect(visible.join(" ")).toContain("trust root");
+    expect(checkCopy(src).some((o) => o.kind === "banned")).toBe(true);
+  });
+
+  it("counts a long backtick sentence too", () => {
+    const long = "const m = `" + "word ".repeat(30) + "and the model is here.`;";
+    expect(checkCopy(long).some((o) => o.kind === "long")).toBe(true);
+  });
+
+  it("does not read a backtick literal that is a template for code", () => {
+    // The narrow pattern's cost, stated: an interpolation-only literal
+    // is not prose and must not be counted as copy.
+    //
+    // **Asserted on the EXTRACTOR, not on `checkCopy`.** A sabotage
+    // proved the `checkCopy` version could not fail: a code template
+    // carries no banned term and is too short to be a long sentence, so
+    // removing the prose guard let it through as "copy" and still
+    // produced no offence. The subject here is what the extractor
+    // believes it is reading.
+    expect(extractCopy("const url = `${base}/v1/models`;").visible).toEqual([]);
+    expect(extractCopy("const k = `agent:${node}`;").visible).toEqual([]);
+    expect(checkCopy("const url = `${base}/v1/models`;")).toEqual([]);
+  });
+
   it("does not cross a newline, which is what made an earlier version useless", () => {
     // A template-literal pattern that spans lines swallowed whole
     // function bodies and reported 339-word "sentences" of JSX.

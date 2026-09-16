@@ -38,6 +38,7 @@ import {
 import { targetFor } from "./nodeBudget";
 import { getSessionToken } from "./session";
 import type {
+  ComponentList,
   EngineList,
   LibraryFolderReach,
   NodeIdentity,
@@ -119,7 +120,7 @@ interface NodeAddress {
 }
 
 /**
- * One node's four reads, through the `node:<name>` hop for anything that
+ * One node's five reads, through the `node:<name>` hop for anything that
  * is not this machine.
  *
  * Three of the rules cannot be answered from the control root: its
@@ -140,13 +141,19 @@ async function readNode(
   known: Timed | null,
   options: ReturnType<typeof reads>,
 ): Promise<NodeFacts> {
-  const [timed, runtimes, engines, folders] = await Promise.all([
+  const [timed, runtimes, engines, folders, components] = await Promise.all([
     known ?? readIdentity(address.target, options),
     api.get<RuntimeList>(address.target, "/v1/runtimes", options).catch(() => null),
     api.get<EngineList>(address.target, "/v1/engines", options).catch(() => null),
     api
       .post<LibraryFolderReach>(address.target, "/v1/library/folders/check", {}, options)
       .catch(() => null),
+    // **The fifth read, and the only place a crash-looping component's
+    // own diagnosis lives** (R1.5, review §6.1 #7). The control root's
+    // `ComponentPlacement` carries `status` and no `lastError`, and the
+    // gateway's driver list says nothing about the gateway — so a taken
+    // port is only explicable from the owning agent.
+    api.get<ComponentList>(address.target, "/v1/components", options).catch(() => null),
   ]);
   return {
     name: address.name,
@@ -157,6 +164,7 @@ async function readNode(
     runtimes,
     engines,
     folders,
+    components,
   };
 }
 
