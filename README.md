@@ -43,8 +43,15 @@ _list_ is still an open question. See the
   because a large quant off a slow disk sits there for minutes and that is not a fault.
 - **Library** (`/library`) - scanned GGUF and safetensors models, model details,
   named launch profiles, and launch through the agent.
-- **Discover** (`/discover`) - catalogue search, model cards, download candidates,
-  quant guidance against detected hardware, and resumable download progress.
+- **Discover** (`/discover`) - with nothing typed, the **starter set**: one card
+  naming the model this machine should take, with the sentence that says why and a
+  Download button, above the rest of the set. It renders with the hub down, because
+  the endpoint behind it makes no upstream call. Typing searches; **pasting a hub
+  link resolves it to one repo** and selects it. A repo opens with one suggested
+  version and its own button above **All versions**, and every fit verdict names the
+  context it was scored at (`fits at 32k`), with the control that changes it beside
+  them. Model cards, download candidates, quant guidance against the selected node's
+  hardware, and resumable download progress as before.
 - **Config** (`/config`) — reads `/v1/config/schema` from the selected component and renders a
   typed form. Component addresses come from agent topology. Driven by schema metadata, which is the
   point — a component that adds a knob gets a form field for free. PATCHes the diff back, surfaces
@@ -86,6 +93,11 @@ _list_ is still an open question. See the
 - **Runtime-name selection:** the driver's `runtime_name` field remains free text.
 - **Creating topology entries.** The config editor and wizard configure components that already
   exist; adding one still means `POST /v1/components` or editing `agent.yaml`.
+- **Download and run is two clicks.** Home's first-model card offers **Download**,
+  and **Run** takes its place when the file lands — so the person is asked twice,
+  the second time minutes later. `hobbyist-ux.md` §6.3 specifies one chained
+  action; joining them means chaining `oneClickRun.ts`'s store onto the download's
+  completion, and deciding what happens when the browser is closed mid-download.
 
 ## Running
 
