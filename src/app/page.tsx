@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { FirstModelCard } from "@/components/home/FirstModelCard";
 import { MachineStrip } from "@/components/home/MachineStrip";
+import { NeedsAttentionCard } from "@/components/home/NeedsAttentionCard";
 import { ReachCard } from "@/components/home/ReachCard";
 import { RunningCard } from "@/components/home/RunningCard";
 import { TryItCard } from "@/components/home/TryItCard";
@@ -32,6 +33,7 @@ import type {
 } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
 import { useSetupGate } from "@/lib/useSetupGate";
+import { useIssues } from "@/lib/useIssues";
 import { useTasks } from "@/lib/useTasks";
 
 /**
@@ -78,7 +80,10 @@ import { useTasks } from "@/lib/useTasks";
  * starter set, scored against this node's own devices. Choosing
  * differently stays a link.
  *
- * **Not here yet, by plan:** "Needs attention" (S7).
+ * **Since S7:** "Needs attention" sits beside Running, the same list the
+ * header badge carries. It says *nothing* rather than saying nothing:
+ * the badge is chrome and an all-clear there would be decoration, but
+ * Home is where somebody asks how it is, and that is an answer.
  */
 
 const SLOW_POLL_MS = 15000;
@@ -116,6 +121,8 @@ export default function HomePage() {
   // search route on it and not an error banner.
   const [starter, setStarter] = useState<StarterSet | null>(null);
   const { tasks, reload: reloadTasks } = useTasks();
+  // The same poll the header badge runs; one hook, two renderings.
+  const { issues, loaded: issuesLoaded, reload: reloadIssues } = useIssues();
 
   const loadSlow = useCallback(async () => {
     const [nodeResult, enginesResult, libraryResult, modelsResult, componentsResult] =
@@ -254,7 +261,17 @@ export default function HomePage() {
             />
           )}
           <ReachCard reach={node?.reach ?? null} onChanged={() => void loadSlow()} />
-          <RunningCard rows={rows} />
+          {/* Side by side when there is something running, per §6.1's
+              wireframe; a lone half-width card reads as a mistake, so
+              the second column only exists when both are there. */}
+          <div className={`grid items-start gap-4 ${rows.length > 0 ? "lg:grid-cols-2" : ""}`}>
+            <RunningCard rows={rows} />
+            <NeedsAttentionCard
+              issues={issues}
+              loaded={issuesLoaded}
+              onFixed={() => void reloadIssues()}
+            />
+          </div>
         </div>
       </main>
     </AppShell>

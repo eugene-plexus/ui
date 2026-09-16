@@ -744,3 +744,76 @@ describe("the two halves of one setting name each other", () => {
     );
   });
 });
+
+describe("Home's Needs attention card (S7)", () => {
+  it("says nothing is wrong on a healthy install, once it has looked", async () => {
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-needs-attention");
+    await waitFor(() => expect(card).toHaveAttribute("data-issue-count", "0"));
+    expect(card).toHaveTextContent("Nothing.");
+  });
+
+  it("carries a real issue through from the poll, not an empty list", async () => {
+    // The sabotage this pins: Home can render the card and feed it `[]`
+    // forever, and every test of the card itself stays green because the
+    // card is fine. This is the one that asserts the wiring.
+    handlers.set("GET control/v1/nodes", () => ({
+      status: 503,
+      body: {
+        detail: {
+          type: "https://eugeneplexus.com/problems/control#locked",
+          title: "Locked",
+          status: 503,
+          detail: "The control root is sealed.",
+        },
+      },
+    }));
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-needs-attention");
+    await waitFor(() => expect(card).toHaveTextContent("The control root is locked"));
+    expect(card).toHaveAttribute("data-issue-count", "1");
+    // And the fix is on Home, not behind a link to a screen that cannot
+    // load while the root is shut.
+    expect(within(card).getByTestId("issues-unlock-submit")).toBeInTheDocument();
+  });
+});
+
+describe("unlocking the control root from Home", () => {
+  it("clears the issue instead of leaving it on screen until the next poll", async () => {
+    // The sabotage this pins: Home can render the card without passing
+    // `onFixed`, and the card's own tests stay green because they supply
+    // one. The consequence is half a minute of a fixed problem still
+    // being reported, which is how people learn to distrust a list.
+    let sealed = true;
+    handlers.set("GET control/v1/nodes", () =>
+      sealed
+        ? {
+            status: 503,
+            body: {
+              detail: {
+                type: "https://eugeneplexus.com/problems/control#locked",
+                title: "Locked",
+                status: 503,
+              },
+            },
+          }
+        : { status: 200, body: { nodes: [] } },
+    );
+    handlers.set("POST control/v1/auth/login", () => {
+      sealed = false;
+      return { status: 200, body: { sessionToken: "fresh" } };
+    });
+
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-needs-attention");
+    await waitFor(() => expect(card).toHaveTextContent("The control root is locked"));
+
+    fireEvent.change(within(card).getByTestId("issues-unlock-passphrase"), {
+      target: { value: "the install passphrase" },
+    });
+    fireEvent.click(within(card).getByTestId("issues-unlock-submit"));
+
+    await waitFor(() => expect(card).toHaveAttribute("data-issue-count", "0"));
+    expect(card).toHaveTextContent("Nothing.");
+  });
+});
