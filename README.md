@@ -93,11 +93,6 @@ _list_ is still an open question. See the
 - **Runtime-name selection:** the driver's `runtime_name` field remains free text.
 - **Creating topology entries.** The config editor and wizard configure components that already
   exist; adding one still means `POST /v1/components` or editing `agent.yaml`.
-- **Download and run is two clicks.** Home's first-model card offers **Download**,
-  and **Run** takes its place when the file lands — so the person is asked twice,
-  the second time minutes later. `hobbyist-ux.md` §6.3 specifies one chained
-  action; joining them means chaining `oneClickRun.ts`'s store onto the download's
-  completion, and deciding what happens when the browser is closed mid-download.
 
 ## Running
 
