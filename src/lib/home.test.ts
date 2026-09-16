@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 
 import { chatModels, firstModelState, gb, machineStrip, modelsOnDisk } from "./home";
-import type { EngineList, LibraryModelList, ModelList, NodeIdentity } from "./types";
+import type { EngineList, LibraryModelList, ModelList, NodeIdentity, StarterSet } from "./types";
 
 const AMISH_STATION: NodeIdentity = {
   enrolled: true,
@@ -33,6 +33,39 @@ const AMISH_STATION: NodeIdentity = {
     },
   ],
 };
+
+// The shipped list as the library serves it, trimmed to the two fields
+// this module reads. Scored against a 29 GiB card, which is what makes
+// the 30B the recommendation rather than an arbitrary pick.
+const STARTER = {
+  reviewed: "2026-09-16",
+  reviewedDaysAgo: 0,
+  source: "shipped",
+  models: [
+    {
+      sizeClass: "4B",
+      baseModel: "Qwen/Qwen3.5-4B",
+      repo: "unsloth/Qwen3.5-4B-GGUF",
+      file: "Qwen3.5-4B-Q4_K_M.gguf",
+      label: "Q4_K_M",
+      sizeBytes: 2740937888,
+      why: "most downloaded in its class",
+    },
+    {
+      sizeClass: "30B",
+      baseModel: "Qwen/Qwen3.8-27B",
+      repo: "unsloth/Qwen3.8-27B-GGUF",
+      file: "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      label: "UD-Q4_K_M",
+      sizeBytes: 16464440224,
+      why: "most downloaded in its class",
+    },
+  ],
+  recommended: {
+    sizeClass: "30B",
+    reason: "Qwen/Qwen3.8-27B is the largest of these that runs entirely in GPU memory.",
+  },
+} as unknown as StarterSet;
 
 const TWO_MODELS: LibraryModelList = {
   models: [
@@ -60,6 +93,61 @@ describe("firstModelState", () => {
     expect(firstModelState({ library: { models: [] }, libraryFailed: false, routable: 0 })).toEqual(
       { kind: "no-models" },
     );
+  });
+
+  it("names one model when the starter set recommends one (S6)", () => {
+    const state = firstModelState({
+      library: { models: [] },
+      libraryFailed: false,
+      routable: 0,
+      starter: STARTER,
+    });
+    expect(state.kind).toBe("no-models-recommended");
+    if (state.kind !== "no-models-recommended") throw new Error("wrong state");
+    expect(state.model.baseModel).toBe("Qwen/Qwen3.8-27B");
+    expect(state.reason).toContain("largest");
+  });
+
+  it("falls back to the search route when nothing in the set fits", () => {
+    // A recommendation with no `sizeClass` is the library saying nothing
+    // here runs on this machine. Offering a download that cannot run
+    // would be worse than offering none.
+    const nothingFits = {
+      ...STARTER,
+      recommended: { reason: "None of these fits in 4.00 GiB." },
+    };
+    expect(
+      firstModelState({
+        library: { models: [] },
+        libraryFailed: false,
+        routable: 0,
+        starter: nothingFits as never,
+      }),
+    ).toEqual({ kind: "no-models" });
+  });
+
+  it("falls back to the search route when the library did not answer the set", () => {
+    expect(
+      firstModelState({
+        library: { models: [] },
+        libraryFailed: false,
+        routable: 0,
+        starter: null,
+      }),
+    ).toEqual({ kind: "no-models" });
+  });
+
+  it("does not suggest anything once a model is on disk", () => {
+    // The suggestion is for an empty disk only. Someone who has a model
+    // and nothing running needs Run, not another download.
+    expect(
+      firstModelState({
+        library: TWO_MODELS,
+        libraryFailed: false,
+        routable: 0,
+        starter: STARTER,
+      }).kind,
+    ).toBe("none-running");
   });
 
   it("offers to run one when models exist and nothing is routable", () => {

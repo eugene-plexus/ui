@@ -24,7 +24,10 @@ import type {
   Model,
   ModelList,
   NodeIdentity,
+  StarterModel,
+  StarterSet,
 } from "./types";
+import { recommendedModel as recommendedStarter } from "./starter";
 import { engineLabel } from "./tasks";
 
 // --- the first-model card --------------------------------------------
@@ -33,18 +36,27 @@ import { engineLabel } from "./tasks";
  * Which card the person meets, and the one it is. One primary button per
  * state, by design: Hick's law, and every product in the design's §2.1.
  *
- * `recommend` is not here yet. S6 drops a recommended model into the
- * `no-models` state ("Recommended for your card: …"); when it does, it is
- * a new member of this union with its own render, not a rewrite of the
- * card — which is why the card switches on `kind` and nothing else.
+ * S6 added `no-models-recommended` as its own member rather than as a
+ * field on `no-models`, which is what the card's own comment predicted:
+ * the card switches on `kind` and nothing else, so a new state is a new
+ * branch rather than a condition inside an existing one.
  */
 export type FirstModelState =
   /** The library has not answered yet this session. Nothing is shown. */
   | { kind: "loading" }
   /** The library answered with an error, or did not answer at all. */
   | { kind: "library-unreachable" }
-  /** The library answered, and there is nothing on disk. */
+  /** The library answered, there is nothing on disk, and nothing is
+   * suggested either — the starter list is empty, or the library that
+   * holds it did not answer. Search is the way in. */
   | { kind: "no-models" }
+  /**
+   * Nothing on disk, and the starter set names one model for this
+   * machine. The primary action is getting *that* model, not opening a
+   * catalogue: §0.2 measured first chat at fifteen clicks, and most of
+   * them were choosing.
+   */
+  | { kind: "no-models-recommended"; model: StarterModel; reason: string }
   /**
    * Models are on disk and the gateway routes to none of them. `only` is
    * the one model when there is exactly one this machine has an engine
@@ -66,6 +78,12 @@ export function firstModelState(args: {
   /** This machine's engines, for whether the one model on disk can run
    * here at all; null when the agent has not answered. */
   engines?: EngineList | null;
+  /** The starter set, scored against this machine (S6). Null when the
+   * library has not answered it; a set with no `recommended.sizeClass`
+   * means nothing here fits, which is `no-models` and its search box —
+   * offering a download that cannot run would be worse than offering
+   * none. */
+  starter?: StarterSet | null;
 }): FirstModelState {
   if (args.routable !== null && args.routable > 0) return { kind: "hidden" };
   // A library that stopped answering after it had answered still gets the
@@ -75,7 +93,16 @@ export function firstModelState(args: {
   if (args.library === null) return { kind: "loading" };
   const present = presentModels(args.library);
   const count = present.length;
-  if (count === 0) return { kind: "no-models" };
+  if (count === 0) {
+    const pick = recommendedStarter(args.starter ?? null);
+    return pick
+      ? {
+          kind: "no-models-recommended",
+          model: pick,
+          reason: args.starter?.recommended?.reason ?? "",
+        }
+      : { kind: "no-models" };
+  }
   // Models on disk, and the gateway has not said yet whether any is
   // routable: "none running" would be a guess. Wait for its first answer.
   if (args.routable === null) return { kind: "loading" };

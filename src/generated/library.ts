@@ -370,6 +370,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/catalogue/starter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The shipped starter set, scored against this machine.
+         * @description A handful of general-purpose instruct models, one per size
+         *     class, and which of them this machine should take. The answer
+         *     to "I have no idea which of the four hundred thousand models on
+         *     that site I want", which is where a first install actually
+         *     stalls.
+         *
+         *     **It answers with no upstream call.** Every number a fit needs --
+         *     the recommended file's size, the model's parameter count, layer
+         *     and attention counts, trained context -- was measured once by the
+         *     review that produced the list and is carried in it, so this
+         *     endpoint works with the catalogue disabled, the hub down, or no
+         *     internet at all. Downloading one still needs the hub; choosing
+         *     one does not.
+         *
+         *     **The list is data, not code.** It ships inside the wheel as
+         *     `starter_models.yaml` and `starterModelsFile` points at another
+         *     one. An empty list is a valid answer and means "we have no
+         *     recommendation" -- a client should offer search rather than
+         *     invent a model. No model name is hard-coded anywhere in this
+         *     component.
+         *
+         *     **`reviewed` is on the wire because staleness is the failure
+         *     mode.** Models move fast enough that a list nobody has looked at
+         *     for a year is worse than no list, so the date travels with the
+         *     recommendation and a client is expected to show it. A release is
+         *     gated on a review under thirty days old.
+         *
+         *     Ranking is by upstream's 30-day download count and says so.
+         *     There is no quality score here, invented or borrowed -- the same
+         *     rule the quant table follows.
+         */
+        get: operations["getStarterModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/catalogue/model/preflight": {
         parameters: {
             query?: never;
@@ -1409,6 +1458,22 @@ export interface components {
         CatalogueSearchPage: {
             results: components["schemas"]["CatalogueSearchResult"][];
             /**
+             * @description How `q` was read. `repo` means it parsed as a repo
+             *     reference -- a hub URL, or a bare `owner/name` that
+             *     resolved -- and `results` holds that one repo; a client
+             *     should select it rather than make the person click the only
+             *     row. `search` is an ordinary query, including a bare
+             *     `owner/name` that upstream had no repo for.
+             * @enum {string}
+             */
+            interpretedAs?: "search" | "repo";
+            /**
+             * @description The repo id a `repo` interpretation resolved to, which is
+             *     not always what was typed: a URL carries a `/tree/` or
+             *     `/blob/` tail and a person pastes the whole thing.
+             */
+            interpretedFrom?: string;
+            /**
              * @description Pass back as `cursor` for the next page. Absent on the last
              *     page. Opaque — it is upstream's own continuation token and
              *     carries no page arithmetic.
@@ -1716,6 +1781,145 @@ export interface components {
              * @enum {string}
              */
             matchedOn?: "digest" | "name_and_size";
+        };
+        /**
+         * @description The starter set as this install has it, scored against one
+         *     machine. Every field that could go stale carries the evidence
+         *     for how stale it is.
+         */
+        StarterSet: {
+            /**
+             * Format: date
+             * @description When a human last accepted a review of this list. Shown to
+             *     the person, not just logged: "Reviewed 15 Sep 2026" is the
+             *     one thing that lets them judge a recommendation about a
+             *     field that moves monthly.
+             */
+            reviewed: string;
+            /**
+             * @description Computed here so a client does not have to do date
+             *     arithmetic to decide whether to say "this is old".
+             */
+            reviewedDaysAgo?: number;
+            /**
+             * @description The engine build every entry was verified to load, e.g.
+             *     `llama_cpp b10948`. A starter model the installed engine
+             *     cannot load is the one recommendation worse than none, so
+             *     the build that proved it is recorded rather than assumed.
+             */
+            engine?: string;
+            source: components["schemas"]["StarterSetSource"];
+            /**
+             * @description One entry per size class. Empty is valid and means there is
+             *     no recommendation to make; a client offers search instead.
+             */
+            models: components["schemas"]["StarterModel"][];
+            recommended?: components["schemas"]["StarterRecommendation"];
+            /**
+             * @description What the caller should know about this answer: an empty
+             *     list and why, a list older than the release gate allows, a
+             *     budget that came from an override.
+             */
+            notes?: string[];
+        };
+        /**
+         * @description `shipped` is the list inside the wheel; `configured` is a file
+         *     `starterModelsFile` points at. An operator who replaced the list
+         *     should see that they did.
+         *
+         *     A named schema rather than an inline enum, and the reason is a
+         *     codegen hazard rather than taste: `datamodel-code-generator`
+         *     names an inline enum after its property, so a second inline
+         *     `source:` anywhere in this document renames the FIRST one --
+         *     `MemoryBudget.source` became `Source1` and every existing
+         *     `Source.override` call site broke. Inline enums in a document
+         *     this size are a collision waiting for the next schema.
+         * @enum {string}
+         */
+        StarterSetSource: "shipped" | "configured";
+        /**
+         * @description One entry: a base model, the repo a quant of it comes from, the
+         *     one file to fetch, and everything a fit needs -- measured once by
+         *     the review, carried here so no upstream call is required.
+         */
+        StarterModel: {
+            /**
+             * @description The bucket this entry fills, by total parameter count:
+             *     `4B`, `8B`, `14B`, `30B`, `70B`. Total, not active -- a
+             *     mixture-of-experts model holds every expert in memory, so
+             *     30B-A3B is a 30B for the only purpose this number serves.
+             */
+            sizeClass: string;
+            /**
+             * @description The model itself, e.g. `Qwen/Qwen3.5-9B`. What the ranking
+             *     is about: a dozen publishers mirror one model and they are
+             *     one candidate, not a dozen.
+             */
+            baseModel: string;
+            /**
+             * @description The repo the file comes from -- one mirror of many, chosen
+             *     from a short list of publishers a human maintains. Never the
+             *     highest-download repo automatically; that is how a
+             *     keyword-stuffed finetune becomes a default.
+             */
+            repo: string;
+            /** @description The repo-relative path of the recommended quant. */
+            file: string;
+            /** @description The quant, e.g. `Q4_K_M`. */
+            label: string;
+            /** Format: int64 */
+            sizeBytes: number;
+            /** Format: int64 */
+            parameters?: number;
+            /**
+             * @description The GGUF architecture id, e.g. `qwen35`. Recorded because
+             *     the review checks it against the pinned engine's own
+             *     architecture list -- a model no engine here can load must
+             *     never be recommended.
+             */
+            architecture?: string;
+            /** @description What the model was trained for, not what fits. */
+            contextLength?: number;
+            license?: string;
+            /**
+             * @description One sentence, in the review's words: why this entry is in
+             *     the list. Downloads, and the window they were counted over.
+             */
+            why: string;
+            /**
+             * Format: int64
+             * @description The 30-day download count the ranking used, as of
+             *     `reviewed`. A number with a date on it rather than a live
+             *     one, because this endpoint makes no upstream call.
+             */
+            downloads30d?: number;
+            fit?: components["schemas"]["Fit"];
+            /**
+             * @description The largest context this entry fits entirely in GPU memory
+             *     at, on the scored machine. The number a profile takes, and
+             *     the reason a client can say *fits at 75,520* rather than
+             *     just *fits*.
+             */
+            maxContextLength?: number;
+            alreadyOwned?: components["schemas"]["AlreadyOwned"];
+        };
+        /**
+         * @description Which entry this machine should take, and why -- or, when
+         *     `sizeClass` is absent, why none of them.
+         */
+        StarterRecommendation: {
+            /**
+             * @description The recommended entry's `sizeClass`. Absent when nothing in
+             *     the list fits, in which case `reason` says what would.
+             */
+            sizeClass?: string;
+            /**
+             * @description Prose naming the numbers, the same rule
+             *     `CatalogueRecommendation` follows: the largest of the set
+             *     that runs entirely on this GPU with room for the scored
+             *     context, said with the sizes that make it checkable.
+             */
+            reason: string;
         };
         /** @description The model card, as published. */
         CatalogueCard: {
@@ -3265,6 +3469,18 @@ export interface operations {
                  * @description Free-text query, passed to upstream's own search. Omit to
                  *     browse by `sort` alone, which is how the "what is popular
                  *     right now" landing view works.
+                 *
+                 *     **A pasted repo reference is looked up, not searched.** A
+                 *     hub URL (`https://huggingface.co/owner/name`, with or
+                 *     without a `/tree/<rev>` or `/blob/<rev>/<file>` tail) or a
+                 *     bare `owner/name` is resolved with one repo lookup and
+                 *     comes back as a single result with `interpretedAs: repo`.
+                 *     This is the answer to the commonest way a person arrives
+                 *     with a model in mind: someone linked them one. A URL that
+                 *     does not resolve is a `404`, naming the repo; a bare
+                 *     `owner/name` that does not resolve falls through to an
+                 *     ordinary search, because it may simply be what they meant
+                 *     to type.
                  */
                 q?: string;
                 /**
@@ -3304,6 +3520,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogueSearchPage"];
+                };
+            };
+            /**
+             * @description `q` was a repo URL and this install cannot see that repo.
+             *     Only a URL produces it: a URL names one repo and nothing
+             *     else, so an empty result list would be the silent failure.
+             *
+             *     **Upstream does not answer 404 for a missing repo** --
+             *     measured, it answers `401 Invalid username or password`,
+             *     because to an unauthenticated caller "gone" and "private"
+             *     are deliberately the same answer. So this covers all three
+             *     causes and the detail names all three rather than asserting
+             *     the one that cannot be told from the others. A repo that is
+             *     merely *gated* keeps its own `403`, since accepting a
+             *     licence is something the operator can go and do.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             502: components["responses"]["Problem"];
@@ -3394,6 +3632,45 @@ export interface operations {
             };
             404: components["responses"]["Problem"];
             502: components["responses"]["Problem"];
+        };
+    };
+    getStarterModels: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Context to score against. Defaults to the configured
+                 *     `guidanceContextLength`. The recommendation is the largest
+                 *     class that fits entirely in GPU memory *at this number*,
+                 *     which is why a client showing the verdict should show the
+                 *     context beside it.
+                 */
+                contextLength?: number;
+                kvCacheType?: components["schemas"]["KvCacheType"];
+                /**
+                 * @description Override the detected VRAM budget, in bytes -- how a starter
+                 *     model gets scored against the machine a launch would
+                 *     actually run on, which on a multi-host install is not the
+                 *     one the library runs on.
+                 */
+                vramBytes?: number;
+                /** @description Override the detected host-memory budget, in bytes. */
+                ramBytes?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The starter set, with a recommendation or a reason there is none. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StarterSet"];
+                };
+            };
         };
     };
     preflightCatalogueFile: {

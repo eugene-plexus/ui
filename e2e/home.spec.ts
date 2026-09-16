@@ -49,10 +49,17 @@ test.describe("Home", () => {
     const tryIt = page.getByTestId("home-try-it");
     await expect(firstModel.or(tryIt).first()).toBeVisible({ timeout: 60_000 });
     if (await firstModel.isVisible()) {
-      const primary = firstModel.getByRole("link", {
-        name: /Find a model|Choose a model to run/,
-      });
-      await expect(primary).toBeVisible();
+      // One primary action, whichever state the card is in. Since S6 the
+      // empty-disk state is usually `no-models-recommended`, whose
+      // primary is a BUTTON that fetches a named file rather than a link
+      // into the catalogue — so this asserts the test id, not the tag.
+      await expect(firstModel.getByTestId("home-primary")).toBeVisible();
+      const state = await firstModel.getAttribute("data-state");
+      if (state === "no-models-recommended") {
+        await expect(firstModel.getByTestId("home-primary")).toContainText(/Download/);
+        // The suggestion says why, and the sentence carries numbers.
+        await expect(firstModel).toContainText(/GiB|GB/);
+      }
     } else {
       await expect(tryIt.getByRole("combobox")).toBeVisible();
       await expect(tryIt.locator("textarea, input[type=text]")).toBeEnabled();

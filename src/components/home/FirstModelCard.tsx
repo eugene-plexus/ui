@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import { RunButton } from "@/components/RunButton";
+import { api } from "@/lib/api";
 import type { FirstModelState } from "@/lib/home";
+import { downloadSize, shortName } from "@/lib/starter";
 import type { TargetNode } from "@/lib/nodeBudget";
 import type { Task } from "@/lib/tasks";
 
@@ -16,22 +19,26 @@ import type { Task } from "@/lib/tasks";
  * the replacement — one primary button per state (P3, P8), in the
  * person's words (P5).
  *
- * A state machine on `state.kind` and nothing else, so S6's recommended
- * model ("Recommended for your card: …") arrives as one more `kind` with
- * one more branch here, not as a rewrite. A download in flight is shown
- * inside whichever state applies, because the person who just clicked
- * Download on Discover and came back here should see it moving.
+ * A state machine on `state.kind` and nothing else, which is what let
+ * S6's recommended model arrive as one more `kind` with one more branch
+ * rather than as a rewrite. A download in flight is shown inside
+ * whichever state applies, because the person who just clicked Download
+ * on Discover and came back here should see it moving.
  */
 export function FirstModelCard({
   state,
   downloads,
   node,
+  onDownloadStarted,
 }: {
   state: FirstModelState;
   /** The tray's download tasks, rendered inside the card while any run. */
   downloads: Task[];
   /** This machine, as Run's target (S3). Home runs models here. */
   node: TargetNode;
+  /** Refresh the page's reads once a download has been accepted, so the
+   * tray picks it up without waiting out a poll. */
+  onDownloadStarted?: () => void;
 }) {
   if (state.kind === "loading" || state.kind === "hidden") return null;
 
@@ -50,6 +57,17 @@ export function FirstModelCard({
           .
         </p>
       </section>
+    );
+  }
+
+  if (state.kind === "no-models-recommended") {
+    return (
+      <SuggestedModelCard
+        model={state.model}
+        reason={state.reason}
+        downloads={downloads}
+        onDownloadStarted={onDownloadStarted}
+      />
     );
   }
 
@@ -134,6 +152,127 @@ export function FirstModelCard({
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * Nothing on disk, and one model named for this machine.
+ *
+ * **One primary button, and it fetches a specific file** — not "open the
+ * catalogue". §0.2 measured first chat at fifteen clicks after install
+ * and most of them were choosing: a size, a quant, a publisher, a
+ * context. The starter set has already made every one of those choices
+ * against this machine's own memory, and says why in a sentence the
+ * person can argue with. Choosing differently is one click away and
+ * stays a link, not a second button (P3).
+ */
+function SuggestedModelCard({
+  model,
+  reason,
+  downloads,
+  onDownloadStarted,
+}: {
+  model: NonNullable<Extract<FirstModelState, { kind: "no-models-recommended" }>["model"]>;
+  reason: string;
+  downloads: Task[];
+  onDownloadStarted?: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const started = downloads.length > 0;
+
+  async function download() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post("library", "/v1/downloads", {
+        repo: model.repo,
+        revision: "main",
+        files: [model.file],
+      });
+      onDownloadStarted?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section data-testid="home-first-model" data-state="no-models-recommended" className={card}>
+      <h2 className="font-ui text-base font-semibold">Get your first model</h2>
+      <p className="mt-1 text-sm text-[color:var(--muted)]">
+        Nothing is on disk yet. <strong>{shortName(model.baseModel)}</strong> is a good first one
+        for this machine.
+      </p>
+      {reason && <p className="mt-1 text-xs text-[color:var(--muted)]">{reason}</p>}
+      {error && (
+        <p className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs">
+          {error}
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void download()}
+          disabled={busy || started}
+          className={primary}
+          data-testid="home-primary"
+        >
+          {started
+            ? "Downloading…"
+            : busy
+              ? "Starting…"
+              : `Download ${shortName(model.baseModel)} · ${downloadSize(model.sizeBytes)}`}
+        </button>
+        <Link href="/discover" className={tertiary}>
+          Choose a different model
+        </Link>
+        <Link href="/library/folders?sel=library" className={tertiary}>
+          I already have models
+        </Link>
+        <Link href="/backends/add" className={tertiary}>
+          Add an app you already run
+        </Link>
+      </div>
+      <DownloadList downloads={downloads} />
+    </section>
+  );
+}
+
+/** The tray's download rows, rendered inside whichever card applies. */
+function DownloadList({ downloads }: { downloads: Task[] }) {
+  if (downloads.length === 0) return null;
+  return (
+    <ul data-testid="home-downloads" className="mt-3 flex flex-col gap-2">
+      {downloads.map((task) => (
+        <li key={task.id} className="text-xs">
+          <Link href={task.href} className="block truncate hover:underline">
+            {task.title}
+          </Link>
+          {task.detail && (
+            <span className="block text-[11px] text-[color:var(--muted)] tabular-nums">
+              {task.detail}
+            </span>
+          )}
+          {task.progress !== undefined && (
+            <span
+              className="mt-1 block h-1 overflow-hidden rounded-full bg-[color:var(--panel-hover)]"
+              role="progressbar"
+              aria-label={task.title}
+              aria-valuenow={Math.round(task.progress * 100)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <span
+                className="block h-full rounded-full bg-[color:var(--accent-left)] transition-[width] duration-300"
+                style={{ width: `${Math.round(task.progress * 100)}%` }}
+              />
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

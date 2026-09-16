@@ -14,7 +14,7 @@ import { PROXY, listModels } from "@/lib/completions";
 import { guessGatewayBaseUrl } from "@/lib/diagnostic";
 import { chatModels, firstModelState, machineStrip } from "@/lib/home";
 import { type Sources, buildRows } from "@/lib/inferenceRows";
-import { localTargetNode } from "@/lib/nodeBudget";
+import { budgetFromNode, fitQuery, localTargetNode } from "@/lib/nodeBudget";
 import type {
   ComponentList,
   ComponentPlacementList,
@@ -26,6 +26,7 @@ import type {
   RoutingTableView,
   RuntimeList,
   RuntimePlacementList,
+  StarterSet,
 } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
 import { useSetupGate } from "@/lib/useSetupGate";
@@ -70,12 +71,28 @@ import { useTasks } from "@/lib/useTasks";
  * it is the answer to "it works here, why not there", which is a
  * question a person only has once the first two cards have worked.
  *
- * **Not here yet, by plan:** "Needs attention" (S7), and the recommended
- * model in the first card (S6).
+ * **Since S6:** with nothing on disk, the first card names one model
+ * for this machine and its primary button fetches that file -- the
+ * starter set, scored against this node's own devices. Choosing
+ * differently stays a link.
+ *
+ * **Not here yet, by plan:** "Needs attention" (S7).
  */
 
 const SLOW_POLL_MS = 15000;
 const FAST_POLL_MS = 5000;
+
+/**
+ * The context Home's suggestion is scored at.
+ *
+ * 16k, and stated rather than inherited from the library's
+ * `guidanceContextLength` (8k), because this card offers a download
+ * measured in gigabytes and the number it was scored at should be one a
+ * person would actually be happy with afterwards — a model that fits at
+ * 8k and not at 16k is a model they will outgrow in one conversation.
+ * Discover's own control is where a different number lives.
+ */
+const STARTER_CONTEXT = 16384;
 
 export default function HomePage() {
   const gate = useSetupGate();
@@ -92,7 +109,11 @@ export default function HomePage() {
   // part of its address that survives the trip to a browser reached
   // through the proxy. `guessGatewayBaseUrl` explains why.
   const [components, setComponents] = useState<ComponentList | null>(null);
-  const { tasks } = useTasks();
+  // The starter set, scored against this machine (S6). Soft like every
+  // other read here: null is "no suggestion", which is a card with a
+  // search route on it and not an error banner.
+  const [starter, setStarter] = useState<StarterSet | null>(null);
+  const { tasks, reload: reloadTasks } = useTasks();
 
   const loadSlow = useCallback(async () => {
     const [nodeResult, enginesResult, libraryResult, modelsResult, componentsResult] =
@@ -105,6 +126,20 @@ export default function HomePage() {
       ]);
     setNode(nodeResult);
     setEngines(enginesResult);
+    // The starter set, scored against THIS machine's devices — the one a
+    // Run from Home would use. On the poll rather than once, because
+    // free memory moves and the recommendation moves with it, and
+    // because the library may not have been up when the page loaded.
+    setStarter(
+      await api
+        .get<StarterSet>(
+          "library",
+          `/v1/catalogue/starter?contextLength=${STARTER_CONTEXT}&${new URLSearchParams(
+            fitQuery(nodeResult ? budgetFromNode(nodeResult) : null),
+          )}`,
+        )
+        .catch(() => null),
+    );
     if (componentsResult !== null) setComponents(componentsResult);
     // The last good answer is kept and the failure is flagged beside it,
     // so the card can say "did not answer" without the count flickering
@@ -143,8 +178,8 @@ export default function HomePage() {
     [node, engines, library, libraryFailed],
   );
   const state = useMemo(
-    () => firstModelState({ library, libraryFailed, routable, engines }),
-    [library, libraryFailed, routable, engines],
+    () => firstModelState({ library, libraryFailed, routable, engines, starter }),
+    [library, libraryFailed, routable, engines, starter],
   );
   // Home is about the machine the browser is served from, so Run from
   // here runs here (S3). Another node is chosen on the Library's picker.
@@ -186,7 +221,15 @@ export default function HomePage() {
       <main data-testid="home" className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
           <MachineStrip strip={strip} />
-          <FirstModelCard state={state} downloads={downloads} node={here} />
+          <FirstModelCard
+            state={state}
+            downloads={downloads}
+            node={here}
+            onDownloadStarted={() => {
+              void loadSlow();
+              void reloadTasks();
+            }}
+          />
           {chat.length > 0 && <TryItCard models={chat} />}
           {chat.length > 0 && (
             <UseFromAppsCard

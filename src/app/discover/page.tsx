@@ -9,6 +9,8 @@ import { ModelCard } from "@/components/ModelCard";
 import { QuantReference } from "@/components/QuantReference";
 import { ApiError, api } from "@/lib/api";
 import { NodePicker } from "@/components/NodePicker";
+import { StarterSetPanel } from "@/components/StarterSetPanel";
+import { contextLabel } from "@/lib/starter";
 import { type NodeBudget, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import type {
   CatalogueCandidate,
@@ -21,6 +23,7 @@ import type {
   Download,
   HostHardware,
   ModelFormat,
+  StarterModel,
 } from "@/lib/types";
 
 /**
@@ -34,6 +37,20 @@ import type {
  * in the header is the other half of that: watching the recommendation
  * walk down the list as you drag context from 8k to 128k *is* the
  * guidance.
+ *
+ * **With nothing typed, this is not a search result.** It is the
+ * starter set (§6.3): a handful of models, one per size class, with the
+ * one this machine should take named and a Download button on it. The
+ * screen used to open on "whatever the hub sorted to the top today",
+ * which for a person with no candidate in mind is four hundred thousand
+ * rows deep — and the starter panel answers with the hub down, because
+ * nothing behind it is an upstream call.
+ *
+ * **A pasted link is a lookup, not a query.** The commonest way someone
+ * arrives with a model in mind is that a friend sent them a URL, and
+ * putting that URL through a full-text index returns nothing. The
+ * library parses it and hands back one repo, which this screen selects
+ * outright rather than making them click the only row.
  *
  * Two calls, and the split is forced by upstream rather than chosen.
  * Search returns repos with filenames and no sizes, so a fit verdict per
@@ -72,6 +89,10 @@ export default function DiscoverPage() {
 
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
   const [contextLength, setContextLength] = useState(8192);
+  // What the library made of the query: `repo` means it parsed as a
+  // pasted reference and `results` holds that one repo.
+  const [interpreted, setInterpreted] = useState<"search" | "repo">("search");
+  const [starterBusy, setStarterBusy] = useState<string | null>(null);
 
   const [hardware, setHardware] = useState<HostHardware | null>(null);
   // Whose memory the verdicts are about: the chosen node's, defaulting
@@ -111,14 +132,45 @@ export default function DiscoverPage() {
         `/v1/catalogue/search?${params.toString()}`,
       );
       setResults(page.results ?? []);
+      setInterpreted(page.interpretedAs === "repo" ? "repo" : "search");
+      // A pasted link named one repo. Selecting it is the whole point:
+      // making someone click the only row is the click this removes.
+      if (page.interpretedAs === "repo" && page.interpretedFrom) {
+        setSelectedRepo(page.interpretedFrom);
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return;
       setResults([]);
+      setInterpreted("search");
       setSearchError(errorText(err));
     } finally {
       setSearching(false);
     }
   }, [debouncedQuery, format, sort]);
+
+  /** Fetch a starter entry's one recommended file. Same endpoint the
+   * candidate table posts to; the starter set just already knows which
+   * file, which is the choice it exists to make. */
+  const downloadStarter = useCallback(
+    async (model: StarterModel) => {
+      setStarterBusy(model.repo);
+      setSearchError(null);
+      try {
+        await api.post("library", "/v1/downloads", {
+          repo: model.repo,
+          revision: "main",
+          files: [model.file],
+        });
+        setShowDownloads(true);
+        reloadDownloads();
+      } catch (err) {
+        setSearchError(errorText(err));
+      } finally {
+        setStarterBusy(null);
+      }
+    },
+    [reloadDownloads],
+  );
 
   useEffect(() => {
     void search();
@@ -130,22 +182,6 @@ export default function DiscoverPage() {
         <>
           <NodePicker nodes={nodes} selected={selected} onSelect={select} />
           <HardwareSummary budget={budget} hardware={hardware} />
-          <label className="font-ui flex items-center gap-1.5 text-xs text-[color:var(--muted)]">
-            <span title="Fit verdicts are computed at this context length. The KV cache grows linearly with it, so this is the number that decides which version is recommended.">
-              context
-            </span>
-            <select
-              value={contextLength}
-              onChange={(event) => setContextLength(Number(event.target.value))}
-              className={selectClass}
-            >
-              {CONTEXT_CHOICES.map((value) => (
-                <option key={value} value={value}>
-                  {value >= 1024 ? `${value / 1024}k` : value}
-                </option>
-              ))}
-            </select>
-          </label>
         </>
       }
     >
@@ -155,7 +191,7 @@ export default function DiscoverPage() {
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="search models — try a family name, or a publisher"
+            placeholder="search models, or paste a link to one"
             className="font-ui min-w-[220px] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-xs outline-none focus:border-[color:var(--border-hover)]"
             aria-label="Search the model catalogue"
           />
@@ -188,11 +224,13 @@ export default function DiscoverPage() {
             results={results}
             searching={searching}
             error={searchError}
+            interpreted={interpreted}
             selected={selectedRepo}
             onSelect={setSelectedRepo}
           />
 
           <div className="min-h-0 overflow-y-auto px-5 py-4">
+            <ContextControl value={contextLength} onChange={setContextLength} />
             {selectedRepo ? (
               <RepoDetail
                 key={selectedRepo}
@@ -206,7 +244,14 @@ export default function DiscoverPage() {
                 }}
               />
             ) : (
-              <EmptyDetail budget={budget} hardware={hardware} />
+              <EmptyDetail
+                budget={budget}
+                hardware={hardware}
+                contextLength={contextLength}
+                busy={starterBusy}
+                onDownload={downloadStarter}
+                onOpenRepo={setSelectedRepo}
+              />
             )}
           </div>
         </div>
@@ -312,21 +357,63 @@ function HardwareSummary({
   );
 }
 
+/**
+ * The context every verdict on this screen is scored at, beside the
+ * verdicts rather than in the window's title bar.
+ *
+ * §0's measurement: the badge read a bare `fits` and the number that
+ * decided it was in a tooltip on a control at the other end of the page,
+ * so the verdict looked like a fact about the model. Watching the
+ * recommendation walk down the list as this changes *is* the guidance.
+ */
+function ContextControl({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  return (
+    <label className="font-ui mb-3 flex items-center gap-1.5 text-xs text-[color:var(--muted)]">
+      <span>Scored for</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className={selectClass}
+        aria-label="Context length to score against"
+      >
+        {CONTEXT_CHOICES.map((choice) => (
+          <option key={choice} value={choice}>
+            {contextLabel(choice)}
+          </option>
+        ))}
+      </select>
+      <span title="How much conversation the model can hold at once. It costs memory: the cache grows in step with it, so this is the number that decides which version fits.">
+        of conversation
+      </span>
+    </label>
+  );
+}
+
 function ResultsList({
   results,
   searching,
   error,
+  interpreted,
   selected,
   onSelect,
 }: {
   results: CatalogueSearchResult[] | null;
   searching: boolean;
   error: string | null;
+  interpreted: "search" | "repo";
   selected: string | null;
   onSelect: (repo: string) => void;
 }) {
   return (
     <div className="min-h-0 overflow-y-auto border-r border-[color:var(--border)]">
+      {interpreted === "repo" && (
+        <p
+          data-testid="resolved-link"
+          className="border-b border-[color:var(--border)] px-4 py-2 text-[11px] text-[color:var(--muted)]"
+        >
+          That link points at one model, and this is it.
+        </p>
+      )}
       {error && (
         <p className="status-error m-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>
       )}
@@ -375,14 +462,29 @@ function ResultsList({
 function EmptyDetail({
   budget,
   hardware,
+  contextLength,
+  busy,
+  onDownload,
+  onOpenRepo,
 }: {
   budget: NodeBudget | null;
   hardware: HostHardware | null;
+  contextLength: number;
+  busy: string | null;
+  onDownload: (model: StarterModel) => void;
+  onOpenRepo: (repo: string) => void;
 }) {
   const where = budget?.node ?? "this host";
   return (
-    <div className="max-w-2xl space-y-4 text-xs text-[color:var(--muted)]">
-      <p>Pick a model on the left to see what it actually ships and which version fits here.</p>
+    <div className="max-w-4xl space-y-4 text-xs text-[color:var(--muted)]">
+      <StarterSetPanel
+        budget={budget}
+        contextLength={contextLength}
+        busy={busy}
+        onDownload={onDownload}
+        onOpenRepo={onOpenRepo}
+      />
+      <p>Or pick a model on the left to see what it ships and which version fits here.</p>
       {budget && !budget.gpu && (
         <div className="status-warn rounded-[var(--radius)] border px-3 py-2">
           <p className="mb-1 font-semibold">No GPU on {where}</p>
@@ -543,6 +645,9 @@ function RepoDetail({
       .flatMap((d) => d.files.map((f) => f.path)),
   );
 
+  const recommendedCandidate =
+    detail.candidates.find((c) => c.label === detail.recommended?.label) ?? null;
+
   return (
     <div className={`max-w-4xl space-y-4 ${loading ? "opacity-60 transition-opacity" : ""}`}>
       <div>
@@ -570,11 +675,44 @@ function RepoDetail({
         </p>
       ))}
 
-      {detail.recommended && (
-        <div className="status-success rounded-[var(--radius)] border px-3 py-2 text-xs">
-          <p className="font-ui font-semibold">Recommended: {detail.recommended.label}</p>
-          <p className="mt-0.5">{detail.recommended.reason}</p>
-        </div>
+      {/* The recommendation is a card with its own button, above the
+          table, rather than a highlighted row inside it. §0.5: the wall
+          a new person hits here is eleven near-identical rows, and a
+          table cannot have a primary action. The table keeps every one
+          of them under "All versions" for the expert. */}
+      {recommendedCandidate && detail.recommended && (
+        <section
+          data-testid="repo-recommended"
+          className="status-success rounded-[var(--radius)] border px-4 py-3 text-xs"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-ui text-sm font-semibold">
+              Suggested version: {detail.recommended.label}
+            </p>
+            {recommendedCandidate.fit && (
+              <FitBadge fit={recommendedCandidate.fit} compact withContext />
+            )}
+          </div>
+          <p className="mt-1">{detail.recommended.reason}</p>
+          {detail.recommended.lowQualityWarning && (
+            <p className="mt-1 font-semibold">{detail.recommended.lowQualityWarning}</p>
+          )}
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => download(recommendedCandidate, (detail.projectors ?? []).length > 0)}
+              disabled={busy !== null || !!recommendedCandidate.alreadyOwned}
+              className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              data-testid="repo-recommended-download"
+            >
+              {recommendedCandidate.alreadyOwned
+                ? "Already on disk"
+                : busy === recommendedCandidate.label
+                  ? "starting…"
+                  : `Download ${formatBytes(recommendedCandidate.sizeBytes)}`}
+            </button>
+          </div>
+        </section>
       )}
 
       {actionError && (
@@ -583,8 +721,13 @@ function RepoDetail({
         </p>
       )}
 
+      <h3 className="font-ui text-xs font-semibold" data-testid="all-versions">
+        All versions
+      </h3>
+
       <CandidateTable
         candidates={detail.candidates}
+        contextLength={contextLength}
         recommended={detail.recommended?.label ?? null}
         preflights={preflights}
         busy={busy}
@@ -613,6 +756,7 @@ function RepoDetail({
 
 function CandidateTable({
   candidates,
+  contextLength,
   recommended,
   preflights,
   busy,
@@ -622,6 +766,7 @@ function CandidateTable({
   onDownload,
 }: {
   candidates: CatalogueCandidate[];
+  contextLength: number;
   recommended: string | null;
   preflights: Record<string, CataloguePreflight>;
   busy: string | null;
@@ -650,7 +795,9 @@ function CandidateTable({
             >
               bits/weight
             </th>
-            <th className="px-3 py-1.5 text-left font-medium">fits here?</th>
+            <th className="px-3 py-1.5 text-left font-medium">
+              fits at {contextLabel(contextLength)}?
+            </th>
             <th className="px-3 py-1.5 text-right font-medium"></th>
           </tr>
         </thead>

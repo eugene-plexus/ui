@@ -222,6 +222,14 @@ export type CatalogueRecommendation = LibraryComponents["schemas"]["CatalogueRec
 export type CatalogueCard = LibraryComponents["schemas"]["CatalogueCard"];
 export type CataloguePreflight = LibraryComponents["schemas"]["CataloguePreflight"];
 export type AlreadyOwned = LibraryComponents["schemas"]["AlreadyOwned"];
+
+// The starter set (S6). One entry per size class, scored against one
+// machine, answered with no upstream call -- so it is the one catalogue
+// shape a screen can render with the hub down. `reviewed` is on the wire
+// because staleness, not error, is this feature's failure mode.
+export type StarterSet = LibraryComponents["schemas"]["StarterSet"];
+export type StarterModel = LibraryComponents["schemas"]["StarterModel"];
+export type StarterRecommendation = LibraryComponents["schemas"]["StarterRecommendation"];
 export type GateKind = LibraryComponents["schemas"]["GateKind"];
 export type ModelFileRole = LibraryComponents["schemas"]["ModelFileRole"];
 

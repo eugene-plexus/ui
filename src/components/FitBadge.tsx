@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { contextLabel } from "@/lib/starter";
 import type { Fit, FitVerdict, MemoryBudget } from "@/lib/types";
 
 /**
@@ -41,16 +42,39 @@ const VERDICT_MEANING: Record<FitVerdict, string> = {
   no: "Larger than this machine's GPU and host memory together.",
 };
 
-export function FitBadge({ fit, compact = false }: { fit: Fit; compact?: boolean }) {
+/**
+ * `withContext` writes the context into the badge — `fits at 32k`.
+ *
+ * Off by default because in a table of twenty-five candidates every row
+ * is scored at the same number and repeating it twenty-five times is
+ * noise; the column header names it once instead. On wherever a verdict
+ * stands alone — a recommendation, a starter card — because there the
+ * bare word reads as a property of the model when it is a property of
+ * the model *and a number the person can change*, which is what §0
+ * measured: the context was a tooltip away from the verdict it decided.
+ */
+export function FitBadge({
+  fit,
+  compact = false,
+  withContext = false,
+}: {
+  fit: Fit;
+  compact?: boolean;
+  withContext?: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const label = withContext
+    ? `${VERDICT_LABEL[fit.verdict]} at ${contextLabel(fit.contextLength)}`
+    : VERDICT_LABEL[fit.verdict];
 
   if (compact) {
     return (
       <span
+        data-testid="fit-badge"
         className={`${VERDICT_CLASS[fit.verdict]} font-ui rounded-[var(--radius)] border px-1.5 py-0.5 text-[10px] tracking-wide uppercase`}
         title={`${VERDICT_MEANING[fit.verdict]} Needs ${formatBytes(fit.requiredBytes)} at ${fit.contextLength.toLocaleString()} tokens.`}
       >
-        {VERDICT_LABEL[fit.verdict]}
+        {label}
       </span>
     );
   }
@@ -59,11 +83,12 @@ export function FitBadge({ fit, compact = false }: { fit: Fit; compact?: boolean
     <div className="space-y-1">
       <button
         type="button"
+        data-testid="fit-badge"
         onClick={() => setOpen((v) => !v)}
         className={`${VERDICT_CLASS[fit.verdict]} font-ui inline-flex items-center gap-1.5 rounded-[var(--radius)] border px-2 py-0.5 text-[11px] tracking-wide uppercase`}
         aria-expanded={open}
       >
-        {VERDICT_LABEL[fit.verdict]}
+        {label}
         <span className="opacity-60">{open ? "▾" : "▸"}</span>
       </button>
       {open && <FitBreakdown fit={fit} />}

@@ -41,7 +41,7 @@ const POLL_MS = 5000;
  * api client would bounce the page to `/login` in the middle of, say,
  * the login page.
  */
-export function useTasks(): { tasks: Task[]; loaded: boolean } {
+export function useTasks(): { tasks: Task[]; loaded: boolean; reload: () => Promise<void> } {
   const [polled, setPolled] = useState<Task[]>([]);
   const [loaded, setLoaded] = useState(false);
   // The browser's own runs (one-click run, S3) are not polled: the store
@@ -87,5 +87,7 @@ export function useTasks(): { tasks: Task[]; loaded: boolean } {
   usePolling(load, POLL_MS);
 
   const tasks = useMemo(() => mergeTasks(polled, runs.map(runTask)), [polled, runs]);
-  return { tasks, loaded };
+  // `reload` so a card that just started a download can pull the tray
+  // forward instead of waiting out the poll.
+  return { tasks, loaded, reload: load };
 }
