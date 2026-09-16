@@ -3,9 +3,17 @@ import { describe, expect, it } from "vitest";
 import { blockers, clientKeyTarget, curlLine, keyLabel, keyStatus, recipes } from "./clientKeys";
 import type { ComponentPlacementList } from "./types";
 
+// A JWT's shape, with no entropy in it. The obvious fixture --
+// `eyJhbGciOiJIUzI1NiJ9.abc.def` -- scored 4.11 on gitleaks' generic
+// API-key rule and turned this repo's secret scan red from S4 until
+// somebody looked, which is the real cost: a scanner nobody believes
+// stops being a scanner. The recipes only ever substitute this string
+// verbatim, so its entropy is not the subject of any test here.
+const FAKE_TOKEN = "eyJhbGciOiJIUzI1NiJ9.EXAMPLE-NOT-A-REAL-TOKEN.EXAMPLE";
+
 const STRINGS = {
   baseUrl: "http://192.168.1.20:8080/v1",
-  key: "eyJhbGciOiJIUzI1NiJ9.abc.def",
+  key: FAKE_TOKEN,
   model: "Qwen3-14B-Q6_K_XL",
 };
 
