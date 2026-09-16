@@ -245,5 +245,10 @@ test.describe("the address is checked, not just guessed", () => {
     // It says something is there. "Nothing answered" would send a
     // person to their firewall for a port that is answering fine.
     await expect(verdict).toContainText(/not this gateway|listening/i);
+
+    // And it offers no alternative port, because this install does not
+    // remap any: the same-offset candidate exists only on evidence, and
+    // inventing one here would be the guess the whole module refuses.
+    await expect(card.getByTestId("base-url-candidate")).toHaveCount(0);
   });
 });

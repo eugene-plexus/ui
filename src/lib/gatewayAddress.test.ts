@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  describeCandidate,
   describeRemap,
   describeVerdict,
   normalizeBase,
   pagePort,
   portRemapEvidence,
+  sameOffsetCandidate,
   verifyGatewayAddress,
 } from "./gatewayAddress";
 
@@ -262,5 +264,100 @@ describe("describeVerdict", () => {
     );
     expect(tone).toBe("warn");
     expect(text).toMatch(/Reach it from other devices/);
+  });
+});
+
+describe("sameOffsetCandidate", () => {
+  const remapped = { kind: "remapped", pagePort: 8279, agentPort: 8079 } as const;
+
+  // The live install, exactly: the agent is published 8079 -> 8279 and
+  // the gateway binds 8080, so the candidate is 8280 -- which is the
+  // right answer, and the click that replaces an afternoon.
+  it("shifts the gateway's port by the same amount the agent's moved", () => {
+    expect(sameOffsetCandidate("http://192.168.16.252:8080", remapped)).toBe(
+      "http://192.168.16.252:8280",
+    );
+  });
+
+  // The sabotage this pins: drop the evidence guard and the card starts
+  // inventing addresses on installs that never remapped anything.
+  it("offers nothing without evidence of a remap", () => {
+    expect(sameOffsetCandidate("http://nas:8080", { kind: "none" })).toBeNull();
+  });
+
+  // The reverse direction: a page reached on the LOWER port. Written
+  // wrong the first time -- 80 + (8079 - 8279) is -120, not 7880, and
+  // the implementation correctly refused it. The arithmetic is the
+  // whole function, so it gets a case in each direction.
+  it("shifts downwards too", () => {
+    expect(
+      sameOffsetCandidate("http://nas:8280", { kind: "remapped", pagePort: 8079, agentPort: 8279 }),
+    ).toBe("http://nas:8080");
+  });
+
+  it("reads a default port as the port it is", () => {
+    expect(
+      sameOffsetCandidate("http://nas", { kind: "remapped", pagePort: 8279, agentPort: 8079 }),
+    ).toBe("http://nas:280");
+  });
+
+  it("refuses a candidate outside the port range or equal to the current one", () => {
+    expect(
+      sameOffsetCandidate("http://nas:80", { kind: "remapped", pagePort: 100, agentPort: 8079 }),
+    ).toBeNull();
+    expect(
+      sameOffsetCandidate("http://nas:8080", { kind: "remapped", pagePort: 90, agentPort: 90 }),
+    ).toBeNull();
+  });
+
+  it("is null for a base URL that is not one", () => {
+    expect(sameOffsetCandidate("nas:8080", remapped)).toBeNull();
+  });
+});
+
+describe("describeVerdict, when the ports are known to be remapped", () => {
+  // THE SABOTAGE THIS PINS, and it is the most important assertion in
+  // this file. The blocked branch used to end on "An app that is not a
+  // browser may still work" unconditionally. That is true only if the
+  // thing on the port IS our gateway with browser clients off; when
+  // something else owns it the sentence is false and it invites exactly
+  // the action that started all of this -- paste it into Continue
+  // anyway. On a remapped install it must not appear at all.
+  it("does not promise a non-browser app will work", () => {
+    const { text } = describeVerdict({ kind: "blocked" }, "http://192.168.16.252:8080", {
+      remapped: true,
+    });
+    expect(text).not.toMatch(/not a browser/i);
+    expect(text).toMatch(/wrong port/i);
+    expect(text).toMatch(/correct the address/i);
+  });
+
+  it("still offers the corsEnabled reading when nothing suggests a remap", () => {
+    const { text } = describeVerdict({ kind: "blocked" }, "http://nas:8080");
+    expect(text).toMatch(/corsEnabled/);
+    // ...but never as bare reassurance: the other branch is named too.
+    expect(text).toMatch(/not the gateway at all/i);
+  });
+
+  it("points an unreachable address at the port before the firewall", () => {
+    const { text } = describeVerdict({ kind: "unreachable", message: "x" }, "http://nas:8080", {
+      remapped: true,
+    });
+    expect(text).toMatch(/wrong port/i);
+  });
+
+  it("echoes the origin it was given, with no path glued on", () => {
+    const { text } = describeVerdict({ kind: "not-gateway", status: 400 }, "http://nas:8080");
+    expect(text).toContain("http://nas:8080");
+    expect(text).not.toContain("http://nas:8080/v1");
+  });
+});
+
+describe("describeCandidate", () => {
+  // The offer names the address rather than saying "a different port
+  // works": the person is about to paste this string somewhere else, so
+  // seeing it before they click is the point.
+  it("names the address that answered", () => {
+    expect(describeCandidate("http://192.168.16.252:8280")).toContain("http://192.168.16.252:8280");
   });
 });

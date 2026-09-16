@@ -11,11 +11,13 @@ import {
   keyStatus,
   recipes as buildRecipes,
 } from "@/lib/clientKeys";
-import type { BoundAddressLike, Verdict } from "@/lib/gatewayAddress";
+import type { BoundAddressLike, RemapEvidence, Verdict } from "@/lib/gatewayAddress";
 import {
+  describeCandidate,
   describeRemap,
   describeVerdict,
   portRemapEvidence,
+  sameOffsetCandidate,
   verifyGatewayAddress,
 } from "@/lib/gatewayAddress";
 import type {
@@ -165,26 +167,43 @@ export function UseFromAppsCard({
   // export, so a `window` read during render is a hydration mismatch
   // between a server frame that has no location and a client one that
   // does. Same reason the override above is read in an effect.
-  const [remap, setRemap] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<RemapEvidence>({ kind: "none" });
   useEffect(() => {
-    setRemap(describeRemap(portRemapEvidence(window.location, boundAddresses)));
+    setEvidence(portRemapEvidence(window.location, boundAddresses));
   }, [boundAddresses]);
+  const remap = describeRemap(evidence);
 
   const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [candidate, setCandidate] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const check = useCallback(async () => {
     if (!baseUrl) return;
     setChecking(true);
+    setCandidate(null);
     try {
       // The key when there is one -- it upgrades the answer from "the
       // gateway is there" to "and it serves these models", which is the
       // other half of the same class of bug: a client configured with a
       // model id that names nothing.
-      setVerdict(await verifyGatewayAddress(baseUrl, { key: keyString }));
+      const found = await verifyGatewayAddress(baseUrl, { key: keyString });
+      setVerdict(found);
+      // A failed address on a machine that publishes ports differently
+      // has one cheap hypothesis worth testing: the same shift applied
+      // to the gateway. It is PROBED, never asserted -- the offer below
+      // appears only for a candidate that answered as this gateway, and
+      // a candidate that did not is never mentioned. No key: the
+      // gateway's own 401 is proof enough of what is there.
+      if (found.kind !== "confirmed") {
+        const guess = sameOffsetCandidate(baseUrl, evidence);
+        if (guess) {
+          const probe = await verifyGatewayAddress(guess);
+          if (probe.kind === "confirmed") setCandidate(guess);
+        }
+      }
     } finally {
       setChecking(false);
     }
-  }, [baseUrl, keyString]);
+  }, [baseUrl, keyString, evidence]);
 
   // On every change of address or key, not on a button. A check nobody
   // presses is a check nobody gets, and this one costs one GET to a
@@ -194,7 +213,11 @@ export function UseFromAppsCard({
     void check();
   }, [check]);
 
-  const verdictText = verdict ? describeVerdict(verdict, display) : null;
+  // `baseUrl`, not `display`: what is listening is at the origin, and
+  // the first live run said "listening at http://...:8080/v1".
+  const verdictText = verdict
+    ? describeVerdict(verdict, baseUrl, { remapped: evidence.kind === "remapped" })
+    : null;
 
   async function mint(event: React.FormEvent) {
     event.preventDefault();
@@ -324,6 +347,26 @@ export function UseFromAppsCard({
                   Check again
                 </button>
               )}
+            </p>
+          )}
+
+          {/* Only ever rendered for a candidate that ANSWERED as this
+              gateway. The offset that produced it is a guess and is
+              never shown as one; the probe is what earns it a place. */}
+          {candidate && (
+            <p
+              data-testid="base-url-candidate"
+              className="status-success font-ui rounded-[var(--radius)] px-2 py-1 text-[11px]"
+            >
+              {describeCandidate(candidate)}{" "}
+              <button
+                type="button"
+                data-testid="base-url-use-candidate"
+                onClick={() => saveOverride(candidate)}
+                className="font-semibold underline"
+              >
+                Use {candidate}
+              </button>
             </p>
           )}
 

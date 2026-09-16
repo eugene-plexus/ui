@@ -228,8 +228,67 @@ export function describeRemap(evidence: RemapEvidence): string | null {
   );
 }
 
-/** What was found at the address, for a person who is about to paste it. */
-export function describeVerdict(verdict: Verdict, baseUrl: string): { tone: Tone; text: string } {
+/**
+ * The port this install would publish the gateway on IF it shifts every
+ * port by the same amount -- which is what a container remap usually
+ * does, and what this one does.
+ *
+ * **This is a guess and it is never shown as an answer.** Everything
+ * else in this module refuses to assert an address it has not proved,
+ * and that rule does not bend here. What changes is that a guess can be
+ * TESTED: `verifyGatewayAddress` is the same instrument, needs no key,
+ * and a candidate that answers as this gateway is no longer a guess. So
+ * the card probes this silently and offers it only on a confirmation;
+ * a candidate that does not answer is never mentioned, and the honest
+ * failure stands.
+ *
+ * On the live install the agent is published 8079 -> 8279 and the
+ * gateway binds 8080, so the candidate is 8280 -- which is correct, and
+ * is the click that would have replaced an afternoon of looking at a
+ * qBittorrent instance.
+ *
+ * The offset is emphatically NOT a rule about how hosts publish ports.
+ * It is one cheap hypothesis, and the only reason it is allowed to
+ * reach a person is that it has been checked first.
+ */
+export function sameOffsetCandidate(baseUrl: string, remap: RemapEvidence): string | null {
+  if (remap.kind !== "remapped") return null;
+  const base = normalizeBase(baseUrl);
+  if (base === null) return null;
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    return null;
+  }
+  const current = url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
+  if (!Number.isInteger(current)) return null;
+  const candidate = current + (remap.pagePort - remap.agentPort);
+  if (candidate === current || candidate < 1 || candidate > 65535) return null;
+  url.port = String(candidate);
+  return `${url.protocol}//${url.host}`;
+}
+
+/**
+ * What was found at the address, for a person who is about to paste it.
+ *
+ * `baseUrl` is the ORIGIN, not the `/v1` address on screen. The first
+ * live run of this card reported "Something is listening at
+ * http://192.168.16.252:8080/v1" when what was listening was the origin;
+ * copy whose whole job is to be exact about an address may not be off by
+ * a path segment.
+ *
+ * `remapped` changes which explanation leads, because on this evidence
+ * one of them is much likelier than the other and the first live run got
+ * that backwards: it sent an operator to `corsEnabled` while a port-remap
+ * warning sat directly underneath saying the address was probably wrong.
+ */
+export function describeVerdict(
+  verdict: Verdict,
+  baseUrl: string,
+  opts: { remapped?: boolean } = {},
+): { tone: Tone; text: string } {
+  const remapped = opts.remapped === true;
   switch (verdict.kind) {
     case "confirmed":
       if (!verdict.authenticated) {
@@ -249,22 +308,44 @@ export function describeVerdict(verdict: Verdict, baseUrl: string): { tone: Tone
         tone: "error",
         text:
           `Something answered at ${baseUrl}, but it is not this gateway — it replied ` +
-          `${verdict.status}. Another service is on that port. Correct the address above.`,
+          `${verdict.status}. Another service is on that port, so this address will not work ` +
+          `in any app. Correct it above.`,
       };
     case "blocked":
+      // **The sentence this branch used to end on was the dangerous one.**
+      // "An app that is not a browser may still work" is true only if this
+      // really is our gateway with browser clients switched off. If
+      // something else owns the port it is false, and it invites exactly
+      // the action that started all of this: paste it into Continue
+      // anyway. It is now said only where it can be true, and never as
+      // reassurance on its own.
       return {
         tone: "error",
-        text:
-          `Something is listening at ${baseUrl}, but it would not answer this page. Either it is ` +
-          `not this gateway, or the gateway has browser clients turned off ` +
-          `(Config → Gateway → corsEnabled). An app that is not a browser may still work.`,
+        text: remapped
+          ? `Something is listening at ${baseUrl}, but it did not answer as this gateway — and ` +
+            `the ports on this machine are published differently (below), so this is most likely ` +
+            `the wrong port with another service on it. Correct the address above.`
+          : `Something is listening at ${baseUrl}, but it would not answer this page. Either the ` +
+            `gateway has browser clients turned off (Config → Gateway → corsEnabled), in which ` +
+            `case a non-browser app would still work — or this is not the gateway at all, in ` +
+            `which case nothing will. Correct the address above if you are not sure.`,
       };
     case "unreachable":
       return {
         tone: "warn",
         text:
-          `Nothing answered at ${baseUrl}. Check the port your host publishes for the gateway, ` +
-          `and that the machine lets the connection in — see "Reach it from other devices" below.`,
+          `Nothing answered at ${baseUrl}. ` +
+          (remapped
+            ? "The ports on this machine are published differently (below), so this is most " +
+              "likely the wrong port — correct the address above. "
+            : "") +
+          `Check the port your host publishes for the gateway, and that the machine lets the ` +
+          `connection in — see "Reach it from other devices" below.`,
       };
   }
+}
+
+/** The offer, once a candidate has actually answered. */
+export function describeCandidate(candidate: string): string {
+  return `${candidate} answers as this gateway. Use it?`;
 }
