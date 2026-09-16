@@ -8,10 +8,13 @@
  * to match the code -- the recurring failure this project records.
  */
 
+import type { NodeFacts } from "./issues";
 import type {
   ComponentPlacementList,
+  ComputeDevice,
   DriversInfo,
   RoutingTableView,
+  Runtime,
   RuntimeList,
   RuntimePlacementList,
 } from "./types";
@@ -173,4 +176,54 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
   }
 
   return rows.sort((a, b) => (a.model ?? a.driver ?? "").localeCompare(b.model ?? b.driver ?? ""));
+}
+
+/**
+ * What a node knows about its own runtimes that the control root does
+ * not.
+ *
+ * `RuntimePlacement` — the root's union view, which is what the rows
+ * above are built from — is `{node, name, modelAlias, status, url,
+ * engine}`. It carries no `flags`, no `lastRestart` and no `localPath`,
+ * so neither of the Inference screen's two honest states can be answered
+ * from it: whether a model declared no offload, how long it has been
+ * loading, and which share the bytes are crossing all live on the node's
+ * own `GET /v1/runtimes`. The devices come from the same node's
+ * `GET /v1/node`.
+ *
+ * Those four reads per node are exactly what the Issues poll already
+ * makes, which is why this takes `NodeFacts` rather than fetching: a
+ * second poll would double the traffic to every machine in the install
+ * to render two lines.
+ */
+export interface NodeDetail {
+  /** Null when that node did not answer, which is not the same as a
+   * machine with no accelerator — `describeCompute` says nothing at all
+   * for the first and something definite for the second. */
+  devices: ComputeDevice[] | null;
+  runtimes: Map<string, Runtime>;
+}
+
+/** Per-node detail, keyed the way `Row.node` is: the install name, or
+ * null for the local node on a host that has never enrolled. */
+export function nodeDetails(
+  facts: Pick<NodeFacts, "name" | "identity" | "runtimes">[],
+): Map<string | null, NodeDetail> {
+  const out = new Map<string | null, NodeDetail>();
+  for (const node of facts) {
+    out.set(node.name, {
+      devices: node.identity?.devices ?? null,
+      runtimes: new Map((node.runtimes?.runtimes ?? []).map((r) => [r.name, r])),
+    });
+  }
+  return out;
+}
+
+/** The node's own record of a row's runtime, when both are known. */
+export function runtimeOf(
+  row: Pick<Row, "node" | "runtime">,
+  details: Map<string | null, NodeDetail>,
+): Runtime | null {
+  if (!row.runtime) return null;
+  return details.get(row.node)?.runtimes.get(row.runtime) ?? null;
 }

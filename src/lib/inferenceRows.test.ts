@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { type Row, type Sources, buildRows } from "./inferenceRows";
+import { type Row, type Sources, buildRows, nodeDetails, runtimeOf } from "./inferenceRows";
 
 /** `noUncheckedIndexedAccess`: say what an empty result means. */
 function first(rows: Row[]): Row {
@@ -199,5 +199,66 @@ describe("buildRows joins and fallbacks", () => {
     expect(rows).toHaveLength(1);
     expect(first(rows).node).toBe("this-box");
     expect(first(rows).runtime).toBe("solo");
+  });
+});
+
+describe("nodeDetails, the half the control root cannot answer", () => {
+  it("keys by the node name a row carries, null host included", () => {
+    const details = nodeDetails([
+      {
+        name: null,
+        identity: JSON.parse('{"enrolled":false,"devices":[{"kind":"cuda"}]}'),
+        runtimes: JSON.parse(
+          String.raw`{"runtimes":[{"name":"r1","engine":"llama_cpp",
+            "modelPath":"/m/a.gguf","status":"loading",
+            "lastRestart":"2026-09-16T13:59:26.000Z",
+            "localPath":"\\\\tower\\models\\a.gguf",
+            "flags":{"gpuLayers":0}}]}`,
+        ),
+      },
+    ]);
+    const detail = details.get(null);
+    expect(detail?.devices).toHaveLength(1);
+    const runtime = detail?.runtimes.get("r1");
+    // The four fields `RuntimePlacement` does not carry, which is the
+    // whole reason this read exists.
+    expect(runtime?.flags).toEqual({ gpuLayers: 0 });
+    expect(runtime?.lastRestart).toBe("2026-09-16T13:59:26.000Z");
+    expect(runtime?.localPath).toBe(String.raw`\\tower\models\a.gguf`);
+  });
+
+  it("keeps 'did not answer' apart from 'has no accelerator'", () => {
+    // `describeCompute` says nothing at all for the first and something
+    // definite for the second, so collapsing them would put "on the
+    // processor" on every row of a node that is merely slow to reply.
+    const details = nodeDetails([
+      { name: "down", identity: null, runtimes: null },
+      { name: "cpu-only", identity: JSON.parse('{"enrolled":true,"devices":[]}'), runtimes: null },
+    ]);
+    expect(details.get("down")?.devices).toBeNull();
+    expect(details.get("cpu-only")?.devices).toEqual([]);
+  });
+});
+
+describe("runtimeOf", () => {
+  const details = nodeDetails([
+    {
+      name: "Amish_Station",
+      identity: null,
+      runtimes: JSON.parse(
+        '{"runtimes":[{"name":"r1","engine":"llama_cpp","modelPath":"/m/a.gguf","status":"ready"}]}',
+      ),
+    },
+  ]);
+
+  it("finds a row's runtime on its own node", () => {
+    expect(runtimeOf({ node: "Amish_Station", runtime: "r1" }, details)?.status).toBe("ready");
+  });
+
+  it("is null for a row with no runtime, or a node that did not answer", () => {
+    expect(runtimeOf({ node: "Amish_Station", runtime: null }, details)).toBeNull();
+    expect(runtimeOf({ node: "elsewhere", runtime: "r1" }, details)).toBeNull();
+    // And never another node's runtime that happens to share a name.
+    expect(runtimeOf({ node: null, runtime: "r1" }, details)).toBeNull();
   });
 });

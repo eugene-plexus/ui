@@ -1,13 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ApiError, api, describeError } from "@/lib/api";
 import { describeControlRoot } from "@/lib/controlRoot";
-import { type Row, type Sources, buildRows } from "@/lib/inferenceRows";
+import {
+  type NodeDetail,
+  type Row,
+  type Sources,
+  buildRows,
+  nodeDetails,
+  runtimeOf,
+} from "@/lib/inferenceRows";
+import { describeCompute, describeLoading } from "@/lib/issues";
+import { loadKey, recallLoadSeconds, rememberLoadSeconds } from "@/lib/loadMemory";
 import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib/nodeBudget";
+import { useIssues } from "@/lib/useIssues";
 import type {
   ComponentPlacementList,
   DriversInfo,
@@ -100,6 +110,16 @@ export default function InferencePage() {
   const localName = picker.nodes.find((n) => n.local)?.name ?? null;
 
   const [sources, setSources] = useState<Sources | null>(null);
+  // The Issues poll already reads every node's own `/v1/runtimes` and
+  // `/v1/node`, which is where `flags`, `lastRestart`, `localPath` and
+  // the device list live -- none of them on the control root's union
+  // view. Shared rather than fetched again: a second poll would double
+  // the traffic to every machine in the install to render two lines.
+  const { facts } = useIssues();
+  // `now` ticks on this screen's own cadence so elapsed counts up
+  // between those slower reads. What it counts from is `lastRestart`, an
+  // absolute instant, so a stale read cannot make the number wrong.
+  const [now, setNow] = useState(() => Date.now());
   const [gaps, setGaps] = useState<string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -150,7 +170,42 @@ export default function InferencePage() {
     return () => clearInterval(id);
   }, [load]);
 
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), POLL_MS);
+    return () => clearInterval(id);
+  }, []);
+
   const rows = useMemo(() => (sources ? buildRows(sources, localName) : []), [sources, localName]);
+  const details = useMemo(() => nodeDetails(facts), [facts]);
+
+  /**
+   * Watch a load finish, so the next one can be estimated.
+   *
+   * There is nothing else to learn it from: no engine reports load
+   * progress, so the only material for "about two minutes left" is a
+   * load this browser already sat through. Recorded on the transition
+   * out of loading, from `lastRestart` -- the true start, rather than
+   * whenever this screen happened to be opened.
+   */
+  const wasLoading = useRef(new Map<string, string>());
+  useEffect(() => {
+    const previous = wasLoading.current;
+    const next = new Map<string, string>();
+    for (const row of rows) {
+      if (!row.runtime || !row.runtimeStatus) continue;
+      next.set(row.key, row.runtimeStatus);
+      const before = previous.get(row.key);
+      const finished =
+        (before === "loading" || before === "starting") && row.runtimeStatus === "ready";
+      if (!finished) continue;
+      const started = runtimeOf(row, details)?.lastRestart;
+      if (!started) continue;
+      const at = Date.parse(started);
+      if (Number.isNaN(at)) continue;
+      rememberLoadSeconds(loadKey(row.node, row.model), (Date.now() - at) / 1000);
+    }
+    wasLoading.current = next;
+  }, [rows, details]);
   const controlRoot = useMemo(() => describeControlRoot(sources?.routing?.control_root), [sources]);
 
   const byNode = useMemo(() => {
@@ -303,6 +358,8 @@ export default function InferencePage() {
               node={picker.nodes.find((n) => n.name === name) ?? null}
               localName={localName}
               rows={byNode.get(name) ?? []}
+              detail={details.get(name) ?? null}
+              now={now}
               busy={busy}
               onAct={act}
               onRemove={remove}
@@ -337,6 +394,8 @@ function NodeSection({
   node,
   localName,
   rows,
+  detail,
+  now,
   busy,
   onAct,
   onRemove,
@@ -345,6 +404,10 @@ function NodeSection({
   node: TargetNode | null;
   localName: string | null;
   rows: Row[];
+  /** This node's own view of its runtimes and devices, from the Issues
+   * poll; null while it has not answered. */
+  detail: NodeDetail | null;
+  now: number;
   busy: string | null;
   onAct: (node: string | null, runtime: string, action: "start" | "stop" | "restart") => void;
   onRemove: (row: Row) => void;
@@ -399,6 +462,8 @@ function NodeSection({
                   key={row.key}
                   row={row}
                   engines={engines}
+                  detail={detail}
+                  now={now}
                   busy={busy}
                   onAct={onAct}
                   onRemove={onRemove}
@@ -415,6 +480,8 @@ function NodeSection({
 function RowView({
   row,
   engines,
+  detail,
+  now,
   busy,
   onAct,
   onRemove,
@@ -422,12 +489,44 @@ function RowView({
   row: Row;
   /** The node's engines, or null while unknown. */
   engines: EngineDescriptor[] | null;
+  /** That node's own view of its runtimes and devices, or null while it
+   * has not answered. Null is "we do not know", which both states below
+   * treat as a reason to say nothing rather than to guess. */
+  detail: NodeDetail | null;
+  /** This screen's clock, so elapsed counts up between the slower
+   * per-node reads. */
+  now: number;
   busy: string | null;
   onAct: (node: string | null, runtime: string, action: "start" | "stop" | "restart") => void;
   onRemove: (row: Row) => void;
 }) {
   const status = row.runtimeStatus as RuntimeStatus | null;
   const known = status !== null && status in STATUS_TONE;
+  // S7's two honest states. Both are built from what is actually known
+  // and say which: nothing reports where a model's weights went, and
+  // nothing counts a model load, so neither line is ever a guess
+  // dressed as a measurement.
+  const own = row.runtime ? (detail?.runtimes.get(row.runtime) ?? null) : null;
+  const compute = describeCompute(
+    { engine: own?.engine ?? row.engine, flags: own?.flags ?? null },
+    // `?? null` and never `?? []`: a node that answered its runtimes but
+    // not its identity has `devices: null`, and turning that into an
+    // empty list would print "on the processor" on every row of a
+    // machine that is merely slow to reply.
+    detail?.devices ?? null,
+  );
+  const loading = describeLoading(
+    {
+      // The status comes from this screen's own fast poll, not from the
+      // slower per-node read, so a model that has finished loading stops
+      // saying so at this screen's cadence rather than the Issues one.
+      status: row.runtimeStatus,
+      lastRestart: own?.lastRestart ?? null,
+      localPath: own?.localPath ?? null,
+    },
+    now,
+    recallLoadSeconds(loadKey(row.node, row.model)),
+  );
   const prefix = `${row.node ?? ""}/${row.runtime ?? ""}:`;
   const missingEngine = stoppedForWantOfEngine(row, engines);
   return (
@@ -484,6 +583,20 @@ function RowView({
           <div className="text-[11px]" data-testid="stopped-reason">
             {engineWord(missingEngine)} is not installed on this machine, so this cannot start.
             Install it above, then press start.
+          </div>
+        )}
+        {loading && (
+          <div className="text-[11px] text-[color:var(--muted)]" data-testid="loading-detail">
+            {loading}
+          </div>
+        )}
+        {compute && (
+          <div
+            className={`text-[11px] ${compute.tone === "warn" ? "text-status-warn" : "text-[color:var(--muted)]"}`}
+            data-testid="compute-detail"
+            title={compute.detail}
+          >
+            {compute.text}
           </div>
         )}
         {row.eligible === false && row.ineligibleReason && (

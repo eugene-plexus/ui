@@ -180,6 +180,17 @@ async function readRoster(
 
 export interface IssuesState {
   issues: Issue[];
+  /**
+   * The raw per-node reads the issues were derived from.
+   *
+   * Exposed because the Inference screen needs three fields the control
+   * root's `RuntimePlacement` does not carry — `flags`, `lastRestart`
+   * and `localPath` — plus each node's device list, and those are
+   * exactly what this poll already fetched. A second poll for the same
+   * four endpoints would double the traffic to every node in the
+   * install to render two lines.
+   */
+  facts: NodeFacts[];
   /** Blocking if anything is, so the badge can colour itself without
    * being opened. Null when the list is empty. */
   worst: IssueSeverity | null;
@@ -194,6 +205,7 @@ export interface IssuesState {
 
 export function useIssues(): IssuesState {
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [facts, setFacts] = useState<NodeFacts[]>([]);
   const [loaded, setLoaded] = useState(false);
   // `reload` can be called while a poll is in flight, and the two can
   // finish in either order. Only the newest answer is allowed to land.
@@ -239,6 +251,7 @@ export function useIssues(): IssuesState {
     ]);
 
     if (mine !== sequence.current) return;
+    setFacts(perNode);
     setIssues(
       issuesFrom({
         controlRoot: routing?.control_root,
@@ -253,5 +266,5 @@ export function useIssues(): IssuesState {
   usePolling(load, POLL_MS);
 
   const worst = useMemo(() => worstSeverity(issues), [issues]);
-  return { issues, worst, loaded, reload: load };
+  return { issues, facts, worst, loaded, reload: load };
 }
