@@ -116,6 +116,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/client-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The long-lived keys this install has minted for outside clients.
+         * @description One record per key, newest first. **The token itself is not
+         *     here** — it is returned once, by the POST that made it, and is
+         *     not stored anywhere afterwards. What is stored is enough to tell
+         *     two keys apart in a list: the name the operator gave it, the
+         *     last few characters of the token, when it was made, when it
+         *     expires, and whether it has been revoked.
+         *
+         *     Operator-only. A service token may not read the list; the one
+         *     thing a component needs from it is the revoked set, which has
+         *     its own endpoint.
+         */
+        get: operations["listClientKeys"];
+        put?: never;
+        /**
+         * Mint a long-lived key for an app outside this install.
+         * @description Returns the bearer an OpenAI-compatible client presents to the
+         *     gateway — Continue, Cline, Open WebUI, SillyTavern, the OpenAI
+         *     SDK, `curl`. Signed with the install's signing key like every
+         *     other token here, and carrying `aud: client`, which **only the
+         *     gateway's three OpenAI-compatible paths accept**
+         *     (`/v1/models`, `/v1/chat/completions`, `/v1/embeddings`). It
+         *     opens no operator surface anywhere: this agent, the control
+         *     root, the library and the gateway's own config and admin paths
+         *     all refuse it.
+         *
+         *     Until this endpoint the only bearer a person could give a
+         *     harness was the **operator session token** — a credential that
+         *     can do everything, shown in a diagnostic panel, and expired
+         *     fourteen days after sign-in. A key per app, revocable one at a
+         *     time, is what replaces it.
+         *
+         *     **`token` is shown once.** The agent keeps the record, not the
+         *     token: there is nothing to steal from the record file and
+         *     nothing to re-read, so a lost key is re-minted rather than
+         *     recovered.
+         *
+         *     ### Which agent to ask
+         *
+         *     A client key is an **install-wide** credential — the whole
+         *     install shares one signing key, so a key minted anywhere
+         *     verifies everywhere. Its *record* is not install-wide: it lives
+         *     on the agent that minted it, and the gateway checks revocations
+         *     against **its own node's agent**. So mint against the node the
+         *     gateway runs on. A console on another machine reaches that agent
+         *     the way it reaches anything else, through `node:<name>` — nobody
+         *     has to open a browser on that machine
+         *     (`one-console-never-hop-nodes`).
+         *
+         *     Operator-only, and it is one of the few endpoints where that
+         *     matters as much as it does on the trust root: a token minted
+         *     here outlives every session.
+         */
+        post: operations["createClientKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/client-keys/revoked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The ids of client keys that must no longer be accepted.
+         * @description What the **gateway** polls, and the only part of the key records
+         *     a component may read. Ids only: a revoked key's name is the
+         *     operator's business, and the gateway needs nothing but the `jti`
+         *     to refuse.
+         *
+         *     Accepts the operator's session token or `service:gateway`
+         *     exactly — not any service token. A leaked driver or library
+         *     token learns nothing from here, the same narrowing that starting
+         *     and stopping a runtime already applies.
+         *
+         *     **Bounded, not instant.** The gateway caches this list and
+         *     re-reads it when its copy is older than its routing refresh
+         *     interval, so a revoked key stops working within about that
+         *     interval rather than on the next request. `revision` changes
+         *     whenever the set does, so a reader can log the change instead of
+         *     the poll. A key whose `expiresAt` has passed is dropped from the
+         *     set — its signature check already refuses it, and a revocation
+         *     list that only grows is a leak.
+         *
+         *     **When this endpoint cannot be reached the gateway keeps its
+         *     last answer and serves.** Refusing every client key because the
+         *     local agent blipped would take an install's harnesses down for a
+         *     restart, and the token still has to carry a valid signature and
+         *     an unexpired `exp`. The strong revocation, unchanged since M7,
+         *     is rotating the install's signing key, which invalidates
+         *     everything at once.
+         */
+        get: operations["listRevokedClientKeys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/client-keys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one client key.
+         * @description The record stays, marked revoked with a timestamp, until the
+         *     key's own expiry passes — a list that forgets what was revoked
+         *     cannot tell "this key was never made here" from "this key was
+         *     turned off".
+         *
+         *     Takes effect at the gateway within one of its routing refresh
+         *     intervals (15 s by default), not on the next request. The
+         *     endpoint above says why.
+         *
+         *     Revoking a key nobody still holds the token for is the normal
+         *     case: the record's `id` identifies it, and the token was shown
+         *     once.
+         */
+        delete: operations["revokeClientKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/components": {
         parameters: {
             query?: never;
@@ -1329,6 +1473,112 @@ export interface components {
              */
             keyringAvailable?: boolean;
         };
+        /**
+         * @description A long-lived bearer this install minted for an app outside it
+         *     (hobbyist UX S4, 2026-09-15) — as a *record*, never as the token.
+         *
+         *     Before these existed the only key a person could paste into
+         *     Continue or Open WebUI was the operator session token: full
+         *     authority, expired in fourteen days, and shown only inside the
+         *     playground's diagnostic panel. A client key carries
+         *     `aud: client`, which the gateway accepts on its three
+         *     OpenAI-compatible paths and nothing else accepts anywhere.
+         */
+        ClientKey: {
+            /**
+             * @description The token's `jti` claim, and what `DELETE` takes. Random per
+             *     key; the only thing the gateway needs in order to refuse one.
+             */
+            id: string;
+            /**
+             * @description What the operator called it — "Continue on the laptop",
+             *     "phone". Not unique: two keys for the same app are a normal
+             *     thing to want, and refusing the second would be a rule
+             *     invented for the list's benefit rather than the person's.
+             */
+            name: string;
+            /**
+             * @description The last few characters of the token, so a key in this list
+             *     can be matched against one already pasted into an app.
+             *
+             *     **Deliberately the tail and not a prefix.** The token is a
+             *     JWT: every key this install mints begins with the same
+             *     `eyJhbGciOiJIUzI1NiIs…` header, so a prefix identifies
+             *     nothing. Short enough to be useless on its own.
+             */
+            tail: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description The `exp` claim. Past it the gateway refuses the token on
+             *     signature validation alone, with no list to consult.
+             */
+            expiresAt: string;
+            /**
+             * Format: date-time
+             * @description Set once the key has been revoked. The record is kept until
+             *     `expiresAt` passes so the list can say "turned off" rather
+             *     than going silent.
+             */
+            revokedAt?: string;
+            /**
+             * Format: date-time
+             * @description Reserved. Nothing writes it: the agent never sees a client
+             *     key — the gateway does — and reporting a *last used* the
+             *     install cannot observe would be worse than reporting none.
+             *     Kept in the shape so a future gateway-side counter has
+             *     somewhere to land.
+             */
+            lastUsedAt?: string;
+        };
+        ClientKeyList: {
+            keys: components["schemas"]["ClientKey"][];
+        };
+        ClientKeyCreateRequest: {
+            /**
+             * @description What this key is for, in the operator's words. Shown in the
+             *     list and nowhere else; it is not part of the token.
+             */
+            name: string;
+            /**
+             * @description How long the key lives. A year by default: long enough that
+             *     a person who set up Continue once does not come back to a
+             *     dead key, short enough that a key forgotten in a config file
+             *     eventually stops working. **No "never expires" option** —
+             *     the revocation path here is a bounded-staleness list, and a
+             *     token with no expiry at all leans on it entirely.
+             * @default 365
+             */
+            ttlDays: number;
+        };
+        /** @description The one and only time the token is on the wire from this agent. */
+        ClientKeyCreated: {
+            key: components["schemas"]["ClientKey"];
+            /**
+             * @description The bearer itself. Not stored: the agent keeps the record
+             *     and forgets this. A caller that does not keep it mints
+             *     another.
+             */
+            token: string;
+        };
+        /**
+         * @description What the gateway polls. Ids only, and the revision at which the
+         *     set last changed.
+         */
+        ClientKeyRevocations: {
+            /**
+             * @description `jti`s to refuse. Excludes keys whose `expiresAt` has passed:
+             *     those are refused by expiry, and keeping them here would
+             *     make this list grow forever.
+             */
+            ids: string[];
+            /**
+             * @description Increments whenever the set changes. A reader logs on a
+             *     change rather than on every poll.
+             */
+            revision: number;
+        };
         AuthInitializeRequest: {
             /**
              * Format: password
@@ -1517,8 +1767,18 @@ export interface components {
             /**
              * @description For CUDA, the highest version the installed driver supports.
              *     Selection takes the highest published build whose major
-             *     matches and whose minor is no greater than this; a higher
-             *     major is never chosen.
+             *     matches and whose minor is no greater than this. When the
+             *     release publishes no such build — upstream moved from 13.3
+             *     to 13.4 on 2026-09-15 and stopped shipping 13.3 — the lowest
+             *     published minor **above** it within the same major is taken
+             *     instead, under CUDA's minor-version compatibility (an
+             *     application built with any 13.x toolkit runs on any 13.x
+             *     driver, minus PTX JIT for newer PTX and APIs the driver
+             *     lacks; verified live with b10990's 13.4 build on a 13.3
+             *     driver), and the agent logs the choice. A different major
+             *     is never chosen, and the refusal says so. The candidate
+             *     minors are read from the release's own asset names, not a
+             *     table: the table this replaced went stale in a day.
              */
             acceleratorVersion?: string;
         };
@@ -3173,6 +3433,112 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Problem"];
+        };
+    };
+    listClientKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The key records. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    createClientKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientKeyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Minted. `token` will not be shown again. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyCreated"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description The name is empty, or the lifetime is out of range. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listRevokedClientKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The revoked ids. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyRevocations"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    revokeClientKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked, or already revoked — both are 204. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            /** @description No key with that id on this agent. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listComponents: {

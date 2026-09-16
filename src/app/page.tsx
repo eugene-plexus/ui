@@ -7,12 +7,15 @@ import { FirstModelCard } from "@/components/home/FirstModelCard";
 import { MachineStrip } from "@/components/home/MachineStrip";
 import { RunningCard } from "@/components/home/RunningCard";
 import { TryItCard } from "@/components/home/TryItCard";
+import { UseFromAppsCard } from "@/components/home/UseFromAppsCard";
 import { api } from "@/lib/api";
 import { PROXY, listModels } from "@/lib/completions";
+import { guessGatewayBaseUrl } from "@/lib/diagnostic";
 import { chatModels, firstModelState, machineStrip } from "@/lib/home";
 import { type Sources, buildRows } from "@/lib/inferenceRows";
 import { localTargetNode } from "@/lib/nodeBudget";
 import type {
+  ComponentList,
   ComponentPlacementList,
   DriversInfo,
   EngineList,
@@ -56,9 +59,12 @@ import { useTasks } from "@/lib/useTasks";
  * in one click — the state a person is in the moment their first download
  * finishes — and the run's progress renders in the card and in the tray.
  *
- * **Not here yet, by plan:** "Use it from your apps" (S4, needs client
- * keys), "Reach it from other devices" (S5), "Needs attention" (S7), and
- * the recommended model in the first card (S6).
+ * **Since S4:** "Use it from your apps" — the address, a long-lived key
+ * and the model id, with a recipe per app — appears as soon as the
+ * gateway routes to something. §0.8 measured what it replaces: nothing.
+ *
+ * **Not here yet, by plan:** "Reach it from other devices" (S5), "Needs
+ * attention" (S7), and the recommended model in the first card (S6).
  */
 
 const SLOW_POLL_MS = 15000;
@@ -75,17 +81,24 @@ export default function HomePage() {
   const [models, setModels] = useState<ModelList | null>(null);
   const [gatewayFailed, setGatewayFailed] = useState(false);
   const [sources, setSources] = useState<Sources | null>(null);
+  // The local agent's component list, for the gateway's PORT — the only
+  // part of its address that survives the trip to a browser reached
+  // through the proxy. `guessGatewayBaseUrl` explains why.
+  const [components, setComponents] = useState<ComponentList | null>(null);
   const { tasks } = useTasks();
 
   const loadSlow = useCallback(async () => {
-    const [nodeResult, enginesResult, libraryResult, modelsResult] = await Promise.all([
-      api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),
-      api.get<EngineList>("agent", "/v1/engines").catch(() => null),
-      api.get<LibraryModelList>("library", "/v1/models").catch(() => null),
-      listModels(PROXY).catch(() => null),
-    ]);
+    const [nodeResult, enginesResult, libraryResult, modelsResult, componentsResult] =
+      await Promise.all([
+        api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),
+        api.get<EngineList>("agent", "/v1/engines").catch(() => null),
+        api.get<LibraryModelList>("library", "/v1/models").catch(() => null),
+        listModels(PROXY).catch(() => null),
+        api.get<ComponentList>("agent", "/v1/components").catch(() => null),
+      ]);
     setNode(nodeResult);
     setEngines(enginesResult);
+    if (componentsResult !== null) setComponents(componentsResult);
     // The last good answer is kept and the failure is flagged beside it,
     // so the card can say "did not answer" without the count flickering
     // to zero on one missed poll.
@@ -134,6 +147,24 @@ export default function HomePage() {
     [sources, node],
   );
   const downloads = useMemo(() => tasks.filter((t) => t.kind === "download"), [tasks]);
+  // The address a harness would use, guessed the same way the playground's
+  // diagnostic panel guesses it — and, like there, labelled a guess and
+  // correctable, because a container that publishes 8080 as 8280 makes it
+  // wrong in exactly the way a harness handed the same numbers would be.
+  const gatewayPortUrl = useMemo(
+    () =>
+      typeof window === "undefined" || components === null
+        ? null
+        : guessGatewayBaseUrl(
+            (components.components ?? []).map((c) => ({
+              kind: String(c.kind ?? ""),
+              url: c.url ?? "",
+              advertiseUrl: c.advertiseUrl ?? undefined,
+            })),
+            { protocol: window.location.protocol, hostname: window.location.hostname },
+          ),
+    [components],
+  );
 
   if (gate === "checking") {
     return (
@@ -150,6 +181,14 @@ export default function HomePage() {
           <MachineStrip strip={strip} />
           <FirstModelCard state={state} downloads={downloads} node={here} />
           {chat.length > 0 && <TryItCard models={chat} />}
+          {chat.length > 0 && (
+            <UseFromAppsCard
+              models={chat}
+              gatewayPortUrl={gatewayPortUrl}
+              placement={sources?.placement ?? null}
+              localNode={node?.name ?? null}
+            />
+          )}
           <RunningCard rows={rows} />
         </div>
       </main>

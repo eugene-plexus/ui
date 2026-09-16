@@ -3,7 +3,9 @@
 import { useState } from "react";
 
 import { CopyButton } from "@/components/CopyButton";
+import { api, describeError } from "@/lib/api";
 import { type PageLocation, baseUrlHints, displayBaseUrl } from "@/lib/diagnostic";
+import type { ClientKeyCreated } from "@/lib/types";
 
 export type GatewayMode = "proxy" | "direct";
 
@@ -44,6 +46,35 @@ export function DiagnosticPanel({
   page: PageLocation;
 }) {
   const [revealed, setRevealed] = useState(false);
+  const [minting, setMinting] = useState(false);
+  const [mintError, setMintError] = useState<string | null>(null);
+
+  /**
+   * Mint a client key and put it in the field (S4).
+   *
+   * The panel exists to reproduce what a harness does, and since S4 what
+   * a harness is *given* is a client key rather than the operator's
+   * session -- so a diagnostic run with the session token is now a run
+   * with a credential the real client will not be holding. One button,
+   * on the local agent: the panel is about this page's own reachability,
+   * and picking a node here would be a second idea in an instrument
+   * whose value is that it has one.
+   */
+  async function mintClientKey() {
+    if (minting) return;
+    setMinting(true);
+    setMintError(null);
+    try {
+      const made = await api.post<ClientKeyCreated>("agent", "/v1/auth/client-keys", {
+        name: "Playground diagnostic",
+      });
+      onApiKey(made.token);
+    } catch (e) {
+      setMintError(describeError(e));
+    } finally {
+      setMinting(false);
+    }
+  }
   const hints = mode === "direct" ? baseUrlHints(baseUrl, page) : [];
   const guessDisplay = guess ? displayBaseUrl(guess) : null;
   const keyIsSession = sessionToken !== null && apiKey === sessionToken;
@@ -155,12 +186,29 @@ export function DiagnosticPanel({
                   Use this session&apos;s token
                 </button>
               )}
+              <button
+                type="button"
+                data-testid="mint-client-key"
+                disabled={minting}
+                onClick={() => void mintClientKey()}
+                className="rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
+              >
+                {minting ? "Making…" : "Make a client key"}
+              </button>
             </span>
           </label>
+          {mintError && (
+            <p className="status-error rounded-[var(--radius)] px-2 py-1 text-[11px]">
+              {mintError}
+            </p>
+          )}
           <p className="font-ui text-[11px] text-[color:var(--muted)]">
             {keyIsSession
-              ? "This is the token you were issued when you signed in. It is what an OpenAI client uses as its API key, and it expires 14 days after sign-in."
-              : "A key you typed. The gateway accepts the operator's session token or a component's service token; anything else is refused with a 401."}
+              ? "This is the token you were issued when you signed in. It can do everything you can " +
+                "and it expires 14 days after sign-in, so it is right for a one-off check and wrong " +
+                "for a harness you leave configured -- make a client key for that."
+              : "A key you typed or made. The gateway accepts the operator's session token, a " +
+                "component's service token, or a client key; anything else is refused with a 401."}
           </p>
         </>
       )}

@@ -117,6 +117,15 @@ export type Admission = AgentComponents["schemas"]["Admission"];
 export type ModelLocation = AgentComponents["schemas"]["ModelLocation"];
 export type PathMapping = AgentComponents["schemas"]["PathMapping"];
 
+// A long-lived key for an app outside the install (S4, 2026-09-15). The
+// record only -- the token is on the wire once, in `ClientKeyCreated`,
+// and the agent forgets it. `tail` is the last few characters, because
+// every JWT this install mints shares the same prefix.
+export type ClientKey = AgentComponents["schemas"]["ClientKey"];
+export type ClientKeyList = AgentComponents["schemas"]["ClientKeyList"];
+export type ClientKeyCreated = AgentComponents["schemas"]["ClientKeyCreated"];
+export type ClientKeyCreateRequest = AgentComponents["schemas"]["ClientKeyCreateRequest"];
+
 // One directory on a component's host, for the picker behind every path
 // field. The same shape on the library and the agent, which is what lets
 // one picker serve both.
