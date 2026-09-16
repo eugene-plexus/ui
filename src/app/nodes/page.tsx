@@ -35,6 +35,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api } from "@/lib/api";
+import { isLockedError } from "@/lib/controlUnlock";
 
 interface NodeRow {
   name: string;
@@ -155,7 +156,7 @@ export default function NodesPage() {
     } catch (e) {
       // A sealed root is not an error to report, it is a thing to offer
       // to fix — so it gets the panel below instead of the red box.
-      if (isLocked(e)) {
+      if (isLockedError(e)) {
         setLocked(true);
         setError(null);
       } else {
@@ -508,22 +509,6 @@ function problemOf(e: unknown): { type?: string; title?: string; detail?: string
   const detail = (e.body as { detail?: unknown }).detail;
   if (typeof detail !== "object" || detail === null) return null;
   return detail as { type?: string; title?: string; detail?: string };
-}
-
-/**
- * Is this the *sealed* 503 rather than the *uninitialized* one?
- *
- * The control root distinguishes them carefully — `dependencies.py` says
- * telling them apart "matters most on the day it matters at all",
- * because "run first-run setup" is advice to wipe an install that
- * already exists. This page used to throw the distinction away by
- * returning one sentence for every 503, so a sealed root read as an
- * absent one.
- */
-function isLocked(e: unknown): boolean {
-  if (!(e instanceof ApiError) || e.status !== 503) return false;
-  const p = problemOf(e);
-  return p?.type?.endsWith("#locked") === true || p?.title === "Locked";
 }
 
 function describe(e: unknown): string {

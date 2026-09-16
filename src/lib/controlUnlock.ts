@@ -34,6 +34,29 @@ export type ControlUnlockOutcome =
  * enough that a dead root does not hold the login screen hostage. */
 const UNLOCK_TIMEOUT_MS = 8000;
 
+/**
+ * Is this the *sealed* 503 rather than the *uninitialized* one?
+ *
+ * The control root distinguishes them carefully — `dependencies.py` says
+ * telling them apart "matters most on the day it matters at all",
+ * because "run first-run setup" is advice to wipe an install that
+ * already exists. The Nodes page once threw the distinction away by
+ * returning one sentence for every 503, so a sealed root read as an
+ * absent one.
+ *
+ * It lives here, beside the unlock, rather than in each screen that asks
+ * the question: two copies of this rule are two chances to flatten the
+ * distinction again, and the Issues badge asks it on every page now.
+ */
+export function isLockedError(e: unknown): boolean {
+  if (!(e instanceof ApiError) || e.status !== 503) return false;
+  if (typeof e.body !== "object" || e.body === null) return false;
+  const detail = (e.body as { detail?: unknown }).detail;
+  if (typeof detail !== "object" || detail === null) return false;
+  const problem = detail as { type?: string; title?: string };
+  return problem.type?.endsWith("#locked") === true || problem.title === "Locked";
+}
+
 export async function unlockControlRoot(
   passphrase: string,
   sessionToken: string,
