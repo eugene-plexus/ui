@@ -1,0 +1,5 @@
+# The payload is a built static export. Nothing compiled at import
+# time belongs in it: a stray __pycache__ shipped into the wheel once
+# and is bytes every installer downloads for nothing.
+__pycache__/
+*.pyc
