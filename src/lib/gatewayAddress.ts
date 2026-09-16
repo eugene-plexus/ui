@@ -286,9 +286,23 @@ export function sameOffsetCandidate(baseUrl: string, remap: RemapEvidence): stri
 export function describeVerdict(
   verdict: Verdict,
   baseUrl: string,
-  opts: { remapped?: boolean } = {},
+  opts: { remapped?: boolean; hasCandidate?: boolean } = {},
 ): { tone: Tone; text: string } {
   const remapped = opts.remapped === true;
+  // **When a working address has been found, stop explaining.** The
+  // live run put four paragraphs under one field and said "this install
+  // publishes ports differently" in three of them: once in the verdict,
+  // once in the remap warning below it, and once in the static caption
+  // under that. A person who is being handed the answer needs the
+  // answer and one sentence of why, and the card suppresses the other
+  // two. The long form is still what they get when there is no
+  // candidate, because then the explanation IS the help.
+  if (opts.hasCandidate === true && verdict.kind !== "confirmed") {
+    return {
+      tone: "warn",
+      text: `Nothing answered as this gateway at ${baseUrl} — this install publishes its ports differently.`,
+    };
+  }
   switch (verdict.kind) {
     case "confirmed":
       if (!verdict.authenticated) {
@@ -345,7 +359,14 @@ export function describeVerdict(
   }
 }
 
-/** The offer, once a candidate has actually answered. */
+/**
+ * The offer, once a candidate has actually answered.
+ *
+ * The address appears once. The first version read "…answers as this
+ * gateway. Use it?" beside a button reading "Use <the address again>",
+ * which asked the same question twice and printed a 30-character URL
+ * twice in an 11px line. The button carries the ask.
+ */
 export function describeCandidate(candidate: string): string {
-  return `${candidate} answers as this gateway. Use it?`;
+  return `${candidate} answers as this gateway.`;
 }

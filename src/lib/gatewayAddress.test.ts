@@ -361,3 +361,49 @@ describe("describeCandidate", () => {
     expect(describeCandidate("http://192.168.16.252:8280")).toContain("http://192.168.16.252:8280");
   });
 });
+
+describe("describeVerdict, when a working address has already been found", () => {
+  // The live run put four paragraphs under one field and said "this
+  // install publishes ports differently" in three of them. A person
+  // being handed the answer needs the answer and one line of why.
+  it("says it once, briefly", () => {
+    const { tone, text } = describeVerdict({ kind: "blocked" }, "http://192.168.16.252:8080", {
+      remapped: true,
+      hasCandidate: true,
+    });
+    expect(tone).toBe("warn");
+    expect(text.length).toBeLessThan(140);
+    expect(text).not.toMatch(/correct the address/i);
+    expect(text).not.toMatch(/corsEnabled/);
+  });
+
+  // ...but only when there IS one. With nothing to offer, the
+  // explanation is the help, so the long form must survive.
+  it("keeps the long form when there is nothing to offer", () => {
+    const { text } = describeVerdict({ kind: "blocked" }, "http://nas:8080", {
+      remapped: true,
+      hasCandidate: false,
+    });
+    expect(text).toMatch(/correct the address/i);
+  });
+
+  // A confirmed address is never demoted to the short form: "checked,
+  // the gateway answered" is the whole point of the card.
+  it("never shortens a confirmation", () => {
+    const { tone, text } = describeVerdict(
+      { kind: "confirmed", models: ["m"], authenticated: true },
+      "http://nas:8280",
+      { hasCandidate: true },
+    );
+    expect(tone).toBe("ok");
+    expect(text).toMatch(/Checked/);
+  });
+});
+
+describe("describeCandidate, once more", () => {
+  it("prints the address once and leaves the ask to the button", () => {
+    const text = describeCandidate("http://192.168.16.252:8280");
+    expect(text.match(/192\.168\.16\.252:8280/g)).toHaveLength(1);
+    expect(text).not.toMatch(/use it\?/i);
+  });
+});

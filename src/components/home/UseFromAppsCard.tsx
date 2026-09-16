@@ -216,7 +216,10 @@ export function UseFromAppsCard({
   // `baseUrl`, not `display`: what is listening is at the origin, and
   // the first live run said "listening at http://...:8080/v1".
   const verdictText = verdict
-    ? describeVerdict(verdict, baseUrl, { remapped: evidence.kind === "remapped" })
+    ? describeVerdict(verdict, baseUrl, {
+        remapped: evidence.kind === "remapped",
+        hasCandidate: candidate !== null,
+      })
     : null;
 
   async function mint(event: React.FormEvent) {
@@ -326,6 +329,27 @@ export function UseFromAppsCard({
           )}
         </Row>
         <div className="flex flex-col gap-1 pl-[5.5rem]">
+          {/* **The offer comes first when there is one.** It is the
+              answer; everything below it is why. The live run put the
+              solution third, under an error and above two paragraphs
+              repeating each other. */}
+          {candidate && (
+            <p
+              data-testid="base-url-candidate"
+              className="status-success font-ui flex flex-wrap items-center gap-x-2 rounded-[var(--radius)] px-2 py-1 text-[11px]"
+            >
+              <span>{describeCandidate(candidate)}</span>
+              <button
+                type="button"
+                data-testid="base-url-use-candidate"
+                onClick={() => saveOverride(candidate)}
+                className="font-semibold underline"
+              >
+                Use this address
+              </button>
+            </p>
+          )}
+
           {display && (
             <p
               data-testid="base-url-verdict"
@@ -350,30 +374,10 @@ export function UseFromAppsCard({
             </p>
           )}
 
-          {/* Only ever rendered for a candidate that ANSWERED as this
-              gateway. The offset that produced it is a guess and is
-              never shown as one; the probe is what earns it a place. */}
-          {candidate && (
-            <p
-              data-testid="base-url-candidate"
-              className="status-success font-ui rounded-[var(--radius)] px-2 py-1 text-[11px]"
-            >
-              {describeCandidate(candidate)}{" "}
-              <button
-                type="button"
-                data-testid="base-url-use-candidate"
-                onClick={() => saveOverride(candidate)}
-                className="font-semibold underline"
-              >
-                Use {candidate}
-              </button>
-            </p>
-          )}
-
           {/* Suppressed once the address is proven: the check outranks
               the doubt, and leaving a warning under a confirmation is
               how a person learns to ignore both. */}
-          {remap && verdict?.kind !== "confirmed" && (
+          {remap && verdict?.kind !== "confirmed" && !candidate && (
             <p
               data-testid="base-url-remap"
               className="status-warn font-ui rounded-[var(--radius)] px-2 py-1 text-[11px]"
@@ -382,12 +386,14 @@ export function UseFromAppsCard({
             </p>
           )}
 
-          <p className="font-ui text-[11px] text-[color:var(--muted)]">
-            {override
-              ? "You corrected this address; this browser will remember it."
-              : "Worked out from the gateway's port and this page's address. If your install publishes " +
-                "that port differently — a container remap, for instance — correct it here."}
-          </p>
+          {!candidate && (
+            <p className="font-ui text-[11px] text-[color:var(--muted)]">
+              {override
+                ? "You corrected this address; this browser will remember it."
+                : "Worked out from the gateway's port and this page's address. If your install publishes " +
+                  "that port differently — a container remap, for instance — correct it here."}
+            </p>
+          )}
         </div>
 
         <Row label="Model">
