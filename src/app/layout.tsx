@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans, Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { DM_Sans, IBM_Plex_Mono, IBM_Plex_Sans, Inter, JetBrains_Mono } from "next/font/google";
 
 import "./globals.css";
 
@@ -10,13 +10,22 @@ const inter = Inter({
   display: "swap",
 });
 
-// Cyberpunk theme uses Space Grotesk for UI + body and JetBrains Mono
-// for code blocks (per Claude Design's "Miami '26" preset adopted
-// 2026-05-25). Both expose CSS variables consumed by the
-// `[data-theme="cyberpunk"]` block in globals.css.
-const spaceGrotesk = Space_Grotesk({
+// Plexus uses IBM Plex Sans for UI + body and IBM Plex Mono for code:
+// one family, an engineer's pedigree, and no display face. Both expose
+// CSS variables consumed by the `[data-theme="plexus"]` block in
+// globals.css. They replace Space Grotesk, which went with the
+// `cyberpunk` theme on 2026-09-16 -- its only consumer.
+const ibmPlexSans = IBM_Plex_Sans({
   subsets: ["latin"],
-  variable: "--font-space-grotesk",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-ibm-plex-sans",
+  display: "swap",
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-ibm-plex-mono",
   display: "swap",
 });
 
@@ -56,11 +65,14 @@ const preferencesBootstrap = `
   var root = document.documentElement;
   try {
     var t = localStorage.getItem('eugene-theme');
-    if (t !== 'cyberpunk' && t !== 'modern' && t !== 'editorial' && t !== 'system') t = 'modern';
+    // Retired 2026-09-16; both are THE dark theme, so a stored
+    // 'cyberpunk' migrates rather than falling through to a light one.
+    if (t === 'cyberpunk') t = 'plexus';
+    if (t !== 'plexus' && t !== 'modern' && t !== 'editorial' && t !== 'system') t = 'modern';
     var resolved = t;
     if (t === 'system') {
       resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'cyberpunk'
+        ? 'plexus'
         : 'modern';
     }
     root.dataset.theme = resolved;
@@ -82,7 +94,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="en"
       data-theme="modern"
-      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${dmSans.variable}`}
+      className={`${inter.variable} ${ibmPlexSans.variable} ${ibmPlexMono.variable} ${jetbrainsMono.variable} ${dmSans.variable}`}
       suppressHydrationWarning
     >
       <head>

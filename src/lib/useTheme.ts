@@ -2,18 +2,26 @@
 
 import { useEffect, useState } from "react";
 
-export type Theme = "cyberpunk" | "modern" | "editorial" | "system";
-export type ResolvedTheme = "cyberpunk" | "modern" | "editorial";
+export type Theme = "plexus" | "modern" | "editorial" | "system";
+export type ResolvedTheme = "plexus" | "modern" | "editorial";
 
 const STORAGE_KEY = "eugene-theme";
 const DEFAULT_THEME: Theme = "modern";
-// `system` only maps to cyberpunk/modern — editorial is an explicit
+// `system` only maps to plexus/modern — editorial is an explicit
 // operator pick, not an OS-level concept.
-const VALID_THEMES: ReadonlySet<Theme> = new Set(["cyberpunk", "modern", "editorial", "system"]);
+const VALID_THEMES: ReadonlySet<Theme> = new Set(["plexus", "modern", "editorial", "system"]);
+/**
+ * Themes that no longer exist, and what they became. Dropping a retired
+ * value instead would send everyone who had chosen the dark theme to a
+ * light one, which reads as the preference being ignored rather than
+ * as the theme being renamed. The pre-hydration script in `layout.tsx`
+ * carries the same map inline, so the two agree on the first frame.
+ */
+const RETIRED_THEMES: Readonly<Record<string, Theme>> = { cyberpunk: "plexus" };
 
 /**
  * Resolve `system` to a concrete theme via `prefers-color-scheme`.
- * Cyberpunk is the dark theme, modern is the light theme, so the OS
+ * Plexus is the dark theme, modern is the light theme, so the OS
  * preference maps cleanly. Falls back to modern during SSR / when
  * `matchMedia` isn't available — the same default an operator gets
  * with nothing stored, so "we could not ask the OS" and "nobody has
@@ -21,7 +29,7 @@ const VALID_THEMES: ReadonlySet<Theme> = new Set(["cyberpunk", "modern", "editor
  */
 function resolveSystemTheme(): ResolvedTheme {
   if (typeof window === "undefined" || !window.matchMedia) return "modern";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "cyberpunk" : "modern";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "plexus" : "modern";
 }
 
 function resolve(theme: Theme): ResolvedTheme {
@@ -72,6 +80,8 @@ export function useTheme(): readonly [Theme, (next: Theme) => void] {
 function readStoredTheme(): Theme {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
+    const renamed = raw ? RETIRED_THEMES[raw] : undefined;
+    if (renamed) return renamed;
     if (raw && VALID_THEMES.has(raw as Theme)) return raw as Theme;
   } catch {
     // ignore

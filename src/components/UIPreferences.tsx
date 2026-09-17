@@ -30,7 +30,9 @@ export function UIPreferences() {
           aria-label="Theme"
           className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
         >
-          <option value="cyberpunk">Cyberpunk</option>
+          {/* Plexus first: it is the dark theme, so the list reads
+              dark -> light -> light -> auto. */}
+          <option value="plexus">Plexus</option>
           <option value="modern">Modern</option>
           <option value="editorial">Editorial</option>
           <option value="system">System</option>

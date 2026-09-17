@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Default theme = modern (changed from cyberpunk 2026-09-12). The
+/* Default theme = modern (changed from the dark theme 2026-09-12). The
    selector is duplicated so a) :root has a complete set of tokens even
    before the pre-hydration script sets data-theme, and b) explicitly
    setting data-theme="modern" yields the same values without relying on
@@ -21,7 +21,7 @@
 [data-theme="modern"] {
   /* Modern = the "Modern" Claude Design preset adopted 2026-05-25.
      Light, near-white base with deep-blue + magenta accents. Pairs
-     with the Cyberpunk dark theme as the OS-light-mode mapping
+     with the Plexus dark theme as the OS-light-mode mapping
      under the `system` choice. */
   --background: #fafafb;
   --foreground: #0d0d10;
@@ -41,8 +41,8 @@
      roles on https://eugeneplexus.com/architecture (tools, drivers,
      agent and library are left; gateway and control root are right).
      Engines and hardware had no token, and the site's literals cannot
-     simply be pasted in: `--accent-left` is BLUE only here. It is teal
-     in cyberpunk and GREEN in editorial, so a hard-coded #2f9e6e would
+     simply be pasted in: `--accent-left` is BLUE only here. It is ice
+     blue in plexus and GREEN in editorial, so a hard-coded #2f9e6e would
      be a second green meaning something else. Each theme therefore
      picks values that separate inside its own palette, and the ICON
      (not the colour) is what carries a layer's identity across a theme
@@ -51,8 +51,8 @@
      takes the site's exact hexes. */
   --accent-engine: #2f9e6e;
   --accent-hardware: #8a8a93;
-  /* Scrollbar not in the design output — derived: muted at the
-     same translucency cyberpunk uses; hover at accent-left. */
+  /* Scrollbar not in the design output — derived: muted at a low
+     translucency; hover at accent-left. */
   --scrollbar-thumb: rgb(106 106 115 / 0.45);
   --scrollbar-thumb-hover: rgb(42 85 230 / 0.7);
 
@@ -64,85 +64,88 @@
 
   /* Softer corner radius for the flat-UI aesthetic. */
   --radius: 6px;
-  /* Design's 1.05 — slight breathing-room bump over identity. Like
-     cyberpunk's 1.1, unwired until the v0.3 spacing-density pass. */
+  /* Design's 1.05 — slight breathing-room bump over identity.
+     Unwired until the v0.3 spacing-density pass; the token is declared
+     so a theme can state its density forward-compatibly. */
   --pad: 1.05;
 
   --bg-icon-display: none;
   --bg-icon-opacity: 0;
 
   /* Modern keeps Inter for both UI chrome and body. Mono switches
-     to JetBrains Mono (loaded in layout.tsx alongside cyberpunk's
-     fonts) so code blocks match across themes. */
+     to JetBrains Mono (loaded in layout.tsx) so code blocks match
+     modern and editorial. */
   --font-ui: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-body: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
-[data-theme="cyberpunk"] {
-  /* Cyberpunk = the "Miami '26" preset designed by Claude Design,
-     adopted 2026-05-25. Dark-violet base with teal + pink accents.
-     The kebab-case name stays "cyberpunk" so all stored theme
-     preferences continue to resolve. */
-  --background: #0c0820;
-  --foreground: #f5eff4;
-  --panel: #16102e;
-  --panel-soft: #221a44;
-  --panel-hover: #2f235c;
-  --border: #3e2e6e;
-  --border-hover: #604999;
-  --accent-left: #1bd9c2;
-  --accent-right: #ff7ac0;
-  --on-accent-left: #062824;
-  --on-accent-right: #2a0518;
-  --muted: #a094c4;
+/* ──────────────────────────────── Plexus ─────────────────────────────────
+   Eugene's dark theme, designed 2026-09-16 from the product's character
+   rather than a genre: calm authority, warm restraint, one nostalgic
+   wink placed where only the right people notice it. It replaces
+   `cyberpunk`, retired the same day; a stored `cyberpunk` preference
+   migrates here rather than falling back to a light theme (the
+   bootstrap in layout.tsx and useTheme.ts both do that migration).
 
-  /* Engine green has to clear the teal `--accent-left` above, so it is
-     pushed well toward yellow-green; hardware is a desaturated violet
-     grey that reads on #0c0820, where the site's #8a8a93 would not. */
-  --accent-engine: #5ef2a0;
-  --accent-hardware: #9b93bd;
-  --scrollbar-thumb: rgb(94 78 132 / 0.55);
-  --scrollbar-thumb-hover: rgb(27 217 194 / 0.6);
+   Cool graphite ground — blue-black reads sci-fi, and that is the thing
+   this replaces. Ice blue is the ONLY action color (primary buttons,
+   focus rings, active rails): trust, never urgency. Apricot carries the
+   `right` roles and the LCARS segment strip closing the install tree,
+   and nothing else. Nothing glows; the status palette is desaturated so
+   a failure reads as information rather than an alarm. */
+[data-theme="plexus"] {
+  --background: #141619;
+  --foreground: #e6e8ea;
+  --panel: #1b1e22;
+  --panel-soft: #23272c;
+  --panel-hover: #2b3037;
+  --border: #31363d;
+  --border-hover: #4c535c;
+  --accent-left: #7fb0cf;
+  --accent-right: #cf9a72;
+  --on-accent-left: #0c1216;
+  --on-accent-right: #1a1009;
+  --muted: #8f959b;
 
-  /* Chat bubbles overlay the bg icon — same translucent pattern,
-     derived from panel + panel-soft. Bubble-blur dropped to 8
-     (was 18) so the Eugene letterform shows through more clearly. */
-  --bubble-bg: rgb(22 16 46 / 0.65);
-  --bubble-soft-bg: rgb(34 26 68 / 0.7);
-  --bubble-blur: 8px;
+  /* The two layer roles beyond left/right. An accent is a ROLE, never a
+     color — the ICON carries a layer's identity across a theme switch.
+     Both are picked to separate inside THIS palette: a moss green that
+     clears the ice-blue `--accent-left` without competing with it, and a
+     cool grey that reads on #141619 where the site's #8a8a93 would sit
+     too close to `--muted`. */
+  --accent-engine: #7fb094;
+  --accent-hardware: #9aa0a6;
 
-  /* Shared corner radius for bubbles, badges, buttons, pass-cards,
-     modals, form fields. Cyberpunk leans sharper (4px); modern
-     overrides to 6px. `rounded-full` calls (pills, dots, scrollbar)
-     deliberately bypass this and stay fully round. */
+  --scrollbar-thumb: rgb(76 83 92 / 0.55);
+  --scrollbar-thumb-hover: rgb(127 176 207 / 0.6);
+
+  /* Solid bubbles. The letterform sits at 0.04 behind the primary
+     display — present, never legible, so no blur is needed to keep text
+     readable over it. */
+  --bubble-bg: #1b1e22;
+  --bubble-soft-bg: #23272c;
+  --bubble-blur: 0px;
+
   --radius: 4px;
+  --pad: 1.05;
 
-  /* Spacing-density multiplier. NOTE: only a handful of chrome
-     paddings consume this today — the bulk of component spacing
-     is still hardcoded Tailwind classes. The full spacing-density
-     rollout is v0.3 work; the token is in place so future themes
-     can declare their preferred density forward-compatibly. */
-  --pad: 1.1;
-
-  /* Faint Eugene letterform behind the chat. */
   --bg-icon-display: flex;
-  --bg-icon-opacity: 0.08;
+  --bg-icon-opacity: 0.04;
 
-  /* Fonts. Space Grotesk for UI + body, JetBrains Mono for code.
-     Variables emitted by `next/font/google` in layout.tsx. */
-  --font-ui: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
-  --font-body: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  /* IBM Plex Sans for UI + body, IBM Plex Mono for code: one family,
+     engineer's pedigree, and no display face — Eugene doesn't announce. */
+  --font-ui: var(--font-ibm-plex-sans), system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-ibm-plex-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
 /* ──────────────────────────── Editorial ─────────────────────────────
    Light cream base with deep forest green + rust accents, DM Sans
    typeface. Designed by Claude Design 2026-05-25 — Eugene's third
    theme, intentionally more newsprint-magazine than dark-future or
-   flat-UI. Light theme like Modern; follows Modern's
-   `.is-thinking-rail` spinner pattern rather than Cyberpunk's
-   perimeter pulse (the pulse is built for dark backgrounds). */
+   flat-UI. Light theme like Modern, and like every surviving theme it
+   uses the `.is-thinking-rail` spinner. */
 [data-theme="editorial"] {
   --background: #faf7f1;
   --foreground: #1c1612;
@@ -195,7 +198,7 @@
 /* ──────────────────────────── status banners ────────────────────────────
    Three semantic banner classes (success / warn / error). Each pair of
    themes overrides the underlying tokens so the same .status-warn renders
-   amber-on-dark in cyberpunk and amber-on-light in modern without any
+   amber-on-dark in plexus and amber-on-light in modern without any
    per-component conditionals. Use as e.g.:
        <p className="status-warn ...">missing topology</p>
 */
@@ -214,19 +217,18 @@
   --status-error-bg: rgb(242 154 169 / 0.18);
   --status-error-border: #f29aa9;
 }
-[data-theme="cyberpunk"] {
-  /* Banner palette per Claude Design's Miami '26 preset. Design
-     specified fg + border; bg derived as a low-alpha tint of the fg
-     over the dark panel so banner contrast stays consistent. */
-  --status-success-fg: #6ee0b5;
-  --status-success-bg: rgb(110 224 181 / 0.15);
-  --status-success-border: #1d9a78;
-  --status-warn-fg: #ffb88a;
-  --status-warn-bg: rgb(255 184 138 / 0.15);
-  --status-warn-border: #d76a2e;
-  --status-error-fg: #ff7a85;
-  --status-error-bg: rgb(255 122 133 / 0.18);
-  --status-error-border: #cc3a55;
+[data-theme="plexus"] {
+  /* Sage / amber / brick rather than alert-red and warning-yellow: a
+     failure here is information about a machine, not an emergency. */
+  --status-success-fg: #93c6a6;
+  --status-success-bg: rgb(58 117 81 / 0.18);
+  --status-success-border: #3a7551;
+  --status-warn-fg: #dcb079;
+  --status-warn-bg: rgb(131 96 41 / 0.18);
+  --status-warn-border: #836029;
+  --status-error-fg: #dd9a93;
+  --status-error-bg: rgb(143 70 61 / 0.2);
+  --status-error-border: #8f463d;
 }
 [data-theme="editorial"] {
   --status-success-fg: #235638;
@@ -308,7 +310,7 @@ body {
 }
 
 /* Apply to interface chrome (buttons, headers, badges, the theme/font
-   pickers). In cyberpunk this is Space Grotesk; in modern it's Inter
+   pickers). In plexus this is IBM Plex Sans; in modern it's Inter
    — same selector works for both because the variable resolves
    per-theme. Long-form content (chat messages, hemisphere outputs)
    inherits `--font-body` from <body>. */
@@ -325,24 +327,37 @@ body {
 /* Decorative letterform behind the chat. Hidden in themes that set
    --bg-icon-display: none. Pointer events disabled so it can't intercept
    clicks. */
-/* Decorative letterform centered in the chat section (not the viewport).
-   `right: 400px` matches `grid-cols-[1fr_400px]` in `page.tsx`; if the
-   rail width changes, change both. The element is sibling to <main> in
-   the body so it can sit at z-0 underneath main's z-10 stacking context
-   while still being visible through transparent regions of the chat
-   section. */
+/* Decorative letterform centered on the primary display (not the
+   viewport). It is a sibling of the page inside <body>, so it sits at
+   z-0 underneath the shell's z-10 stacking context while still showing
+   through transparent regions above it.
+
+   It used to be inset by `right: 400px` for the v0.2 hemispheres rail,
+   which no longer exists — there is no `grid-cols-[1fr_400px]` left
+   anywhere in `src/`. What it should clear now is the install tree on
+   the left, and only where that tree is actually a column: below `lg`
+   it is a drawer over the content, and Login and Setup have no shell at
+   all. Keying off the column's presence answers all three at once,
+   which an attribute on the page could not — this element is the
+   page's sibling, not its descendant. */
 .theme-bg-icon {
   display: var(--bg-icon-display);
   position: fixed;
   top: 0;
   bottom: 0;
   left: 0;
-  right: 400px;
+  right: 0;
   z-index: 0;
   pointer-events: none;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+/* 240px is `w-60` on the tree column in AppShell.tsx — change both. */
+@media (min-width: 1024px) {
+  body:has([data-testid="tree-column"]) .theme-bg-icon {
+    left: 240px;
+  }
 }
 .theme-bg-icon img {
   height: 90vh;
@@ -351,57 +366,22 @@ body {
   filter: blur(1px) saturate(1.15);
 }
 
-/* "Eugene is thinking" — theme-specific implementations.
-   Each theme owns how the indicator looks: cyberpunk runs a neon pulse
-   around the perimeter of every block tagged `is-thinking`; modern shows
-   a centered spinner inside the block tagged `is-thinking-rail`. */
-
-@property --pulse-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-
-[data-theme="cyberpunk"] .is-thinking {
-  position: relative;
-}
-[data-theme="cyberpunk"] .is-thinking::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 30;
-  padding: 2px;
-  border-radius: inherit;
-  background: conic-gradient(
-    from var(--pulse-angle),
-    transparent 0deg,
-    var(--accent-left) 30deg,
-    transparent 75deg,
-    transparent 180deg,
-    var(--accent-right) 210deg,
-    transparent 255deg,
-    transparent 360deg
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation: cyberpunk-pulse 2.4s linear infinite;
-}
-@keyframes cyberpunk-pulse {
-  to {
-    --pulse-angle: 360deg;
-  }
-}
+/* "Eugene is thinking" — a centered spinner inside the block
+   tagged `is-thinking-rail`. Every surviving theme uses it. Cyberpunk
+   ran a neon pulse around the perimeter of a block tagged
+   `is-thinking` instead; that rule, its `@property` and its keyframes
+   went with the theme, because Plexus is quiet geometry and nothing
+   else asked for a glow. NOTE: neither class has a consumer in `src/`
+   today. */
 
 [data-theme="modern"] .is-thinking-rail,
-[data-theme="editorial"] .is-thinking-rail {
+[data-theme="editorial"] .is-thinking-rail,
+[data-theme="plexus"] .is-thinking-rail {
   position: relative;
 }
 [data-theme="modern"] .is-thinking-rail::after,
-[data-theme="editorial"] .is-thinking-rail::after {
+[data-theme="editorial"] .is-thinking-rail::after,
+[data-theme="plexus"] .is-thinking-rail::after {
   content: "";
   position: absolute;
   top: 50%;

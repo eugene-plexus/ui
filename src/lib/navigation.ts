@@ -26,8 +26,8 @@
  * 1. A screen added to `src/app` without an entry here is invisible in
  *    the navigation — which is the defect the design exists to remove, so
  *    a test enumerates the routes and fails on an unlisted one.
- * 2. `--accent-left` is blue only in the `modern` theme; it is teal in
- *    `cyberpunk` and **green** in `editorial`. So `accent` here is a
+ * 2. `--accent-left` is blue only in the `modern` theme; it is ice blue
+ *    in `plexus` and **green** in `editorial`. So `accent` here is a
  *    *role*, never a colour, and the identity a reader actually relies on
  *    is the icon, which does not vary by theme.
  */
