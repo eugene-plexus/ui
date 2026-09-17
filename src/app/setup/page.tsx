@@ -62,6 +62,7 @@ import { ApiError, api } from "@/lib/api";
 import { homeFrom, proposedModelsFolder } from "@/lib/proposedModelsFolder";
 import { hasSessionToken, setSessionToken } from "@/lib/session";
 import type { ComponentList, DirectoryListing } from "@/lib/types";
+import { expertHint } from "@/lib/vocabulary";
 
 import { WizardFooter, WizardHeader } from "./chrome";
 import {
@@ -95,7 +96,11 @@ export default function WizardPage() {
   const [hydrated, setHydrated] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  /** A step's plain sentence, optionally with the expert term behind a
+   *  tooltip -- decision #12's condition. A bare string is the common
+   *  case and stays a bare string. */
+  type Status = string | { text: string; hint: string };
+  const [message, setMessage] = useState<Status | null>(null);
   // Passphrase state lives OUTSIDE the persisted draft — never written
   // to sessionStorage. A mid-wizard refresh re-prompts for it.
   const [passphrase, setPassphrase] = useState("");
@@ -313,7 +318,15 @@ export default function WizardPage() {
       // own /v1/config) and by design it does not fall open. A first run that
       // skipped this produced an install the wizard called finished with an
       // inert trust root: only scripts/dev-seed.ps1 ever set it.
-      setMessage("Setting up the trust root…");
+      setMessage({
+        text: "Setting up this install’s security…",
+        // Decision #12, and Troy took it ON CONDITION that "the proper
+        // jargon stays available in a tooltip or other hint for advanced
+        // users". So the implementation noun moves here rather than going.
+        hint: expertHint(
+          "Initializing the trust root (the control root), which holds the install’s signing key.",
+        ),
+      });
       await initializeControlRoot(passphrase);
 
       // Step 2b: enroll THIS host's agent with the root it just spawned.
@@ -455,9 +468,10 @@ export default function WizardPage() {
           {working && message && (
             <p
               data-testid="wizard-status"
+              title={typeof message === "string" ? undefined : message.hint}
               className="mt-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--muted)]"
             >
-              {message}
+              {typeof message === "string" ? message : message.text}
             </p>
           )}
           {error && (
