@@ -1,3 +1,3 @@
-:HL["/_next/static/chunks/3t7s2pj61e_iq.css","style"]
+:HL["/_next/static/chunks/1sf9b58_sp6cr.css","style"]
 :HL["/eugene-icon.svg","image"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"/_not-found","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"-9Ob7bjIPs2YWMrUZ0sGg"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"/_not-found","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"ci3d-N4pX15m6xelmJYV4"}
