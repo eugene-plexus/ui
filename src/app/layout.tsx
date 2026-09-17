@@ -50,16 +50,22 @@ export const metadata: Metadata = {
 
 // Inline script that runs before React hydrates so the saved theme +
 // font-size are applied before the browser paints. **The default is
-// `modern`, and it is spelled out in four places that must agree**:
-// here (invalid value, and the catch), the `data-theme` on <html>
-// below, `DEFAULT_THEME` in useTheme.ts, and — the one that is easy to
-// miss — which theme's tokens `:root` carries in globals.css. Miss that
-// last one and there is no error, just a frame of the wrong theme
-// before this script runs, which is the flash this script exists to
-// prevent. Without this, users
-// with non-default preferences would see a one-frame flash. Logic is
-// duplicated (intentionally tiny) in `useTheme.ts` and `useFontSize.ts`
-// so React's view of the same state stays in sync.
+// `plexus` since 2026-09-17 (modern from 2026-09-12, cyberpunk before
+// that), and it is spelled out in SIX places that must agree**: here
+// (invalid value, and the catch), the `data-theme` on <html> below,
+// `DEFAULT_THEME` in useTheme.ts, `DEFAULT_RESOLVED_THEME` beside it
+// (the SSR / no-`matchMedia` fallback), and — the two that are easy
+// to miss — which theme's tokens **each of the two `:root` blocks** in
+// globals.css carries, one for the palette and one for the status
+// banners. Miss a `:root` and there is no error, just a frame of the
+// wrong theme before this script runs, which is the flash this script
+// exists to prevent. **This comment said "four places" until the
+// promotion counted them**, which is the shape of every drift it warns
+// about. Promoting a theme also MOVES its `:root` block to the top of
+// globals.css: `:root` and `[data-theme="x"]` have equal specificity,
+// so source order decides. `lib/themeDefault.test.ts` gates all six.
+// Logic here is duplicated (intentionally tiny) in `useTheme.ts` and
+// `useFontSize.ts` so React's view of the same state stays in sync.
 const preferencesBootstrap = `
 (function () {
   var root = document.documentElement;
@@ -68,7 +74,7 @@ const preferencesBootstrap = `
     // Retired 2026-09-16; both are THE dark theme, so a stored
     // 'cyberpunk' migrates rather than falling through to a light one.
     if (t === 'cyberpunk') t = 'plexus';
-    if (t !== 'plexus' && t !== 'modern' && t !== 'editorial' && t !== 'system') t = 'modern';
+    if (t !== 'plexus' && t !== 'modern' && t !== 'editorial' && t !== 'system') t = 'plexus';
     var resolved = t;
     if (t === 'system') {
       resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -77,7 +83,7 @@ const preferencesBootstrap = `
     }
     root.dataset.theme = resolved;
   } catch (_) {
-    root.dataset.theme = 'modern';
+    root.dataset.theme = 'plexus';
   }
   try {
     var f = localStorage.getItem('eugene-font-size');
@@ -93,7 +99,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      data-theme="modern"
+      data-theme="plexus"
       className={`${inter.variable} ${ibmPlexSans.variable} ${ibmPlexMono.variable} ${jetbrainsMono.variable} ${dmSans.variable}`}
       suppressHydrationWarning
     >
@@ -102,8 +108,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             rather than the 846 KB PNG it replaces: one asset for the
             favicon and both on-screen uses, sharp at any size, and
             **transparent** — the PNG had no alpha channel at all, so it
-            was a solid navy square. That was invisible on a dark theme
-            and is a dark tile on a light one, which now is the default. */}
+            was a solid navy square: invisible on a dark theme, a dark
+            tile on a light one, and wrong on every theme either way. */}
         <link rel="icon" type="image/svg+xml" href="/eugene-icon.svg" />
         <script dangerouslySetInnerHTML={{ __html: preferencesBootstrap }} />
       </head>

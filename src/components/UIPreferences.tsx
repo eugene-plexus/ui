@@ -3,6 +3,8 @@
 import { useFontSize, FONT_SIZE_LABELS, type FontSize } from "@/lib/useFontSize";
 import { useTheme, type Theme } from "@/lib/useTheme";
 
+import { Attribution } from "./Attribution";
+
 /**
  * Local UI preferences. Lives in /config alongside the per-component
  * backend configs but doesn't talk to any backend — these settings
@@ -55,6 +57,12 @@ export function UIPreferences() {
             </option>
           ))}
         </select>
+      </Row>
+
+      {/* Where a person goes looking for a version, which is where they
+          will also accept being told the licence. */}
+      <Row label="About" description="What this is and who it belongs to.">
+        <Attribution className="text-xs" />
       </Row>
     </div>
   );

@@ -14,6 +14,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ATTRIBUTION } from "@/components/Attribution";
+
 import LoginPage from "./page";
 
 const replace = vi.fn();
@@ -124,5 +126,19 @@ describe("sign-in unlocks the control root", () => {
     expect(controlLogins()).toHaveLength(0);
     expect(replace).not.toHaveBeenCalled();
     expect(sessionStorage.getItem("eugene-session-token")).toBeNull();
+  });
+
+  // The third of the licence line's three surfaces. It is driven here
+  // rather than in `components/Attribution.test.tsx` because reaching
+  // the card needs the stubbed fetch and mocked router this file
+  // already sets up -- and it is driven at all because a component
+  // test is not a wiring test.
+  it("carries the licence line on the card", async () => {
+    render(<LoginPage />);
+    // After the probe, not before: the card is a "Loading…" line until
+    // the install is known to be initialized, and a line asserted in
+    // that window would pass against a screen nobody can sign in on.
+    await screen.findByLabelText(/passphrase/i);
+    expect(screen.getByTestId("attribution")).toHaveTextContent(ATTRIBUTION);
   });
 });

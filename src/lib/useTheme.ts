@@ -6,7 +6,11 @@ export type Theme = "plexus" | "modern" | "editorial" | "system";
 export type ResolvedTheme = "plexus" | "modern" | "editorial";
 
 const STORAGE_KEY = "eugene-theme";
-const DEFAULT_THEME: Theme = "modern";
+// The default, in the one shape each caller needs: `system` is a valid
+// STORED choice but never a rendered one, so the resolver's fallback
+// must be typed as a theme that has tokens.
+const DEFAULT_RESOLVED_THEME: ResolvedTheme = "plexus";
+const DEFAULT_THEME: Theme = DEFAULT_RESOLVED_THEME;
 // `system` only maps to plexus/modern — editorial is an explicit
 // operator pick, not an OS-level concept.
 const VALID_THEMES: ReadonlySet<Theme> = new Set(["plexus", "modern", "editorial", "system"]);
@@ -22,13 +26,19 @@ const RETIRED_THEMES: Readonly<Record<string, Theme>> = { cyberpunk: "plexus" };
 /**
  * Resolve `system` to a concrete theme via `prefers-color-scheme`.
  * Plexus is the dark theme, modern is the light theme, so the OS
- * preference maps cleanly. Falls back to modern during SSR / when
- * `matchMedia` isn't available — the same default an operator gets
+ * preference maps cleanly. Falls back to `DEFAULT_THEME` during SSR /
+ * when `matchMedia` isn't available — the same theme an operator gets
  * with nothing stored, so "we could not ask the OS" and "nobody has
  * chosen" land in the same place.
+ *
+ * **This fallback is a fifth place the default is spelled, and the
+ * four-places comment in `layout.tsx` does not name it.** It was a
+ * literal `"modern"` until the 2026-09-17 promotion, which is exactly
+ * how a literal here drifts: nothing fails, the two answers just stop
+ * agreeing on the one path that cannot ask the OS. Hence the constant.
  */
 function resolveSystemTheme(): ResolvedTheme {
-  if (typeof window === "undefined" || !window.matchMedia) return "modern";
+  if (typeof window === "undefined" || !window.matchMedia) return DEFAULT_RESOLVED_THEME;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "plexus" : "modern";
 }
 

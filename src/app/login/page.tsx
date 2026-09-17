@@ -22,6 +22,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
+import { Attribution } from "@/components/Attribution";
 import { ApiError, api } from "@/lib/api";
 import { unlockControlRoot } from "@/lib/controlUnlock";
 import { setSessionToken } from "@/lib/session";
@@ -224,6 +225,8 @@ function LoginForm() {
         <p className="mt-6 text-center text-[10px] text-[color:var(--muted)]">
           Sessions persist for the lifetime of this browser tab. Closing the tab signs you out.
         </p>
+        {/* The first screen anyone sees, and the one screen with room. */}
+        <Attribution className="mt-3 text-center text-[10px]" />
       </div>
     </main>
   );

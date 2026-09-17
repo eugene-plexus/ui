@@ -11,6 +11,7 @@ import {
   type Screen,
 } from "@/lib/navigation";
 
+import { Attribution } from "./Attribution";
 import { LayerIcon } from "./LayerIcon";
 
 /**
@@ -84,6 +85,10 @@ export function LayerMap({
         machine — while its settings reach{" "}
         {SCREENS.find((s) => s.href === "/config")?.spans.length ?? 0} other components too.
       </p>
+
+      {/* The foot of the panel that explains what this thing is, which
+          is where someone asking "what IS this" has already arrived. */}
+      <Attribution className="mt-3 border-t border-[color:var(--border)] pt-3 text-[10px]" />
     </nav>
   );
 }

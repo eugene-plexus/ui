@@ -1,28 +1,103 @@
 @import "tailwindcss";
 
-/* Default theme = modern (changed from the dark theme 2026-09-12). The
-   selector is duplicated so a) :root has a complete set of tokens even
-   before the pre-hydration script sets data-theme, and b) explicitly
-   setting data-theme="modern" yields the same values without relying on
-   absence of the attribute.
+/* Default theme = plexus, Eugene's dark theme (promoted from modern
+   2026-09-17; modern had it since 2026-09-12, cyberpunk before that).
+   The selector is duplicated so a) :root has a complete set of tokens
+   even before the pre-hydration script sets data-theme, and b)
+   explicitly setting data-theme="plexus" yields the same values without
+   relying on absence of the attribute.
 
-   **`:root` carrying the default theme is the fourth place the default
-   is spelled out, and the only one that fails silently.** The other
-   three are the bootstrap script and the <html data-theme> in
-   layout.tsx, and DEFAULT_THEME in useTheme.ts. Leave `:root` on the
-   old palette and nothing errors — you just get one frame of the wrong
+   **`:root` carrying the default theme is one of the two places that
+   fail silently.** The default is spelled in SIX: the bootstrap
+   script's invalid-value fallback and its catch, the <html data-theme>,
+   all in layout.tsx; DEFAULT_THEME and DEFAULT_RESOLVED_THEME in
+   useTheme.ts; and the two `:root` blocks in this file, this one and
+   the status-banner one below. Leave a `:root` on the old palette and
+   nothing errors — you just get one frame of the wrong
    theme before the script runs, which is exactly the flash that script
    exists to prevent.
 
+   **The count was "four" until promoting plexus counted them**, which
+   is the drift this comment exists to warn about, happening to the
+   comment. The two it missed: this file's SECOND `:root`, in the
+   status-banner section, and `resolveSystemTheme()`'s own fallback for
+   SSR and for a browser with no `matchMedia`, whose docstring promises
+   it answers with the same theme an operator gets with nothing stored.
+   `lib/themeDefault.test.ts` is the gate that keeps all six agreeing,
+   and it asserts this source order too.
+
    Source order matters here and is not incidental: `:root` and
    `[data-theme="x"]` have the SAME specificity, so the `:root` block
-   must come first or it would override the explicit themes below it. */
+   must come first or it would override the explicit themes below it.
+   That is why promoting a theme MOVES its block to the top rather than
+   just adding a selector to it. */
+
+/* ──────────────────────────────── Plexus ─────────────────────────────────
+   Eugene's dark theme, designed 2026-09-16 from the product's character
+   rather than a genre: calm authority, warm restraint, one nostalgic
+   wink placed where only the right people notice it. It replaces
+   `cyberpunk`, retired the same day; a stored `cyberpunk` preference
+   migrates here rather than falling back to a light theme (the
+   bootstrap in layout.tsx and useTheme.ts both do that migration).
+
+   Cool graphite ground — blue-black reads sci-fi, and that is the thing
+   this replaces. Ice blue is the ONLY action color (primary buttons,
+   focus rings, active rails): trust, never urgency. Apricot carries the
+   `right` roles and the LCARS segment strip closing the install tree,
+   and nothing else. Nothing glows; the status palette is desaturated so
+   a failure reads as information rather than an alarm. */
 :root,
+[data-theme="plexus"] {
+  --background: #141619;
+  --foreground: #e6e8ea;
+  --panel: #1b1e22;
+  --panel-soft: #23272c;
+  --panel-hover: #2b3037;
+  --border: #31363d;
+  --border-hover: #4c535c;
+  --accent-left: #7fb0cf;
+  --accent-right: #cf9a72;
+  --on-accent-left: #0c1216;
+  --on-accent-right: #1a1009;
+  --muted: #8f959b;
+
+  /* The two layer roles beyond left/right. An accent is a ROLE, never a
+     color — the ICON carries a layer's identity across a theme switch.
+     Both are picked to separate inside THIS palette: a moss green that
+     clears the ice-blue `--accent-left` without competing with it, and a
+     cool grey that reads on #141619 where the site's #8a8a93 would sit
+     too close to `--muted`. */
+  --accent-engine: #7fb094;
+  --accent-hardware: #9aa0a6;
+
+  --scrollbar-thumb: rgb(76 83 92 / 0.55);
+  --scrollbar-thumb-hover: rgb(127 176 207 / 0.6);
+
+  /* Solid bubbles. The letterform sits at 0.04 behind the primary
+     display — present, never legible, so no blur is needed to keep text
+     readable over it. */
+  --bubble-bg: #1b1e22;
+  --bubble-soft-bg: #23272c;
+  --bubble-blur: 0px;
+
+  --radius: 4px;
+  --pad: 1.05;
+
+  --bg-icon-display: flex;
+  --bg-icon-opacity: 0.04;
+
+  /* IBM Plex Sans for UI + body, IBM Plex Mono for code: one family,
+     engineer's pedigree, and no display face — Eugene doesn't announce. */
+  --font-ui: var(--font-ibm-plex-sans), system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-ibm-plex-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
+}
+
 [data-theme="modern"] {
   /* Modern = the "Modern" Claude Design preset adopted 2026-05-25.
-     Light, near-white base with deep-blue + magenta accents. Pairs
-     with the Plexus dark theme as the OS-light-mode mapping
-     under the `system` choice. */
+     Light, near-white base with deep-blue + magenta accents. It is
+     what `system` resolves to when the OS asks for light, and it was
+     the default until 2026-09-17. */
   --background: #fafafb;
   --foreground: #0d0d10;
   --panel: #ffffff;
@@ -78,66 +153,6 @@
   --font-ui: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-body: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
-}
-
-/* ──────────────────────────────── Plexus ─────────────────────────────────
-   Eugene's dark theme, designed 2026-09-16 from the product's character
-   rather than a genre: calm authority, warm restraint, one nostalgic
-   wink placed where only the right people notice it. It replaces
-   `cyberpunk`, retired the same day; a stored `cyberpunk` preference
-   migrates here rather than falling back to a light theme (the
-   bootstrap in layout.tsx and useTheme.ts both do that migration).
-
-   Cool graphite ground — blue-black reads sci-fi, and that is the thing
-   this replaces. Ice blue is the ONLY action color (primary buttons,
-   focus rings, active rails): trust, never urgency. Apricot carries the
-   `right` roles and the LCARS segment strip closing the install tree,
-   and nothing else. Nothing glows; the status palette is desaturated so
-   a failure reads as information rather than an alarm. */
-[data-theme="plexus"] {
-  --background: #141619;
-  --foreground: #e6e8ea;
-  --panel: #1b1e22;
-  --panel-soft: #23272c;
-  --panel-hover: #2b3037;
-  --border: #31363d;
-  --border-hover: #4c535c;
-  --accent-left: #7fb0cf;
-  --accent-right: #cf9a72;
-  --on-accent-left: #0c1216;
-  --on-accent-right: #1a1009;
-  --muted: #8f959b;
-
-  /* The two layer roles beyond left/right. An accent is a ROLE, never a
-     color — the ICON carries a layer's identity across a theme switch.
-     Both are picked to separate inside THIS palette: a moss green that
-     clears the ice-blue `--accent-left` without competing with it, and a
-     cool grey that reads on #141619 where the site's #8a8a93 would sit
-     too close to `--muted`. */
-  --accent-engine: #7fb094;
-  --accent-hardware: #9aa0a6;
-
-  --scrollbar-thumb: rgb(76 83 92 / 0.55);
-  --scrollbar-thumb-hover: rgb(127 176 207 / 0.6);
-
-  /* Solid bubbles. The letterform sits at 0.04 behind the primary
-     display — present, never legible, so no blur is needed to keep text
-     readable over it. */
-  --bubble-bg: #1b1e22;
-  --bubble-soft-bg: #23272c;
-  --bubble-blur: 0px;
-
-  --radius: 4px;
-  --pad: 1.05;
-
-  --bg-icon-display: flex;
-  --bg-icon-opacity: 0.04;
-
-  /* IBM Plex Sans for UI + body, IBM Plex Mono for code: one family,
-     engineer's pedigree, and no display face — Eugene doesn't announce. */
-  --font-ui: var(--font-ibm-plex-sans), system-ui, -apple-system, sans-serif;
-  --font-body: var(--font-ibm-plex-sans), system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-ibm-plex-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
 }
 
 /* ──────────────────────────── Editorial ─────────────────────────────
@@ -199,10 +214,24 @@
    Three semantic banner classes (success / warn / error). Each pair of
    themes overrides the underlying tokens so the same .status-warn renders
    amber-on-dark in plexus and amber-on-light in modern without any
-   per-component conditionals. Use as e.g.:
+   per-component conditionals. `:root` carries plexus here for the same
+   reason it does above, and must stay first for the same reason. Use as e.g.:
        <p className="status-warn ...">missing topology</p>
 */
 :root,
+[data-theme="plexus"] {
+  /* Sage / amber / brick rather than alert-red and warning-yellow: a
+     failure here is information about a machine, not an emergency. */
+  --status-success-fg: #93c6a6;
+  --status-success-bg: rgb(58 117 81 / 0.18);
+  --status-success-border: #3a7551;
+  --status-warn-fg: #dcb079;
+  --status-warn-bg: rgb(131 96 41 / 0.18);
+  --status-warn-border: #836029;
+  --status-error-fg: #dd9a93;
+  --status-error-bg: rgb(143 70 61 / 0.2);
+  --status-error-border: #8f463d;
+}
 [data-theme="modern"] {
   /* Banner palette per Claude Design's Modern preset. Design
      specified fg + border; bg derived as a low-alpha tint of the
@@ -216,19 +245,6 @@
   --status-error-fg: #971838;
   --status-error-bg: rgb(242 154 169 / 0.18);
   --status-error-border: #f29aa9;
-}
-[data-theme="plexus"] {
-  /* Sage / amber / brick rather than alert-red and warning-yellow: a
-     failure here is information about a machine, not an emergency. */
-  --status-success-fg: #93c6a6;
-  --status-success-bg: rgb(58 117 81 / 0.18);
-  --status-success-border: #3a7551;
-  --status-warn-fg: #dcb079;
-  --status-warn-bg: rgb(131 96 41 / 0.18);
-  --status-warn-border: #836029;
-  --status-error-fg: #dd9a93;
-  --status-error-bg: rgb(143 70 61 / 0.2);
-  --status-error-border: #8f463d;
 }
 [data-theme="editorial"] {
   --status-success-fg: #235638;
