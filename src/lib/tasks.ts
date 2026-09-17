@@ -254,32 +254,74 @@ function installDetail(i: EngineInstall, fraction: number | undefined): string {
 
 // --- model loads ------------------------------------------------------
 
+interface LoadRow {
+  node: string | null;
+  name: string;
+  model: string | null;
+  status: string | null;
+  /**
+   * Only ever present on this machine's own list. The control root's
+   * union carries a runtime's status but not its numbers, so a copy on
+   * another node is a line with no bar rather than a bar with no
+   * numbers — which is the same rule the load bar follows, one level
+   * out.
+   */
+  copy: { copied: number | null; total: number | null } | null;
+}
+
 function loadTasks(runtimes: RuntimePlacementList | null, local: RuntimeList | null): Task[] {
   // The root's list names the node; the agent's own is this machine, and
   // the tray says so rather than inventing a name for it.
-  const rows: { node: string | null; name: string; model: string | null; status: string | null }[] =
-    runtimes
-      ? (runtimes.runtimes ?? []).map((r) => ({
-          node: r.node,
-          name: r.name,
-          model: r.modelAlias ?? null,
-          status: r.status ?? null,
-        }))
-      : (local?.runtimes ?? []).map((r) => ({
-          node: r.node ?? null,
-          name: r.name,
-          model: r.modelAlias ?? null,
-          status: r.status,
-        }));
+  const rows: LoadRow[] = runtimes
+    ? (runtimes.runtimes ?? []).map((r) => ({
+        node: r.node,
+        name: r.name,
+        model: r.modelAlias ?? null,
+        status: r.status ?? null,
+        copy: null,
+      }))
+    : (local?.runtimes ?? []).map((r) => ({
+        node: r.node ?? null,
+        name: r.name,
+        model: r.modelAlias ?? null,
+        status: r.status,
+        copy: r.copyProgress
+          ? {
+              copied: r.copyProgress.bytesCopied ?? null,
+              total: r.copyProgress.totalBytes ?? null,
+            }
+          : null,
+      }));
   return rows
-    .filter((r) => r.status === "starting" || r.status === "loading")
+    .filter((r) => r.status === "starting" || r.status === "loading" || r.status === "copying")
     .map((r) => ({
       id: `load:${r.node ?? ""}/${r.name}`,
       kind: "load",
-      title: `Loading ${r.model ?? r.name} on ${r.node ?? "this machine"}`,
-      detail: r.status === "starting" ? "starting the engine" : "reading the model into memory",
+      title:
+        r.status === "copying"
+          ? `Copying ${r.model ?? r.name} to ${r.node ?? "this machine"}`
+          : `Loading ${r.model ?? r.name} on ${r.node ?? "this machine"}`,
+      // The copy is the reason a first start after switching it on takes
+      // minutes, so it is a task in its own right: without it the tray
+      // is empty while the machine is busy, and the person concludes the
+      // setting did nothing — the very misdiagnosis this feature exists
+      // to end.
+      detail: copyDetail(r),
+      progress:
+        r.copy && r.copy.copied !== null && r.copy.total
+          ? Math.min(1, r.copy.copied / r.copy.total)
+          : undefined,
       href: "/inference",
     }));
+}
+
+function copyDetail(r: LoadRow): string {
+  if (r.status === "starting") return "starting the engine";
+  if (r.status === "loading") return "reading the model into memory";
+  if (r.copy && r.copy.copied !== null && r.copy.total) {
+    return `${formatBytesShort(r.copy.copied)} of ${formatBytesShort(r.copy.total)}`;
+  }
+  return "copying it to that machine's own disk";
 }
 
 // --- library scan -----------------------------------------------------

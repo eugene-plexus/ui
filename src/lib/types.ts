@@ -94,6 +94,8 @@ export type ComponentList = AgentComponents["schemas"]["ComponentList"];
 export type ComponentStatus = AgentComponents["schemas"]["ComponentStatus"];
 
 export type Runtime = AgentComponents["schemas"]["Runtime"];
+export type ModelCopyClearResult = AgentComponents["schemas"]["ModelCopyClearResult"];
+export type ModelCopySkipped = AgentComponents["schemas"]["ModelCopySkipped"];
 export type RuntimeSpec = AgentComponents["schemas"]["RuntimeSpec"];
 export type RuntimeList = AgentComponents["schemas"]["RuntimeList"];
 export type RuntimeStatus = AgentComponents["schemas"]["RuntimeStatus"];

@@ -723,3 +723,95 @@ function formatElapsed(seconds: number): string {
   const rest = Math.round(seconds % 60);
   return rest > 0 && minutes < 10 ? `${minutes} min ${rest} s` : `${minutes} min`;
 }
+
+/**
+ * The copy a node is making of a model, while it is making it.
+ *
+ * Shares `LoadingDescription` with `describeLoading` because the screen
+ * draws them the same way, and is a **separate function** because the
+ * two answer different questions and one of them can always be answered.
+ * A load's bytes are invisible whenever the engine maps its model, so
+ * `loadProgress` is absent most of the time and the caller falls back to
+ * elapsed. A copy is made by the agent itself, so if a copy is running
+ * there are always bytes — and if there are none, something is wrong
+ * rather than unobservable.
+ *
+ * Design: `docs/design/node-local-model-copy.md` §7.
+ */
+export function describeCopying(runtime: {
+  status?: string | null;
+  copyProgress?: {
+    bytesCopied?: number | null;
+    totalBytes?: number | null;
+    bytesPerSecond?: number | null;
+    destination?: string | null;
+  } | null;
+}): LoadingDescription | null {
+  if (runtime.status !== "copying") return null;
+  const progress = runtime.copyProgress;
+  if (!progress || typeof progress.bytesCopied !== "number" || progress.bytesCopied < 0) {
+    // The status without the numbers: still worth a line, because
+    // "copying" with nothing after it beats a blank cell, and it is the
+    // honest report of a poll that caught the job between its start and
+    // its first sample.
+    return { text: "copying the model to this machine", percent: null };
+  }
+  const copied = progress.bytesCopied;
+  const total = typeof progress.totalBytes === "number" ? progress.totalBytes : null;
+  const rate =
+    typeof progress.bytesPerSecond === "number" && progress.bytesPerSecond > 0
+      ? progress.bytesPerSecond
+      : null;
+  const percent = total && total > 0 ? Math.min(1, copied / total) : null;
+  const parts: string[] = [
+    total ? `${formatBytes(copied)} of ${formatBytes(total)}` : `${formatBytes(copied)} copied`,
+  ];
+  if (rate) parts.push(`${formatBytes(rate)}/s`);
+  if (total && rate) {
+    const left = (total - copied) / rate;
+    if (left >= 1) parts.push(`about ${formatElapsed(left)} left`);
+  }
+  parts.push("copying to this machine");
+  return { text: parts.join(" · "), percent };
+}
+
+/** Where a runtime opens its model, and why it is not the local copy. */
+export interface ModelSourceDescription {
+  text: string;
+  /** The reason a copy was asked for and not used; worth reading twice. */
+  note: string | null;
+}
+
+/**
+ * Which file this runtime opens, in the person's words.
+ *
+ * The four sources are one enum on the wire and three different stories
+ * to a person: the copy on this machine, the folder as the Library
+ * states it, a mount this machine inherited, or an override typed for
+ * this machine alone. `note` is the one that matters most and appears
+ * least: a copy that was asked for and skipped leaves the model serving
+ * normally over the network, so without saying so the only symptom is a
+ * start that is minutes slower than expected.
+ */
+export function describeModelSource(runtime: {
+  localPathSource?: string | null;
+  localPath?: string | null;
+  localPathNote?: string | null;
+}): ModelSourceDescription | null {
+  const note = runtime.localPathNote ?? null;
+  switch (runtime.localPathSource) {
+    case "copy":
+      return { text: "reading a local copy on this machine", note: null };
+    case "inherited":
+    case "override":
+    case "same_path": {
+      const share = remotePath(runtime.localPath ?? null);
+      return {
+        text: share ? `reading from ${share}` : "reading from the model folder",
+        note,
+      };
+    }
+    default:
+      return note ? { text: "reading from the model folder", note } : null;
+  }
+}

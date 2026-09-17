@@ -24,7 +24,9 @@ import {
   SKEW_WARN_SECONDS,
   declaresNoOffload,
   describeCompute,
+  describeCopying,
   describeLoading,
+  describeModelSource,
   hasAccelerator,
   issuesFrom,
   skewBetween,
@@ -977,5 +979,83 @@ describe("describeLoading", () => {
       null,
     );
     expect(line?.text).toContain("reading from \\\\192.168.16.252");
+  });
+});
+
+describe("describeCopying", () => {
+  it("says nothing about a runtime that is not copying", () => {
+    expect(describeCopying({ status: "loading" })).toBeNull();
+    expect(describeCopying({ status: "ready" })).toBeNull();
+  });
+
+  it("reports bytes, rate and time left while the copy runs", () => {
+    const described = describeCopying(
+      body<{ status: string; copyProgress: Record<string, number> }>(
+        '{"status":"copying","copyProgress":{"bytesCopied":12000000000,' +
+          '"totalBytes":24000000000,"bytesPerSecond":113600000}}',
+      ),
+    );
+    expect(described?.percent).toBeCloseTo(0.5, 2);
+    expect(described?.text).toContain("of");
+    expect(described?.text).toContain("/s");
+    expect(described?.text).toContain("left");
+    expect(described?.text).toContain("copying to this machine");
+  });
+
+  it("still says what is happening when the first sample has not landed", () => {
+    // A copy is made by this agent, so bytes always exist -- but a poll
+    // can catch the job between its start and its first sample, and a
+    // blank cell there reads as a stall.
+    const described = describeCopying({ status: "copying", copyProgress: null });
+    expect(described?.text).toBe("copying the model to this machine");
+    expect(described?.percent).toBeNull();
+  });
+
+  it("draws no bar when the source size could not be read", () => {
+    // Same rule the load bar follows: a track with no honest fill reads
+    // as "0%, stuck", which is the conclusion the line exists to stop.
+    const described = describeCopying(
+      body<{ status: string; copyProgress: Record<string, number | null> }>(
+        '{"status":"copying","copyProgress":{"bytesCopied":900000000,"totalBytes":null}}',
+      ),
+    );
+    expect(described?.percent).toBeNull();
+    expect(described?.text).toContain("copied");
+  });
+});
+
+describe("describeModelSource", () => {
+  it("names the local copy when one is being used", () => {
+    expect(describeModelSource({ localPathSource: "copy", localPath: "D:/eugene/m.gguf" })).toEqual(
+      {
+        text: "reading a local copy on this machine",
+        note: null,
+      },
+    );
+  });
+
+  it("names the share when the model is read across one", () => {
+    const described = describeModelSource(
+      body<{ localPathSource: string; localPath: string }>(
+        String.raw`{"localPathSource":"inherited","localPath":"\\\\192.168.16.252\\models\\m.gguf"}`,
+      ),
+    );
+    expect(described?.text).toContain(String.raw`\\192.168.16.252`);
+  });
+
+  it("carries the reason a copy was asked for and not made", () => {
+    // The failure mode of the whole feature: the model serves anyway, so
+    // the only other symptom is a start that is minutes slower than the
+    // person asked for.
+    const described = describeModelSource({
+      localPathSource: "inherited",
+      localPath: "/mnt/models/m.gguf",
+      localPathNote: "not copied to this machine: 12.0 GB more free space is needed",
+    });
+    expect(described?.note).toContain("more free space");
+  });
+
+  it("says nothing at all when there is nothing to say", () => {
+    expect(describeModelSource({})).toBeNull();
   });
 });

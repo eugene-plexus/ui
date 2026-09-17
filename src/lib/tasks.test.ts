@@ -230,6 +230,49 @@ describe("model loads", () => {
     expect(tasks[0]?.detail).toBe("starting the engine");
   });
 
+  it("shows a model being copied to a machine, with its share of the total", () => {
+    // The first start after the copy option goes on takes minutes and
+    // spawns nothing, so without a task here the tray is empty while
+    // the machine is busy -- and the person concludes the setting did
+    // nothing, which is the misdiagnosis the whole feature exists to
+    // end.
+    const tasks = tasksFrom({
+      ...NOTHING,
+      localRuntimes: {
+        runtimes: [
+          {
+            name: "qwen",
+            engine: "llama_cpp",
+            modelPath: "/models/q.gguf",
+            modelAlias: "qwen3-27b",
+            status: "copying",
+            copyProgress: { bytesCopied: 6_000_000_000, totalBytes: 24_000_000_000 },
+          },
+        ],
+      },
+    });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.title).toBe("Copying qwen3-27b to this machine");
+    expect(tasks[0]?.progress).toBeCloseTo(0.25, 2);
+    expect(tasks[0]?.detail).toContain("of");
+  });
+
+  it("lists a copy on another machine without inventing a bar for it", () => {
+    // The control root's union carries a status and no numbers, so the
+    // honest report from there is a line. Same rule the load bar
+    // follows one level out: no fill without bytes.
+    const tasks = tasksFrom({
+      ...NOTHING,
+      runtimes: {
+        runtimes: [{ node: "Amish_Station", name: "qwen", modelAlias: "big", status: "copying" }],
+        unreachableNodes: [],
+      },
+    });
+    expect(tasks[0]?.title).toBe("Copying big to Amish_Station");
+    expect(tasks[0]?.progress).toBeUndefined();
+    expect(tasks[0]?.detail).toBe("copying it to that machine's own disk");
+  });
+
   it("prefers the root's list when both are present, so a load is not listed twice", () => {
     const tasks = tasksFrom({
       ...NOTHING,

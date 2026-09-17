@@ -14,7 +14,12 @@ import {
   nodeDetails,
   runtimeOf,
 } from "@/lib/inferenceRows";
-import { describeCompute, describeLoading } from "@/lib/issues";
+import {
+  describeCompute,
+  describeCopying,
+  describeLoading,
+  describeModelSource,
+} from "@/lib/issues";
 import { loadKey, recallLoadSeconds, rememberLoadSeconds } from "@/lib/loadMemory";
 import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib/nodeBudget";
 import { useIssues } from "@/lib/useIssues";
@@ -82,6 +87,7 @@ const INSTALL_POLL_MS = 1000;
 
 const STATUS_TONE: Record<RuntimeStatus, string> = {
   ready: "var(--status-ok, #3fb950)",
+  copying: "var(--status-warn, #d29922)",
   loading: "var(--status-warn, #d29922)",
   starting: "var(--status-warn, #d29922)",
   exited: "var(--status-warn, #d29922)",
@@ -91,6 +97,8 @@ const STATUS_TONE: Record<RuntimeStatus, string> = {
 
 const STATUS_HELP: Record<RuntimeStatus, string> = {
   ready: "Model loaded and serving. The only state the gateway routes to.",
+  copying:
+    "Copying the model onto this machine's own disk before starting it. Nothing has been started yet; the engine follows when the copy lands.",
   loading: "Answering, but still reading the model into memory.",
   starting: "Spawned, not yet answering its readiness probe.",
   stopped:
@@ -515,6 +523,18 @@ function RowView({
     // machine that is merely slow to reply.
     detail?.devices ?? null,
   );
+  // A copy runs before any process exists, so it is its own line rather
+  // than a variant of the load: `describeLoading` has nothing to read
+  // here, and a copy always has bytes where a mapped load has none.
+  const copying = describeCopying({
+    status: row.runtimeStatus,
+    copyProgress: own?.copyProgress ?? null,
+  });
+  const source = describeModelSource({
+    localPathSource: own?.localPathSource ?? null,
+    localPath: own?.localPath ?? null,
+    localPathNote: own?.localPathNote ?? null,
+  });
   const loading = describeLoading(
     {
       // The status comes from this screen's own fast poll, not from the
@@ -590,6 +610,27 @@ function RowView({
             Install it above, then press start.
           </div>
         )}
+        {copying && (
+          <div className="text-[11px] text-[color:var(--muted)]" data-testid="copying-detail">
+            {copying.percent !== null && (
+              <div
+                className="mb-1 h-1 w-40 overflow-hidden rounded-full bg-[color:var(--border)]"
+                role="progressbar"
+                aria-valuenow={Math.round(copying.percent * 100)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Copying the model to this machine"
+                data-testid="copying-bar"
+              >
+                <div
+                  className="h-full bg-[color:var(--accent-left)] transition-[width] duration-500"
+                  style={{ width: `${Math.round(copying.percent * 100)}%` }}
+                />
+              </div>
+            )}
+            {copying.text}
+          </div>
+        )}
         {loading && (
           <div className="text-[11px] text-[color:var(--muted)]" data-testid="loading-detail">
             {/* The bar renders only when the agent could actually watch
@@ -613,6 +654,20 @@ function RowView({
               </div>
             )}
             {loading.text}
+          </div>
+        )}
+        {source && (
+          <div className="text-[11px] text-[color:var(--muted)]" data-testid="model-source">
+            {source.text}
+            {/* The skipped-copy reason, which is the one thing here
+                nobody would otherwise find out: the model still serves,
+                and the only symptom is a start minutes slower than the
+                operator asked for. */}
+            {source.note && (
+              <div className="text-status-warn" data-testid="model-source-note">
+                {source.note}
+              </div>
+            )}
           </div>
         )}
         {compute && (

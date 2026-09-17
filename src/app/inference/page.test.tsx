@@ -234,6 +234,86 @@ describe("a model that is loading", () => {
   });
 });
 
+describe("a model being copied to the machine that runs it", () => {
+  it("draws a real bar, because a copy always has bytes", async () => {
+    // Unlike a load, which llama.cpp makes invisible by mapping the
+    // file, a copy is made by the agent itself -- so there is always a
+    // number, and the bar is never a decoration.
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: {
+        runtimes: [
+          nodeRuntime({
+            status: "copying",
+            copyProgress: {
+              bytesCopied: 6_000_000_000,
+              totalBytes: 24_000_000_000,
+              bytesPerSecond: 113_600_000,
+            },
+          }),
+        ],
+      },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    const line = await within(row).findByTestId("copying-detail");
+    expect(line).toHaveTextContent("copying to this machine");
+    expect(within(row).getByTestId("copying-bar")).toHaveAttribute("aria-valuenow", "25");
+    // The status is its own word, not `starting`: nothing is spawned.
+    expect(within(row).getByText("copying")).toBeInTheDocument();
+  });
+
+  it("says the model is opened from the local copy once it is made", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: {
+        runtimes: [
+          nodeRuntime({
+            status: "ready",
+            localPathSource: "copy",
+            localPath: String.raw`D:\eugene-models\gemma.gguf`,
+          }),
+        ],
+      },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    expect(await within(row).findByTestId("model-source")).toHaveTextContent(
+      "reading a local copy on this machine",
+    );
+  });
+
+  it("prints the reason a copy was asked for and not made", async () => {
+    // The feature's failure mode: the model serves anyway, and the only
+    // other symptom is a start minutes slower than the person asked
+    // for. Unsaid, it is unfindable.
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: {
+        runtimes: [
+          nodeRuntime({
+            status: "ready",
+            localPathSource: "inherited",
+            localPath: String.raw`\192.168.16.252\models\gemma.gguf`,
+            localPathNote:
+              "not copied to this machine: 12.0 GB more free space is needed to keep 50 GB free.",
+          }),
+        ],
+      },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    expect(await within(row).findByTestId("model-source-note")).toHaveTextContent(
+      "more free space is needed",
+    );
+  });
+
+  it("says nothing about the source when nothing is known about it", async () => {
+    // The union view carries no `localPathSource`, and a row built from
+    // it must not claim the model is read from anywhere in particular.
+    const row = await rowFor("gemma-3-27b");
+    await within(row).findByText("ready");
+    expect(within(row).queryByTestId("model-source")).toBeNull();
+  });
+});
+
 describe("the node's own read, not the root's union view", () => {
   it("asks each node for its runtimes even when the control root answered", async () => {
     handlers.set("GET control/v1/nodes", () => ({

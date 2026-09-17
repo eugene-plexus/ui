@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { api, describeError } from "@/lib/api";
 import { parseFolders } from "@/lib/libraryReach";
+import { formatBytesShort } from "@/lib/tasks";
 import type { ProxyTarget } from "@/lib/config";
 import type {
   ConfigDocument,
@@ -12,6 +13,8 @@ import type {
   ConfigSchema,
   ConfigTestResult,
   ConfigUpdateResult,
+  ModelCopyClearResult,
+  ModelCopySkipped,
   RestartResult,
   Component,
   ComponentList,
@@ -422,6 +425,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
                   />
                 ))}
               </div>
+              {category === "modelStorage" && <ClearModelCopies target={target} />}
             </section>
           );
         })}
@@ -668,3 +672,78 @@ function shallowEqual(a: unknown, b: unknown): boolean {
  * one useful sentence buried in it. Every component writes that
  * sentence deliberately; this screen was the one that threw it away. */
 const formatError = describeError;
+
+/**
+ * Delete this machine's local copies of its models.
+ *
+ * Lives under Model storage rather than on a screen of its own because
+ * it is the other half of the toggle above it, and it carries the
+ * sentence that would otherwise surprise whoever pressed it: **the
+ * copies come back**. Someone clearing 60 GB to free a disk, with the
+ * option still on, gets that space back for as long as it takes the
+ * models to start again — so the button says so before it is pressed,
+ * not after.
+ *
+ * It never stops a runtime to get at a file. A copy in use is reported,
+ * by name, as one it could not remove: there is someone's inference
+ * session on the other end of that decision and a button called Clear
+ * must not make it.
+ */
+function ClearModelCopies({ target }: { target: ProxyTarget }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ModelCopyClearResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function clear() {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      setResult(await api.post<ModelCopyClearResult>(target, "/v1/model-copies/clear", {}));
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2" data-testid="clear-model-copies">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={clear}
+          disabled={busy}
+          className="font-ui w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {busy ? "Deleting…" : "Delete the local copies"}
+        </button>
+        <p className="text-xs text-[color:var(--muted)]">
+          Copies are made again the next time these models start. Turn the option off first if you
+          want the space to stay free.
+        </p>
+      </div>
+      {error && <p className="text-status-error text-xs">{error}</p>}
+      {result && (
+        <div className="text-xs text-[color:var(--muted)]" data-testid="clear-model-copies-result">
+          <p>
+            {result.deleted.length === 0
+              ? "There was nothing to delete."
+              : `Deleted ${result.deleted.length} ${result.deleted.length === 1 ? "copy" : "copies"}${
+                  result.bytesFreed ? `, freeing ${formatBytesShort(result.bytesFreed)}` : ""
+                }.`}
+          </p>
+          {result.skipped.length > 0 && (
+            <ul className="mt-1 list-disc pl-4">
+              {result.skipped.map((s: ModelCopySkipped) => (
+                <li key={s.path}>
+                  kept <span className="font-mono">{s.path}</span> — {s.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

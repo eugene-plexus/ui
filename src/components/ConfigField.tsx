@@ -29,6 +29,10 @@ import type {
  * form follows the schema. Adding a knob to a component is a
  * server-side change only.
  */
+/** One button style, shared by every editor here that has a button. */
+const buttonClass =
+  "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+
 export function ConfigFieldInput({
   field,
   value,
@@ -59,6 +63,10 @@ export function ConfigFieldInput({
 }) {
   const baseInputClass =
     "w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[color:var(--border)]";
+  // Whether the picker is open for a single `file_path` field. Held
+  // here rather than in the branch that renders it, because hooks
+  // cannot live inside `renderInput`.
+  const [browsingPath, setBrowsingPath] = useState(false);
 
   function renderInput() {
     if (field.valueType === "boolean") {
@@ -265,17 +273,47 @@ export function ConfigFieldInput({
     // ids that may not include something the operator just pulled.
     const suggestions = field.suggestions ?? [];
     const datalistId = suggestions.length > 0 ? `cf-${field.key}-suggestions` : undefined;
+    // A single `file_path` gets Browse for the same reason a `path_list`
+    // row does, and did not have one until a field asked for it: the
+    // picker was wired into the list editors and the mapping editor
+    // only. A folder someone has to type from memory is the typed path
+    // the two-screen wizard exists to have removed.
+    const browsable = field.valueType === "file_path" && browseTarget != null;
     return (
       <>
-        <input
-          type="text"
-          value={(value as string | undefined) ?? ""}
-          pattern={field.pattern ?? undefined}
-          list={datalistId}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={pending}
-          className={baseInputClass}
-        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={(value as string | undefined) ?? ""}
+            pattern={field.pattern ?? undefined}
+            list={datalistId}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={pending}
+            className={baseInputClass}
+          />
+          {browsable && (
+            <button
+              type="button"
+              onClick={() => setBrowsingPath(true)}
+              disabled={pending}
+              className={`${buttonClass} shrink-0`}
+              data-testid={`browse-${field.key}`}
+            >
+              Browse
+            </button>
+          )}
+        </div>
+        {browsable && browsingPath && (
+          <FolderPicker
+            target={browseTarget}
+            initialPath={(value as string | undefined) || null}
+            onClose={() => setBrowsingPath(false)}
+            onPick={(path) => {
+              onChange(path);
+              setBrowsingPath(false);
+            }}
+          />
+        )}
         {datalistId && (
           <datalist id={datalistId}>
             {suggestions.map((s) => (
@@ -494,8 +532,6 @@ function StringListInput({
   const rowClass = `flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 ${
     copy.mono ? "font-mono text-xs" : "text-sm"
   } outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50`;
-  const buttonClass =
-    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
   return (
     <div className="flex flex-col gap-2">

@@ -1064,6 +1064,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/model-copies/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete this node's local copies of its models.
+         * @description Removes every model file this node copied to its own disk
+         *     (`docs/design/node-local-model-copy.md`), and reports what it
+         *     could not remove and why. Deleting nothing is a success: a node
+         *     with copying switched off, or one that has never launched
+         *     anything, answers with two empty lists.
+         *
+         *     **It does not stop anything.** A copy a runtime currently has
+         *     open stays, named in `skipped` — stopping an engine to reclaim
+         *     disk is a decision with a user's inference session on the other
+         *     end of it, and a button labelled "clear" must not make it.
+         *
+         *     **And it does not switch copying off.** The copies come back the
+         *     next time these runtimes start, which is what the operator asked
+         *     for by leaving the toggle on; any UI offering this has to say so
+         *     beside the button, or it reads as "free this space permanently"
+         *     and is wrong within minutes.
+         *
+         *     Operator-only: it deletes files on this host.
+         */
+        post: operations["clearModelCopies"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config": {
         parameters: {
             query?: never;
@@ -2602,8 +2639,31 @@ export interface components {
              *     a mapping changed after declaration is visible before
              *     anything restarts. Equal to `modelPath` on every single-host
              *     install.
+             *
+             *     **A local copy is resolved one step ahead of all of that**
+             *     (`docs/design/node-local-model-copy.md`): where this node
+             *     keeps a valid copy of the file, `localPath` is the copy and
+             *     `localPathSource` says `copy`. Turning the copy off reverts
+             *     this by itself, because nothing is stored — the answer is
+             *     recomputed on every read.
              */
             readonly localPath?: string;
+            localPathSource?: components["schemas"]["RuntimeLocalPathSource"];
+            /**
+             * @description Why this node is **not** opening a local copy, when it is
+             *     not and the operator asked for one: not enough free space to
+             *     leave the configured headroom, the copy failed, the source
+             *     could not be read. Absent when the copy was used, and absent
+             *     when copying is switched off — a node that was never asked
+             *     has nothing to explain.
+             *
+             *     On the wire because a silently skipped copy is the failure
+             *     mode of this whole feature: the model still serves, the
+             *     launch still succeeds, and the only visible symptom is that
+             *     it is four minutes slower than the operator expected.
+             */
+            readonly localPathNote?: string;
+            copyProgress?: components["schemas"]["CopyProgress"];
             /** @description Resolved alias — the declared value, or the derived filename. */
             modelAlias?: string;
             host?: string;
@@ -2743,6 +2803,119 @@ export interface components {
             source: "windows_io_counters" | "proc_io_rchar" | "rusage_diskio";
         };
         /**
+         * @description How far into copying a model file to this node's own disk the
+         *     agent is (`docs/design/node-local-model-copy.md`). Present
+         *     exactly while `status` is `copying`, and absent otherwise.
+         *
+         *     **The same shape as `LoadProgress` and deliberately not the same
+         *     field**, because the two differ on the question that field
+         *     exists to answer. `loadProgress` is absent whenever the bytes
+         *     cannot be observed — llama.cpp maps its model and faulted pages
+         *     are not read I/O — so a consumer reads *absent* as "show elapsed
+         *     instead". Here the agent is the process doing the reading and
+         *     the writing, so the bytes are never unobservable and absent can
+         *     only mean "no copy is running". One field carrying both meanings
+         *     would make every consumer invent the distinction, and this
+         *     project has already paid for that once.
+         *
+         *     It reports the copy of ONE model file — the file this runtime
+         *     points at. Several runtimes over one file (M6 replicas) copy it
+         *     once, so the second and third report the same copy while it runs
+         *     and none of them afterwards.
+         */
+        CopyProgress: {
+            /**
+             * Format: int64
+             * @description Bytes written to the destination so far.
+             */
+            bytesCopied: number;
+            /**
+             * Format: int64
+             * @description Size of the source file, when it could be measured. Null
+             *     when the source could not be stat'd — a share that has gone
+             *     away mid-copy, which is exactly when this is worth watching,
+             *     so progress is still reported without a percentage.
+             */
+            totalBytes?: number;
+            /**
+             * Format: double
+             * @description Observed over a short window rather than averaged over the
+             *     whole copy, so a share that has just got slower shows it.
+             *     Null on the first pair of readings.
+             */
+            bytesPerSecond?: number;
+            /**
+             * @description Where the copy is being written, on this host. Reported
+             *     because the operator picked the directory and the commonest
+             *     question about a long copy is which disk is filling up.
+             *
+             *     This is the **final** path, not the temporary name the bytes
+             *     are actually landing in: a partial copy never carries the
+             *     name an engine would open (§3.3 of the design), and naming
+             *     the temp file here would invite someone to go looking for a
+             *     file that exists only until the rename.
+             */
+            destination?: string;
+        };
+        /**
+         * @description What `POST /v1/model-copies/clear` managed to delete, and what it
+         *     did not.
+         *
+         *     **It never stops a runtime to get at a file.** On Windows an open
+         *     or mapped file cannot be deleted at all, so a running engine's
+         *     copy is protected by the OS rather than by our code; on Linux the
+         *     unlink succeeds, the engine keeps its inode, and the space comes
+         *     back when that process exits — later than an operator watching a
+         *     disk meter expects. Both are reported rather than smoothed over,
+         *     because "I pressed Clear and the disk did not change" is
+         *     otherwise indistinguishable from a bug.
+         */
+        ModelCopyClearResult: {
+            /** @description Paths removed, on this host. */
+            deleted: string[];
+            /**
+             * Format: int64
+             * @description Total size of what was deleted. On Linux this counts space
+             *     that is only returned when a runtime still holding an inode
+             *     exits, which is what `skipped` explains.
+             */
+            bytesFreed?: number;
+            /** @description One entry per copy that survived, with the reason. */
+            skipped: components["schemas"]["ModelCopySkipped"][];
+        };
+        ModelCopySkipped: {
+            path: string;
+            /** @description The runtime holding it open, when that is why. */
+            runtime?: string;
+            /**
+             * @description Plain-language reason this copy is still on disk — in use by
+             *     a running runtime, permission denied, or the delete failed.
+             *     Rendered as written; the UI does not classify it.
+             */
+            reason: string;
+        };
+        /**
+         * @description Which rule decided this runtime's `localPath`.
+         *
+         *     The three values of `FolderReachSource`, plus `copy`. They are a
+         *     separate enum rather than a shared one because a *folder* can
+         *     never be a copy — a copy is made per model file, and putting
+         *     `copy` in the folder enum would hand the Library's Folders page
+         *     a value it can never receive and must still handle.
+         *
+         *     * `same_path` — no rule applied; `modelPath` is opened as
+         *       written. Every single-host install.
+         *     * `inherited` — the Library folder's own `mounts` carried an
+         *       entry of this host's OS shape.
+         *     * `override` — this node's `pathMappings` named the folder.
+         *     * `copy` — this node holds its own valid copy of the file and is
+         *       opening that. Resolved ahead of the other three, which is why
+         *       it can appear on a node that also has a mount: the mount is
+         *       how the copy got here.
+         * @enum {string}
+         */
+        RuntimeLocalPathSource: "same_path" | "inherited" | "override" | "copy";
+        /**
          * @description Operational state of an engine process. Distinct from
          *     `ComponentStatus`: an engine has no safe mode (nothing to
          *     recover a config from), and it has a model-load phase that a
@@ -2752,6 +2925,19 @@ export interface components {
          *     reports them. That distinction is load-bearing, because the two
          *     engines report the load phase in opposite ways — see `loading`.
          *
+         *     * `copying` — this node is making its local copy of the model
+         *       file, and **nothing has been spawned yet**
+         *       (`docs/design/node-local-model-copy.md`). It is its own state
+         *       rather than `starting` for the reason the list above is
+         *       defined by meaning: `starting` says *spawned, and we have no
+         *       information yet*, and there is no process here at all. Folding
+         *       it in would put a multi-minute wait behind a word that
+         *       promises a process — the same "healthy and broken look
+         *       identical" window this feature exists to close. `copyProgress`
+         *       says how far along, and unlike `loadProgress` it is always
+         *       present in this state, because the agent is the one moving the
+         *       bytes. Only reachable on a node with `modelCopyEnabled`; a
+         *       copy that is skipped or already valid never enters it.
          *     * `starting` — spawned, and we have no information yet. Not "the
          *       probe failed": the honest gap between spawning a process and
          *       learning anything about it.
@@ -2790,7 +2976,7 @@ export interface components {
          *       `POST .../restart` retries.
          * @enum {string}
          */
-        RuntimeStatus: "starting" | "loading" | "ready" | "stopped" | "exited" | "crashed";
+        RuntimeStatus: "copying" | "starting" | "loading" | "ready" | "stopped" | "exited" | "crashed";
         /**
          * @description What the running engine reports about itself, read back after it
          *     becomes ready rather than inferred from the declaration. The
@@ -4849,6 +5035,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryFolderReach"];
+                };
+            };
+        };
+    };
+    clearModelCopies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was deleted, and what survived. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCopyClearResult"];
                 };
             };
         };
