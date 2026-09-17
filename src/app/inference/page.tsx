@@ -523,6 +523,11 @@ function RowView({
       status: row.runtimeStatus,
       lastRestart: own?.lastRestart ?? null,
       localPath: own?.localPath ?? null,
+      // Sampled by the agent from the engine's own read counter, and
+      // absent whenever the bytes cannot be seen moving -- a mapped load
+      // is the ordinary case for that. Absent means "show elapsed", NOT
+      // "zero bytes read", which is why nothing here defaults it.
+      loadProgress: own?.loadProgress ?? null,
     },
     now,
     recallLoadSeconds(loadKey(row.node, row.model)),
@@ -587,7 +592,27 @@ function RowView({
         )}
         {loading && (
           <div className="text-[11px] text-[color:var(--muted)]" data-testid="loading-detail">
-            {loading}
+            {/* The bar renders only when the agent could actually watch
+                the bytes move. A track drawn with no fill would read as
+                "0%, stuck", which is the conclusion this whole line
+                exists to prevent. */}
+            {loading.percent !== null && (
+              <div
+                className="mb-1 h-1 w-40 overflow-hidden rounded-full bg-[color:var(--border)]"
+                role="progressbar"
+                aria-valuenow={Math.round(loading.percent * 100)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Reading the model"
+                data-testid="loading-bar"
+              >
+                <div
+                  className="h-full bg-[color:var(--accent-left)] transition-[width] duration-500"
+                  style={{ width: `${Math.round(loading.percent * 100)}%` }}
+                />
+              </div>
+            )}
+            {loading.text}
           </div>
         )}
         {compute && (

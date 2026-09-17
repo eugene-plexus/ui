@@ -598,31 +598,85 @@ export function describeCompute(
 }
 
 /**
- * *loading · N so far*, the first of S7's two honest states.
+ * *loading · N so far*, the first of S7's two honest states — now with a
+ * real percentage when, and only when, there is one.
  *
- * **The design asked for a time remaining "from bytes and rate", and
- * there are no bytes.** Nothing on any wire counts a model load:
- * `llama-server`'s `/health` answers 503 with `{"status": "loading
- * model"}` and no fraction, vLLM answers nothing at all while it loads,
- * and the agent's readiness probe records the distinction and not a
- * position. Reading the process's own I/O counters would not rescue it
- * either — llama.cpp memory-maps the file by default, and faulted pages
- * are not read I/O on Windows.
+ * **S7 refused a progress bar and was half right.** Its reasoning was
+ * that nothing on any wire counts a model load — `llama-server`'s
+ * `/health` answers 503 with `{"status": "loading model"}` and no
+ * fraction, vLLM answers nothing at all — and that the process's own I/O
+ * counters would not rescue it, because llama.cpp memory-maps the file
+ * and faulted pages are not read I/O.
  *
- * So: elapsed, which is exact, and *where it is reading from*, which is
- * the thing that actually explains a four-minute load — on the live
- * install a 23.8 GB model comes over a gigabit link from a NAS every
- * single start, and the path says so. An estimate appears only once this
- * browser has watched the same model finish loading before
- * (`rememberedSeconds`), because a first load has nothing honest to
- * predict from.
+ * That last clause is true of a *mapped* load and false of a buffered
+ * one. Measured 2026-09-17 on Windows, 268 MB touched: `+268.4 MB` of
+ * `ReadTransferCount` for a normal read, over SMB and on local disk
+ * alike, and `+0.0 MB` for the same bytes through a mapping. llama.cpp
+ * takes `--load-mode none` and vLLM reads normally, so the answer is
+ * per-launch. The agent samples the counter, decides whether the bytes
+ * are actually moving, and sends `loadProgress` only when they are.
+ *
+ * **So this function never infers one mode from the other.** Progress
+ * present → a percentage, a rate and a real estimate. Absent → exactly
+ * what S7 built: elapsed, which is exact, *where it is reading from*,
+ * which is what actually explains a four-minute load, and an estimate
+ * only once this browser has watched the same model load before.
  */
+export interface LoadingDescription {
+  text: string;
+  /** 0-1 for a bar, or null when there is nothing honest to fill it with. */
+  percent: number | null;
+}
+
 export function describeLoading(
-  runtime: { status?: string | null; lastRestart?: string | null; localPath?: string | null },
+  runtime: {
+    status?: string | null;
+    lastRestart?: string | null;
+    localPath?: string | null;
+    loadProgress?: {
+      bytesRead?: number | null;
+      totalBytes?: number | null;
+      bytesPerSecond?: number | null;
+    } | null;
+  },
   now: number,
   rememberedSeconds: number | null,
-): string | null {
+): LoadingDescription | null {
   if (runtime.status !== "loading" && runtime.status !== "starting") return null;
+
+  const from = remotePath(runtime.localPath ?? null);
+  const progress = runtime.loadProgress;
+
+  if (progress && typeof progress.bytesRead === "number" && progress.bytesRead >= 0) {
+    const read = progress.bytesRead;
+    const total = typeof progress.totalBytes === "number" ? progress.totalBytes : null;
+    const rate =
+      typeof progress.bytesPerSecond === "number" && progress.bytesPerSecond > 0
+        ? progress.bytesPerSecond
+        : null;
+    const percent = total && total > 0 ? Math.min(1, read / total) : null;
+    const parts: string[] = [];
+
+    // The read finishes before the engine is ready — the weights still
+    // have to reach the GPU. Letting the bar sit at 100% saying
+    // "24.9 GB of 24.9 GB" for twenty seconds is the "is it stuck?" this
+    // exists to answer, so the last stretch says what is happening.
+    if (percent !== null && percent >= 0.999) {
+      parts.push("read; uploading to the GPU");
+    } else {
+      parts.push(
+        total ? `${formatBytes(read)} of ${formatBytes(total)}` : `${formatBytes(read)} read`,
+      );
+      if (rate) parts.push(`${formatBytes(rate)}/s`);
+      if (total && rate) {
+        const left = (total - read) / rate;
+        if (left >= 1) parts.push(`about ${formatElapsed(left)} left`);
+      }
+    }
+    if (from) parts.push(`reading from ${from}`);
+    return { text: parts.join(" · "), percent };
+  }
+
   const started = runtime.lastRestart ? Date.parse(runtime.lastRestart) : NaN;
   const parts: string[] = [];
   if (!Number.isNaN(started) && now >= started) {
@@ -632,9 +686,8 @@ export function describeLoading(
       parts.push(`about ${formatElapsed(rememberedSeconds - elapsed)} left, going by last time`);
     }
   }
-  const from = remotePath(runtime.localPath ?? null);
   if (from) parts.push(`reading from ${from}`);
-  return parts.length > 0 ? parts.join(" · ") : null;
+  return parts.length > 0 ? { text: parts.join(" · "), percent: null } : null;
 }
 
 /**
@@ -653,6 +706,15 @@ function remotePath(localPath: string | null): string | null {
     return parts[0] ? `\\\\${parts[0]}` : null;
   }
   return null;
+}
+
+/** Decimal units, because that is what a NAS, a disk and a link are all
+ * sold in, and a load is bounded by one of those three. */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(bytes < 1e10 ? 1 : 0)} GB`;
+  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
+  if (bytes >= 1e3) return `${Math.round(bytes / 1e3)} kB`;
+  return `${Math.round(bytes)} B`;
 }
 
 function formatElapsed(seconds: number): string {

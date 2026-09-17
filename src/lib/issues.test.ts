@@ -812,7 +812,7 @@ describe("describeLoading", () => {
     // The design asked for a time remaining from bytes and rate. There
     // are no bytes: nothing on any wire counts a model load, and
     // llama.cpp memory-maps the file so faulted pages are not read I/O.
-    expect(describeLoading({ status: "loading", lastRestart: started }, now, null)).toBe(
+    expect(describeLoading({ status: "loading", lastRestart: started }, now, null)?.text).toBe(
       "1 min 35 s so far",
     );
   });
@@ -827,7 +827,7 @@ describe("describeLoading", () => {
       now,
       null,
     );
-    expect(line).toBe("1 min 35 s so far · reading from \\\\192.168.16.252");
+    expect(line?.text).toBe("1 min 35 s so far · reading from \\\\192.168.16.252");
   });
 
   it("does not print a local path, which explains nothing and is long", () => {
@@ -836,23 +836,146 @@ describe("describeLoading", () => {
         { status: "loading", lastRestart: started, localPath: "D:\\models\\gemma.gguf" },
         now,
         null,
-      ),
+      )?.text,
     ).toBe("1 min 35 s so far");
   });
 
   it("estimates only from a load this browser has watched finish before", () => {
-    expect(describeLoading({ status: "loading", lastRestart: started }, now, 240)).toBe(
+    expect(describeLoading({ status: "loading", lastRestart: started }, now, 240)?.text).toBe(
       "1 min 35 s so far · about 2 min 25 s left, going by last time",
     );
   });
 
   it("stops estimating once the load has outrun what it remembers", () => {
-    expect(describeLoading({ status: "loading", lastRestart: started }, now, 60)).toBe(
+    expect(describeLoading({ status: "loading", lastRestart: started }, now, 60)?.text).toBe(
       "1 min 35 s so far",
     );
   });
 
   it("says nothing rather than guessing when there is no start time", () => {
     expect(describeLoading({ status: "starting" }, now, null)).toBeNull();
+  });
+  // ----------------------------------------------------------------- //
+  // the bytes, when there are some
+  //
+  // S7 refused a bar because llama.cpp mmaps and faulted pages are not
+  // read I/O. That is still true of a mapped load and false of a
+  // buffered one (`--load-mode none`, vLLM), so the agent sends
+  // `loadProgress` only where it watched the counter move, and this
+  // never infers one mode from the other.
+  // ----------------------------------------------------------------- //
+
+  it("fills a bar from real bytes, with a rate and an estimate", () => {
+    const line = describeLoading(
+      {
+        status: "loading",
+        lastRestart: started,
+        loadProgress: {
+          bytesRead: 8_200_000_000,
+          totalBytes: 24_950_000_000,
+          bytesPerSecond: 97_000_000,
+        },
+      },
+      now,
+      null,
+    );
+    expect(line?.percent).toBeCloseTo(0.3286, 3);
+    expect(line?.text).toBe("8.2 GB of 25 GB · 97 MB/s · about 2 min 53 s left");
+  });
+
+  it("draws NO bar when the agent could not watch the bytes", () => {
+    // The load-bearing case. A mapped load sends no progress, and a
+    // track with no fill would read as "0%, stuck" -- the exact
+    // conclusion this line exists to prevent.
+    const line = describeLoading({ status: "loading", lastRestart: started }, now, null);
+    expect(line?.percent).toBeNull();
+    expect(line?.text).toBe("1 min 35 s so far");
+  });
+
+  it("reports bytes without a percentage when the file could not be sized", () => {
+    // A share that went away is exactly when a load is worth watching.
+    const line = describeLoading(
+      {
+        status: "loading",
+        lastRestart: started,
+        loadProgress: { bytesRead: 3_000_000_000, totalBytes: null, bytesPerSecond: 50_000_000 },
+      },
+      now,
+      null,
+    );
+    expect(line?.percent).toBeNull();
+    expect(line?.text).toBe("3.0 GB read · 50 MB/s");
+  });
+
+  it("says what the last stretch is actually doing instead of sitting at 100%", () => {
+    // The read finishes before the engine is ready -- the weights still
+    // have to reach the GPU.
+    const line = describeLoading(
+      {
+        status: "loading",
+        lastRestart: started,
+        loadProgress: {
+          bytesRead: 24_950_000_000,
+          totalBytes: 24_950_000_000,
+          bytesPerSecond: 97_000_000,
+        },
+      },
+      now,
+      null,
+    );
+    expect(line?.percent).toBe(1);
+    expect(line?.text).toBe("read; uploading to the GPU");
+  });
+
+  it("never fills past full, because the counter counts more than the model", () => {
+    // `bytesRead` is every byte the process read -- its own binary, the
+    // CUDA libraries, the GGUF -- so it genuinely overshoots the model's
+    // size on a small model with a large runtime beside it. A bar at
+    // 130% reads as broken.
+    const line = describeLoading(
+      {
+        status: "loading",
+        lastRestart: started,
+        loadProgress: { bytesRead: 30_000_000_000, totalBytes: 25_000_000_000, bytesPerSecond: 1 },
+      },
+      now,
+      null,
+    );
+    expect(line?.percent).toBe(1);
+  });
+
+  it("prefers real bytes over what this browser remembers", () => {
+    const line = describeLoading(
+      {
+        status: "loading",
+        lastRestart: started,
+        loadProgress: {
+          bytesRead: 5_000_000_000,
+          totalBytes: 25_000_000_000,
+          bytesPerSecond: 100_000_000,
+        },
+      },
+      now,
+      240,
+    );
+    expect(line?.text).not.toContain("going by last time");
+  });
+
+  it("still names the share when it has bytes too", () => {
+    const line = describeLoading(
+      {
+        status: "loading",
+        lastRestart: started,
+        localPath: "\\\\192.168.16.252\\downloads\\models\\gemma.gguf",
+        loadProgress: {
+          bytesRead: 1_000_000_000,
+          totalBytes: 25_000_000_000,
+          bytesPerSecond: 100_000_000,
+        },
+      },
+      now,
+      null,
+    );
+    expect(line?.text).toContain("reading from \\\\192.168.16.252");
   });
 });
