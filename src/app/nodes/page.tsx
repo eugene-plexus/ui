@@ -30,12 +30,30 @@
  */
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api } from "@/lib/api";
 import { isLockedError } from "@/lib/controlUnlock";
+import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
+import { usePolling } from "@/lib/usePolling";
+
+/**
+ * Troy's number, and the reason for it: unlock the root and it is
+ * holding no observations at all, so every node reads as not-yet-checked
+ * until its poller completes a pass. Two seconds is fast enough that the
+ * flip to `reachable` looks like the page catching up rather than
+ * something the operator had to do.
+ *
+ * `/v1/nodes` is a read of applied state plus cached probes -- it does
+ * not probe anything -- so this costs one round trip to the root.
+ */
+const NODE_POLL_MS = 2000;
+
+/** The join, the gateway and the placement behind "Serves". Slower: it
+ * is three more reads and nobody is watching it tick. */
+const SERVED_POLL_MS = 10000;
 
 interface NodeRow {
   name: string;
@@ -65,9 +83,18 @@ interface Served {
 }
 
 interface MintedToken {
+  id: string;
   token: string;
   expiresAt: string;
   nodeName?: string | null;
+}
+
+/** An outstanding token, as the root lists it: never the token itself. */
+interface TokenRecord {
+  id: string;
+  expiresAt: string;
+  nodeName?: string | null;
+  used: boolean;
 }
 
 interface ControlStatus {
@@ -133,9 +160,20 @@ export default function NodesPage() {
   const [minting, setMinting] = useState(false);
   const [mintError, setMintError] = useState<string | null>(null);
   const [minted, setMinted] = useState<MintedToken | null>(null);
+  const [outstanding, setOutstanding] = useState<TokenRecord[]>([]);
+  const [revoking, setRevoking] = useState<string | null>(null);
   const [newNodeName, setNewNodeName] = useState("");
   const [controlUrl, setControlUrl] = useState("");
 
+  /**
+   * The node list, on a two-second loop.
+   *
+   * **The last good answer is kept when a poll fails.** At one shot a
+   * blanked table was the same as an empty one; at two seconds a single
+   * missed round trip would flicker every row away and back, and this
+   * page is where someone looks when they already suspect something is
+   * wrong. The failure is reported beside the list instead.
+   */
   const load = useCallback(async () => {
     try {
       const [list, st] = await Promise.all([
@@ -146,29 +184,45 @@ export default function NodesPage() {
       setStatus(st);
       setError(null);
       setLocked(false);
-      setServed(await servedByNode());
       // The command we print has to name an address the *other* machine
       // can reach. This root's own registry entry is the only place the
       // UI can learn one — the browser's own URL is the UI's host, which
       // on a single-box install is loopback and useless to say out loud.
       const root = (list.nodes ?? []).find((n) => n.role === "control" && n.url);
-      if (root?.url) setControlUrl(rootControlUrl(root.url));
+      if (root?.url) setControlUrl((current) => current || rootControlUrl(root.url!));
     } catch (e) {
       // A sealed root is not an error to report, it is a thing to offer
       // to fix — so it gets the panel below instead of the red box.
       if (isLockedError(e)) {
         setLocked(true);
         setError(null);
+        setNodes([]);
       } else {
         setError(describe(e));
+        // Keep whatever was last true. See the docblock.
+        setNodes((current) => current ?? []);
       }
-      setNodes([]);
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const loadServed = useCallback(async () => {
+    setServed(await servedByNode());
+  }, []);
+
+  /** Outstanding join tokens. Soft: the list is an extra, and a root
+   * that cannot serve it must not take the page down. */
+  const loadTokens = useCallback(async () => {
+    try {
+      const list = await api.get<{ tokens: TokenRecord[] }>("control", "/v1/nodes/join-tokens");
+      setOutstanding(list.tokens ?? []);
+    } catch {
+      setOutstanding([]);
+    }
+  }, []);
+
+  usePolling(load, NODE_POLL_MS);
+  usePolling(loadServed, SERVED_POLL_MS, !locked);
+  usePolling(loadTokens, SERVED_POLL_MS, !locked);
 
   /**
    * Open a sealed control root from the browser.
@@ -214,10 +268,38 @@ export default function NodesPage() {
     try {
       const body = newNodeName.trim() ? { nodeName: newNodeName.trim() } : {};
       setMinted(await api.post<MintedToken>("control", "/v1/nodes/join-token", body));
+      await loadTokens();
     } catch (e) {
       setMintError(describe(e));
     } finally {
       setMinting(false);
+    }
+  }
+
+  /**
+   * Withdraw a token.
+   *
+   * Troy asked for it because minting was the only thing that could be
+   * done to one: a token that went to the wrong window stayed live for
+   * the rest of its TTL and the only remedy was to wait.
+   *
+   * No confirmation. The destructive direction here is *minting*, and
+   * the cost of an unwanted revoke is one more click on Mint — whereas
+   * a dialog between an operator and a credential they have decided to
+   * kill is the wrong friction in the wrong place.
+   */
+  async function revoke(id: string) {
+    setRevoking(id);
+    setMintError(null);
+    try {
+      await api.delete("control", `/v1/nodes/join-tokens/${encodeURIComponent(id)}`);
+      // The one on screen is now dead; stop offering its command.
+      if (minted?.id === id) setMinted(null);
+      await loadTokens();
+    } catch (e) {
+      setMintError(describe(e));
+    } finally {
+      setRevoking(null);
     }
   }
 
@@ -339,11 +421,12 @@ export default function NodesPage() {
                         ) : null}
                       </td>
                       <td className="py-2 pr-4">
-                        {n.reachable ? (
-                          <span className="text-[color:var(--ok,inherit)]">reachable</span>
-                        ) : (
-                          <span className="text-[color:var(--muted)]">down</span>
-                        )}
+                        {/* Three words, not two. `reachable: false` is both
+                            "we looked and it was not there" and "nothing has
+                            looked", and a root that has just been unlocked is
+                            always the second -- which read as every node being
+                            down for a poll interval. See `nodeLiveness.ts`. */}
+                        <LivenessCell node={n} />
                         {/* The root's own words for why. Until 2026-09-15 this
                             column said only "down" while the probe client held
                             "HTTP 401: ... not yet valid (iat)" -- half a second
@@ -452,6 +535,59 @@ export default function NodesPage() {
             </div>
           )}
 
+          {outstanding.length > 0 && (
+            <div
+              data-testid="outstanding-tokens"
+              className="mb-4 rounded-[var(--radius)] border border-[color:var(--border)] p-3"
+            >
+              <h3 className="font-ui mb-2 text-xs font-semibold">
+                Outstanding tokens ({outstanding.length})
+              </h3>
+              <ul className="space-y-1.5">
+                {outstanding.map((t) => (
+                  <li
+                    key={t.id}
+                    data-testid="token-row"
+                    data-token-id={t.id}
+                    className="flex flex-wrap items-center justify-between gap-2 text-xs"
+                  >
+                    <span>
+                      <span className="font-mono">{t.id}</span>
+                      {t.nodeName ? (
+                        <>
+                          {" "}
+                          · for <span className="font-mono">{t.nodeName}</span>
+                        </>
+                      ) : (
+                        <span className="text-[color:var(--muted)]"> · any node</span>
+                      )}
+                      <span className="text-[color:var(--muted)]">
+                        {" "}
+                        · {t.used ? "already used" : "expires"}{" "}
+                        {t.used ? "" : new Date(t.expiresAt).toLocaleTimeString()}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void revoke(t.id)}
+                      disabled={revoking !== null}
+                      data-testid="revoke-token"
+                      className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {revoking === t.id ? "revoking…" : "Revoke"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] text-[color:var(--muted)]">
+                The id is a handle, not the token — the token itself was shown once and is not
+                stored in a form anything can read back. Revoking one stops it working immediately;
+                a token that has already enrolled a node can be cleared here and the node is
+                untouched.
+              </p>
+            </div>
+          )}
+
           {minted && (
             <div className="rounded-[var(--radius)] border border-[color:var(--border)] p-3">
               <div className="mb-2 flex items-center justify-between gap-3">
@@ -480,6 +616,24 @@ export default function NodesPage() {
         </section>
       </main>
     </AppShell>
+  );
+}
+
+/** The liveness word for one node, with the reason behind it. */
+function LivenessCell({ node }: { node: NodeRow }) {
+  const liveness = nodeLiveness(node);
+  const { label, title } = describeLiveness(liveness);
+  return (
+    <span
+      data-testid="node-liveness"
+      data-liveness={liveness}
+      title={title}
+      className={
+        liveness === "reachable" ? "text-[color:var(--ok,inherit)]" : "text-[color:var(--muted)]"
+      }
+    >
+      {label}
+    </span>
   );
 }
 

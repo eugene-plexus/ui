@@ -15,7 +15,7 @@
  * registry must not render as an empty one.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -63,10 +63,13 @@ const NODES = {
 /** Flips to false when the login call lands, like the real root does. */
 let sealed: boolean;
 let calls: { url: string; method: string }[];
+/** Outstanding join tokens, as the root lists them: never the token. */
+let tokenRows: { id: string; expiresAt: string; nodeName?: string | null; used: boolean }[];
 
 beforeEach(() => {
   sealed = true;
   calls = [];
+  tokenRows = [];
   const seen = calls;
   vi.stubGlobal(
     "fetch",
@@ -85,6 +88,10 @@ beforeEach(() => {
         return json({ sessionToken: "fresh", expiresAt: "2099-01-01T00:00:00Z" });
       }
       if (sealed) return json(LOCKED, 503);
+      // Before `/v1/nodes` — it is a prefix of this one, and answering
+      // the node list here is the same collision the control root's own
+      // router had.
+      if (url.includes("/v1/nodes/join-tokens")) return json({ tokens: tokenRows });
       if (url.includes("/v1/nodes")) return json(NODES);
       if (url.includes("/v1/control/status")) return json({ role: "control", epoch: 1 });
       return json({});
@@ -172,5 +179,166 @@ describe("nodes page, uninitialized control root", () => {
     // wants a passphrase, the other wants first-run setup.
     await screen.findByText(/no passphrase yet/i);
     expect(screen.queryByLabelText(/operator passphrase/i)).toBeNull();
+  });
+});
+
+describe("a root that has not polled yet", () => {
+  /**
+   * Reported 2026-09-17: update the container, unlock, and every node
+   * reads as **down** — then a manual refresh a few seconds later shows
+   * them all up.
+   *
+   * Two causes, and this file drives both. A locked root does not poll,
+   * so the moment it is unlocked it holds no observations and reports
+   * `reachable: false` for every node; and the page asked once and never
+   * again.
+   */
+  function withNodes(rows: unknown[]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, method: (init?.method ?? "GET").toUpperCase() });
+        const json = (body: unknown, status = 200) =>
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { "content-type": "application/json" },
+          });
+        if (url.includes("/v1/nodes/join-tokens")) return json({ tokens: tokenRows });
+        if (url.includes("/v1/nodes")) return json({ nodes: rows });
+        if (url.includes("/v1/control/status")) return json({ role: "control", epoch: 1 });
+        return json({});
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    sealed = false;
+  });
+
+  it("says checking, not down, when nothing has been observed", async () => {
+    // `reachable: false` with no reason and no `lastSeenAt` is the exact
+    // signature of "no probe record exists" — every failed probe carries
+    // a reason. See `lib/nodeLiveness.ts`.
+    withNodes([{ name: "Amish_Station", role: "worker", reachable: false, url: "http://a:8079" }]);
+    render(<NodesPage />);
+    const cell = await screen.findByTestId("node-liveness");
+    expect(cell).toHaveAttribute("data-liveness", "unchecked");
+    expect(cell).not.toHaveTextContent("down");
+  });
+
+  it("says down when the root actually tried and could not", async () => {
+    withNodes([
+      {
+        name: "Amish_Station",
+        role: "worker",
+        reachable: false,
+        url: "http://a:8079",
+        lastError: "connection refused",
+      },
+    ]);
+    render(<NodesPage />);
+    const cell = await screen.findByTestId("node-liveness");
+    expect(cell).toHaveAttribute("data-liveness", "down");
+    expect(await screen.findByTestId("node-last-error")).toHaveTextContent("connection refused");
+  });
+
+  it("keeps asking, so the operator does not have to refresh", async () => {
+    // Troy's ask, and the reason for it: the data he is waiting for
+    // arrives seconds after he unlocks, from the root's own poller.
+    withNodes([{ name: "Amish_Station", role: "worker", reachable: false, url: "http://a:8079" }]);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<NodesPage />);
+      await screen.findByTestId("node-liveness");
+      const nodeReads = () =>
+        calls.filter(
+          (c) =>
+            c.method === "GET" && c.url.includes("/v1/nodes") && !c.url.includes("join-tokens"),
+        ).length;
+      const before = nodeReads();
+      await vi.advanceTimersByTimeAsync(5000);
+      const after = nodeReads();
+      // At 2 s, five seconds is at least two more reads.
+      expect(after).toBeGreaterThan(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the last good list when one poll fails", async () => {
+    // At one shot a blanked table was the same as an empty one. At two
+    // seconds a single missed round trip would flicker every row away
+    // and back, on the page someone opens when they already suspect
+    // something is wrong.
+    let fail = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        const json = (body: unknown, status = 200) =>
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { "content-type": "application/json" },
+          });
+        if (url.includes("/v1/nodes/join-tokens")) return json({ tokens: [] });
+        if (url.includes("/v1/nodes")) {
+          if (fail) return json({ detail: "boom" }, 500);
+          return json(NODES);
+        }
+        return json({});
+      }),
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<NodesPage />);
+      // Scoped to the table: the shell's own tree names machines too.
+      const row = async () => within(await screen.findByRole("table")).queryByText("Amish_Station");
+      expect(await row()).toBeTruthy();
+      fail = true;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await row()).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("join tokens can be withdrawn", () => {
+  beforeEach(() => {
+    sealed = false;
+    tokenRows = [
+      { id: "a1b2c3d4e5f60718", expiresAt: "2099-01-01T00:15:00Z", nodeName: "attic", used: false },
+    ];
+  });
+
+  it("lists what is outstanding, with no token in it", async () => {
+    render(<NodesPage />);
+    const row = await screen.findByTestId("token-row");
+    expect(row).toHaveTextContent("a1b2c3d4e5f60718");
+    expect(row).toHaveTextContent("attic");
+  });
+
+  it("revokes by id, against the control root", async () => {
+    // The id is a handle, not the token — so this is the one thing the
+    // page can do to a credential it was shown exactly once.
+    render(<NodesPage />);
+    await screen.findByTestId("token-row");
+    tokenRows = [];
+    await userEvent.click(screen.getByTestId("revoke-token"));
+
+    await waitFor(() => {
+      const call = calls.find((c) => c.method === "DELETE");
+      expect(call?.url).toContain("/v1/nodes/join-tokens/a1b2c3d4e5f60718");
+      expect(call?.url).toContain("control");
+    });
+    await waitFor(() => expect(screen.queryByTestId("token-row")).toBeNull());
+  });
+
+  it("shows nothing at all when there is nothing outstanding", async () => {
+    tokenRows = [];
+    render(<NodesPage />);
+    await screen.findByRole("table");
+    expect(screen.queryByTestId("outstanding-tokens")).toBeNull();
   });
 });

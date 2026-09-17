@@ -123,9 +123,73 @@ export interface paths {
          *     The returned `token` is shown **once** and not retrievable
          *     afterwards. It is not stored in recoverable form — a lost token
          *     is re-minted, not looked up.
+         *
+         *     The returned `id` is the handle to withdraw it by
+         *     (`revokeJoinToken`) and is not the token: a token that went to
+         *     the wrong place used to stay live for the rest of its TTL with
+         *     no remedy but waiting.
          */
         post: operations["mintJoinToken"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/nodes/join-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The join tokens this root has minted and not yet expired.
+         * @description Operator-only, and **carries no token** — the store keeps a hash
+         *     and never the secret, so there is nothing here to steal and
+         *     nothing to re-read a lost token from.
+         *
+         *     Active-root-local, like minting: this list does not survive a
+         *     promotion, because the tokens do not either.
+         */
+        get: operations["listJoinTokens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/nodes/join-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw a minted join token before it expires.
+         * @description Operator-only. The token stops working immediately: it is
+         *     forgotten here, so presenting it afterwards is indistinguishable
+         *     from presenting one that never existed, which is the right
+         *     answer — a revoked credential should not confirm it was ever
+         *     real.
+         *
+         *     **Minting one does not withdraw another** (`mintJoinToken` says
+         *     so), which is exactly why this exists: before it, a token pasted
+         *     into the wrong window stayed live for the rest of its TTL and
+         *     the only remedy was to wait.
+         *
+         *     Revoking a token that has already enrolled a node is allowed and
+         *     changes nothing about that node — membership is in the
+         *     replicated log and a spent token cannot be spent again. It only
+         *     clears the row.
+         */
+        delete: operations["revokeJoinToken"];
         options?: never;
         head?: never;
         patch?: never;
@@ -718,6 +782,17 @@ export interface components {
         };
         JoinToken: {
             /**
+             * @description A handle for this token that is **not** the token and not
+             *     derived from it — a separate random value, so listing and
+             *     revoking never move the credential or its verifier.
+             *
+             *     It exists because minting was the only thing an operator
+             *     could do to a join token. A token pasted into the wrong
+             *     window could not be withdrawn; it simply stayed live for the
+             *     rest of its TTL, and the only remedy was to wait.
+             */
+            id: string;
+            /**
              * @description **Shown once.** Not retrievable afterwards and not stored in
              *     recoverable form — a lost token is re-minted, never looked
              *     up.
@@ -727,6 +802,33 @@ export interface components {
             expiresAt: string;
             /** @description The node name this token is bound to, when it is bound. */
             nodeName?: string;
+        };
+        /**
+         * @description One outstanding join token, **without the token**.
+         *
+         *     The store keeps a hash and never the secret, so this is
+         *     everything that can honestly be said about a minted token after
+         *     the one moment it was shown: what it was for, when it dies, and
+         *     whether it has been spent.
+         */
+        JoinTokenRecord: {
+            /** @description The handle to revoke it by. */
+            id: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description The node name this token is bound to, when it is bound. */
+            nodeName?: string;
+            /**
+             * @description True once this token has enrolled a node. A spent token is
+             *     kept until it expires so a replay answers 409 "already
+             *     spent" rather than 401 "unknown" — so a listing shows it,
+             *     and revoking it is allowed and pointless rather than
+             *     refused.
+             */
+            used: boolean;
+        };
+        JoinTokenList: {
+            tokens: components["schemas"]["JoinTokenRecord"][];
         };
         EnrollmentRequest: {
             /** @description The join token, which is this request's only credential. */
@@ -1927,6 +2029,50 @@ export interface operations {
                 };
             };
             401: components["responses"]["Problem"];
+        };
+    };
+    listJoinTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Outstanding tokens, soonest to expire first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinTokenList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    revokeJoinToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The `id` from `mintJoinToken` or `listJoinTokens`, never the token. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked, or already gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
         };
     };
     enrollNode: {
