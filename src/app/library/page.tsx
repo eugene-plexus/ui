@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -11,12 +12,16 @@ import { NodePicker } from "@/components/NodePicker";
 import { RunButton } from "@/components/RunButton";
 import { ApiError, api } from "@/lib/api";
 import { type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
+import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
+import { usePolling } from "@/lib/usePolling";
 import type {
   EngineDescriptor,
   EngineList,
   LibraryModel,
   LibraryModelList,
   ModelFit,
+  Runtime,
+  RuntimeList,
   Scan,
   SkippedPath,
   SkipReason,
@@ -47,6 +52,11 @@ import type {
 // a timer for no reason.
 const SCAN_POLL_MS = 700;
 
+// What the picked node is running. Slower than the Inference screen's
+// 3 s because this page is not a dashboard, fast enough that Run flipping
+// to "Running" needs no refresh.
+const RUNTIME_POLL_MS = 5000;
+
 const SKIP_REASON_LABEL: Record<SkipReason, string> = {
   projector: "vision projector",
   shard_member: "shard of a split model",
@@ -75,6 +85,11 @@ function LibraryPageInner() {
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
   const [scan, setScan] = useState<Scan | null>(null);
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
+  // What the picked node has LOADED, which neither the library nor the
+  // engine list knows -- and without it this page told Troy a model that
+  // was serving on Amish_Station would not fit there, and offered to
+  // start it. See `lib/runningModel.ts`.
+  const [runtimes, setRuntimes] = useState<Runtime[]>([]);
   // Which node Launch goes to, and whose engines and memory the detail
   // pane is about. One choice for both -- see `nodeBudget.ts`.
   const picker = useTargetNode();
@@ -142,6 +157,21 @@ function LibraryPageInner() {
       cancelled = true;
     };
   }, [target]);
+
+  // Soft, and per the picked node: `node:<name>` reaches another
+  // machine's own agent, which is the only party that knows what it has
+  // loaded. A node that does not answer means "nothing known", which
+  // reads on the page as the state before this feature existed.
+  const loadRuntimes = useCallback(async () => {
+    if (target === null) return;
+    try {
+      const list = await api.get<RuntimeList>(target, "/v1/runtimes");
+      setRuntimes(list.runtimes ?? []);
+    } catch {
+      setRuntimes([]);
+    }
+  }, [target]);
+  usePolling(loadRuntimes, RUNTIME_POLL_MS, target !== null);
 
   // Poll only while a walk is in flight, and reload the models once it
   // settles rather than on every tick — the list does not change
@@ -275,6 +305,7 @@ function LibraryPageInner() {
             selected={selected}
             onSelect={setSelected}
             loadableFormats={loadableFormats}
+            runtimes={runtimes}
           />
           <div className="min-h-0 overflow-y-auto px-5 py-4">
             {current ? (
@@ -283,7 +314,9 @@ function LibraryPageInner() {
                 model={current}
                 engines={engines ?? []}
                 node={picker.selected}
+                runtimes={runtimes}
                 onChanged={() => void loadModels()}
+                onRuntimesChanged={() => void loadRuntimes()}
               />
             ) : (
               <EmptyDetail models={models} scan={scan} />
@@ -297,6 +330,9 @@ function LibraryPageInner() {
 
 const buttonClass =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+
+const primaryAction =
+  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110";
 
 function ScanBanner({ scan }: { scan: Scan | null }) {
   if (!scan || scan.state === "idle") return null;
@@ -354,11 +390,16 @@ function ModelList({
   selected,
   onSelect,
   loadableFormats,
+  runtimes,
 }: {
   models: LibraryModel[] | null;
   selected: string | null;
   onSelect: (id: string) => void;
   loadableFormats: Set<string>;
+  /** The picked node's runtimes, so a running model is visible without
+   * clicking it -- the list is where someone scanning for "which of
+   * these is up" looks first. */
+  runtimes: Runtime[];
 }) {
   return (
     <aside className="min-h-0 overflow-y-auto border-r border-[color:var(--border)]">
@@ -370,6 +411,7 @@ function ModelList({
       )}
       {models?.map((m) => {
         const unloadable = !loadableFormats.has(m.format);
+        const live = runningModel(m, runtimes);
         return (
           <button
             key={m.id}
@@ -383,6 +425,15 @@ function ModelList({
               <span className="truncate text-sm" title={m.name}>
                 {m.name}
               </span>
+              {live && !live.stopped && (
+                <span
+                  data-testid="model-list-running"
+                  title={`Running on the machine in the picker as ${live.runtime}.`}
+                  className="status-success shrink-0 rounded px-1 text-[9px] tracking-wider uppercase"
+                >
+                  {live.live ? "running" : "starting"}
+                </span>
+              )}
               {m.status !== "present" && (
                 <span className="status-warn shrink-0 rounded px-1 text-[9px] tracking-wider uppercase">
                   {m.status}
@@ -488,12 +539,18 @@ function ModelDetail({
   model,
   engines,
   node,
+  runtimes,
   onChanged,
+  onRuntimesChanged,
 }: {
   model: LibraryModel;
   engines: EngineDescriptor[];
   node: TargetNode | null;
+  /** What the picked node is running, so this page does not offer to
+   * start something that is already up. */
+  runtimes: Runtime[];
   onChanged: () => void;
+  onRuntimesChanged: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
 
@@ -501,6 +558,13 @@ function ModelDetail({
   // installed here. Two different answers with two different fixes.
   const capable = engines.filter((e) => (e.modelFormats ?? []).includes(model.format));
   const usable = capable.filter((e) => e.available);
+
+  const running = runningModel(model, runtimes);
+  // The machine's own name when it has one, even when it is this one:
+  // this page has a node picker in its header, so a sentence about "this
+  // machine" is a sentence that does not say which. An unenrolled box has
+  // no name and gets the generic phrase, which is all there is to say.
+  const where = node?.name ?? "this machine";
 
   async function forget() {
     setError(null);
@@ -556,7 +620,7 @@ function ModelDetail({
 
       <Facts model={model} />
 
-      {model.status === "present" && <FitPanel model={model} />}
+      {model.status === "present" && <FitPanel model={model} running={running} where={where} />}
 
       {/* The format/engine join. Two distinct answers: no adapter exists
           for this format at all, or one does but no binary is installed.
@@ -583,23 +647,47 @@ function ModelDetail({
       ) : null}
 
       {/* One click from a file to `ready` (S3). The profile editor below is
-          the expert path; this is the one a first run takes. */}
+          the expert path; this is the one a first run takes.
+
+          **Unless it is already up.** A page offering to start something
+          that is running is what Troy hit on the live install, and
+          "start a second copy on the same card" is an expert's
+          deliberate act -- so it moves out of the primary slot rather
+          than disappearing (`easy-default-expert-override`). */}
       {model.status === "present" && capable.length > 0 && (
         <div data-testid="model-run">
-          <RunButton
-            model={model}
-            node={node}
-            disabledReason={
-              usable.length === 0 && !capable.some((e) => e.acquisition?.installable)
-                ? `${capable.map((e) => e.engine).join(", ")} is not installed on ${node?.label ?? "this machine"}, and cannot be installed from here.`
-                : null
-            }
-          />
-          <p className="mt-1 text-[11px] text-[color:var(--muted)]">
-            {usable.length > 0
-              ? `Starts ${model.name} on ${node?.local ? "this machine" : (node?.label ?? "this machine")} with settings that fit. Once it says ready, it is on Home.`
-              : `${capable.map((e) => engineName(e.engine)).join(", ")} is not installed on ${node?.local ? "this machine" : (node?.label ?? "this machine")} yet; Run asks before installing it.`}
-          </p>
+          {running && !running.stopped ? (
+            <RunningPanel
+              model={model}
+              node={node}
+              running={running}
+              where={where}
+              onChanged={onRuntimesChanged}
+            />
+          ) : (
+            <>
+              <RunButton
+                model={model}
+                node={node}
+                label={running ? "Start again" : "Run"}
+                disabledReason={
+                  usable.length === 0 && !capable.some((e) => e.acquisition?.installable)
+                    ? `${capable.map((e) => e.engine).join(", ")} is not installed on ${node?.label ?? "this machine"}, and cannot be installed from here.`
+                    : null
+                }
+              />
+              <p className="mt-1 text-[11px] text-[color:var(--muted)]">
+                {/* A runtime that exists and is stopped is a different
+                    sentence from nothing at all: the settings are already
+                    chosen, and why it stopped is the thing worth saying. */}
+                {running
+                  ? `${describeRunning(running, where)} Start it again and it is back on Home.`
+                  : usable.length > 0
+                    ? `Starts ${model.name} on ${where} with settings that fit. Once it says ready, it is on Home.`
+                    : `${capable.map((e) => engineName(e.engine)).join(", ")} is not installed on ${where} yet; Run asks before installing it.`}
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -609,6 +697,111 @@ function ModelDetail({
         node={node}
         onChanged={onChanged}
       />
+    </div>
+  );
+}
+
+/**
+ * It is already running — so say that, and offer what a person actually
+ * wants next.
+ *
+ * Reported 2026-09-17: a model serving on `Amish_Station` showed a
+ * full-size **Run** button and no sign it was up. The primary actions
+ * here are *use it* and *stop it*; starting a second copy on the same
+ * card is still reachable and is deliberately not the button the page
+ * leads with, because Troy's own read is that two models on one GPU is
+ * the exception rather than the norm.
+ *
+ * **Stop is a confirm-free button on purpose.** It stops an engine
+ * process and touches no file — the model is on disk either way, and the
+ * runtime's settings survive it — so it is an undo away from itself, and
+ * the sentence under it says exactly that.
+ */
+function RunningPanel({
+  model,
+  node,
+  running,
+  where,
+  onChanged,
+}: {
+  model: LibraryModel;
+  node: TargetNode | null;
+  running: RunningModel;
+  where: string;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function stop() {
+    if (!node) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post<void>(
+        node.target,
+        `/v1/runtimes/${encodeURIComponent(running.runtime)}/stop`,
+        {},
+      );
+      onChanged();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      data-testid="model-running"
+      data-status={running.status}
+      className={`${running.live ? "status-success" : "status-warn"} rounded-[var(--radius)] border px-3 py-2 text-xs`}
+    >
+      <p className="font-ui text-sm font-semibold">{describeRunning(running, where)}</p>
+      <p className="mt-0.5 opacity-80">
+        as <span className="font-mono">{running.runtime}</span>
+        {running.driver && (
+          <>
+            {" "}
+            · fronted by <span className="font-mono">{running.driver}</span>
+          </>
+        )}
+      </p>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {/* Use it, before manage it: someone who has just found their
+            model running wants to talk to it. */}
+        <Link href="/" className={primaryAction}>
+          Use it
+        </Link>
+        <Link href="/inference" className={buttonClass}>
+          Inference
+        </Link>
+        <button type="button" onClick={() => void stop()} disabled={busy} className={buttonClass}>
+          {busy ? "stopping…" : "Stop"}
+        </button>
+      </div>
+      <p className="mt-1 text-[11px] opacity-80">
+        Stopping frees the memory and leaves the file and this runtime&rsquo;s settings alone; Run
+        brings it back.
+      </p>
+
+      {/* The expert path, kept and demoted. */}
+      <details className="mt-2">
+        <summary className="cursor-pointer text-[11px] underline">Run another copy</summary>
+        <div className="mt-1.5">
+          <RunButton model={model} node={node} size="small" label="Run another copy" />
+          <p className="mt-1 text-[11px] opacity-80">
+            A second engine process loading the same file again, with its own memory. Useful for
+            serving two requests at once on a card with room to spare; on most machines the first
+            copy is already using the memory the second would need.
+          </p>
+        </div>
+      </details>
+
+      {error && (
+        <p className="status-error mt-2 rounded-[var(--radius)] border px-2 py-1">{error}</p>
+      )}
     </div>
   );
 }
@@ -626,7 +819,16 @@ function ModelDetail({
  * below what the model declares: a current 27B says it was trained for
  * 262,144 tokens and almost no machine can hold that.
  */
-function FitPanel({ model }: { model: LibraryModel }) {
+function FitPanel({
+  model,
+  running,
+  where,
+}: {
+  model: LibraryModel;
+  /** What the picked node is doing with it. Null means nothing. */
+  running: RunningModel | null;
+  where: string;
+}) {
   const [fit, setFit] = useState<ModelFit | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -660,17 +862,44 @@ function FitPanel({ model }: { model: LibraryModel }) {
   if (!fit) return null;
 
   const verdict = fit.fit.verdict;
-  const tone =
-    verdict === "fits" ? "status-success" : verdict === "no" ? "status-error" : "status-warn";
+  // **A resident model has already answered this question, and the
+  // arithmetic below cannot see that it has.** A fit is scored against
+  // FREE VRAM, and a loaded model's own weights are in the part that is
+  // not free -- so the one model this machine has proved it can run is
+  // the one the panel called "too large". With a copy up, the prediction
+  // is about a SECOND copy, and it is labelled as that rather than
+  // dressed up as a verdict on the model.
+  const resident = running !== null && !running.stopped;
+  const tone = resident
+    ? "status-success"
+    : verdict === "fits"
+      ? "status-success"
+      : verdict === "no"
+        ? "status-error"
+        : "status-warn";
 
   return (
-    <div className={`${tone} rounded-[var(--radius)] border px-3 py-2 text-xs`}>
+    <div
+      className={`${tone} rounded-[var(--radius)] border px-3 py-2 text-xs`}
+      data-testid="model-fit"
+      data-resident={resident ? "true" : "false"}
+    >
       <div className="flex items-baseline justify-between gap-3">
         <p className="font-ui font-semibold">
-          {verdict === "fits" && "Fits in GPU memory"}
-          {verdict === "tight" && "Would fit on an idle GPU"}
-          {verdict === "split" && "Needs partial CPU offload"}
-          {verdict === "no" && "Too large for this node"}
+          {resident ? (
+            running.live ? (
+              `Running on ${where} now — it fits`
+            ) : (
+              `Starting on ${where}`
+            )
+          ) : (
+            <>
+              {verdict === "fits" && "Fits in GPU memory"}
+              {verdict === "tight" && "Would fit on an idle GPU"}
+              {verdict === "split" && "Needs partial CPU offload"}
+              {verdict === "no" && "Too large for this node"}
+            </>
+          )}
         </p>
         <button
           type="button"
@@ -681,9 +910,17 @@ function FitPanel({ model }: { model: LibraryModel }) {
           {open ? "hide the numbers" : "show the numbers"}
         </button>
       </div>
+      {resident && (
+        <p className="mt-0.5">
+          This machine is holding it, so the memory reading below is what is left{" "}
+          <em>with it loaded</em> — the verdict there is about starting a <em>second</em> copy
+          beside this one, not about this model.
+        </p>
+      )}
       <p className="mt-0.5">
-        {formatMemory(fit.fit.requiredBytes)} needed at {fit.fit.contextLength.toLocaleString()}{" "}
-        tokens of context.
+        {resident && <>A second copy would need </>}
+        {formatMemory(fit.fit.requiredBytes)}
+        {resident ? " " : " needed "}at {fit.fit.contextLength.toLocaleString()} tokens of context.
         {fit.maxContextLength != null && (
           <>
             {" "}
@@ -699,7 +936,8 @@ function FitPanel({ model }: { model: LibraryModel }) {
       {budget && (
         <p className="mt-0.5 opacity-80">
           Scored against {budget.node ?? "this host"}
-          {budget.gpu ? ` · ${budget.gpu.name}` : " · no GPU"}, where a launch from here runs.
+          {budget.gpu ? ` · ${budget.gpu.name}` : " · no GPU"}, where a launch from here runs
+          {resident && <> — free memory, which this model is already inside</>}.
         </p>
       )}
       {open && (
