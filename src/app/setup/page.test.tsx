@@ -114,6 +114,7 @@ function healthyInstall(): Map<string, Handler> {
     ],
     ["PATCH agent/v1/config", () => ({ status: 200, body: {} })],
     ["PATCH library/v1/config", () => ({ status: 200, body: {} })],
+    ["POST library/v1/scan", () => ({ status: 202, body: { state: "running" } })],
     // S2: screen 2 asks the library for its host's starting points and
     // proposes a folder under the `Home` entry. A Windows home here, so a
     // wrong separator in the proposal cannot pass as a POSIX one.
@@ -419,6 +420,44 @@ describe("screen 2: what Finish commits", () => {
       "PATCH agent/v1/config",
     ]);
     expect(sessionStorage.getItem("eugene-wizard-draft")).toBeNull();
+  });
+
+  it("looks in the folder it was just given", async () => {
+    // Found by S10's first execution on a fresh install: the library
+    // boots with no roots and logs "skipping the startup scan", the
+    // wizard then writes the root with a PATCH that deliberately does
+    // not scan, and nothing ever goes back to look -- so somebody who
+    // pointed at a folder full of models lands on a Home reading
+    // "0 models on disk" that offers to download a 16 GB one.
+    const user = newUser();
+    render(<WizardPage />);
+    await continuePastPassphrase(user);
+    await waitFor(() => expect(screen.getByTestId("proposed-folder")).toHaveTextContent(PROPOSED));
+    await finish(user);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"), { timeout: 5000 });
+
+    // After the folder is saved, and before the install calls itself set
+    // up: a scan of a folder that is not recorded yet finds nothing.
+    expect(routesFrom(["PATCH library/v1/config", "POST library/v1/scan"])).toEqual([
+      "PATCH library/v1/config",
+      "POST library/v1/scan",
+    ]);
+  });
+
+  it("finishes anyway when the library will not scan", async () => {
+    // The folder is saved either way and the Library's own Scan button is
+    // the retry. An install whose library is briefly away should finish
+    // setup rather than fail it.
+    handlers.set("POST library/v1/scan", () => ({ status: 503, body: { detail: "away" } }));
+    const user = newUser();
+    render(<WizardPage />);
+    await continuePastPassphrase(user);
+    await waitFor(() => expect(screen.getByTestId("proposed-folder")).toHaveTextContent(PROPOSED));
+    await finish(user);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"), { timeout: 5000 });
+    expect(calls.filter((c) => key(c) === "PATCH agent/v1/config").map((c) => c.body)).toEqual([
+      { firstRunComplete: true },
+    ]);
   });
 
   it("writes an edited proposal as typed", async () => {

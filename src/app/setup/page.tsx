@@ -384,6 +384,25 @@ export default function WizardPage() {
       // to do with the person's input.
       await withRetry(() => api.patch("library", "/v1/config", { modelRoots: roots }));
 
+      // **And then look in it.** `PATCH /v1/config` deliberately does not
+      // scan -- the library's own words: "a PATCH that quietly scans" is
+      // not a thing to do to somebody's disk without being asked. But
+      // Finish *is* being asked, and until something scans, a person who
+      // said "I already have models" and pointed at a folder full of them
+      // lands on a Home that says *0 models on disk* and offers to
+      // download a 16 GB one. Measured on a fresh install by S10's first
+      // execution: the library logged "no model directories configured;
+      // skipping the startup scan" at boot, the root arrived afterwards,
+      // and nothing ever went back to look.
+      //
+      // Soft, and last: the folder is saved either way, the scan runs in
+      // the background, and an install whose library is briefly away
+      // should finish setup rather than fail it. The Library's own Scan
+      // button is the retry.
+      if (roots.length > 0) {
+        await api.post("library", "/v1/scan", {}).catch(() => undefined);
+      }
+
       setMessage("Finalizing setup…");
       await api.patch("agent", "/v1/config", { firstRunComplete: true });
 
