@@ -135,7 +135,8 @@ export function FitBreakdown({ fit }: { fit: Fit }) {
         ) : (
           <>
             <span className="text-status-warn">Estimated.</span> The KV-cache figure is a rough
-            fraction of the weights, because the layer and attention counts were not available.
+            fraction of the weights per 8k of context, scaled to the context this was scored at,
+            because the layer and attention counts were not available.
           </>
         )}
       </p>

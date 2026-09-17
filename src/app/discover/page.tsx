@@ -559,6 +559,15 @@ function RepoDetail({
   useEffect(() => {
     const id = ++requestId.current;
     setLoading(true);
+    // A preflighted verdict was computed at the context and budget that
+    // were current when it was taken, and the response carries no shape
+    // to re-score from — so once either changes it is a verdict about a
+    // question nobody is asking any more, sitting in the row that wins
+    // over the fresh one. Dropped rather than silently re-taken:
+    // preflight spends someone else's bandwidth per call and is
+    // explicit by design, so the row falls back to the (context-scaled)
+    // estimate and the button is there to take it again.
+    setPreflights({});
     void (async () => {
       try {
         // `fitQuery` points the library's arithmetic at this node's
