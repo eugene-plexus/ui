@@ -272,7 +272,7 @@ function allNodes(topology: Topology): string[] {
  * lives here — there is no evidence of a second machine in that, only of
  * a browser that has not enrolled yet.
  */
-function machineKeys(
+export function machineKeys(
   nodes: string[],
   drivers: ComponentPlacement[],
   localNode: string | null,
@@ -284,6 +284,22 @@ function machineKeys(
   }
   if (keys.length === 0) keys.push(localNode);
   return keys;
+}
+
+/**
+ * How many machines this install has, by the tree's own count.
+ *
+ * One number, one definition: the tree draws the machine level above one
+ * and the tab title names a host above one, and reading them off the same
+ * function is what stops a title claiming a host while the tree says
+ * there is nothing to distinguish.
+ */
+export function machineCount(topology: Topology): number {
+  return machineKeys(
+    allNodes(topology),
+    topology.components.filter((c) => c.kind === "inference-driver"),
+    topology.localNode,
+  ).length;
 }
 
 /**

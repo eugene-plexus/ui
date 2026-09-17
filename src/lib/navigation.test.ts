@@ -14,7 +14,7 @@
  * the explicit no-nav set.
  */
 
-import { readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -30,6 +30,8 @@ import {
   normalizePath,
   ROUTES_UNDER_INSTALL,
   ROUTES_WITHOUT_NAV,
+  unlistedPageTitle,
+  unlistedTitledRoutes,
   SCREENS,
   type AccentRole,
   type IconName,
@@ -227,6 +229,26 @@ describe("every route under src/app is accounted for", () => {
 
   it("excludes exactly login, setup and the runtimes redirect", () => {
     expect([...ROUTES_WITHOUT_NAV].sort()).toEqual(["/login", "/runtimes", "/setup"]);
+  });
+
+  it("names every shell page that neither a screen nor a page menu can name", () => {
+    // The tab-title registry (2026-09-17). A route the shell renders and
+    // nothing can name reads in the tab as the bare product name, which
+    // is the state the whole title change exists to leave behind.
+    const named = new Set(unlistedTitledRoutes());
+    // Each one points at a real page: a nested route, so the directory
+    // check above (which reads only the top level) does not cover it.
+    for (const route of named) {
+      expect(
+        existsSync(resolve(process.cwd(), "src", "app", ...route.slice(1).split("/"), "page.tsx")),
+        `${route} has no page.tsx`,
+      ).toBe(true);
+      // And is named, rather than mapped to an empty string.
+      expect(unlistedPageTitle(route)?.trim()).toBeTruthy();
+    }
+    // Never a route a screen already names: two answers for one tab, and
+    // the shell would silently prefer the screen.
+    for (const screen of SCREENS) expect(named.has(screen.href)).toBe(false);
   });
 
   it("keeps the three sets disjoint", () => {

@@ -6,12 +6,20 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
-import { accentVar, installSubrouteSelection, layerOf } from "@/lib/navigation";
+import {
+  accentVar,
+  activeScreen,
+  installSubrouteSelection,
+  layerOf,
+  unlistedPageTitle,
+} from "@/lib/navigation";
+import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
 import {
   activePage,
   buildTree,
   defaultSelectionFor,
   findSelected,
+  machineCount,
   pagesForSelection,
   parseSelection,
   type PageRef,
@@ -93,6 +101,26 @@ function AppShellInner({
   // to `agent:<this machine>` on an enrolled node, and that is what the
   // tree highlights and what the page links carry.
   const sel = node?.sel ?? requested;
+
+  // The tab says which page, and on a multi-host install which machine
+  // -- see `pageTitle.ts`. The page name is the page MENU's label rather
+  // than the screen registry's, because `/config` is "Preferences" under
+  // the install root and "Config" under a component, and the menu is the
+  // thing that already knows which. `activeScreen` answers for a screen
+  // reached by a route with no menu slot, and `unlistedPageTitle` for a
+  // page that is in neither (`/backends/add`). None of the three
+  // answering leaves the brand alone, rather than a guess.
+  const selection = useMemo(() => parseSelection(sel), [sel]);
+  const menuPage = activePage(sel ? pagesForSelection(selection) : [], pathname);
+  const title = pageTitle({
+    page: menuPage?.label ?? activeScreen(pathname)?.label ?? unlistedPageTitle(pathname),
+    // The selected object's machine first: two `/config` tabs differ only
+    // by which node they address, and this console's own host is the same
+    // string on both.
+    node: selection?.node ?? topology.localNode,
+    machines: machineCount(topology),
+  });
+  useDocumentTitle(title);
 
   const [mapOpen, setMapOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -222,7 +250,7 @@ function AppShellInner({
         <div className="flex min-w-0 flex-1 flex-col">
           <PageMenu
             node={node}
-            selection={parseSelection(sel)}
+            selection={selection}
             sel={sel}
             localNode={topology.localNode}
             pathname={pathname}

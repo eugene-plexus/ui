@@ -315,6 +315,39 @@ export function installSubrouteSelection(pathname: string | null | undefined): "
   return under ? "install" : null;
 }
 
+/**
+ * A name for a page that is in no nav group and no page menu.
+ *
+ * `SCREENS` answers for the eight navigable screens and the tree's page
+ * menu answers for a component's pages; a route in neither had no name at
+ * all, which read in the tab as the bare product name — the very thing
+ * the title work of 2026-09-17 exists to stop.
+ *
+ * The value is the page's own `<h1>`, not a shorter label invented for
+ * the tab: a title that disagrees with the heading under it is worse than
+ * a long one, and these are tasks a person arrives at from a link rather
+ * than places they navigate to by name.
+ */
+const UNLISTED_PAGE_TITLES: Readonly<Record<string, string>> = {
+  "/backends/add": "Add an app you already run",
+};
+
+/**
+ * What to call `pathname` in a tab, for the pages `activeScreen` does not
+ * cover. `null` when there is nothing to say — never a guess, for
+ * `activeScreen`'s own reason: a missing name should look missing.
+ */
+export function unlistedPageTitle(pathname: string | null | undefined): string | null {
+  if (!pathname) return null;
+  return UNLISTED_PAGE_TITLES[normalizePath(pathname)] ?? null;
+}
+
+/** Every route `UNLISTED_PAGE_TITLES` names. The vitest suite checks each
+ * one exists and is not also a screen. */
+export function unlistedTitledRoutes(): string[] {
+  return Object.keys(UNLISTED_PAGE_TITLES).sort();
+}
+
 export interface NavGroup {
   readonly side: LayerSide;
   readonly label: string;

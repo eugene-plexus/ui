@@ -59,6 +59,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError, api } from "@/lib/api";
+import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
 import { homeFrom, proposedModelsFolder } from "@/lib/proposedModelsFolder";
 import { hasSessionToken, setSessionToken } from "@/lib/session";
 import type { ComponentList, DirectoryListing } from "@/lib/types";
@@ -88,6 +89,10 @@ import {
 
 export default function WizardPage() {
   const router = useRouter();
+  // One install being raised, so there is no machine to name and nothing
+  // to tell two tabs of this apart -- the wizard is a linear transaction
+  // and a second tab of it is the failure, not a case to label.
+  useDocumentTitle(pageTitle({ page: "Set up", node: null, machines: 1 }));
   // `null` until the status probe has said which screen this visit opens
   // on. Rendering screen 1 first and then jumping would flash a passphrase
   // form at a person whose passphrase is already set.

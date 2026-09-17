@@ -25,6 +25,7 @@ import { Suspense, useEffect, useState } from "react";
 import { Attribution } from "@/components/Attribution";
 import { ApiError, api } from "@/lib/api";
 import { unlockControlRoot } from "@/lib/controlUnlock";
+import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
 import { setSessionToken } from "@/lib/session";
 
 interface LoginResponse {
@@ -55,6 +56,10 @@ function safeNext(raw: string | null): string {
 }
 
 export default function LoginPage() {
+  // Named like every other screen. Nothing else here can be: there is no
+  // session, so no topology and no machine count -- and a sign-in page
+  // that named a host would be naming one it has not authenticated to.
+  useDocumentTitle(pageTitle({ page: "Sign in", node: null, machines: 1 }));
   // Next 15 requires useSearchParams to be wrapped in Suspense — the
   // route would otherwise bail out of static prerender. We do the bare
   // minimum: the form is a client component anyway, so the Suspense
