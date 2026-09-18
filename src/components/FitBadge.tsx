@@ -14,9 +14,16 @@ import type { Fit, FitVerdict, MemoryBudget } from "@/lib/types";
  * from, and `basis` says outright whether those terms are the model's
  * own declared shape or a guess with a number on it.
  *
- * Four verdicts rather than a percentage, because a percentage *of what*
+ * Five verdicts rather than a percentage, because a percentage *of what*
  * — VRAM, or VRAM plus RAM? — is exactly the ambiguity the operator is
- * trying to resolve, and the four have different advice.
+ * trying to resolve, and they have different advice.
+ *
+ * `unknown` is the fifth, added 2026-09-18 (roadmap R2.3, review §6.2
+ * #28): there is a graphics card here and no vendor tool would say how
+ * much memory it has, so no comparison against it can be made. It has
+ * to read as *we cannot tell*, never as a qualified yes — the defect it
+ * replaces told a 16 GB Arc owner that a 30 GB model fits, which is an
+ * out-of-memory error at load rather than a slow answer.
  */
 
 const VERDICT_LABEL: Record<FitVerdict, string> = {
@@ -24,6 +31,7 @@ const VERDICT_LABEL: Record<FitVerdict, string> = {
   tight: "tight",
   split: "partial offload",
   no: "too large",
+  unknown: "can't tell",
 };
 
 const VERDICT_CLASS: Record<FitVerdict, string> = {
@@ -31,6 +39,9 @@ const VERDICT_CLASS: Record<FitVerdict, string> = {
   tight: "status-warn",
   split: "status-warn",
   no: "status-error",
+  // Deliberately neither the green one nor the red one: the model is
+  // not refused, the machine is unmeasured.
+  unknown: "status-warn",
 };
 
 const VERDICT_MEANING: Record<FitVerdict, string> = {
@@ -40,6 +51,8 @@ const VERDICT_MEANING: Record<FitVerdict, string> = {
   split:
     "Needs host memory as well as GPU memory. It will run, and generation will be materially slower.",
   no: "Larger than this machine's GPU and host memory together.",
+  unknown:
+    "There is a graphics card here and nothing on this machine would say how much memory it has, so there is nothing to compare against. Install the card's own tool, or score against a budget you supply.",
 };
 
 /**
@@ -161,9 +174,20 @@ export function FitBreakdown({ fit }: { fit: Fit }) {
  */
 export function BudgetLine({ budget }: { budget: MemoryBudget }) {
   const gpus = budget.gpuCount ?? 0;
+  // **A card counted with no bytes is not a card with no memory.** The
+  // library reports `vramTotalBytes: 0` for a GPU whose size no vendor
+  // tool would state, and this line rendered that as "measured against
+  // 0 B free of 0 B on the GPU" — printed beside the word `fits`, which
+  // is review §6.2 #28 in one sentence.
+  const unmeasured = gpus > 0 && !(budget.vramTotalBytes ?? 0);
   return (
     <p className="text-[color:var(--muted)]">
-      {gpus > 0 ? (
+      {unmeasured ? (
+        <>
+          {gpus === 1 ? "a graphics card is" : `${gpus} graphics cards are`} here and its memory
+          could not be read — nothing on this machine would say how much it has
+        </>
+      ) : gpus > 0 ? (
         <>
           measured against {formatBytes(budget.vramFreeBytes)} free of{" "}
           {formatBytes(budget.vramTotalBytes)} on {gpus === 1 ? "the GPU" : `${gpus} GPUs`}
