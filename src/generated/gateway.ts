@@ -50,11 +50,28 @@ export interface paths {
          *     it, then the drivers serving each configured target in order
          *     (see `modelSlots`). Within a tier the least-busy eligible driver
          *     is chosen and the request is translated to its `/v1/generate`.
-         *     If the attempt fails in a cascade-eligible way — transport
-         *     error, 5xx, timeout — the gateway tries the rest of the tier,
-         *     then the next tier. A **4xx does not cascade**: it means the
-         *     request itself is wrong, the next backend would reject it
-         *     identically, and retrying would only bury the real error.
+         *     If the attempt fails in a cascade-eligible way — a transport
+         *     error or a 5xx — the gateway tries the rest of the tier, then
+         *     the next tier. A **4xx does not cascade**: it means the request
+         *     itself is wrong, the next backend would reject it identically,
+         *     and retrying would only bury the real error.
+         *
+         *     **A deadline that fired does not cascade either**, and answers
+         *     **504**. A backend that has not replied inside
+         *     `requestTimeoutSeconds` is almost certainly still computing this
+         *     prompt; the next replica would take the same time to compute the
+         *     same thing, so cascading multiplies the cost of one slow answer
+         *     and then reports a total failure. The 504's message names the
+         *     setting to raise. A *connect* timeout is different in kind — the
+         *     host never took the work — and cascades like any other transport
+         *     error.
+         *
+         *     **A client that disconnects cancels the backend call.** The
+         *     request is dropped with a 499 and the attempt is still recorded,
+         *     because a generation nobody read is a real cost. Clients that
+         *     retry on their own deadline (the OpenAI SDKs retry twice by
+         *     default) would otherwise leave one generation running per
+         *     attempt.
          *
          *     A model whose runtimes are all `stopped` is not a 404. If one of
          *     them declared `startOnDemand`, the gateway starts it, waits up
@@ -229,6 +246,19 @@ export interface paths {
          *     lists are `modelSlots` entries naming model ids, not URLs, so
          *     there is nothing here to probe for a slot as a whole — read
          *     `GET /v1/admin/routing` for how a slot currently resolves.
+         *
+         *     **Probed anonymously** (2026-09-18). Operator-gated, as every
+         *     admin path here is, and it dials whatever the operator typed —
+         *     that is the feature. What it no longer carries is this install's
+         *     `service:gateway` token, which every component in the install
+         *     accepts, so a URL in a form was enough to collect one. An
+         *     operator typing an address is not an operator deciding to hand
+         *     out a credential.
+         *
+         *     Consequently a backend that wants a key answers **401, and that
+         *     is reported as `reachable: true`** with the reason in `error`. It
+         *     is the more diagnostic answer: the address answered, so the
+         *     operator's next step is the key rather than the network.
          */
         post: operations["probeDriver"];
         delete?: never;
@@ -1788,9 +1818,23 @@ export interface components {
          *     render it as rows of one browsable directory (the library's
          *     host) plus its mounts; the per-node grid over it is the
          *     Library's Folders page, not this field.
+         *
+         *     `share_credentials` (R2.6, 2026-09-18) is an ordered JSON array
+         *     of `ShareCredential` — `{"host": <a file server>, "username":
+         *     ..., "password": ...}`. Its one user is the agent's
+         *     `shareCredentials`, which is how a host that runs Eugene as a
+         *     Windows **service** reaches an authenticated share at all: a
+         *     service has none of the per-user credentials the person who
+         *     installed it collected by hand. It is the only value here whose
+         *     entries contain a secret, so it carries `secret`'s rule per
+         *     entry rather than per field — the password is redacted in `GET`,
+         *     accepted in `PATCH`, and an entry that omits it keeps the stored
+         *     one. UIs render it as rows of host / user / password, with the
+         *     password a password input, and must not display a redacted
+         *     entry as though its password were empty.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
@@ -2150,6 +2194,21 @@ export interface operations {
                 };
             };
             /**
+             * @description The client disconnected before the answer was ready, and
+             *     the backend call was cancelled with it. Nothing reads this
+             *     -- the socket is gone -- but the attempt IS recorded in
+             *     `/v1/metrics`, because a generation nobody read is a real
+             *     cost and is the one signal that says callers are giving up.
+             */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
              * @description Every eligible backend failed. Returned after the priority
              *     list is exhausted, so this means the cascade ran and lost,
              *     not that one backend hiccuped.
@@ -2171,6 +2230,21 @@ export interface operations {
              *     woken.
              */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description No backend answered within `requestTimeoutSeconds`.
+             *     **Deliberately not a 502**, and deliberately not cascaded:
+             *     the backend is almost certainly still computing this
+             *     prompt, and the next replica would take the same time on
+             *     the same input. The message names the setting to raise.
+             */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2224,6 +2298,15 @@ export interface operations {
                     "application/json": components["schemas"]["OpenAIErrorResponse"];
                 };
             };
+            /** @description The client disconnected; the backend call was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
             /**
              * @description Every eligible backend for this model failed. Note "for this
              *     model": the cascade never reached a different one.
@@ -2242,6 +2325,19 @@ export interface operations {
              *     Retryable.
              */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description No backend answered within `requestTimeoutSeconds`. Not
+             *     retried on a replica: a replica would take the same time on
+             *     the same input.
+             */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2296,7 +2392,10 @@ export interface operations {
             /**
              * @description Probe outcome. Returned for both reachable and unreachable
              *     cases — `reachable` distinguishes them, `error` carries the
-             *     failure detail when set.
+             *     failure detail when set. **A URL that answered at all is
+             *     `reachable: true`**, including one that answered 401 or 403
+             *     to the unauthenticated probe; only a transport failure is
+             *     `reachable: false`.
              */
             200: {
                 headers: {

@@ -100,6 +100,35 @@ export interface paths {
          *     applied state, so a captured announcement cannot be replayed to
          *     move a node back to an address it used to have. It resets with
          *     the node record on re-enrollment.
+         *
+         *     **The signature settles who is announcing, never which address**,
+         *     and until 2026-09-18 nothing settled the second question: a
+         *     correctly signed announcement could name any URL at all, with a
+         *     loopback check as the only filter, so `http://169.254.169.254/`
+         *     was a valid address for a node. After that this root probes it
+         *     every poll and every console proxy hop dials it carrying the
+         *     operator's own bearer. Two rules sit after the signature now.
+         *
+         *     **An address that can never be a node is a 400.** A scheme that
+         *     is not http(s), the bind wildcard, a multicast group, a
+         *     link-local address — where every cloud provider's
+         *     instance-metadata service listens — or a reserved range. The
+         *     same rule applies at `enrollNode`, so it is a rule about what a
+         *     node's address is rather than about one endpoint.
+         *
+         *     **A node may not put itself on the open internet: 409.** Classes
+         *     are `loopback`, `private` (RFC 1918, unique-local IPv6, and
+         *     100.64.0.0/10, where a tailnet lives) and `public`; a bare
+         *     hostname counts public, because whoever resolves it is not this
+         *     root. Moving *between* loopback and private is explicitly fine —
+         *     that is the Reach switch, and a new DHCP lease after a reboot —
+         *     and so is narrowing. Going public when this node was not already
+         *     public is refused, because nothing here can tell that apart from
+         *     a leaked signing key doing it. The remedy named in `detail` is
+         *     re-enrollment, which needs an operator-minted join token and is
+         *     therefore the confirmation the rule is asking for; a node that is
+         *     genuinely on the open internet enrolls that way and re-advertises
+         *     freely forever after.
          */
         patch: operations["announceNodeAddress"];
         trace?: never;
@@ -221,7 +250,12 @@ export interface paths {
          *     probes it, forwards declarations to it, and where a gateway sends
          *     a stop or start for a runtime it owns. An enrollment without one
          *     is accepted and produces a node nothing can reach, which the node
-         *     list shows as `reachable: false` until it re-enrolls.
+         *     list shows as `reachable: false` until it re-enrolls. It is
+         *     checked against the same rule `announceNodeAddress` applies: an
+         *     address that can never be a node is a 400, checked **before** the
+         *     join token is consumed. Any reachability class is allowed here,
+         *     unlike on the announcement, because a join token is
+         *     operator-minted and the operator is therefore present.
          *
          *     Idempotent on the token: re-presenting a consumed token returns
          *     409 rather than enrolling a second node, because a join token
@@ -284,6 +318,11 @@ export interface paths {
          *     Timestamps on entries are informational. **Index is the only
          *     ordering**, so clock skew between hosts cannot affect
          *     correctness.
+         *
+         *     **Operator or `service:control` only**, not any service token.
+         *     The entries include the ones that wrote the install's key
+         *     material, so this is the same door as `readSnapshot` and takes
+         *     the same level; see there for why.
          */
         get: operations["readLog"];
         put?: never;
@@ -312,6 +351,17 @@ export interface paths {
          *     exists only in the operator's head, and per-component secrets,
          *     which are sealed on the hosts that read them and never travel
          *     here.
+         *
+         *     **Operator or `service:control` only** (2026-09-18), which is
+         *     narrower than every other read on this root and deliberately so.
+         *     What comes back includes `sealedSigningKey`, `salt` and
+         *     `passphraseVerifier`; a `service:*` holder that has no master key
+         *     — a gateway, a library, a driver, an agent that has not unlocked
+         *     — gains an **offline attack on the operator's passphrase** by
+         *     reading it, and none of them has a reason to. The one caller that
+         *     must have it is a standby, bootstrapping or recovering from
+         *     compaction, and it presents `service:control`. Not operator-only,
+         *     because replication has to work at 3am with nobody logged in.
          */
         get: operations["readSnapshot"];
         put?: never;
@@ -1685,9 +1735,23 @@ export interface components {
          *     render it as rows of one browsable directory (the library's
          *     host) plus its mounts; the per-node grid over it is the
          *     Library's Folders page, not this field.
+         *
+         *     `share_credentials` (R2.6, 2026-09-18) is an ordered JSON array
+         *     of `ShareCredential` — `{"host": <a file server>, "username":
+         *     ..., "password": ...}`. Its one user is the agent's
+         *     `shareCredentials`, which is how a host that runs Eugene as a
+         *     Windows **service** reaches an authenticated share at all: a
+         *     service has none of the per-user credentials the person who
+         *     installed it collected by hand. It is the only value here whose
+         *     entries contain a secret, so it carries `secret`'s rule per
+         *     entry rather than per field — the password is redacted in `GET`,
+         *     accepted in `PATCH`, and an entry that omits it keeps the stored
+         *     one. UIs render it as rows of host / user / password, with the
+         *     password a password input, and must not display a redacted
+         *     entry as though its password were empty.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -1976,6 +2040,20 @@ export interface operations {
                 };
             };
             /**
+             * @description The announcement is correctly signed and the address cannot
+             *     be a node's: a non-http(s) scheme, the bind wildcard, a
+             *     multicast group, a link-local address, or a reserved range.
+             *     `detail` names which.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
              * @description The signature does not verify against the node's recorded
              *     `signingPublicKey`, or that node has none — it enrolled
              *     before nodes had a signing identity and must re-enroll
@@ -1991,10 +2069,12 @@ export interface operations {
             };
             404: components["responses"]["Problem"];
             /**
-             * @description Either `sequence` is not above the one already recorded — a
-             *     replay, or a node whose identity file was restored from a
-             *     backup — or this host is a standby and does not accept
-             *     writes. `detail` says which.
+             * @description One of three. `sequence` is not above the one already
+             *     recorded — a replay, or a node whose identity file was
+             *     restored from a backup; or the announced address would put a
+             *     node that was not on the open internet onto it, which only an
+             *     operator confirms, by re-enrolling; or this host is a standby
+             *     and does not accept writes. `detail` says which.
              */
             409: {
                 headers: {
@@ -2097,7 +2177,10 @@ export interface operations {
                     "application/json": components["schemas"]["Enrollment"];
                 };
             };
-            /** @description Malformed public key, or a name that collides. */
+            /**
+             * @description Malformed public key, a name that collides, or a `url` that
+             *     can never be a node's address.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;

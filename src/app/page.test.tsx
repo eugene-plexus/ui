@@ -596,7 +596,12 @@ const LOOPBACK_ONLY = {
   restartRequired: false,
   proposedUrl: "http://192.168.1.20:8079/",
   boundAddresses: [{ process: "agent", host: "127.0.0.1", port: 8079, reachableOffHost: false }],
-  restart: { mechanism: "logon_task", canSelfRestart: true, command: "schtasks ..." },
+  restart: {
+    mechanism: "logon_task",
+    canSelfRestart: true,
+    command: "schtasks ...",
+    detail: "This agent starts when you log in.",
+  },
   firewall: {
     supported: true,
     enabled: true,
@@ -660,6 +665,55 @@ describe("Reach it from other devices", () => {
     expect(within(card).getByTestId("reach-headline")).toHaveTextContent("needs to restart");
     expect(within(card).getByTestId("reach-restart")).toBeEnabled();
     expectPlainWords();
+  });
+
+  it("says whether Eugene comes back after a reboot, in every state", async () => {
+    // **The fixture above supplied `mechanism` from S5 and nothing ever
+    // asserted it** -- the producer was right, the consumer did not
+    // exist, and every test passed. That is the wiring lesson, and this
+    // is the check that would have caught it.
+    //
+    // It matters because R2.6 changed the answer. A service comes back
+    // at boot; the logon task this fixture describes does not, and until
+    // now the two were indistinguishable from every screen -- which is
+    // how a phone gets connection refused at 7 am with nothing anywhere
+    // to explain it.
+    withReach({ ...LOOPBACK_ONLY, enabled: true, advertiseUrl: "http://192.168.1.20:8079/" });
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-reach");
+    expect(within(card).getByTestId("reach-starts")).toHaveTextContent("starts when you log in");
+  });
+
+  it("says a service comes back before anyone signs in", async () => {
+    withReach({
+      ...LOOPBACK_ONLY,
+      enabled: true,
+      advertiseUrl: "http://192.168.1.20:8079/",
+      restart: {
+        mechanism: "service",
+        canSelfRestart: true,
+        command: "Restart-Service EugenePlexusAgent",
+        detail: "This agent starts at boot, before anyone signs in.",
+      },
+    });
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-reach");
+    expect(within(card).getByTestId("reach-starts")).toHaveTextContent("before anyone signs in");
+  });
+
+  it("says nothing at all rather than inventing how this machine boots", async () => {
+    // An agent that did not answer, or a platform nothing here knows.
+    // A confident wrong sentence about a reboot is worse than silence:
+    // it is the one thing on this card somebody would plan around.
+    withReach({
+      ...LOOPBACK_ONLY,
+      enabled: true,
+      advertiseUrl: "http://192.168.1.20:8079/",
+      restart: { mechanism: "unknown", canSelfRestart: false },
+    });
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-reach");
+    expect(within(card).queryByTestId("reach-starts")).toBeNull();
   });
 
   it("will not offer to restart an agent nothing would start again", async () => {

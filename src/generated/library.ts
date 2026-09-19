@@ -2855,9 +2855,23 @@ export interface components {
          *     render it as rows of one browsable directory (the library's
          *     host) plus its mounts; the per-node grid over it is the
          *     Library's Folders page, not this field.
+         *
+         *     `share_credentials` (R2.6, 2026-09-18) is an ordered JSON array
+         *     of `ShareCredential` — `{"host": <a file server>, "username":
+         *     ..., "password": ...}`. Its one user is the agent's
+         *     `shareCredentials`, which is how a host that runs Eugene as a
+         *     Windows **service** reaches an authenticated share at all: a
+         *     service has none of the per-user credentials the person who
+         *     installed it collected by hand. It is the only value here whose
+         *     entries contain a secret, so it carries `secret`'s rule per
+         *     entry rather than per field — the password is redacted in `GET`,
+         *     accepted in `PATCH`, and an entry that omits it keeps the stored
+         *     one. UIs render it as rows of host / user / password, with the
+         *     password a password input, and must not display a redacted
+         *     entry as though its password were empty.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one

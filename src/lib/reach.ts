@@ -143,6 +143,35 @@ export function firewallNote(reach: NodeReach | null): string | null {
 }
 
 /**
+ * What starts Eugene on this machine, in one sentence, always.
+ *
+ * **`restart.detail` and `restart.mechanism` have been on the wire since
+ * S5 and no screen has ever printed either.** The fixture at
+ * `app/page.test.tsx` supplies `mechanism: "logon_task"` and nothing
+ * asserted it, which is this project's wiring lesson in its purest form:
+ * the producer was right, the consumer never existed, and the test
+ * passed.
+ *
+ * It matters now because R2.6 changed the answer. A Windows install is a
+ * service and comes back at boot before anyone signs in; an install made
+ * before that is a logon task and does not, and **the two are
+ * indistinguishable from every screen in the product** — which is how
+ * somebody's phone gets connection refused at 7 am with nothing
+ * anywhere to explain it.
+ *
+ * Shown in every state rather than only when a restart is pending: the
+ * question *"will this still be here after I reboot?"* is not one a
+ * person asks at the moment they are being asked to restart.
+ *
+ * `null` when the agent said nothing, which is honest. An invented
+ * sentence about how a machine boots is worse than no sentence.
+ */
+export function startsWhen(reach: NodeReach | null): string | null {
+  const detail = reach?.restart?.detail?.trim();
+  return detail ? detail : null;
+}
+
+/**
  * Whether the switch may offer to restart Eugene itself.
  *
  * False is not a failure. It is the install nothing supervises — an

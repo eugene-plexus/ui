@@ -335,7 +335,7 @@ describe("screen 1: what Continue commits", () => {
 
     // The default follows the measurement, not the platform and not a
     // hard-coded "prompt".
-    const box = await screen.findByRole("checkbox", { name: /start eugene on its own/i });
+    const box = await screen.findByRole("checkbox", { name: /unlock eugene on its own/i });
     await waitFor(() => expect(box).toBeChecked());
     expect(box).toBeEnabled();
     expect(screen.queryByTestId("no-keyring-note")).toBeNull();
@@ -359,7 +359,7 @@ describe("screen 1: what Continue commits", () => {
     // healthyInstall() already answers keyringAvailable: false.
     render(<WizardPage />);
 
-    const box = await screen.findByRole("checkbox", { name: /start eugene on its own/i });
+    const box = await screen.findByRole("checkbox", { name: /unlock eugene on its own/i });
     await waitFor(() => expect(screen.getByTestId("no-keyring-note")).toBeVisible());
     expect(box).toBeDisabled();
     expect(box).not.toBeChecked();
@@ -381,7 +381,7 @@ describe("screen 1: what Continue commits", () => {
       }),
     );
     render(<WizardPage />);
-    const box = await screen.findByRole("checkbox", { name: /start eugene on its own/i });
+    const box = await screen.findByRole("checkbox", { name: /unlock eugene on its own/i });
     // Give the probe every chance to (wrongly) flip it.
     await new Promise((r) => setTimeout(r, 50));
     expect(box).not.toBeChecked();

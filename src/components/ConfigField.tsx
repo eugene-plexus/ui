@@ -189,6 +189,13 @@ export function ConfigFieldInput({
       );
     }
 
+    // `share_credentials` (R2.6): who this machine says it is when it
+    // reaches a file server. One row per SERVER, not per share --
+    // Windows allows one login per server and refuses a second (1219).
+    if (field.valueType === "share_credentials") {
+      return <ShareCredentialsInput value={value} pending={pending} onChange={onChange} />;
+    }
+
     // `url_list` is the same widget with different words: an ordered
     // add/remove list of strings. Added at M5 for the control root's
     // standby endpoints, which are inherently plural — "N standbys is a
@@ -930,6 +937,218 @@ function LibraryFoldersInput({
       )}
     </div>
   );
+}
+
+type ShareCredentialRow = { host: string; username: string; password: string | null };
+
+/**
+ * Editor for `share_credentials` (R2.6): who this machine says it is
+ * when it reaches a file server.
+ *
+ * **The password box is the whole design problem.** `GET /v1/config`
+ * redacts every password to null — a UI must never hold one — so every
+ * row arrives blank in a field that already has a value on the server.
+ * Rendering that as an empty password box would invite somebody to
+ * "fix" it, and writing the blank back would clear a secret the install
+ * needs to read its models. So:
+ *
+ *   * a row the server already knows shows **"saved"** and an empty box
+ *     with a placeholder that says leaving it alone keeps it;
+ *   * `password: null` on the wire means *keep what you have*, which is
+ *     what an untouched row sends;
+ *   * clearing one is an explicit **forget** button, which sends `""`.
+ *
+ * The three states are the agent's merge rule seen from the other side;
+ * they have to agree or a password is lost at the next reboot with
+ * nothing saying so.
+ */
+function ShareCredentialsInput({
+  value,
+  pending,
+  onChange,
+}: {
+  value: unknown;
+  pending: boolean;
+  onChange: (newValue: unknown) => void;
+}) {
+  const incoming = parseShareCredentials(value);
+  const [rows, setRows] = useState<ShareCredentialRow[]>(incoming);
+  // Which rows had a password when the server last answered. Typing in
+  // the box does not change this; it is what the row LOOKED like on
+  // arrival, and it is the only way to tell "saved, not shown" from
+  // "never set".
+  // **Seeded from the first render, not left false until the value
+  // changes.** The effect below only fires when the serialized value
+  // MOVES, which it does not on mount — so initialising this to all-false
+  // made every row the server already holds look like a row with no
+  // password, which is the exact confusion this flag exists to prevent.
+  const [stored, setStored] = useState<boolean[]>(() =>
+    incoming.map((r) => r.host.trim().length > 0),
+  );
+  const mirrored = useRef<string>(JSON.stringify(incoming));
+
+  useEffect(() => {
+    const parsed = parseShareCredentials(value);
+    const serialized = JSON.stringify(parsed);
+    if (serialized !== mirrored.current) {
+      mirrored.current = serialized;
+      setRows(parsed);
+      // A row that came back from the server with a host is a row the
+      // server is holding a credential for. The password itself is
+      // never on the wire, so its presence cannot be read from it.
+      setStored(parsed.map((r) => r.host.trim().length > 0));
+    }
+  }, [value]);
+
+  function update(next: ShareCredentialRow[], nextStored?: boolean[]) {
+    setRows(next);
+    if (nextStored) setStored(nextStored);
+    const complete = next
+      .filter((r) => r.host.trim().length > 0 && r.username.trim().length > 0)
+      .map((r) => ({
+        host: r.host.trim(),
+        username: r.username.trim(),
+        // null = keep whatever is stored. "" = forget it. A typed value
+        // replaces it.
+        password: r.password,
+      }));
+    mirrored.current = JSON.stringify(complete);
+    onChange(complete);
+  }
+
+  const inputClass =
+    "min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50";
+  const buttonClass =
+    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+
+  return (
+    <div className="flex flex-col gap-2" data-testid="share-credentials">
+      {rows.length === 0 && (
+        <p className="text-xs text-[color:var(--muted)] italic">
+          No logins. Add one only if a model folder lives on a server that asks this machine to sign
+          in.
+        </p>
+      )}
+      {rows.map((row, index) => (
+        <div key={index} className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={row.host}
+            spellCheck={false}
+            placeholder="192.168.16.252  (the server, not a whole path)"
+            aria-label="File server"
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = { ...row, host: e.target.value };
+              update(next);
+            }}
+            disabled={pending}
+            className={inputClass}
+          />
+          <input
+            type="text"
+            value={row.username}
+            spellCheck={false}
+            placeholder="your name on that server"
+            aria-label="User name on the file server"
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = { ...row, username: e.target.value };
+              update(next);
+            }}
+            disabled={pending}
+            className={inputClass}
+          />
+          <input
+            type="password"
+            value={row.password ?? ""}
+            autoComplete="new-password"
+            placeholder={stored[index] ? "saved - leave blank to keep it" : "password"}
+            aria-label="Password for the file server"
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = { ...row, password: e.target.value };
+              update(next);
+            }}
+            disabled={pending}
+            className={inputClass}
+          />
+          {stored[index] && (
+            <button
+              type="button"
+              data-testid={`share-forget-${index}`}
+              onClick={() => {
+                const next = [...rows];
+                next[index] = { ...row, password: "" };
+                const nextStored = [...stored];
+                nextStored[index] = false;
+                update(next, nextStored);
+              }}
+              disabled={pending}
+              className={buttonClass}
+              title="Forget the stored password for this server."
+            >
+              forget password
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              update(
+                rows.filter((_, i) => i !== index),
+                stored.filter((_, i) => i !== index),
+              );
+            }}
+            disabled={pending}
+            className={buttonClass}
+            title="Remove this server. Nothing on the server is touched."
+          >
+            remove
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => {
+          setRows([...rows, { host: "", username: "", password: null }]);
+          setStored([...stored, false]);
+        }}
+        disabled={pending}
+        className={`${buttonClass} w-fit`}
+      >
+        add a server
+      </button>
+      {/* `cross-link-related-settings` (Troy, standing): this says WHO
+          this machine is on that server; where the folder is mounted is
+          the other half, and both name each other. */}
+      <p className="text-xs text-[color:var(--muted)]">
+        Where each folder is mounted is set on{" "}
+        <Link href={libraryFoldersHref(null)} className="underline">
+          Library &rarr; Folders
+        </Link>
+        , and overridden for this machine in Library folder overrides above.
+      </p>
+    </div>
+  );
+}
+
+/** Whatever the server or the draft holds, as rows. A redacted password
+ * (null) is preserved as null, because null is the value that means
+ * *keep the stored one* on the way back. */
+function parseShareCredentials(value: unknown): ShareCredentialRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item !== "object" || item === null) return [];
+    const record = item as Record<string, unknown>;
+    if (typeof record.host !== "string") return [];
+    return [
+      {
+        host: record.host,
+        username: typeof record.username === "string" ? record.username : "",
+        password: typeof record.password === "string" ? record.password : null,
+      },
+    ];
+  });
 }
 
 /** Whatever the server or the draft holds, as rows. Junk entries are

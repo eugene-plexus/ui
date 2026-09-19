@@ -11,6 +11,7 @@ import {
   headline,
   listening,
   reachState,
+  startsWhen,
 } from "@/lib/reach";
 import type { NodeReach, NodeReachResult } from "@/lib/types";
 
@@ -78,6 +79,7 @@ export function ReachCard({
   const note = firewallNote(reach);
   const proof = evidence(reach);
   const bound = listening(reach);
+  const startsAt = startsWhen(reach);
   const remedy = state.kind === "blocked" ? state.remedy : null;
 
   return (
@@ -181,6 +183,20 @@ export function ReachCard({
               </li>
             ))}
         </ul>
+      )}
+
+      {/* **What starts Eugene, in every state.** R2.6 made a Windows
+          install a service that comes back at boot before anyone signs
+          in; an install made before it is a logon task that does not,
+          and until now no screen could tell the two apart. The agent has
+          put this on the wire since S5 and nothing read it. */}
+      {startsAt && (
+        <p
+          data-testid="reach-starts"
+          className="font-ui mt-2 text-[11px] text-[color:var(--muted)]"
+        >
+          {startsAt}
+        </p>
       )}
 
       <p className="font-ui mt-2 border-t border-[color:var(--border)] pt-1 text-[11px] text-[color:var(--muted)]">

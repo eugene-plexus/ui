@@ -83,19 +83,30 @@ export function ScreenPassphrase({
           setup is done.
         </p>
       ) : null}
+      {/* **The label said "Start", and after R2.6 that is the wrong
+          verb.** Eugene now starts on its own after a reboot because it
+          is a Windows service, whatever this box says; what the box
+          decides is whether it comes back UNLOCKED or waits for the
+          passphrase. Conflating the two is how somebody unticks this and
+          is surprised that the install still runs -- or ticks it and
+          believes it fixed an autostart it never touched.
+
+          Rewritten because the mechanism changed, not to make a weaker
+          sentence true: see the roadmap's decision 4. */}
       <Checkbox
         checked={!noKeyring && securityMode === "os_keyring"}
         disabled={noKeyring}
         onChange={(checked) => onSecurityMode(checked ? "os_keyring" : "prompt_on_startup")}
-        label="Start Eugene on its own after a reboot"
-        description={
-          "Eugene keeps its key in your OS's password manager (Windows Credential Manager, " +
-          "macOS Keychain or Linux Secret Service) so it comes back working without you. " +
-          "Untick to be asked for the passphrase every time it starts. Anyone who can sign " +
-          "in to this user account could otherwise start Eugene. You can change this later " +
-          "under Config."
-        }
+        label="Unlock Eugene on its own after a restart"
+        description="Eugene stores its key with the operating system and comes back ready to answer."
       />
+      <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted)]">
+        Untick to be asked for the passphrase every time Eugene starts.
+      </p>
+      <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted)]">
+        Eugene itself starts when this machine does, before anyone signs in. You can change any of
+        this later under Config.
+      </p>
     </section>
   );
 }

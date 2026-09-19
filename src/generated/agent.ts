@@ -1624,6 +1624,22 @@ export interface components {
              *     case above and for a card to print either way.
              */
             command?: string;
+            /**
+             * @description One plain sentence about what this mechanism means for the
+             *     person reading it — *"This agent starts at boot, before
+             *     anyone signs in."* for a service, *"This agent starts when
+             *     you log in."* for a logon task, and for `none` the fact that
+             *     stopping it ends the install until somebody types the
+             *     command again.
+             *
+             *     **It is the difference between the two Windows mechanisms,
+             *     stated where a person can see it**, which is the whole of
+             *     why R2.6 changed one into the other. A card that renders
+             *     `command` and not this can tell somebody *how* to restart
+             *     their install and never that it will not come back on its
+             *     own after a reboot — which is the question they came to the
+             *     page with.
+             */
             detail?: string;
         };
         /**
@@ -3584,9 +3600,23 @@ export interface components {
          *     render it as rows of one browsable directory (the library's
          *     host) plus its mounts; the per-node grid over it is the
          *     Library's Folders page, not this field.
+         *
+         *     `share_credentials` (R2.6, 2026-09-18) is an ordered JSON array
+         *     of `ShareCredential` — `{"host": <a file server>, "username":
+         *     ..., "password": ...}`. Its one user is the agent's
+         *     `shareCredentials`, which is how a host that runs Eugene as a
+         *     Windows **service** reaches an authenticated share at all: a
+         *     service has none of the per-user credentials the person who
+         *     installed it collected by hand. It is the only value here whose
+         *     entries contain a secret, so it carries `secret`'s rule per
+         *     entry rather than per field — the password is redacted in `GET`,
+         *     accepted in `PATCH`, and an entry that omits it keeps the stored
+         *     one. UIs render it as rows of host / user / password, with the
+         *     password a password input, and must not display a redacted
+         *     entry as though its password were empty.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field

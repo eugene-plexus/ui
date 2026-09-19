@@ -36,8 +36,24 @@ export interface paths {
          *       still fires. A rate-limited cloud provider falling through to
          *       a local engine is the case failover was built for and must not
          *       regress.
+         *     * **A deadline that fired is 504**, `type` ending
+         *       `#backend-timeout`, and does not cascade. The backend has not
+         *       *failed*; it has not *finished* — almost certainly still
+         *       computing this prompt — and the next replica would take the
+         *       same time to compute the same thing. The message names the
+         *       seconds and `requestTimeoutSeconds`, because a read timeout
+         *       carries no message of its own. A **connect** timeout is a dead
+         *       host that took no work and stays **502**, so failover still
+         *       fires.
          *     * Everything else — a backend 5xx, a transport failure, a
          *       malformed body — stays **502**.
+         *
+         *     **A caller that disconnects cancels the backend call.** The
+         *     driver answers **499** and the engine is released, rather than
+         *     computing an answer into a closed socket. The same is true of
+         *     the stream's *prefill*: the first chunk is awaited before the
+         *     200 is committed, and on a cold engine that await is the whole
+         *     model load.
          *
          *     **This is the honest half of context-window handling.**
          *     `llama-server` answers an over-long prompt with a 400 naming
@@ -838,9 +854,23 @@ export interface components {
          *     render it as rows of one browsable directory (the library's
          *     host) plus its mounts; the per-node grid over it is the
          *     Library's Folders page, not this field.
+         *
+         *     `share_credentials` (R2.6, 2026-09-18) is an ordered JSON array
+         *     of `ShareCredential` — `{"host": <a file server>, "username":
+         *     ..., "password": ...}`. Its one user is the agent's
+         *     `shareCredentials`, which is how a host that runs Eugene as a
+         *     Windows **service** reaches an authenticated share at all: a
+         *     service has none of the per-user credentials the person who
+         *     installed it collected by hand. It is the only value here whose
+         *     entries contain a secret, so it carries `secret`'s rule per
+         *     entry rather than per field — the password is redacted in `GET`,
+         *     accepted in `PATCH`, and an entry that omits it keeps the stored
+         *     one. UIs render it as rows of host / user / password, with the
+         *     password a password input, and must not display a redacted
+         *     entry as though its password were empty.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
@@ -1178,6 +1208,21 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /**
+             * @description The caller disconnected while this was running. The backend
+             *     call was cancelled rather than left to finish into a closed
+             *     socket. Nothing reads this status -- the socket is gone --
+             *     but it is what the access log records, and "the caller left"
+             *     must not look like "we failed".
+             */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             500: components["responses"]["Problem"];
             /**
              * @description Upstream model backend error, or a backend refusal worth
@@ -1185,6 +1230,20 @@ export interface operations {
              *     the next backend in the slot.
              */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `requestTimeoutSeconds` passed with no answer. **Does not
+             *     cascade**: the backend is still computing this prompt and
+             *     the next replica would take the same time on the same
+             *     input. `detail` names the deadline and the setting.
+             */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1230,12 +1289,40 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /**
+             * @description The caller went away during the PREFILL -- the first chunk
+             *     is awaited before the 200 is committed, and on a cold
+             *     engine that is the whole model load. The engine call was
+             *     cancelled.
+             */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             500: components["responses"]["Problem"];
             /**
              * @description Backend failure before the stream opened, or a refusal worth
              *     retrying elsewhere (`408`, `409`, `425`, `429`). Cascades.
              */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `requestTimeoutSeconds` passed before the stream opened.
+             *     Does not cascade — the backend is still computing this
+             *     prompt. A timeout *after* the first frame can only be an
+             *     `event: error`, since the 200 is already committed.
+             */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1281,6 +1368,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The caller went away; the backend call was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             500: components["responses"]["Problem"];
             /**
              * @description Upstream backend error, or a refusal worth retrying
@@ -1288,6 +1384,19 @@ export interface operations {
              *     across replicas of the SAME model; see `gateway.yaml`.
              */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `requestTimeoutSeconds` passed with no answer. Does not
+             *     cascade: a replica would take the same time on the same
+             *     input.
+             */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };
