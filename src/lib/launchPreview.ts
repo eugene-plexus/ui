@@ -115,6 +115,15 @@ export function describeAdmission(
       `Needs about ${need}; ${free} free on ${admission.device?.name ?? "the device"} (${admission.basis === "metadata" ? "from the library's metadata" : "from the file size"}).`,
     );
   }
+  // Memory promised to a launch already under way is subtracted before
+  // the verdict, so a panel that printed only `freeBytes` would say
+  // "needs 20 GiB, 24 GiB free" and then be refused -- two screens
+  // disagreeing about one number, which is the failure this whole
+  // surface exists to stop.
+  const reserved = gib(admission.reservedBytes);
+  if (reserved && admission.reservedBytes) {
+    parts.push(`${reserved} of that is reserved for a launch already under way.`);
+  }
   if (admission.warning) parts.push(admission.warning);
   // Admitted, but only with partial offload: the number that would
   // make it a clean fit is worth more than the warning.

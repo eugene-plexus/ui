@@ -204,3 +204,25 @@ describe("configTabHref", () => {
     expect(configTabHref("agent")).toBe("/config?tab=agent");
   });
 });
+
+describe("memory promised to a launch already under way", () => {
+  it("is named on the admit line, or the panel and the launch disagree", () => {
+    const preview = describeAdmission(
+      {
+        ...ADMIT,
+        requiredBytes: 8 * 1024 ** 3,
+        freeBytes: 24 * 1024 ** 3,
+        reservedBytes: 20 * 1024 ** 3,
+      },
+      "Amish_Station",
+      "agent",
+    );
+    expect(preview.detail).toContain("24.0 GiB free");
+    expect(preview.detail).toContain("20.0 GiB of that is reserved");
+  });
+
+  it("says nothing when nothing is in flight", () => {
+    const preview = describeAdmission(ADMIT, "Amish_Station", "agent");
+    expect(preview.detail ?? "").not.toContain("reserved");
+  });
+});
