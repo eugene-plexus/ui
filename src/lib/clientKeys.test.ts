@@ -116,15 +116,30 @@ describe("recipes", () => {
     }
   });
 
-  it("carries the /v1 suffix everywhere the address appears", () => {
+  it("carries the /v1 suffix everywhere the address appears, except Claude Code", () => {
     // §3's failure #6, first half: "The apiBase differs for each tool.
     // Otherwise, getting 404." A snippet that dropped `/v1` would
     // reproduce the most-reported onboarding bug in the field.
+    //
+    // **Claude Code is the one exception and it is named rather than
+    // skipped**, because the rule and its exception are the same fact:
+    // the address a client needs is the one that client appends to.
+    // `ANTHROPIC_BASE_URL` is a root and Claude Code appends
+    // `/v1/messages` itself, so a `/v1` here produces `/v1/v1/messages`.
+    // This test caught the new recipe on its first run, which is the
+    // invariant doing its job; weakening it to a blanket skip would
+    // have lost the check for the other seven.
+    const exceptions = new Set(["Claude Code"]);
+    let checked = 0;
     for (const recipe of made) {
+      if (exceptions.has(recipe.name)) continue;
       if (!recipe.snippet.includes("192.168.1.20")) continue;
+      checked += 1;
       const withoutV1 = recipe.snippet.match(/192\.168\.1\.20:8080(?!\/v1)/);
       expect(withoutV1, `${recipe.name} names the address without /v1`).toBeNull();
     }
+    // Or an exception list that grew to cover everything would pass.
+    expect(checked).toBeGreaterThan(3);
   });
 
   it("names Continue's file and uses its own key names", () => {
@@ -143,12 +158,35 @@ describe("recipes", () => {
     expect(Object.keys(parsed.provider["eugene-plexus"].models)).toEqual([STRINGS.model]);
   });
 
-  it("does not offer a Claude Code recipe", () => {
-    // The design's §7 S4 named one. Claude Code takes ANTHROPIC_BASE_URL
-    // and speaks the Anthropic Messages API at /v1/messages; this
-    // gateway serves the OpenAI shape. A recipe would 404 for everyone
-    // who followed it.
-    expect(made.map((r) => r.name)).not.toContain("Claude Code");
+  it("offers a Claude Code recipe, and strips the /v1 from its base URL", () => {
+    // **This assertion is the inverse of the one it replaces.** S4
+    // refused a Claude Code recipe because the client speaks the
+    // Anthropic Messages API at /v1/messages and this gateway served
+    // only the OpenAI shape, so a recipe would have 404'd for everyone
+    // who followed it. R4 built that door.
+    //
+    // The `/v1` is the trap and it is the opposite of every other
+    // recipe here: ANTHROPIC_BASE_URL is a root and the client appends
+    // `/v1/messages` itself, so a base URL ending in `/v1` produces
+    // requests to `/v1/v1/messages` and a 404 that reads as "your
+    // gateway is wrong".
+    const one = made.find((r) => r.name === "Claude Code")!;
+    expect(one).toBeTruthy();
+    expect(one.snippet).toContain("ANTHROPIC_BASE_URL=http://192.168.1.20:8080\n");
+    expect(one.snippet).not.toContain("ANTHROPIC_BASE_URL=http://192.168.1.20:8080/v1");
+    expect(one.snippet).toContain(`ANTHROPIC_MODEL=${STRINGS.model}`);
+  });
+
+  it("tells Claude Code's reader to use AUTH_TOKEN rather than API_KEY", () => {
+    // Measured, not preference. ANTHROPIC_API_KEY needs a one-off
+    // approval prompt before Claude Code will use it at all, and an
+    // ambient Claude subscription login silently beats it -- which
+    // sends the reader's own Anthropic OAuth token to their gateway
+    // while the client key they just minted goes unused.
+    const one = made.find((r) => r.name === "Claude Code")!;
+    expect(one.snippet).toContain("ANTHROPIC_AUTH_TOKEN=");
+    expect(one.snippet).not.toContain("ANTHROPIC_API_KEY=");
+    expect(one.note).toContain("ANTHROPIC_API_KEY");
   });
 
   it("tells Open WebUI's reader there is no model to type", () => {

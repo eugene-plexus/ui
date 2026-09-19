@@ -144,6 +144,183 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anthropic-compatible Messages API, so an Anthropic client can use local models.
+         * @description **The third front door, and the one that decides whether an
+         *     agent harness can point at this install at all.** Claude Code,
+         *     the Anthropic SDKs and every tool built on them speak this wire
+         *     and not OpenAI's, so without it the most capable client in the
+         *     field can be pointed at every competing product and not at us.
+         *
+         *     It is a **translation at the edge**, not a second routing
+         *     engine. The body is mapped into the same internal request
+         *     `/v1/chat/completions` builds, and from there the two doors
+         *     share everything: the surface refusal, the tools refusal checked
+         *     before a backend is picked, the refresh-and-wake, the settings
+         *     profile, the truncation detector, the cascade and the
+         *     recording. `GET /v1/metrics` sees this door exactly as it sees
+         *     the other one, which is the whole reason the translation happens
+         *     here rather than against a driver.
+         *
+         *     ### Authentication takes two headers, and they are alternatives
+         *
+         *     `Authorization: Bearer <token>` **or** `x-api-key: <token>`,
+         *     carrying the same tokens the OpenAI door accepts — an operator
+         *     session, a service token, or a **client key** from
+         *     `POST /v1/auth/client-keys`.
+         *
+         *     Two headers because the client decides which one, and it never
+         *     sends both. Measured against Claude Code 2.1.207 on 2026-09-19
+         *     (`docs/acceptance/anthropic-messages-measurement.md`):
+         *     `ANTHROPIC_API_KEY` sends `x-api-key` and **no `Authorization`
+         *     header at all**, while `ANTHROPIC_AUTH_TOKEN` sends
+         *     `Authorization: Bearer` and no `x-api-key`. A door that read
+         *     only one of them would not merely prefer the wrong header; on
+         *     half the configurations it would see no credential whatsoever.
+         *
+         *     ### A rejected credential is 403 here and 401 everywhere else
+         *
+         *     **This is a deliberate divergence and it must not be tidied
+         *     away.** Measured: a 401 from this endpoint makes Claude Code
+         *     retry without bound — nine attempts in 79 seconds, still
+         *     climbing when the measurement's timeout fired — while **showing
+         *     its user nothing at all**. A 403 is reported on the first
+         *     attempt, verbatim, as
+         *     `Failed to authenticate. API Error: 403 <our message>`.
+         *
+         *     So a missing, malformed, expired or revoked token on
+         *     `/v1/messages` answers **403** with a message naming the reason.
+         *     The same token on `/v1/chat/completions` still answers 401,
+         *     because an OpenAI SDK reports a 401 properly and a 403 there
+         *     would read as "this key exists but may not do this".
+         *
+         *     A gateway that answers 401 here converts a typo in a key into a
+         *     silent retry storm against itself, which is the looping symptom
+         *     this project removed from the driver at step 7, one layer up, in
+         *     the client it most wants to keep.
+         *
+         *     ### What is dropped, and why dropping is honest
+         *
+         *     `cache_control`, `thinking`, `top_k`, `metadata`,
+         *     `context_management` and any unknown field are **dropped
+         *     silently**. A blanket unknown-field refusal passes every refusal
+         *     test and then fails on the first real request, because this wire
+         *     carries a great deal we have no equivalent for.
+         *
+         *     `cache_control` appears on system blocks, on the last user
+         *     content block **and on `tool_result` blocks**; prompt caching is
+         *     a property of a hosted service and means nothing to a local
+         *     engine holding the KV cache itself.
+         *
+         *     **`thinking` is dropped rather than refused, and that was
+         *     measured rather than assumed.** It is on every request Claude
+         *     Code sends. A known Claude model id produces
+         *     `{"budget_tokens": …, "type": "enabled"}`; **an arbitrary local
+         *     model id — which is the entire purpose of this door — produces
+         *     `{"type": "adaptive"}`**; and `MAX_THINKING_TOKENS=0` produces
+         *     `"thinking": null` with the key still present, so even a
+         *     presence check refuses the one configuration genuinely asking
+         *     for no thinking. Dropping it is not a loss of control either:
+         *     `thinkingMode` on the model's settings profile and the driver's
+         *     `ThinkingFilter` already decide what a local model does with a
+         *     reasoning block, and that decision belongs to the operator who
+         *     owns the model rather than to the caller.
+         *
+         *     `top_k` is a real loss and is documented as one: both local
+         *     engines accept it and neither of our contracts carries it, which
+         *     is the same omission `top_p` and `seed` already have on the
+         *     internal request.
+         *
+         *     ### What is refused, with a 400 naming the field
+         *
+         *     Image blocks, document blocks, server-side tool types,
+         *     `mcp_servers`, more than four `stop_sequences`, and a missing
+         *     `max_tokens`. Each is refused rather than dropped because each
+         *     changes what the answer would be: a model that never saw the
+         *     image is not answering the question that was asked.
+         *
+         *     **A model nothing serves is also a 400 here, not a 404.**
+         *     Measured: Claude Code discards the body of a 404 and shows a
+         *     generic *"There's an issue with the selected model"* instead, so
+         *     a 404 would throw away the explanation — including the
+         *     `503 Locked` control-root diagnosis, which exists precisely so
+         *     that this surface stops naming two healthy places and never
+         *     mentioning the root.
+         *
+         *     ### Streaming
+         *
+         *     `stream: true` produces Anthropic's typed event stream:
+         *     `message_start`, then per content block a `content_block_start`,
+         *     `content_block_delta` run and `content_block_stop`, then
+         *     `message_delta` carrying `stop_reason`, then `message_stop`.
+         *     There is no `[DONE]` sentinel — that is OpenAI's framing, and a
+         *     strict Anthropic client rejects a stream that carries it.
+         *
+         *     **Content blocks are numbered statefully and our internal
+         *     stream is not**, which is the one piece of real work in the
+         *     translation. Text deltas carry no index of their own, while tool
+         *     fragments carry a per-call index; the translator therefore holds
+         *     the open text block and a map from tool-call index to content
+         *     block index, and emits `content_block_stop` for the text block
+         *     before the first tool block opens. Getting it wrong means a
+         *     strict SDK rejects the stream *inside* a 200, which reads to the
+         *     user as the model producing nothing.
+         *
+         *     `message_start` is emitted on the **first event from the
+         *     driver**, never on request acceptance. It names the model, and
+         *     until the first token the cascade can still change which backend
+         *     — and therefore which model id — answers.
+         *
+         *     The failover rule is unchanged and is inherited rather than
+         *     re-implemented, because the commit point sits below both
+         *     translators: failover is possible until the first token and
+         *     impossible after it. Past that point a stream is **truncated**,
+         *     and the truncation is reported as an `error` event followed by
+         *     `message_stop` rather than as a status code, since the status is
+         *     long gone.
+         *
+         *     ### The envelope does not go in the body
+         *
+         *     `x_eugene_plexus` rides on **response headers**
+         *     (`x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `-latency-ms`, `-attempts`, `-tier`, `-swapped-in`,
+         *     `-waited-ms`, `-context-length`, `-prompt-truncated`) rather
+         *     than in the response object. Anthropic's wire is typed events
+         *     and a strict client is exactly who this door is for, so an
+         *     unknown top-level key is a risk with no upside. The *recording*
+         *     is unaffected: it rides the shared path and lands in
+         *     `GET /v1/metrics` like any other request.
+         *
+         *     ### Two shape facts that are easy to get wrong
+         *
+         *     Claude Code sends `POST /v1/messages?beta=true` on **every**
+         *     request. The query parameter is ignored, and an
+         *     `anthropic-beta` header naming features we do not implement is
+         *     tolerated rather than validated — refusing an unknown beta would
+         *     refuse every request from the client this exists for.
+         *
+         *     A `tool_result` is a **block inside a `user` message**, several
+         *     to a message, and an assistant turn comes back carrying its own
+         *     `tool_use` blocks. Both directions are translated; the inbound
+         *     assistant mapping is not optional, because it is how a tool loop
+         *     continues past its first turn.
+         */
+        post: operations["createAnthropicMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/embeddings": {
         parameters: {
             query?: never;
@@ -1311,6 +1488,402 @@ export interface components {
             idle_seconds?: number;
         };
         /**
+         * @description Request body for `POST /v1/messages`, in Anthropic's shape.
+         *
+         *     **Deliberately permissive, and the reason is a measurement.**
+         *     Every field this gateway does not honour is *ignored* rather
+         *     than rejected, because a real Claude Code request carries
+         *     `thinking`, `cache_control`, `metadata` and
+         *     `context_management` on the very first call, and a schema that
+         *     refused an unknown field would refuse every request from the
+         *     client this endpoint exists for.
+         *
+         *     Consequently **this schema does not decide what is refused**.
+         *     The refusals — image and document blocks, server-side tools,
+         *     `mcp_servers`, more than four `stop_sequences` — are enforced
+         *     against the raw request body by the implementation, with a 400
+         *     naming the field, because a model that ignores extra keys cannot
+         *     see the thing it is meant to reject. Read this schema as what
+         *     the gateway *reads*, and the endpoint description as what it
+         *     refuses.
+         */
+        AnthropicMessagesRequest: {
+            /**
+             * @description A model id from `GET /v1/models`. Anthropic model names have
+             *     no special meaning here: the id is resolved against this
+             *     install's slots like any other, and a caller naming
+             *     `claude-sonnet-4-5` gets whatever the operator mapped that
+             *     to, or a 400.
+             */
+            model: string;
+            messages: components["schemas"]["AnthropicInputMessage"][];
+            /**
+             * @description **Required by Anthropic's contract, and required here.**
+             *     Unlike the OpenAI door, a missing value is a 400 rather than
+             *     a fill from the settings profile, because a client written
+             *     against this wire always sends one and its absence means the
+             *     caller is not speaking this protocol.
+             */
+            max_tokens: number;
+            /**
+             * @description A system prompt: a plain string, or a list of blocks.
+             *
+             *     Claude Code sends three blocks, and the **first is not a
+             *     prompt at all** — it is a billing header smuggled as prose
+             *     (`x-anthropic-billing-header: …`). Any code that assumes
+             *     `system[0]` is the instruction is wrong about the commonest
+             *     client. All blocks are concatenated in order into one
+             *     `system` message.
+             */
+            system?: string | components["schemas"]["AnthropicSystemBlock"][];
+            /**
+             * @description When true the response is Anthropic's typed SSE stream.
+             *     **Claude Code sets this on every request**, so the
+             *     non-streaming path of this endpoint is real but is not
+             *     exercised by that client.
+             * @default false
+             */
+            stream: boolean;
+            /**
+             * Format: float
+             * @description Anthropic's range is 0-1 where OpenAI's is 0-2. Passed
+             *     through unscaled: the value means the same thing to a local
+             *     engine either way, and rescaling would silently change what
+             *     a caller asked for.
+             */
+            temperature?: number;
+            /** Format: float */
+            top_p?: number;
+            /**
+             * @description **Read and dropped**, and this is a real loss rather than a
+             *     no-op: both local engines accept a top-k and neither of this
+             *     project's internal contracts carries one, which is the same
+             *     gap `top_p` and `seed` have on `GenerateRequest`. Documented
+             *     here so the omission is visible to whoever adds it.
+             */
+            top_k?: number;
+            /**
+             * @description Up to four. A fifth is a 400 rather than a silent truncation
+             *     to the first four, because dropping a stop sequence changes
+             *     where the answer ends.
+             */
+            stop_sequences?: string[];
+            /**
+             * @description Tool definitions. Translated into the OpenAI function shape
+             *     and carried to the backend unchanged.
+             *
+             *     A backend that cannot carry tools is refused by name rather
+             *     than served without them — the same rule the OpenAI door
+             *     states, and for the same reason: a harness cannot tell "the
+             *     model chose not to call one" from "nobody offered it any".
+             */
+            tools?: components["schemas"]["AnthropicToolDefinition"][];
+            tool_choice?: components["schemas"]["AnthropicToolChoice"];
+            /**
+             * @description Read and dropped. Claude Code puts a JSON *string* in
+             *     `user_id` carrying a device id, an account uuid and a
+             *     session id; none of it is ours to keep, and the gateway's
+             *     own request records already identify a request.
+             */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description **Read and dropped, never refused**, and the distinction was
+             *     measured. Present on every Claude Code request, in three
+             *     shapes: `{"budget_tokens": N, "type": "enabled"}` for a
+             *     known Claude id, `{"type": "adaptive"}` for an arbitrary
+             *     local id, and **`null` when the caller set
+             *     `MAX_THINKING_TOKENS=0`** — so even `"thinking" in body` is
+             *     true for the one configuration asking for no thinking at
+             *     all.
+             *
+             *     Dropping it is not a loss of control. A local model's
+             *     reasoning output is governed by `thinkingMode` on its
+             *     settings profile and by the driver's thinking filter, which
+             *     is the operator's decision rather than the caller's.
+             */
+            thinking?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * @description Prompt-cache hints, read and dropped wherever they appear —
+             *     on system blocks, on the last user content block, and on
+             *     `tool_result` blocks. A local engine owns its own KV cache
+             *     and there is nothing here to honour.
+             */
+            cache_control?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description One turn. A tool result is **a `tool_result` block inside a
+         *     `user` message**, and a model's tool call comes back as a
+         *     `tool_use` block inside an `assistant` message — Anthropic has
+         *     no `tool` role, and that is the shape fact the translation turns
+         *     on.
+         *
+         *     **`system` is in the enum because a real client sends it, and
+         *     the published contract says it does not.** Anthropic documents
+         *     `user` and `assistant` only, and the first version of this
+         *     schema said so. Then a real Claude Code driving a tool loop
+         *     against this gateway was refused with
+         *     `messages.1.role: Input should be 'user' or 'assistant'` on its
+         *     very first request: it sends the documented top-level `system`
+         *     (three blocks) **and, separately, a `system`-role message inside
+         *     `messages`** carrying several more kilobytes, positioned after
+         *     the first user turn.
+         *
+         *     It is carried **in place** rather than hoisted into the leading
+         *     system prompt. The client put it after a user turn deliberately,
+         *     and moving it would change what the model sees for the sake of
+         *     tidiness on a wire we do not own.
+         *
+         *     This one was found by the live run and not by the unit tests,
+         *     because the unit fixtures came from a capture of a *simple*
+         *     request and this shape appears only once tools are in play.
+         *     Recorded in `docs/acceptance/anthropic-messages-measurement.md`.
+         */
+        AnthropicInputMessage: {
+            /** @enum {string} */
+            role: "user" | "assistant" | "system";
+            /**
+             * @description A plain string, or a list of blocks. Both forms arrive from
+             *     real clients in the same conversation.
+             */
+            content: string | components["schemas"]["AnthropicContentBlock"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description One content block. **Modelled loosely on purpose**: the variants
+         *     differ by `type` and a strict `oneOf` here would generate a
+         *     union that rejects the next block type Anthropic adds, on a wire
+         *     we do not own.
+         *
+         *     The variants this gateway carries: `text` (`text`), `tool_use`
+         *     (`id`, `name`, `input`), and `tool_result` (`tool_use_id`,
+         *     `content`, `is_error`).
+         *
+         *     The variants it refuses with a 400: `image` and `document`. They
+         *     are refused rather than dropped because a model that never
+         *     received the image is not answering the question that was
+         *     asked, and a silently text-only answer to *"what is in this
+         *     screenshot"* is worse than a refusal that names the reason.
+         */
+        AnthropicContentBlock: {
+            /** @description `text`, `tool_use`, `tool_result`, `image`, `document`, … */
+            type: string;
+            text?: string;
+            /** @description On `tool_use`: the id a matching `tool_result` refers to. */
+            id?: string;
+            /** @description On `tool_use`: the tool being called. */
+            name?: string;
+            /** @description On `tool_use`: the arguments object, already parsed. */
+            input?: {
+                [key: string]: unknown;
+            };
+            /** @description On `tool_result`: which call this answers. */
+            tool_use_id?: string;
+            /**
+             * @description On `tool_result`: the result, as a string or as a list of
+             *     blocks. Claude Code sends a plain string; a list containing
+             *     an image block is refused like any other image.
+             */
+            content?: string | components["schemas"]["AnthropicContentBlock"][];
+            /**
+             * @description On `tool_result`: the tool failed. Carried into the `tool`
+             *     message's text rather than dropped, because a harness that
+             *     cannot see its own tool failed will call it again.
+             */
+            is_error?: boolean;
+            cache_control?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        AnthropicSystemBlock: {
+            /** @enum {string} */
+            type: "text";
+            text?: string;
+            cache_control?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description A tool the model may call. `name` plus `input_schema` map
+         *     directly onto an OpenAI function's `name` and `parameters`.
+         *
+         *     A definition carrying a `type` naming a server-side tool —
+         *     anything this gateway would have to execute itself, rather than
+         *     hand back to the caller — is refused with a 400. This control
+         *     plane routes to local engines; it has no web search to run and
+         *     no sandbox to run code in, and pretending otherwise would fail
+         *     at the moment the model chose to use one.
+         */
+        AnthropicToolDefinition: {
+            name: string;
+            description?: string;
+            /** @description JSON Schema for the tool's arguments. */
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Present only for server-side tools. Its presence is what the
+             *     refusal keys on.
+             */
+            type?: string;
+            cache_control?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description How the model should use `tools`. `auto`, `any`, `tool` (with a
+         *     `name`) or `none`, mapped onto the OpenAI equivalents — `any`
+         *     becomes `required`, which is the closest honest reading.
+         */
+        AnthropicToolChoice: {
+            /** @enum {string} */
+            type: "auto" | "any" | "tool" | "none";
+            /** @description With `type: tool`: which one. */
+            name?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description A completed message. The `x_eugene_plexus` envelope the OpenAI
+         *     door adds to its response body is **not** here — it rides on
+         *     response headers instead, because a strict Anthropic client is
+         *     exactly who this door is for and an unknown top-level key is a
+         *     risk with no upside.
+         */
+        AnthropicMessageResponse: {
+            id: string;
+            /** @enum {string} */
+            type: "message";
+            /** @enum {string} */
+            role: "assistant";
+            /**
+             * @description The model that actually answered, which after a cascade is
+             *     not necessarily the one that was asked for.
+             */
+            model: string;
+            /**
+             * @description `text` blocks and `tool_use` blocks, in the order the
+             *     backend produced them.
+             */
+            content: components["schemas"]["AnthropicContentBlock"][];
+            /**
+             * @description Mapped from the backend's finish reason: `stop` becomes
+             *     `end_turn`, `length` becomes `max_tokens`, `tool_calls`
+             *     becomes `tool_use`.
+             * @enum {string|null}
+             */
+            stop_reason?: "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | null;
+            stop_sequence?: string | null;
+            usage?: components["schemas"]["AnthropicUsage"];
+        };
+        /**
+         * @description Token counts, renamed from the backend's OpenAI-shaped `usage`.
+         *     Cache fields are reported as zero rather than omitted: a client
+         *     that reads them should see an honest nothing rather than an
+         *     absence it has to guess about.
+         */
+        AnthropicUsage: {
+            input_tokens: number;
+            output_tokens: number;
+            /** @default 0 */
+            cache_creation_input_tokens: number;
+            /** @default 0 */
+            cache_read_input_tokens: number;
+        };
+        /**
+         * @description One frame of the Anthropic event stream. Each SSE frame carries
+         *     both an `event:` name and a `data:` object whose `type` repeats
+         *     it; a client may read either, so both are always sent.
+         *
+         *     The order is `message_start`, then per content block
+         *     `content_block_start` → `content_block_delta`* →
+         *     `content_block_stop`, then `message_delta` carrying
+         *     `stop_reason` and final `usage`, then `message_stop`. **There is
+         *     no `[DONE]` sentinel.**
+         *
+         *     `message_start` is emitted on the **first event from the
+         *     driver**, never on request acceptance — it names the model, and
+         *     until the first token the cascade can still change which backend
+         *     answers.
+         *
+         *     An `error` event is how a truncation is reported once the status
+         *     code is long gone: a stream that has emitted a token cannot fail
+         *     over, so it stops, says why, and still closes with
+         *     `message_stop` so a client's state machine does not hang.
+         */
+        AnthropicStreamEvent: {
+            /** @enum {string} */
+            type: "message_start" | "content_block_start" | "content_block_delta" | "content_block_stop" | "message_delta" | "message_stop" | "ping" | "error";
+            /**
+             * @description Which content block, on the three `content_block_*` events.
+             *     **Assigned by the gateway, statefully**: our internal stream
+             *     numbers tool-call fragments per call and gives text no index
+             *     at all, so the translator holds the open text block and a
+             *     map from tool-call index to block index.
+             */
+            index?: number;
+            message?: {
+                [key: string]: unknown;
+            };
+            content_block?: components["schemas"]["AnthropicContentBlock"];
+            /**
+             * @description `{"type": "text_delta", "text": …}` for prose,
+             *     `{"type": "input_json_delta", "partial_json": …}` for a tool
+             *     call's arguments, and on `message_delta` the `stop_reason`.
+             */
+            delta?: {
+                [key: string]: unknown;
+            };
+            usage?: components["schemas"]["AnthropicUsage"];
+            error?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description Anthropic's error envelope. The rest of this gateway returns RFC
+         *     7807 `problem+json` and the OpenAI doors return OpenAI's shape;
+         *     this is the third foreign convention on this component, honoured
+         *     exactly for the same reason as the second — a client parses it
+         *     to build its exception, and anything else reports as an
+         *     unhelpful generic failure.
+         */
+        AnthropicErrorResponse: {
+            /** @enum {string} */
+            type: "error";
+            error: {
+                /**
+                 * @description `invalid_request_error`, `authentication_error`,
+                 *     `permission_error`, `not_found_error`,
+                 *     `rate_limit_error`, `api_error`, `overloaded_error`.
+                 */
+                type: string;
+                /**
+                 * @description Human-readable, and **it has to carry the whole
+                 *     explanation** — measured, a 400 and a 403 are shown to
+                 *     the user verbatim while a 404's message is discarded,
+                 *     which is why this door answers 400 for a model nothing
+                 *     serves.
+                 */
+                message: string;
+            };
+        };
+        /**
          * @description Error envelope for the two OpenAI-compatible operations. The
          *     rest of the gateway returns RFC 7807 `problem+json`; these two
          *     cannot, because OpenAI SDKs parse this shape to build their
@@ -2250,6 +2823,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    createAnthropicMessage: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Accepted and ignored. Claude Code appends `?beta=true` to
+                 *     every request; documenting it here is what stops a future
+                 *     reader treating it as an unknown parameter worth refusing.
+                 */
+                beta?: boolean;
+            };
+            header?: {
+                /**
+                 * @description Anthropic's API version, `2023-06-01` from every observed
+                 *     client. Accepted and not enforced: we serve local models, so
+                 *     there is no dated behaviour of ours for it to select.
+                 */
+                "anthropic-version"?: string;
+                /**
+                 * @description Comma-separated beta feature names. **Tolerated, never
+                 *     validated.** Claude Code sends five to seven of them and the
+                 *     list changes with its own version and login method.
+                 */
+                "anthropic-beta"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnthropicMessagesRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description A message, or an Anthropic event stream when `stream` was
+             *     true.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnthropicMessageResponse"];
+                    "text/event-stream": components["schemas"]["AnthropicStreamEvent"];
+                };
+            };
+            /**
+             * @description The request names something this gateway cannot carry —
+             *     an image or document block, a server-side tool,
+             *     `mcp_servers`, more than four `stop_sequences`, a missing
+             *     `max_tokens` — **or names a model nothing serves**, which is
+             *     a 400 here rather than a 404 because Claude Code discards a
+             *     404's body. The message names the field or the model.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnthropicErrorResponse"];
+                };
+            };
+            /**
+             * @description Missing, malformed, expired or revoked credential.
+             *     **Deliberately not 401**: a 401 is retried without bound by
+             *     Claude Code and shows its user nothing, while a 403 is
+             *     reported on the first attempt with our message intact.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnthropicErrorResponse"];
+                };
+            };
+            /**
+             * @description The client disconnected; the backend call was cancelled and
+             *     the attempt was still recorded.
+             */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnthropicErrorResponse"];
+                };
+            };
+            /** @description Every eligible backend failed, after the cascade ran. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnthropicErrorResponse"];
+                };
+            };
+            /**
+             * @description A driver serves the model but is not ready, or the gateway
+             *     is starting or in safe mode. Retryable.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnthropicErrorResponse"];
+                };
+            };
+            /**
+             * @description No backend answered within `requestTimeoutSeconds`. Not
+             *     cascaded: the backend is almost certainly still computing.
+             */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnthropicErrorResponse"];
                 };
             };
         };

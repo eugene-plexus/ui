@@ -115,21 +115,50 @@ export interface Strings {
 }
 
 /**
+ * The origin, with the `/v1` taken back off.
+ *
+ * **Every other recipe on this card wants the `/v1` and this one must
+ * not have it.** `ANTHROPIC_BASE_URL` is a root: the client appends
+ * `/v1/messages` itself, so handing it `…/v1` produces requests to
+ * `/v1/v1/messages` and a 404 that reads as "your gateway is wrong".
+ * Measured against Claude Code 2.1.207, which asks for
+ * `POST /v1/messages?beta=true`.
+ */
+export function anthropicBaseUrl(s: Strings): string {
+  return s.baseUrl.replace(/\/v1\/?$/, "");
+}
+
+/**
  * One recipe per app people actually point at a local endpoint.
  *
  * Chosen from §2's field survey and §3's failure #6 — *"The `apiBase`
  * differs for each tool. Otherwise, getting 404"* — so each says where
  * the value goes as well as what it is.
  *
- * **Claude Code is deliberately absent, and the design named it.** It
- * takes `ANTHROPIC_BASE_URL`, which must answer the Anthropic Messages
- * API at `/v1/messages`; this gateway serves the OpenAI shape at
- * `/v1/chat/completions`. A recipe for it would 404 for everyone who
- * followed it. Serving both shapes is a real thing to want and a
- * different slice.
+ * **Claude Code was deliberately absent until R4, and it leads now.**
+ * It takes `ANTHROPIC_BASE_URL`, which must answer the Anthropic
+ * Messages API at `/v1/messages` — a shape this gateway did not serve,
+ * so a recipe for it would have 404'd for everyone who followed it.
+ * The gateway serves it since R4, and this recipe is written from a
+ * measured run rather than from the documentation: see
+ * `specs/docs/acceptance/anthropic-messages-measurement.md`.
  */
 export function recipes(s: Strings): Recipe[] {
   return [
+    {
+      name: "Claude Code",
+      where: "Environment variables",
+      snippet: [
+        `ANTHROPIC_BASE_URL=${anthropicBaseUrl(s)}`,
+        `ANTHROPIC_AUTH_TOKEN=${s.key}`,
+        `ANTHROPIC_MODEL=${s.model}`,
+      ].join("\n"),
+      note:
+        "No /v1 on the base URL here — Claude Code adds it. Use ANTHROPIC_AUTH_TOKEN, " +
+        "not ANTHROPIC_API_KEY: the API-key variable needs a one-off approval prompt, and " +
+        "if you are signed in to a Claude subscription it is ignored and your Anthropic " +
+        "token is sent instead.",
+    },
     {
       name: "Continue",
       where: "~/.continue/config.yaml",
