@@ -300,6 +300,7 @@ export function BenchmarkResults({ job }: { job: Benchmark }) {
   return (
     <div>
       <svg
+        fill="currentColor"
         viewBox="0 0 460 210"
         role="img"
         aria-label="Decode speed by context depth; exact values in the table below"
