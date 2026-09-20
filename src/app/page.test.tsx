@@ -218,7 +218,7 @@ describe("Home on a fresh install", () => {
     expect(card).toHaveAttribute("data-state", "no-models");
     expect(within(card).getByRole("heading")).toHaveTextContent("Get your first model");
     expect(card).toHaveTextContent(
-      "Nothing is on disk yet. Find a model to download, or point Eugene at a folder that already has some.",
+      "Find a model that fits this machine and download it into your own folder. Or point Eugene at models you already have.",
     );
     expect(within(card).getByRole("link", { name: "Find a model" })).toHaveAttribute(
       "href",
@@ -231,10 +231,9 @@ describe("Home on a fresh install", () => {
     // S2 moved the wizard's backend step out to a page; the card is where
     // a person who runs an Ollama finds it. Third and quiet, so the one
     // primary stays one.
-    expect(within(card).getByRole("link", { name: "Add an app you already run" })).toHaveAttribute(
-      "href",
-      "/backends/add",
-    );
+    expect(
+      within(card).getByRole("link", { name: "Add an existing app or subscription" }),
+    ).toHaveAttribute("href", "/backends/add");
     // §0.3: the old landing page was a disabled text box. This one has none.
     expect(screen.queryByTestId("home-try-it")).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();

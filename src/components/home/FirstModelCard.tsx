@@ -79,7 +79,7 @@ export function FirstModelCard({
       </h2>
       <p className="mt-1 text-sm text-[color:var(--muted)]">
         {state.kind === "no-models"
-          ? "Nothing is on disk yet. Find a model to download, or point Eugene at a folder that already has some."
+          ? "Find a model that fits this machine and download it into your own folder. Or point Eugene at models you already have."
           : state.only
             ? `${state.only.name} is on disk and not running.`
             : `${state.count} model${state.count === 1 ? "" : "s"} on disk, none running.`}
@@ -118,7 +118,7 @@ export function FirstModelCard({
             runs is a way to a first answer that needs no download (S2 moved
             this out of the wizard). Tertiary so the one primary stays one. */}
         <Link href="/backends/add" className={tertiary}>
-          Add an app you already run
+          Add an existing app or subscription
         </Link>
       </div>
       {downloads.length > 0 && (
@@ -219,6 +219,10 @@ function SuggestedModelCard({
         for this machine.
       </p>
       {reason && <p className="mt-1 text-xs text-[color:var(--muted)]">{reason}</p>}
+      <p className="mt-1 text-xs text-[color:var(--muted)]">
+        Download into your own folder. We’ll ask before installing llama.cpp and choose starting
+        settings for this machine.
+      </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -240,7 +244,7 @@ function SuggestedModelCard({
           I already have models
         </Link>
         <Link href="/backends/add" className={tertiary}>
-          Add an app you already run
+          Add an existing app or subscription
         </Link>
       </div>
       <DownloadList downloads={downloads} />

@@ -278,8 +278,8 @@ export function UseFromAppsCard({
     >
       <h2 className="font-ui text-xs font-semibold">Use it from your apps</h2>
       <p className="font-ui mt-1 text-xs text-[color:var(--muted)]">
-        Three things to paste into Continue, Open WebUI, SillyTavern or anything that speaks to
-        OpenAI.
+        One address for Claude Code and OpenAI-compatible apps such as Continue, Open WebUI and
+        SillyTavern. Choose your app below for its connection settings.
       </p>
 
       <dl className="mt-3 flex flex-col gap-2">
