@@ -36,6 +36,7 @@ export const BANNED_TERMS = [
   "trust root",
   "topology",
   "routing table",
+  "runtime",
 ] as const;
 
 /** The plan's cap on a sentence of visible copy. */
@@ -156,15 +157,27 @@ export interface Offence {
 /** Every rule this module enforces, over one file's source. */
 export function checkCopy(source: string): Offence[] {
   const { visible } = extractCopy(source);
+  return checkVisibleCopy(visible);
+}
+
+export function checkVisibleCopy(visible: string[]): Offence[] {
   const out: Offence[] = [];
   for (const text of visible) {
+    // API paths are source identifiers, never visible prose.
+    if (/^(https?:|\/|@)/.test(text)) continue;
     const low = text.toLowerCase();
     for (const term of BANNED_TERMS) {
-      if (low.includes(term)) out.push({ kind: "banned", term, text });
+      const matches =
+        term === "runtime"
+          ? !/^(https?:|\/|@)/.test(text) && /\bruntimes?\b/i.test(text)
+          : low.includes(term);
+      if (matches) out.push({ kind: "banned", term, text });
     }
     if (looksLikeProse(text)) {
-      const words = text.trim().split(/\s+/).length;
-      if (words > MAX_WORDS) out.push({ kind: "long", words, text });
+      for (const sentence of text.split(/[.!?](?:\s+|$)/)) {
+        const words = sentence.trim().split(/\s+/).length;
+        if (words > MAX_WORDS) out.push({ kind: "long", words, text: sentence.trim() });
+      }
     }
   }
   return out;

@@ -13,7 +13,7 @@
  * does, and reads `document.title`.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "./AppShell";
@@ -121,6 +121,17 @@ async function titleFor(): Promise<string> {
 }
 
 describe("one machine", () => {
+  it("opens the glossary from The system and returns focus when closed", async () => {
+    await titleFor();
+    const toggle = screen.getByRole("button", { name: "The system" });
+    fireEvent.click(toggle);
+    const panel = screen.getByTestId("layer-map");
+    expect(within(panel).getByText("Glossary · 12 terms")).toBeVisible();
+    expect(within(panel).getAllByRole("term", { hidden: true })).toHaveLength(12);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("layer-map")).not.toBeInTheDocument();
+    expect(toggle).toHaveFocus();
+  });
   it("names the page and nothing else", async () => {
     // On the commonest install the host is the same on every tab, so it
     // is noise that costs the page name its room.

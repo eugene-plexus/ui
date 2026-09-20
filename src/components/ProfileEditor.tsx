@@ -1,5 +1,7 @@
 "use client";
 
+import { expertHint } from "@/lib/vocabulary";
+
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -232,10 +234,8 @@ export function ProfileEditor({
 
       <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted)]">
         The settings that worked, saved against the model instead of retyped. Run makes one called{" "}
-        <span className="font-mono">{DEFAULT_PROFILE_NAME}</span> for you at the context that fits;
-        several are useful once you are tuning: a long-context profile and a fast one are different
-        flags on the same file, and two copies pinned to different GPUs is the same profile twice
-        with a different <span className="font-mono">CUDA_VISIBLE_DEVICES</span>.
+        <span className="font-mono">{DEFAULT_PROFILE_NAME}</span> with a context size that fits.
+        Save more profiles to compare speed, longer context, or different GPUs.
       </p>
 
       {canLaunch && node && previewProfile && (
@@ -260,7 +260,7 @@ export function ProfileEditor({
           that "ready" is the engine's to reach, not the button's. */}
       {launched && (
         <p className="status-ok mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
-          Declared runtime <span className="font-mono">{launched}</span>
+          Starting <span className="font-mono">{launched}</span>
           {node && !node.local ? ` on ${node.label}` : ""} and its driver{" "}
           <span className="font-mono">{launched}-driver</span>. Watch it load on the{" "}
           <a href="/inference" className="underline">
@@ -475,7 +475,7 @@ function ProfileRow({
             className={buttonClass}
             title={
               canLaunch
-                ? "Declare a runtime on the agent using this model and these flags."
+                ? expertHint("Declare a runtime on the agent using this model and these flags.")
                 : "No installed engine can load this model."
             }
           >

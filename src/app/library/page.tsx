@@ -604,9 +604,9 @@ function ModelDetail({
             {model.profileCount === 1 ? "profile is" : "profiles are"} saved against it.
           </p>
           <p className="mt-1">
-            If you moved it, it will have been re-found at its new path as a separate entry — copy
-            the settings across, then forget this one. Nothing guesses that two paths are the same
-            model, because guessing wrong applies one model&rsquo;s tuning to another.
+            If you moved it, scan again to find it at its new path. Copy the settings across, then
+            forget this entry. Nothing guesses that two paths are the same model, because guessing
+            wrong applies one model&rsquo;s tuning to another.
           </p>
           <button type="button" onClick={() => void forget()} className={`${buttonClass} mt-2`}>
             forget this entry and its profiles
@@ -789,8 +789,7 @@ function RunningPanel({
         </button>
       </div>
       <p className="mt-1 text-[11px] opacity-80">
-        Stopping frees the memory and leaves the file and this runtime&rsquo;s settings alone; Run
-        brings it back.
+        Stopping frees the memory and keeps the file and its saved settings; Run brings it back.
       </p>
 
       {/* The expert path, kept and demoted. */}
@@ -799,9 +798,8 @@ function RunningPanel({
         <div className="mt-1.5">
           <RunButton model={model} node={node} size="small" label="Run another copy" />
           <p className="mt-1 text-[11px] opacity-80">
-            A second engine process loading the same file again, with its own memory. Useful for
-            serving two requests at once on a card with room to spare; on most machines the first
-            copy is already using the memory the second would need.
+            Another engine loads the same file, using extra memory. This can serve two requests at
+            once if your card has room for both copies.
           </p>
         </div>
       </details>
@@ -1018,7 +1016,12 @@ function Facts({ model }: { model: LibraryModel }) {
               — that depends on the launch flags and is reported on the
               runtime. Showing only one of the two tells a comfortable
               lie. */}
-          <span className="ml-2 text-[color:var(--muted)]">as trained; the runtime decides</span>
+          <span
+            className="ml-2 text-[color:var(--muted)]"
+            title="The runtime's contextSize sets the context used when serving."
+          >
+            as trained; your launch settings decide
+          </span>
         </Row>
       )}
 

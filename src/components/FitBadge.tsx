@@ -147,9 +147,9 @@ export function FitBreakdown({ fit }: { fit: Fit }) {
           <>Computed from this model&rsquo;s own declared shape.</>
         ) : (
           <>
-            <span className="text-status-warn">Estimated.</span> The KV-cache figure is a rough
-            fraction of the weights per 8k of context, scaled to the context this was scored at,
-            because the layer and attention counts were not available.
+            <span className="text-status-warn">Estimated.</span> The model lacks the layer and
+            attention counts needed for a precise cache size. We estimate it from weight size and
+            context length.
           </>
         )}
       </p>

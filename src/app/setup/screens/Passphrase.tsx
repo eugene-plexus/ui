@@ -77,10 +77,10 @@ export function ScreenPassphrase({
           className="mb-4 text-xs leading-relaxed text-[color:var(--muted)]"
           data-testid="no-keyring-note"
         >
-          This machine has no password manager Eugene can use, so Eugene will ask for the passphrase
-          after every restart before it can open its stored secrets. A server or a container can
-          read the passphrase from a file instead: Config &rarr; Control root &rarr; Security, once
-          setup is done.
+          This machine has no password manager Eugene can use. After each restart, Eugene will ask
+          for the passphrase to open its stored secrets. A server or a container can read the
+          passphrase from a file instead: Config &rarr; Control root &rarr; Security, once setup is
+          done.
         </p>
       ) : null}
       {/* **The label said "Start", and after R2.6 that is the wrong

@@ -3,7 +3,16 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { BANNED_TERMS, checkCopy, extractCopy, looksLikeProse, stripComments } from "./vocabulary";
+import {
+  BANNED_TERMS,
+  checkCopy,
+  checkVisibleCopy,
+  extractCopy,
+  looksLikeProse,
+  stripComments,
+} from "./vocabulary";
+import { jsxCopy } from "./copyExtractor";
+import { COPY_SCREENS as GOLDEN_PATH } from "./copyScreens";
 
 /**
  * S8's banned-word test.
@@ -19,14 +28,6 @@ import { BANNED_TERMS, checkCopy, extractCopy, looksLikeProse, stripComments } f
 const SRC = join(__dirname, "..");
 
 /** The screens on the path from install to a first reply. */
-const GOLDEN_PATH: Record<string, string[]> = {
-  home: ["app/page.tsx", "components/home"],
-  wizard: ["app/setup"],
-  discover: ["app/discover"],
-  library: ["app/library"],
-  playground: ["app/playground"],
-};
-
 function sourcesUnder(spec: string): string[] {
   const path = join(SRC, spec);
   const stat = statSync(path, { throwIfNoEntry: false });
@@ -45,6 +46,19 @@ function sourcesUnder(spec: string): string[] {
 }
 
 describe("the extractor, before anything is asserted with it", () => {
+  it("finds wrapped JSX copy without reading TypeScript generics as prose", () => {
+    const source =
+      "const [runtimes] = useState<Runtime[]>([]); const view = <p>The runtime\n is ready.</p>";
+    expect(jsxCopy(source)).toEqual(["The runtime is ready."]);
+    expect(checkVisibleCopy(jsxCopy(source))).toContainEqual(
+      expect.objectContaining({ term: "runtime" }),
+    );
+    expect(checkCopy('const url = "/v1/runtimes";')).toEqual([]);
+  });
+
+  it("counts each sentence rather than the whole paragraph", () => {
+    expect(checkVisibleCopy(["This is a short sentence. ".repeat(8)])).toEqual([]);
+  });
   it("finds a banned term in plain JSX text", () => {
     const { visible } = extractCopy("<p>This reads the routing table now.</p>");
     expect(visible.join(" ")).toContain("routing table");
@@ -165,7 +179,8 @@ describe("the golden path does not use implementation nouns", () => {
       const found: string[] = [];
       for (const spec of specs) {
         for (const file of sourcesUnder(spec)) {
-          for (const o of checkCopy(readFileSync(file, "utf8"))) {
+          const source = readFileSync(file, "utf8");
+          for (const o of [...checkCopy(source), ...checkVisibleCopy(jsxCopy(source))]) {
             if (o.kind === "banned") found.push(`${file}: ${o.term} in ${JSON.stringify(o.text)}`);
           }
         }
@@ -177,7 +192,8 @@ describe("the golden path does not use implementation nouns", () => {
       const found: string[] = [];
       for (const spec of specs) {
         for (const file of sourcesUnder(spec)) {
-          for (const o of checkCopy(readFileSync(file, "utf8"))) {
+          const source = readFileSync(file, "utf8");
+          for (const o of [...checkCopy(source), ...checkVisibleCopy(jsxCopy(source))]) {
             if (o.kind === "long") found.push(`${file}: ${o.words}w ${JSON.stringify(o.text)}`);
           }
         }

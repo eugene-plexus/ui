@@ -12,6 +12,7 @@ import {
 } from "@/lib/navigation";
 
 import { Attribution } from "./Attribution";
+import { Glossary } from "./Glossary";
 import { LayerIcon } from "./LayerIcon";
 
 /**
@@ -47,12 +48,12 @@ export function LayerMap({
       id={id}
       aria-label="The system, by layer"
       data-testid="layer-map"
-      className="border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-4"
+      className="max-h-[70dvh] shrink-0 overflow-y-auto border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-4"
     >
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-ui text-xs text-[color:var(--muted)]">
-          Requests flow down the left. The three services on the right are not in the request path
-          at all — they set things up, watch them, and keep the install together.
+          Requests flow through the layers on the left. The services on the right manage models,
+          machines, and access.
         </p>
         <button
           type="button"
@@ -81,10 +82,9 @@ export function LayerMap({
       </div>
 
       <p className="font-ui mt-3 text-[11px] text-[color:var(--muted)]">
-        Config appears under Agent because its addressing is per machine — one tab per component per
-        machine — while its settings reach{" "}
-        {SCREENS.find((s) => s.href === "/config")?.spans.length ?? 0} other components too.
+        Select a component in the tree, then open Config to change its settings on that machine.
       </p>
+      <Glossary />
 
       {/* The foot of the panel that explains what this thing is, which
           is where someone asking "what IS this" has already arrived. */}

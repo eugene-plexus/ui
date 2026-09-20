@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { api, describeError } from "@/lib/api";
+import { configGroups } from "@/lib/configPresentation";
 import { parseFolders } from "@/lib/libraryReach";
 import { formatBytesShort } from "@/lib/tasks";
 import type { ProxyTarget } from "@/lib/config";
@@ -49,6 +50,8 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   const [serverDoc, setServerDoc] = useState<ConfigDocument | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
+  const [showMore, setShowMore] = useState(false);
+  const moreId = useId();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -79,6 +82,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
     let cancelled = false;
     async function load() {
       setLoading(true);
+      setShowMore(false);
       setLoadError(null);
       setSaveStatus(null);
       try {
@@ -215,6 +219,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         patch[k] = draft[k];
       }
       const result = await api.patch<ConfigUpdateResult>(target, "/v1/config", patch);
+      if (result.rejected.length) setShowMore(true);
       setSaveStatus({
         applied: result.applied,
         rejected: result.rejected.map((r) => ({ key: r.key, message: r.message })),
@@ -365,8 +370,35 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
     return null;
   }
 
-  const fieldsByCategory = groupByCategory(schema.fields);
+  const groups = configGroups(
+    schema.component,
+    schema.fields.filter((f) => isFieldVisible(f, draft)),
+  );
   const categories = schema.categories ?? {};
+  const hiddenChanges = groups.more.filter((f) => dirtyKeys.has(f.key)).length;
+
+  function renderCategories(fields: ConfigFieldDef[]) {
+    return Object.entries(groupByCategory(fields)).map(([category, entries]) => (
+      <section key={category} className="mb-6">
+        <h3 className="mb-2 font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
+          {categories[category] ?? category}
+        </h3>
+        {entries.map((f) => (
+          <ConfigFieldInput
+            key={f.key}
+            field={fieldForRender(f, draft, serverDoc!)}
+            value={draft[f.key]}
+            pending={saving}
+            topology={topology}
+            browseTarget={target}
+            pathSuggestions={libraryRoots}
+            onChange={(v) => handleFieldChange(f.key, v)}
+          />
+        ))}
+        {category === "modelStorage" && <ClearModelCopies target={target} />}
+      </section>
+    ));
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -403,32 +435,27 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
       {saveStatus && <SaveStatusBanner status={saveStatus} />}
 
       <div className="flex-1 overflow-y-auto p-4">
-        {Object.entries(fieldsByCategory).map(([category, fields]) => {
-          const visibleFields = fields.filter((f) => isFieldVisible(f, draft));
-          if (visibleFields.length === 0) return null;
-          return (
-            <section key={category} className="mb-6">
-              <h3 className="mb-2 font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
-                {categories[category] ?? category}
-              </h3>
-              <div>
-                {visibleFields.map((f) => (
-                  <ConfigFieldInput
-                    key={f.key}
-                    field={fieldForRender(f, draft, serverDoc)}
-                    value={draft[f.key]}
-                    pending={saving}
-                    topology={topology}
-                    browseTarget={target}
-                    pathSuggestions={libraryRoots}
-                    onChange={(v) => handleFieldChange(f.key, v)}
-                  />
-                ))}
-              </div>
-              {category === "modelStorage" && <ClearModelCopies target={target} />}
-            </section>
-          );
-        })}
+        {renderCategories(groups.common)}
+        {groups.more.length > 0 && (
+          <div className="border-t border-[color:var(--border)] pt-3">
+            <button
+              type="button"
+              aria-expanded={showMore}
+              aria-controls={moreId}
+              onClick={() => setShowMore(!showMore)}
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm"
+            >
+              {showMore ? "Show less" : "Show more"} · {groups.more.length} settings
+              {hiddenChanges > 0 && ` · ${hiddenChanges} unsaved`}
+            </button>
+            <p className="my-2 text-xs text-[color:var(--muted)]">
+              These settings usually work with their defaults.
+            </p>
+            <div id={moreId} hidden={!showMore}>
+              {renderCategories(groups.more)}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* v0.2.x: RestartRequiredModal removed — save() auto-triggers

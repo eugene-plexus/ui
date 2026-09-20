@@ -506,9 +506,8 @@ function EmptyDetail({
       )}
       <p>
         One repository usually holds a dozen or more versions of the same model at different
-        precisions. This screen groups them into the choices that can actually be launched — the
-        vision projectors, calibration files and draft models that sit alongside them are listed
-        separately — and scores each one against this machine.
+        precisions. This screen groups the files into models you can launch and checks which ones
+        fit. Vision projectors, calibration files, and draft models are listed separately.
       </p>
       <p>
         Downloads land in the first of your configured model directories, keeping their upstream
