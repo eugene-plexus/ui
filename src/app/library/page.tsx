@@ -586,7 +586,7 @@ function ModelDetail({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-base font-medium">{model.name}</h2>
+        <h2 className="text-base font-medium [overflow-wrap:anywhere]">{model.name}</h2>
         {model.displayName && (
           <p className="text-xs text-[color:var(--muted)]">{model.displayName}</p>
         )}

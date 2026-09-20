@@ -129,7 +129,7 @@ export function DiagnosticPanel({
                 onBlur={() => onBaseUrl(displayBaseUrl(baseUrl) || baseUrl)}
                 spellCheck={false}
                 placeholder="http://192.168.1.20:8080/v1"
-                className="min-w-[280px] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 font-mono text-xs text-[color:var(--foreground)] outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
+                className="min-w-0 basis-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 font-mono text-xs text-[color:var(--foreground)] outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] sm:flex-1 sm:basis-auto"
               />
               {guessDisplay && guessDisplay !== baseUrl && (
                 <button
@@ -170,7 +170,7 @@ export function DiagnosticPanel({
                 onChange={(e) => onApiKey(e.target.value)}
                 spellCheck={false}
                 autoComplete="off"
-                className="min-w-[280px] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 font-mono text-xs text-[color:var(--foreground)] outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]"
+                className="min-w-0 basis-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 font-mono text-xs text-[color:var(--foreground)] outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] sm:flex-1 sm:basis-auto"
               />
               <button
                 type="button"

@@ -444,7 +444,7 @@ export default function PlaygroundPage() {
     >
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {panelsOpen && (
-          <div className="flex max-h-[35dvh] shrink-0 flex-wrap gap-3 overflow-y-auto border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] p-3">
+          <div className="grid max-h-[35dvh] shrink-0 grid-cols-1 gap-3 overflow-y-auto border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] p-3 sm:grid-cols-2">
             <DiagnosticPanel
               mode={mode}
               onMode={setMode}

@@ -36,7 +36,7 @@ export function RequestReport({
 
   return (
     <details
-      className="border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[0.6875rem]"
+      className="max-h-[35dvh] shrink-0 overflow-y-auto border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[0.6875rem] break-words"
       data-testid="request-report"
     >
       <summary
