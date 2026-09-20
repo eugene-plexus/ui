@@ -1255,10 +1255,10 @@ export interface components {
             profiles: components["schemas"]["ModelProfile"][];
         };
         /**
-         * @description Declarative half of a profile — the launch settings that worked
-         *     for one model. Used for create and replace bodies.
+         * @description Declarative half of a profile — launch settings and generation
+         *     defaults for one model. Used for create and replace bodies.
          *
-         *     Every field name here is a `RuntimeSpec` field name, on purpose:
+         *     Launch field names match `RuntimeSpec`, on purpose:
          *     composing a profile into a runtime declaration is a copy, not a
          *     translation, which is what lets the launch flow live in the
          *     caller and keep this component free of engine knowledge.
@@ -1273,12 +1273,21 @@ export interface components {
             name: string;
             /**
              * @description The profile offered first when launching this model.
+             *     Its maxTokens, temperature and topP also supply omitted
+             *     generation parameters at the gateway, without restarting
+             *     an existing runtime. Explicit request values always win.
              *     Setting it clears the flag on whichever profile held it; the
              *     first profile saved for a model gets it whether it asks or
              *     not.
              * @default false
              */
             default: boolean;
+            /** @description Maximum output tokens when the request omits a limit. Absent uses the gateway default. */
+            maxTokens?: number;
+            /** @description Sampling temperature when omitted by the caller. Zero is an explicit value. */
+            temperature?: number;
+            /** @description Nucleus sampling cutoff when omitted by the caller. Absent leaves it unspecified. */
+            topP?: number;
             /**
              * @description Which engine these flags are written for. Flags are not
              *     portable between engines, so a profile is only ever offered
@@ -1336,6 +1345,9 @@ export interface components {
             id: string;
             name: string;
             default: boolean;
+            maxTokens?: number;
+            temperature?: number;
+            topP?: number;
             engine: components["schemas"]["EngineKind"];
             flags?: {
                 [key: string]: unknown;

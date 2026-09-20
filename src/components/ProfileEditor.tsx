@@ -151,6 +151,9 @@ export function ProfileEditor({
       extraArgs: profile.extraArgs ?? undefined,
       env: profile.env ?? undefined,
       notes: profile.notes ?? undefined,
+      maxTokens: profile.maxTokens,
+      temperature: profile.temperature,
+      topP: profile.topP,
     };
     try {
       await api.put<ModelProfile>(
@@ -489,9 +492,29 @@ function ProfileRow({
         </p>
       )}
       {profile.notes && <p className="mt-1 text-[color:var(--muted)] italic">{profile.notes}</p>}
+      {generationFields.some(({ key }) => profile[key] != null) && (
+        <p className="mt-1 text-[color:var(--muted)]">
+          {generationFields
+            .filter(({ key }) => profile[key] != null)
+            .map(({ key, label }) => `${label}: ${profile[key]}`)
+            .join(" · ")}
+        </p>
+      )}
     </div>
   );
 }
+
+const generationFields: {
+  key: "maxTokens" | "temperature" | "topP";
+  label: string;
+  min: number;
+  max?: number;
+  step: number;
+}[] = [
+  { key: "maxTokens", label: "Maximum output tokens", min: 1, step: 1 },
+  { key: "temperature", label: "Temperature", min: 0, max: 2, step: 0.01 },
+  { key: "topP", label: "Top-p", min: 0, max: 1, step: 0.01 },
+];
 
 function ProfileForm({
   model,
@@ -526,6 +549,11 @@ function ProfileForm({
   );
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [isDefault, setIsDefault] = useState(existing?.default ?? false);
+  const [generation, setGeneration] = useState({
+    maxTokens: existing?.maxTokens?.toString() ?? "",
+    temperature: existing?.temperature?.toString() ?? "",
+    topP: existing?.topP?.toString() ?? "",
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -535,8 +563,27 @@ function ProfileForm({
   async function save() {
     setSaving(true);
     setError(null);
+    const defaults: Partial<Pick<ModelProfileSpec, "maxTokens" | "temperature" | "topP">> = {};
+    for (const field of generationFields) {
+      if (generation[field.key].trim() === "") continue;
+      const value = Number(generation[field.key]);
+      if (
+        !Number.isFinite(value) ||
+        value < field.min ||
+        (field.max != null && value > field.max) ||
+        (field.key === "maxTokens" && !Number.isInteger(value))
+      ) {
+        setError(
+          `${field.label} must be ${field.key === "maxTokens" ? "a whole number of at least 1" : `between ${field.min} and ${field.max}`}.`,
+        );
+        setSaving(false);
+        return;
+      }
+      defaults[field.key] = value;
+    }
     const spec: ModelProfileSpec = {
       name: name.trim(),
+      ...defaults,
       engine,
       default: isDefault,
       // Empty values are dropped rather than stored as nulls: an unset
@@ -646,6 +693,36 @@ function ProfileForm({
           not report one. You can still set extra arguments below.
         </p>
       )}
+
+      <fieldset className="mt-3 space-y-2 text-xs">
+        <legend className="font-medium">Generation defaults</legend>
+        <p className="text-[color:var(--muted)]">
+          When this is the default profile, these values fill parameters omitted by your app.
+          Changes apply within the gateway&rsquo;s profile refresh interval without restarting the
+          model. Leave blank to use{" "}
+          <Link href="/config/?tab=gateway" className="underline">
+            gateway defaults
+          </Link>
+          ; blank Top-p leaves that parameter unspecified.
+        </p>
+        {generationFields.map((field) => (
+          <label key={field.key} className="flex flex-col gap-1">
+            <span>{field.label}</span>
+            <input
+              type="number"
+              min={field.min}
+              max={field.max}
+              step={field.step}
+              value={generation[field.key]}
+              placeholder="Use fallback"
+              onChange={(event) =>
+                setGeneration({ ...generation, [field.key]: event.target.value })
+              }
+              className={inputClass}
+            />
+          </label>
+        ))}
+      </fieldset>
 
       <label className="mt-3 flex flex-col gap-1 text-xs">
         <span className="text-[color:var(--muted)]">
