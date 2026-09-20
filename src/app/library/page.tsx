@@ -104,6 +104,13 @@ function LibraryPageInner() {
   // URL that got you here.
   const searchParams = useSearchParams();
   const requestedModel = searchParams.get("model");
+  const requestedNode = searchParams.get("node");
+  const [appliedNode, setAppliedNode] = useState(false);
+  useEffect(() => {
+    if (appliedNode || !requestedNode || !picker.loaded) return;
+    if (picker.nodes.some((n) => n.name === requestedNode)) picker.select(requestedNode);
+    setAppliedNode(true);
+  }, [appliedNode, requestedNode, picker]);
   const [appliedRequest, setAppliedRequest] = useState(false);
   useEffect(() => {
     if (appliedRequest || !requestedModel) return;

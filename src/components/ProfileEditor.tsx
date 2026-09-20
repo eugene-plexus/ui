@@ -14,6 +14,7 @@ import {
 } from "@/lib/launchSpec";
 import { libraryFoldersHref } from "@/lib/libraryReach";
 import type { TargetNode } from "@/lib/nodeBudget";
+import { ProfileBenchmark } from "./ProfileBenchmark";
 import type {
   Admission,
   EngineDescriptor,
@@ -321,6 +322,8 @@ export function ProfileEditor({
             <ProfileRow
               key={p.id}
               profile={p}
+              model={model}
+              node={node}
               canLaunch={canLaunch}
               onEdit={() => setEditing(p.id)}
               onDelete={() => void remove(p)}
@@ -435,12 +438,16 @@ function LaunchPreview({
 
 function ProfileRow({
   profile,
+  model,
+  node,
   canLaunch,
   onEdit,
   onDelete,
   onLaunch,
 }: {
   profile: ModelProfile;
+  model: LibraryModel;
+  node: TargetNode | null;
   canLaunch: boolean;
   onEdit: () => void;
   onDelete: () => void;
@@ -492,6 +499,7 @@ function ProfileRow({
         </p>
       )}
       {profile.notes && <p className="mt-1 text-[color:var(--muted)] italic">{profile.notes}</p>}
+      <ProfileBenchmark model={model} profile={profile} node={node} />
       {generationFields.some(({ key }) => profile[key] != null) && (
         <p className="mt-1 text-[color:var(--muted)]">
           {generationFields

@@ -36,6 +36,7 @@
  */
 
 import type {
+  Benchmark,
   Download,
   DownloadList,
   DownloadState,
@@ -45,7 +46,7 @@ import type {
   Scan,
 } from "./types";
 
-export type TaskKind = "download" | "install" | "load" | "scan" | "run";
+export type TaskKind = "download" | "install" | "load" | "scan" | "run" | "benchmark";
 
 export interface Task {
   /** Stable across polls, so a list can keep its order and React its keys. */
@@ -78,6 +79,7 @@ export interface Task {
 
 /** The raw bodies, each `null` when its source did not answer. */
 export interface TaskSources {
+  benchmarks?: Benchmark[];
   downloads: DownloadList | null;
   scan: Scan | null;
   /** The control root's install-wide list, node included. */
@@ -119,6 +121,18 @@ export function engineLabel(engine: string): string {
 
 export function tasksFrom(sources: TaskSources): Task[] {
   return [
+    ...(sources.benchmarks ?? [])
+      .filter((j) => j.state === "running")
+      .map(
+        (job): Task => ({
+          id: `benchmark:${job.node}/${job.id}`,
+          kind: "benchmark",
+          title: `Benchmarking ${job.request.profileName} on ${job.node}`,
+          detail: job.detail,
+          progress: job.progress,
+          href: `/library?model=${encodeURIComponent(job.request.modelId)}&node=${encodeURIComponent(job.node)}`,
+        }),
+      ),
     ...downloadTasks(sources.downloads),
     ...installTasks(sources.installs),
     ...loadTasks(sources.runtimes, sources.localRuntimes),

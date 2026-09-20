@@ -17,6 +17,9 @@ import type { components as LibraryComponents } from "@/generated/library";
 import type { components as AgentComponents } from "@/generated/agent";
 import type { components as ControlComponents } from "@/generated/control";
 
+export type Benchmark = AgentComponents["schemas"]["Benchmark"];
+export type BenchmarkList = AgentComponents["schemas"]["BenchmarkList"];
+
 // --- Shared -----------------------------------------------------------
 
 // `Role` / `Message` are the house chat shapes, which only the driver's

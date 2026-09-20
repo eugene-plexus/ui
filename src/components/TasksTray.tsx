@@ -68,7 +68,7 @@ export function TasksTrayView({ tasks }: { tasks: Task[] }) {
         className={`font-ui flex items-center gap-1.5 rounded-[var(--radius)] border px-2.5 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
           count > 0 ? "border-[color:var(--accent-left)]" : "border-[color:var(--border)]"
         }`}
-        title="Downloads, installs, models loading and runs you started, wherever they were started"
+        title="Downloads, installs, benchmarks, models loading and runs you started, wherever they were started"
       >
         <Activity size={14} aria-hidden="true" data-icon="Activity" />
         Tasks

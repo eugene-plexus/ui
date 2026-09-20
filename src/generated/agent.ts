@@ -461,6 +461,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/benchmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent profile benchmarks on this node.
+         * @description Operator-only. Retains the latest 20 jobs across agent restarts.
+         */
+        get: operations["listBenchmarks"];
+        put?: never;
+        /**
+         * Measure single-sequence decode speed at increasing context depth.
+         * @description Operator-only. Uses the installed llama-bench beside the selected
+         *     llama.cpp server, with the saved profile copied into the request.
+         *     Requires every runtime on the node to be stopped. Does not stop models,
+         *     install engines, download files, change profiles or change fit estimates.
+         *     While active, runtime create/update/start/restart requests return 409.
+         *     Depths are zero, half of the available context, and context minus
+         *     generated tokens. Results exclude tokenization and sampling. Unsupported
+         *     settings are refused rather than silently ignored. One job per node;
+         *     fifteen-minute time limit. Agent restart marks unfinished jobs failed.
+         */
+        post: operations["startBenchmark"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/benchmarks/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop an active benchmark and retain its partial results.
+         * @description Operator-only. Idempotent for a finished job. Releases the node only after its child exits.
+         */
+        post: operations["cancelBenchmark"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runtimes": {
         parameters: {
             query?: never;
@@ -1243,6 +1295,52 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        BenchmarkRequest: {
+            modelId: string;
+            profileId: string;
+            profileName: string;
+            runtime: components["schemas"]["RuntimeSpec"];
+            /** @default 3 */
+            repetitions: number;
+            /** @default 128 */
+            tokens: number;
+        };
+        BenchmarkPoint: {
+            depth: number;
+            tokensPerSecond: number;
+            standardDeviation: number;
+            samples: number[];
+        };
+        /** @enum {string} */
+        BenchmarkState: "running" | "completed" | "failed" | "cancelled";
+        Benchmark: {
+            id: string;
+            request: components["schemas"]["BenchmarkRequest"];
+            node: string;
+            state: components["schemas"]["BenchmarkState"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt?: string | null;
+            progress: number;
+            detail: string;
+            depths: number[];
+            points: components["schemas"]["BenchmarkPoint"][];
+            binary?: string | null;
+            engineVersion?: string | null;
+            localPath?: string | null;
+            modelSizeBytes?: number | null;
+            /** Format: date-time */
+            modelModifiedAt?: string | null;
+            command?: string[];
+            /** @description CPU/GPU/backend identity reported by the benchmark executable. */
+            hardware?: {
+                [key: string]: string;
+            };
+        };
+        BenchmarkList: {
+            benchmarks: components["schemas"]["Benchmark"][];
+        };
         ComponentList: {
             /**
              * @description Components in the order they were configured. The first-run
@@ -4582,6 +4680,100 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
+            };
+        };
+    };
+    listBenchmarks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first, including the active job. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkList"];
+                };
+            };
+        };
+    };
+    startBenchmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BenchmarkRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted; poll the node's benchmark list for progress. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Benchmark"];
+                };
+            };
+            /** @description Unsupported profile, engine, context or benchmark binary. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A benchmark or runtime is active on this node. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Model unavailable or memory admission refused. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancelBenchmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped or already finished. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Benchmark"];
+                };
+            };
+            /** @description Job not found on this node. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

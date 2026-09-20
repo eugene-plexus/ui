@@ -7,6 +7,9 @@ import { runTask, useRuns } from "./oneClickRun";
 import { hasSessionToken } from "./session";
 import { mergeTasks, tasksFrom, type Task, type TaskSources } from "./tasks";
 import type {
+  Benchmark,
+  BenchmarkList,
+  ControlNode,
   DownloadList,
   EngineInstall,
   EngineList,
@@ -17,6 +20,26 @@ import type {
 import { usePolling } from "./usePolling";
 
 const POLL_MS = 5000;
+
+/** Read agents directly, including jobs started by another browser. A failed node
+ * contributes no records; the local node is still read when the root is down. */
+export async function readBenchmarks(): Promise<Benchmark[]> {
+  const [local, roster] = await Promise.all([
+    api.get<BenchmarkList>("agent", "/v1/benchmarks").catch(() => null),
+    api.get<{ nodes?: ControlNode[] }>("control", "/v1/nodes").catch(() => null),
+  ]);
+  const lists = await Promise.all(
+    (roster?.nodes ?? []).map((n) =>
+      api.get<BenchmarkList>(`node:${n.name}`, "/v1/benchmarks").catch(() => null),
+    ),
+  );
+  const unique = new Map<string, Benchmark>();
+  for (const list of [local, ...lists])
+    for (const job of list?.benchmarks ?? []) {
+      unique.set(`${job.node}/${job.id}`, job);
+    }
+  return [...unique.values()];
+}
 
 /**
  * The background tasks, polled for the header tray.
@@ -50,11 +73,12 @@ export function useTasks(): { tasks: Task[]; loaded: boolean; reload: () => Prom
 
   const load = useCallback(async () => {
     if (!hasSessionToken()) return;
-    const [downloads, scan, runtimes, engines] = await Promise.all([
+    const [downloads, scan, runtimes, engines, benchmarks] = await Promise.all([
       api.get<DownloadList>("library", "/v1/downloads").catch(() => null),
       api.get<Scan>("library", "/v1/scan").catch(() => null),
       api.get<RuntimePlacementList>("control", "/v1/runtimes").catch(() => null),
       api.get<EngineList>("agent", "/v1/engines").catch(() => null),
+      readBenchmarks(),
     ]);
     // Without a control root the local agent is the only place runtimes
     // can be read from, and it is read — the Inference screen's rule.
@@ -79,7 +103,7 @@ export function useTasks(): { tasks: Task[]; loaded: boolean; reload: () => Prom
                 ),
             )
           ).filter((i): i is EngineInstall => i !== null);
-    const sources: TaskSources = { downloads, scan, runtimes, localRuntimes, installs };
+    const sources: TaskSources = { downloads, scan, runtimes, localRuntimes, installs, benchmarks };
     setPolled(tasksFrom(sources));
     setLoaded(true);
   }, []);
