@@ -129,7 +129,7 @@ export function FirstModelCard({
                 {task.title}
               </Link>
               {task.detail && (
-                <span className="block text-[11px] text-[color:var(--muted)] tabular-nums">
+                <span className="block text-[0.6875rem] text-[color:var(--muted)] tabular-nums">
                   {task.detail}
                 </span>
               )}
@@ -263,7 +263,7 @@ function DownloadList({ downloads }: { downloads: Task[] }) {
             {task.title}
           </Link>
           {task.detail && (
-            <span className="block text-[11px] text-[color:var(--muted)] tabular-nums">
+            <span className="block text-[0.6875rem] text-[color:var(--muted)] tabular-nums">
               {task.detail}
             </span>
           )}

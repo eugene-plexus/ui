@@ -142,7 +142,7 @@ function ChatBubble({
           data-testid="tool-result-message"
           className="max-w-[80%] rounded-[var(--radius)] border border-dashed border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs"
         >
-          <p className="font-ui mb-1 text-[11px] text-[color:var(--muted)]">
+          <p className="font-ui mb-1 text-[0.6875rem] text-[color:var(--muted)]">
             tool result{message.tool_call_id ? ` · ${message.tool_call_id}` : ""}
           </p>
           <pre className="font-mono break-all whitespace-pre-wrap">{text}</pre>
@@ -183,7 +183,7 @@ function ChatBubble({
             type="button"
             onClick={onEdit}
             title="Edit and resend, discarding everything after it"
-            className="font-ui rounded-[var(--radius)] px-2 py-1 text-[11px] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
+            className="font-ui rounded-[var(--radius)] px-2 py-1 text-[0.6875rem] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
           >
             Edit
           </button>
@@ -193,7 +193,7 @@ function ChatBubble({
             type="button"
             onClick={onRegenerate}
             title="Ask again for this turn"
-            className="font-ui rounded-[var(--radius)] px-2 py-1 text-[11px] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
+            className="font-ui rounded-[var(--radius)] px-2 py-1 text-[0.6875rem] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
           >
             Regenerate
           </button>
@@ -216,7 +216,7 @@ function Collapsible({ text }: { text: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="font-ui mt-1 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] text-[color:var(--muted)] hover:bg-[color:var(--panel-hover)]"
+        className="font-ui mt-1 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] text-[color:var(--muted)] hover:bg-[color:var(--panel-hover)]"
       >
         Show all {lines.length.toLocaleString("en-US")} lines ({text.length.toLocaleString("en-US")}{" "}
         characters, as sent)
@@ -240,7 +240,7 @@ function ToolCallCard({ call }: { call: ToolCall }) {
       data-testid="tool-call-card"
       className="rounded-[var(--radius)] border border-[color:var(--accent-left)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs"
     >
-      <p className="font-ui mb-1 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--muted)]">
+      <p className="font-ui mb-1 flex flex-wrap items-center gap-2 text-[0.6875rem] text-[color:var(--muted)]">
         <span>tool call{call.id ? ` · ${call.id}` : ""}</span>
         <span className="font-mono text-[color:var(--foreground)]">
           {call.function.name || "…"}
@@ -288,7 +288,7 @@ function ToolResultsForm({
       }}
       className="flex max-w-[80%] flex-col gap-2 rounded-[var(--radius)] border border-dashed border-[color:var(--border)] bg-[color:var(--panel)] p-3"
     >
-      <p className="font-ui text-[11px] text-[color:var(--muted)]">
+      <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
         The model is waiting for{" "}
         {calls.length === 1 ? "a tool result" : `${calls.length} tool results`}. Type what the tool
         would have returned; it is sent back as a <code>tool</code> message, the way a harness would
@@ -297,7 +297,7 @@ function ToolResultsForm({
       {calls.map((c) => (
         <label
           key={c.id}
-          className="font-ui flex flex-col gap-1 text-[11px] text-[color:var(--muted)]"
+          className="font-ui flex flex-col gap-1 text-[0.6875rem] text-[color:var(--muted)]"
         >
           <span>
             result for <span className="font-mono">{c.function.name}</span> ({c.id})

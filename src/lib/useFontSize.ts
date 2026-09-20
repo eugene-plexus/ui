@@ -11,9 +11,8 @@ const VALID: ReadonlySet<FontSize> = new Set(["small", "default", "large", "xlar
 /**
  * Maps the named size to a root font-size in pixels. All Tailwind text
  * utilities are rem-based in v4, so changing the root size scales every
- * `text-sm`, `text-base`, etc. proportionally. Tiny chrome labels that
- * use absolute pixel values (e.g. `text-[10px]`) intentionally stay
- * fixed — they're reference-sized chrome, not content.
+ * `text-sm`, `text-base`, etc. proportionally. Hints and badges also use
+ * rem values so the preference reaches every label.
  */
 const PX: Record<FontSize, string> = {
   small: "14px",

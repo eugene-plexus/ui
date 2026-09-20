@@ -431,7 +431,7 @@ body {
   z-index: 100;
   padding: 8px 14px;
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 0.8125rem;
   background: var(--accent-left);
   color: var(--on-accent-left);
   border-radius: var(--radius);
@@ -439,4 +439,21 @@ body {
 .skip-link:focus {
   left: 8px;
   top: 8px;
+}
+
+/* Shared keyboard focus survives per-control outline resets in every theme. */
+:focus-visible {
+  outline: 2px solid var(--accent-left);
+  outline-offset: 2px;
+}
+
+/* Keep status text and icons; stop decorative motion and animated scrolling. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }

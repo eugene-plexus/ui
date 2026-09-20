@@ -444,7 +444,7 @@ export default function PlaygroundPage() {
     >
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {panelsOpen && (
-          <div className="flex flex-wrap gap-3 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] p-3">
+          <div className="flex max-h-[35dvh] shrink-0 flex-wrap gap-3 overflow-y-auto border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] p-3">
             <DiagnosticPanel
               mode={mode}
               onMode={setMode}
@@ -533,7 +533,7 @@ function ModelPicker({
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="font-ui max-w-[420px] rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 text-xs outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50"
+        className="font-ui max-w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 text-xs outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50 sm:max-w-[420px]"
       >
         {models.map((m) => (
           <option key={m.id} value={m.id}>
@@ -541,7 +541,7 @@ function ModelPicker({
           </option>
         ))}
       </select>
-      <p className="font-ui truncate text-[11px] text-[color:var(--muted)]">
+      <p className="font-ui truncate text-[0.6875rem] text-[color:var(--muted)]">
         {selected?.owned_by ?? "unknown provider"}
         {selected?.x_eugene_plexus?.context_length != null &&
           ` · ${selected.x_eugene_plexus.context_length.toLocaleString()} ctx`}
@@ -570,7 +570,7 @@ function RoutingBar({ info }: { info: TurnInfo }) {
     parts.push(`${info.context_length.toLocaleString()} ctx`);
   }
   return (
-    <div className="flex items-center gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[11px] text-[color:var(--muted)]">
+    <div className="flex items-center gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[0.6875rem] text-[color:var(--muted)]">
       <span className="truncate">{parts.join(" · ")}</span>
       {info.attempts != null && info.attempts > 1 && (
         <span className="status-error px-1" title="An earlier backend failed and the cascade fired">

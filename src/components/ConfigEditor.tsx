@@ -405,7 +405,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
       <header className="flex items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">{label}</h2>
-          <p className="text-[11px] text-[color:var(--muted)]">{schema.component}</p>
+          <p className="text-[0.6875rem] text-[color:var(--muted)]">{schema.component}</p>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-[color:var(--muted)]">
@@ -513,7 +513,7 @@ function TestStatusBanner({ status }: { status: ConfigTestResult }) {
         {status.error && <span> — {status.error}</span>}
       </p>
       {status.sampleOutput && (
-        <pre className="mt-2 max-h-40 overflow-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-2 font-mono text-[11px] leading-relaxed text-[color:var(--foreground)]">
+        <pre className="mt-2 max-h-40 overflow-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-2 font-mono text-[0.6875rem] leading-relaxed text-[color:var(--foreground)]">
           {status.sampleOutput}
         </pre>
       )}

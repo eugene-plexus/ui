@@ -75,7 +75,7 @@ export function TasksTrayView({ tasks }: { tasks: Task[] }) {
         {count > 0 && (
           <span
             data-testid="tasks-count"
-            className="rounded-full bg-[color:var(--accent-left)] px-1.5 text-[10px] font-semibold text-[color:var(--on-accent-left)] tabular-nums"
+            className="rounded-full bg-[color:var(--accent-left)] px-1.5 text-[0.625rem] font-semibold text-[color:var(--on-accent-left)] tabular-nums"
           >
             {count}
           </span>
@@ -134,7 +134,7 @@ function TaskRow({ task, onFollow }: { task: Task; onFollow: () => void }) {
           // A failure is the one line here that must not truncate: it is
           // the component's own sentence naming the fix.
           <span
-            className={`block text-[11px] tabular-nums ${detailClass} ${task.tone === "error" ? "" : "truncate"}`}
+            className={`block text-[0.6875rem] tabular-nums ${detailClass} ${task.tone === "error" ? "" : "truncate"}`}
             title={task.detail}
           >
             {task.detail}
@@ -165,7 +165,7 @@ function TaskRow({ task, onFollow }: { task: Task; onFollow: () => void }) {
           aria-label={`Dismiss: ${task.title}`}
           data-testid="task-dismiss"
           onClick={() => task.dismiss?.()}
-          className="absolute top-1 right-1 rounded px-1 text-[11px] text-[color:var(--muted)] hover:bg-[color:var(--border)] hover:text-[color:var(--foreground)]"
+          className="absolute top-1 right-1 rounded px-1 text-[0.6875rem] text-[color:var(--muted)] hover:bg-[color:var(--border)] hover:text-[color:var(--foreground)]"
         >
           ×
         </button>

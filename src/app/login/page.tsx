@@ -190,7 +190,7 @@ function LoginForm() {
     <main className="relative z-10 flex h-screen items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <header className="mb-8 text-center">
-          <p className="font-mono text-[10px] tracking-wider text-[color:var(--muted)] uppercase">
+          <p className="font-mono text-[0.625rem] tracking-wider text-[color:var(--muted)] uppercase">
             eugene plexus
           </p>
           <h1 className="font-ui mt-1 text-xl font-semibold">Unlock</h1>
@@ -227,11 +227,11 @@ function LoginForm() {
             {submitting ? "Unlocking…" : "Unlock"}
           </button>
         </form>
-        <p className="mt-6 text-center text-[10px] text-[color:var(--muted)]">
+        <p className="mt-6 text-center text-[0.625rem] text-[color:var(--muted)]">
           Sessions persist for the lifetime of this browser tab. Closing the tab signs you out.
         </p>
         {/* The first screen anyone sees, and the one screen with room. */}
-        <Attribution className="mt-3 text-center text-[10px]" />
+        <Attribution className="mt-3 text-center text-[0.625rem]" />
       </div>
     </main>
   );

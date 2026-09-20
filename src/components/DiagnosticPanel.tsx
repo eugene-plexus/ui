@@ -107,7 +107,7 @@ export function DiagnosticPanel({
       </header>
 
       {mode === "proxy" ? (
-        <p className="font-ui text-[11px] text-[color:var(--muted)]">
+        <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
           Requests go to <code className="font-mono">/api/proxy/gateway</code> on this page&apos;s
           origin and the agent forwards them. A harness does not take this path, so a turn that
           works here says the control plane works — not that it is reachable from where the harness
@@ -115,7 +115,7 @@ export function DiagnosticPanel({
         </p>
       ) : (
         <>
-          <label className="font-ui flex flex-col gap-1 text-[11px] text-[color:var(--muted)]">
+          <label className="font-ui flex flex-col gap-1 text-[0.6875rem] text-[color:var(--muted)]">
             <span>
               Base URL — what you would give an OpenAI client as{" "}
               <code className="font-mono">base_url</code>
@@ -135,7 +135,7 @@ export function DiagnosticPanel({
                 <button
                   type="button"
                   onClick={() => onBaseUrl(guessDisplay)}
-                  className="rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--panel-hover)]"
+                  className="rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
                   title="This page's host plus the gateway's port from the agent's topology. A guess: a container that publishes the port under another number will make it wrong, exactly as it would be for a harness given the same numbers."
                 >
                   Use guess {guessDisplay}
@@ -149,12 +149,15 @@ export function DiagnosticPanel({
             </span>
           </label>
           {hints.map((hint) => (
-            <p key={hint} className="status-warn rounded-[var(--radius)] px-2 py-1 text-[11px]">
+            <p
+              key={hint}
+              className="status-warn rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]"
+            >
               {hint}
             </p>
           ))}
 
-          <label className="font-ui flex flex-col gap-1 text-[11px] text-[color:var(--muted)]">
+          <label className="font-ui flex flex-col gap-1 text-[0.6875rem] text-[color:var(--muted)]">
             <span>
               API key — the bearer the gateway checks; an OpenAI client sends it as{" "}
               <code className="font-mono">api_key</code>
@@ -172,7 +175,7 @@ export function DiagnosticPanel({
               <button
                 type="button"
                 onClick={() => setRevealed((r) => !r)}
-                className="rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--panel-hover)]"
+                className="rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
               >
                 {revealed ? "Hide" : "Reveal"}
               </button>
@@ -181,7 +184,7 @@ export function DiagnosticPanel({
                 <button
                   type="button"
                   onClick={() => onApiKey(sessionToken)}
-                  className="rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--panel-hover)]"
+                  className="rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
                 >
                   Use this session&apos;s token
                 </button>
@@ -191,18 +194,18 @@ export function DiagnosticPanel({
                 data-testid="mint-client-key"
                 disabled={minting}
                 onClick={() => void mintClientKey()}
-                className="rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
+                className="rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[0.6875rem] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
               >
                 {minting ? "Making…" : "Make a client key"}
               </button>
             </span>
           </label>
           {mintError && (
-            <p className="status-error rounded-[var(--radius)] px-2 py-1 text-[11px]">
+            <p className="status-error rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]">
               {mintError}
             </p>
           )}
-          <p className="font-ui text-[11px] text-[color:var(--muted)]">
+          <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
             {keyIsSession
               ? "This is the token you were issued when you signed in. It can do everything you can " +
                 "and it expires 14 days after sign-in, so it is right for a one-off check and wrong " +

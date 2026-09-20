@@ -46,7 +46,7 @@ export function CopyButton({
       onClick={() => void handleClick()}
       title={title ?? (state === "failed" ? "Your browser refused the clipboard" : "Copy")}
       aria-live="polite"
-      className={`font-ui rounded-[var(--radius)] px-2 py-1 text-[11px] transition-colors hover:bg-[color:var(--panel-hover)] ${
+      className={`font-ui rounded-[var(--radius)] px-2 py-1 text-[0.6875rem] transition-colors hover:bg-[color:var(--panel-hover)] ${
         state === "failed" ? "status-error" : "text-[color:var(--muted)]"
       } ${className}`}
     >

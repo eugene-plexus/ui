@@ -329,7 +329,7 @@ export default function InferencePage() {
             className={
               controlRoot.tone === "warn"
                 ? "status-warn border-b px-4 py-2 text-xs"
-                : "border-b border-[color:var(--border)] px-4 py-1.5 text-[11px] text-[color:var(--muted)]"
+                : "border-b border-[color:var(--border)] px-4 py-1.5 text-[0.6875rem] text-[color:var(--muted)]"
             }
             title={controlRoot.detail ?? undefined}
             data-testid="control-root"
@@ -574,7 +574,7 @@ function RowView({
           </>
         )}
         {row.driver && (
-          <div className="text-[11px] text-[color:var(--muted)]">
+          <div className="text-[0.6875rem] text-[color:var(--muted)]">
             driver <span className="font-mono">{row.driver}</span>
           </div>
         )}
@@ -605,13 +605,13 @@ function RowView({
           </span>
         )}
         {missingEngine && (
-          <div className="text-[11px]" data-testid="stopped-reason">
+          <div className="text-[0.6875rem]" data-testid="stopped-reason">
             {engineWord(missingEngine)} is not installed on this machine, so this cannot start.
             Install it above, then press start.
           </div>
         )}
         {copying && (
-          <div className="text-[11px] text-[color:var(--muted)]" data-testid="copying-detail">
+          <div className="text-[0.6875rem] text-[color:var(--muted)]" data-testid="copying-detail">
             {copying.percent !== null && (
               <div
                 className="mb-1 h-1 w-40 overflow-hidden rounded-full bg-[color:var(--border)]"
@@ -632,7 +632,7 @@ function RowView({
           </div>
         )}
         {loading && (
-          <div className="text-[11px] text-[color:var(--muted)]" data-testid="loading-detail">
+          <div className="text-[0.6875rem] text-[color:var(--muted)]" data-testid="loading-detail">
             {/* The bar renders only when the agent could actually watch
                 the bytes move. A track drawn with no fill would read as
                 "0%, stuck", which is the conclusion this whole line
@@ -657,7 +657,7 @@ function RowView({
           </div>
         )}
         {source && (
-          <div className="text-[11px] text-[color:var(--muted)]" data-testid="model-source">
+          <div className="text-[0.6875rem] text-[color:var(--muted)]" data-testid="model-source">
             {source.text}
             {/* The skipped-copy reason, which is the one thing here
                 nobody would otherwise find out: the model still serves,
@@ -672,7 +672,7 @@ function RowView({
         )}
         {compute && (
           <div
-            className={`text-[11px] ${compute.tone === "warn" ? "text-status-warn" : "text-[color:var(--muted)]"}`}
+            className={`text-[0.6875rem] ${compute.tone === "warn" ? "text-status-warn" : "text-[color:var(--muted)]"}`}
             data-testid="compute-detail"
             title={compute.detail}
           >
@@ -680,12 +680,12 @@ function RowView({
           </div>
         )}
         {row.eligible === false && row.ineligibleReason && (
-          <div className="text-[11px] text-[color:var(--muted)]">
+          <div className="text-[0.6875rem] text-[color:var(--muted)]">
             not routable: {row.ineligibleReason}
           </div>
         )}
         {row.error && row.reachable !== false && (
-          <div className="text-[11px]" style={{ color: "var(--status-error, #f85149)" }}>
+          <div className="text-[0.6875rem]" style={{ color: "var(--status-error, #f85149)" }}>
             {row.error}
           </div>
         )}
@@ -836,12 +836,12 @@ function EnginesLine({
 
   if (!reachable) return null;
   if (error) {
-    return <p className="text-[11px] text-[color:var(--muted)]">engines: {error}</p>;
+    return <p className="text-[0.6875rem] text-[color:var(--muted)]">engines: {error}</p>;
   }
   if (engines === null) return null;
 
   return (
-    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[color:var(--muted)]">
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] text-[color:var(--muted)]">
       <span>engines:</span>
       {engines.map((e) => {
         const state = installs[e.engine];
@@ -906,8 +906,8 @@ function dedupe(items: string[]): string[] {
 const buttonClass =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
 const smallButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 const dangerButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--status-error,#f85149)] hover:text-[color:var(--status-error,#f85149)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error,#f85149)] hover:text-[color:var(--status-error,#f85149)] disabled:cursor-not-allowed disabled:opacity-30";
 const tinyButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-1.5 py-0 text-[10px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-1.5 py-0 text-[0.625rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";

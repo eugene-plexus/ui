@@ -190,7 +190,7 @@ function ConfigPageInner() {
                 type="button"
                 onClick={() => void removeDriver()}
                 disabled={removing}
-                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--status-error,#f85149)] hover:text-[color:var(--status-error,#f85149)] disabled:opacity-30"
+                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error,#f85149)] hover:text-[color:var(--status-error,#f85149)] disabled:opacity-30"
                 title="Stops the driver's process and forgets its declaration. What it fronts is untouched."
               >
                 {removing ? "removing…" : "Remove this driver"}

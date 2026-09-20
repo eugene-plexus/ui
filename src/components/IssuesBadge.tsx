@@ -103,7 +103,7 @@ export function IssuesBadgeView({ issues, worst, loaded, onFixed }: IssuesBadgeV
         Needs attention
         <span
           data-testid="issues-count"
-          className={`rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${
+          className={`rounded-full px-1.5 text-[0.625rem] font-semibold tabular-nums ${
             blocking
               ? "bg-[color:var(--status-error-border)] text-[color:var(--status-error-fg)]"
               : "bg-[color:var(--status-warn-border)] text-[color:var(--status-warn-fg)]"

@@ -267,7 +267,7 @@ export function BenchmarkPanel({
               Model: {job.localPath} · {job.modelSizeBytes?.toLocaleString()} bytes · modified{" "}
               {job.modelModifiedAt ?? "unknown"}
             </p>
-            <pre className="mt-2 overflow-x-auto text-[10px] break-all whitespace-pre-wrap">
+            <pre className="mt-2 overflow-x-auto text-[0.625rem] break-all whitespace-pre-wrap">
               {JSON.stringify(
                 {
                   flags: job.request.runtime.flags,

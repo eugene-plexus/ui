@@ -45,14 +45,14 @@ export function IssueRow({
       <p className={`font-ui text-xs font-semibold ${toneClass}`}>{issue.title}</p>
       {/* Never truncated. This is the sentence that says what to do, and
           it is read by somebody who is already unhappy. */}
-      <p className="mt-0.5 text-[11px] text-[color:var(--muted)]">{issue.detail}</p>
+      <p className="mt-0.5 text-[0.6875rem] text-[color:var(--muted)]">{issue.detail}</p>
       {issue.action === "unlock-control-root" ? (
         <UnlockForm onFixed={onFixed} />
       ) : (
         <Link
           href={issue.href}
           onClick={() => onFollow?.()}
-          className="font-ui mt-1 inline-block text-[11px] underline underline-offset-2 hover:text-[color:var(--foreground)]"
+          className="font-ui mt-1 inline-block text-[0.6875rem] underline underline-offset-2 hover:text-[color:var(--foreground)]"
         >
           Go and fix it
         </Link>
@@ -125,7 +125,7 @@ function UnlockForm({ onFixed }: { onFixed: () => Promise<void> }) {
         </button>
       </div>
       {problem && (
-        <p data-testid="issues-unlock-problem" className="text-status-error text-[11px]">
+        <p data-testid="issues-unlock-problem" className="text-status-error text-[0.6875rem]">
           {problem}
         </p>
       )}

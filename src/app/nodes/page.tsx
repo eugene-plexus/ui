@@ -475,7 +475,7 @@ export default function NodesPage() {
                             ))}
                           </ul>
                         )}
-                        <Link href="/inference" className="mt-1 block text-[11px] underline">
+                        <Link href="/inference" className="mt-1 block text-[0.6875rem] underline">
                           Inference →
                         </Link>
                       </td>
@@ -572,14 +572,14 @@ export default function NodesPage() {
                       onClick={() => void revoke(t.id)}
                       disabled={revoking !== null}
                       data-testid="revoke-token"
-                      className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {revoking === t.id ? "revoking…" : "Revoke"}
                     </button>
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-[11px] text-[color:var(--muted)]">
+              <p className="mt-2 text-[0.6875rem] text-[color:var(--muted)]">
                 The id is a handle, not the token — the token itself was shown once and is not
                 stored in a form anything can read back. Revoking one stops it working immediately;
                 a token that has already enrolled a node can be cleared here and the node is

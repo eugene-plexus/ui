@@ -41,10 +41,7 @@ export function UIPreferences() {
         </select>
       </Row>
 
-      <Row
-        label="Font size"
-        description="Scales chat content, config forms, and most chrome. Independent of theme."
-      >
+      <Row label="Font size" description="Scales text, hints, and badges. Independent of theme.">
         <select
           value={fontSize}
           onChange={(e) => setFontSize(e.target.value as FontSize)}
@@ -78,7 +75,7 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[200px_1fr] items-start gap-4 border-b border-[color:var(--border)] py-3">
+    <div className="grid grid-cols-1 items-start gap-2 border-b border-[color:var(--border)] py-3 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-4">
       <div>
         <label className="font-ui block text-sm font-medium">{label}</label>
         <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted)]">{description}</p>

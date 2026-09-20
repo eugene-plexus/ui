@@ -131,7 +131,7 @@ export function StarterSetPanel({
       <div>
         <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="font-ui text-xs font-semibold">All suggestions</h3>
-          <p className="text-[11px] text-[color:var(--muted)]">
+          <p className="text-[0.6875rem] text-[color:var(--muted)]">
             {reviewed && <>Reviewed {reviewed}. </>}
             Ranked by how many people downloaded them in the last 30 days — the community&rsquo;s
             judgement, not ours.
@@ -153,7 +153,7 @@ export function StarterSetPanel({
                       {model.label} · {formatBytes(model.sizeBytes)}
                     </span>
                   </p>
-                  <p className="truncate text-[11px] text-[color:var(--muted)]">
+                  <p className="truncate text-[0.6875rem] text-[color:var(--muted)]">
                     {model.repo}
                     {model.license && <> · {model.license}</>}
                     {model.maxContextLength != null && (
@@ -192,7 +192,7 @@ export function StarterSetPanel({
         </p>
       )}
       {(set.notes ?? []).map((note) => (
-        <p key={note} className="text-[11px] text-[color:var(--muted)]">
+        <p key={note} className="text-[0.6875rem] text-[color:var(--muted)]">
           {note}
         </p>
       ))}
@@ -205,4 +205,4 @@ const primary =
 const secondary =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
 const smallButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";

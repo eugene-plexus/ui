@@ -66,7 +66,7 @@ export function ToolsPanel({
           />
           Send tool definitions
         </label>
-        <div className="font-ui flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--muted)]">
+        <div className="font-ui flex flex-wrap items-center gap-2 text-[0.6875rem] text-[color:var(--muted)]">
           <label className="flex items-center gap-1">
             tool_choice
             <select
@@ -81,7 +81,7 @@ export function ToolsPanel({
                   onToolChoice(v as "auto" | "none" | "required");
                 }
               }}
-              className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-1 py-0.5 text-[11px] text-[color:var(--foreground)] disabled:opacity-50"
+              className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-1 py-0.5 text-[0.6875rem] text-[color:var(--foreground)] disabled:opacity-50"
             >
               <option value="auto">auto</option>
               <option value="none">none</option>
@@ -99,7 +99,7 @@ export function ToolsPanel({
               data-testid="response-format"
               value={responseFormat}
               onChange={(e) => onResponseFormat(e.target.value as ResponseFormatChoice)}
-              className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-1 py-0.5 text-[11px] text-[color:var(--foreground)]"
+              className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-1 py-0.5 text-[0.6875rem] text-[color:var(--foreground)]"
             >
               <option value="text">text</option>
               <option value="json_object">json_object</option>
@@ -124,20 +124,20 @@ export function ToolsPanel({
         disabled={!enabled}
         rows={enabled ? 6 : 2}
         spellCheck={false}
-        className="w-full resize-y rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 font-mono text-[11px] leading-snug text-[color:var(--foreground)] outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50"
+        className="w-full resize-y rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 font-mono text-[0.6875rem] leading-snug text-[color:var(--foreground)] outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50"
       />
       {enabled && error && (
-        <p className="status-error rounded-[var(--radius)] px-2 py-1 text-[11px]">{error}</p>
+        <p className="status-error rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]">{error}</p>
       )}
       {enabled && modelToolCalling === false && (
-        <p className="status-warn rounded-[var(--radius)] px-2 py-1 text-[11px]">
+        <p className="status-warn rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]">
           The selected model reports <code className="font-mono">tool_calling: false</code>: one of
           the backends serving it cannot carry tool definitions. The gateway will refuse this
           request with a 400 rather than strip the tools, by design — a plain answer would be
           indistinguishable from the model choosing not to call anything.
         </p>
       )}
-      <p className="font-ui text-[11px] text-[color:var(--muted)]">
+      <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
         The playground executes nothing. When the model calls a tool, the call is shown and you type
         the result — the loop a harness runs, with a person as the tool runtime.
       </p>

@@ -66,7 +66,12 @@ export function useAutoScroll(
   function scrollToBottom() {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+    });
   }
 
   return { scrollRef, isAtBottom, scrollToBottom };

@@ -98,7 +98,7 @@ export function RunDialogView({
             Cancel
           </button>
         </div>
-        <p className="mt-3 text-[11px] leading-relaxed text-[color:var(--muted)]">
+        <p className="mt-3 text-[0.6875rem] leading-relaxed text-[color:var(--muted)]">
           Skip is for advanced users: the model cannot run until an engine is installed by hand. It
           stays listed on Inference as stopped, with the reason, until then.
         </p>

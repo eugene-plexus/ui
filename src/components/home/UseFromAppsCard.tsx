@@ -301,13 +301,13 @@ export function UseFromAppsCard({
                 placeholder="http://192.168.1.20:8080"
                 className="min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs"
               />
-              <button type="submit" className="font-ui text-[11px] underline">
+              <button type="submit" className="font-ui text-[0.6875rem] underline">
                 Save
               </button>
               <button
                 type="button"
                 onClick={() => setEditing(false)}
-                className="font-ui text-[11px] text-[color:var(--muted)] underline"
+                className="font-ui text-[0.6875rem] text-[color:var(--muted)] underline"
               >
                 Cancel
               </button>
@@ -321,7 +321,7 @@ export function UseFromAppsCard({
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="font-ui text-[11px] text-[color:var(--muted)] underline"
+                className="font-ui text-[0.6875rem] text-[color:var(--muted)] underline"
               >
                 {override ? "Change" : "Not right?"}
               </button>
@@ -336,7 +336,7 @@ export function UseFromAppsCard({
           {candidate && (
             <p
               data-testid="base-url-candidate"
-              className="status-success font-ui flex flex-wrap items-center gap-x-2 rounded-[var(--radius)] px-2 py-1 text-[11px]"
+              className="status-success font-ui flex flex-wrap items-center gap-x-2 rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]"
             >
               <span>{describeCandidate(candidate)}</span>
               <button
@@ -356,8 +356,8 @@ export function UseFromAppsCard({
               data-verdict={verdict?.kind ?? (checking ? "checking" : "none")}
               className={
                 verdictText
-                  ? `${TONE_CLASS[verdictText.tone]} font-ui rounded-[var(--radius)] px-2 py-1 text-[11px]`
-                  : "font-ui text-[11px] text-[color:var(--muted)]"
+                  ? `${TONE_CLASS[verdictText.tone]} font-ui rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]`
+                  : "font-ui text-[0.6875rem] text-[color:var(--muted)]"
               }
             >
               {verdictText?.text ?? "Checking this address…"}{" "}
@@ -380,14 +380,14 @@ export function UseFromAppsCard({
           {remap && verdict?.kind !== "confirmed" && !candidate && (
             <p
               data-testid="base-url-remap"
-              className="status-warn font-ui rounded-[var(--radius)] px-2 py-1 text-[11px]"
+              className="status-warn font-ui rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]"
             >
               {remap}
             </p>
           )}
 
           {!candidate && (
-            <p className="font-ui text-[11px] text-[color:var(--muted)]">
+            <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
               {override
                 ? "You corrected this address; this browser will remember it."
                 : "Worked out from the gateway's port and this page's address. If your install publishes " +
@@ -437,13 +437,13 @@ export function UseFromAppsCard({
       </dl>
 
       {fresh && (
-        <p className="status-warn mt-2 rounded-[var(--radius)] px-2 py-1 text-[11px]">
+        <p className="status-warn mt-2 rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]">
           Copy this now — it is shown once and is not stored anywhere. Lose it and you make another.
         </p>
       )}
 
       {missing.length > 0 && !fresh && (
-        <ul className="font-ui mt-2 flex flex-col gap-1 text-[11px] text-[color:var(--muted)]">
+        <ul className="font-ui mt-2 flex flex-col gap-1 text-[0.6875rem] text-[color:var(--muted)]">
           {missing.map((line) => (
             <li key={line}>{line}</li>
           ))}
@@ -467,7 +467,7 @@ export function UseFromAppsCard({
           {busy ? "Working…" : "Make a key"}
         </button>
       </form>
-      <p className="font-ui mt-1 text-[11px] text-[color:var(--muted)]">
+      <p className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]">
         Good for a year, works only for chatting with your models, and can be turned off on its own.
         Kept on {where.node ?? "this machine"}
         {where.derived === "gateway-node" ? ", the machine running the gateway" : ""}.
@@ -476,7 +476,7 @@ export function UseFromAppsCard({
       {error && (
         <p
           data-testid="key-error"
-          className="status-error mt-2 rounded-[var(--radius)] px-2 py-1 text-[11px]"
+          className="status-error mt-2 rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]"
         >
           {error}
         </p>
@@ -489,7 +489,7 @@ export function UseFromAppsCard({
             return (
               <li
                 key={key.id}
-                className="font-ui flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-[color:var(--border)] pt-1 text-[11px]"
+                className="font-ui flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-[color:var(--border)] pt-1 text-[0.6875rem]"
               >
                 <span className="font-semibold">{key.name}</span>
                 <code className="font-mono">{keyLabel(key.tail)}</code>
@@ -509,7 +509,7 @@ export function UseFromAppsCard({
       )}
 
       <div className="mt-3 border-t border-[color:var(--border)] pt-2">
-        <p className="font-ui text-[11px] text-[color:var(--muted)]">Set up:</p>
+        <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">Set up:</p>
         <ul className="mt-1 flex flex-wrap gap-2">
           {recipes.map((recipe) => (
             <li key={recipe.name}>
@@ -517,7 +517,7 @@ export function UseFromAppsCard({
                 type="button"
                 onClick={() => setOpenRecipe(openRecipe === recipe.name ? null : recipe.name)}
                 aria-expanded={openRecipe === recipe.name}
-                className={`font-ui rounded-[var(--radius)] border px-2 py-1 text-[11px] ${
+                className={`font-ui rounded-[var(--radius)] border px-2 py-1 text-[0.6875rem] ${
                   openRecipe === recipe.name
                     ? "border-[color:var(--accent-left)]"
                     : "border-[color:var(--border)]"
@@ -532,18 +532,20 @@ export function UseFromAppsCard({
           .filter((r) => r.name === openRecipe)
           .map((recipe) => (
             <div key={recipe.name} className="mt-2" data-testid="recipe">
-              <p className="font-ui text-[11px] text-[color:var(--muted)]">{recipe.where}</p>
+              <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">{recipe.where}</p>
               <div className="mt-1 flex items-start gap-2">
-                <pre className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] p-2 font-mono text-[11px]">
+                <pre className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] p-2 font-mono text-[0.6875rem]">
                   {recipe.snippet}
                 </pre>
                 <CopyButton text={recipe.snippet} title={`Copy the ${recipe.name} snippet`} />
               </div>
               {recipe.note && (
-                <p className="font-ui mt-1 text-[11px] text-[color:var(--muted)]">{recipe.note}</p>
+                <p className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]">
+                  {recipe.note}
+                </p>
               )}
               {!keyString && (
-                <p className="font-ui mt-1 text-[11px] text-[color:var(--muted)]">
+                <p className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]">
                   <code className="font-mono">YOUR_KEY</code> is a placeholder — make a key above
                   and it is filled in.
                 </p>

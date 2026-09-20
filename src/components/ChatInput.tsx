@@ -94,7 +94,7 @@ export function ChatInput({
       className="flex flex-col gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] p-3"
     >
       {(files.length > 0 || fileError) && (
-        <div className="font-ui flex flex-wrap items-center gap-2 text-[11px]">
+        <div className="font-ui flex flex-wrap items-center gap-2 text-[0.6875rem]">
           {files.map((f, i) => (
             <span
               key={`${f.name}-${i}`}
@@ -119,10 +119,11 @@ export function ChatInput({
           )}
         </div>
       )}
-      <div className="flex items-end gap-2">
+      <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
         <textarea
           ref={textarea}
           data-testid="composer"
+          aria-label="Message"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onKeyDown}
@@ -133,7 +134,7 @@ export function ChatInput({
               : "Send a message… (Enter to send, Shift+Enter for newline; attach text files to inline them)"
           }
           disabled={disabled}
-          className="flex-1 resize-none rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50"
+          className="min-w-0 basis-full resize-none rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50 sm:flex-1 sm:basis-auto"
         />
         <input
           ref={fileInput}

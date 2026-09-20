@@ -479,7 +479,7 @@ function FolderGrid({
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-xs" data-testid="folders-grid">
         <thead>
-          <tr className="text-left text-[11px] text-[color:var(--muted)]">
+          <tr className="text-left text-[0.6875rem] text-[color:var(--muted)]">
             <th className="border-b border-[color:var(--border)] px-2 py-1.5 font-medium">
               Folder <span className="font-normal">(on the Library&rsquo;s machine)</span>
             </th>
@@ -576,7 +576,7 @@ function FolderGrid({
                       <span className="font-mono break-all">
                         {cell.localPath ?? (checked ? "—" : "…")}
                       </span>
-                      <span className="block text-[10px] text-[color:var(--muted)]">
+                      <span className="block text-[0.625rem] text-[color:var(--muted)]">
                         {checked ? cell.note : "checking…"}
                       </span>
                     </Link>
@@ -599,7 +599,7 @@ function FolderGrid({
         </tbody>
       </table>
       {libraryEditable && draft.length > 0 && nodes.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--muted)]">
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[0.6875rem] text-[color:var(--muted)]">
           <span>Browse for a mount on</span>
           <select
             value={browseTarget}
@@ -711,7 +711,7 @@ function NodeColumn({
   return (
     <table className="w-full border-collapse text-xs" data-testid="folders-node">
       <thead>
-        <tr className="text-left text-[11px] text-[color:var(--muted)]">
+        <tr className="text-left text-[0.6875rem] text-[color:var(--muted)]">
           <th className="border-b border-[color:var(--border)] px-2 py-1.5 font-medium">
             Library folder
           </th>
@@ -747,7 +747,7 @@ function NodeColumn({
                 {cell.localPath ?? (checked ? "—" : "…")}
                 {cell.source && (
                   <span
-                    className="ml-2 rounded-[var(--radius)] border border-[color:var(--border)] px-1 font-sans text-[10px] text-[color:var(--muted)]"
+                    className="ml-2 rounded-[var(--radius)] border border-[color:var(--border)] px-1 font-sans text-[0.625rem] text-[color:var(--muted)]"
                     data-testid="node-source"
                   >
                     {cell.source === "same_path"
@@ -831,6 +831,6 @@ const inputClass =
 const buttonClass =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 const smallButtonClass =
-  "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 const primaryClass =
   "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30";

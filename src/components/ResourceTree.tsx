@@ -170,7 +170,9 @@ export function ResourceTree({
         localNode={localNode}
       />
       {!ready && (
-        <p className="font-ui px-2 py-1 text-[11px] text-[color:var(--muted)]">Reading topology…</p>
+        <p className="font-ui px-2 py-1 text-[0.6875rem] text-[color:var(--muted)]">
+          Reading topology…
+        </p>
       )}
     </nav>
   );
@@ -249,7 +251,7 @@ function Row({
             aria-expanded={expanded}
             aria-label={`${expanded ? "Collapse" : "Expand"} ${node.label}`}
             data-testid={`tree-toggle-${key}`}
-            className="font-ui shrink-0 rounded-[var(--radius)] px-1 text-[10px] text-[color:var(--muted)] hover:bg-[color:var(--panel-hover)]"
+            className="font-ui shrink-0 rounded-[var(--radius)] px-1 text-[0.625rem] text-[color:var(--muted)] hover:bg-[color:var(--panel-hover)]"
           >
             {expanded ? "▾" : "▸"}
           </button>
@@ -272,7 +274,7 @@ function Row({
             <LayerIcon name={node.icon} accent={accent} size={14} />
             <span className="truncate">{node.label}</span>
             {node.hint && (
-              <span className="ml-auto shrink-0 truncate text-[10px] text-[color:var(--muted)]">
+              <span className="ml-auto shrink-0 truncate text-[0.625rem] text-[color:var(--muted)]">
                 {node.hint}
               </span>
             )}
@@ -287,7 +289,7 @@ function Row({
             <LayerIcon name={node.icon} accent={accent} size={14} />
             <span className="truncate">{node.label}</span>
             {node.hint && (
-              <span className="ml-auto shrink-0 truncate text-[10px]">{node.hint}</span>
+              <span className="ml-auto shrink-0 truncate text-[0.625rem]">{node.hint}</span>
             )}
           </button>
         )}

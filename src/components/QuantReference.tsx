@@ -78,7 +78,7 @@ export function QuantReference() {
 
           {tiers && (
             <table className="w-full">
-              <thead className="font-ui text-[11px] text-[color:var(--muted)]">
+              <thead className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
                 <tr>
                   <th className="py-1 text-left font-medium">name</th>
                   <th className="py-1 text-right font-medium">bits/weight</th>

@@ -81,7 +81,7 @@ export function ModelCard({ repo }: { repo: string }) {
               <div className="max-h-[50vh] overflow-y-auto pr-1">
                 <Card>{markdown}</Card>
               </div>
-              <p className="mt-2 border-t border-[color:var(--border)] pt-2 text-[11px] text-[color:var(--muted)]">
+              <p className="mt-2 border-t border-[color:var(--border)] pt-2 text-[0.6875rem] text-[color:var(--muted)]">
                 Written by whoever published the model, shown unedited.
               </p>
             </>

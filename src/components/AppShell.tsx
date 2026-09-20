@@ -156,7 +156,7 @@ function AppShellInner({
   }
 
   return (
-    <div className="relative z-10 flex h-screen flex-col overflow-hidden">
+    <div className="relative z-10 flex h-dvh flex-col overflow-hidden">
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
@@ -175,7 +175,7 @@ function AppShellInner({
         <Link href="/" aria-label="Eugene Plexus" className="flex shrink-0 items-center">
           <Image src="/eugene-icon.svg" alt="" width={22} height={22} priority />
         </Link>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
           {/* Background work, from every signed-in screen (hobbyist UX P7):
               a download started on Discover is visible from Config. */}
           <TasksTray />
@@ -336,7 +336,11 @@ function PageMenu({
             </Link>
           );
         })}
-      {controls && <div className="ml-auto flex flex-wrap items-center gap-2">{controls}</div>}
+      {controls && (
+        <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center gap-2">
+          {controls}
+        </div>
+      )}
     </nav>
   );
 }

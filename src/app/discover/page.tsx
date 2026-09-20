@@ -409,7 +409,7 @@ function ResultsList({
       {interpreted === "repo" && (
         <p
           data-testid="resolved-link"
-          className="border-b border-[color:var(--border)] px-4 py-2 text-[11px] text-[color:var(--muted)]"
+          className="border-b border-[color:var(--border)] px-4 py-2 text-[0.6875rem] text-[color:var(--muted)]"
         >
           That link points at one model, and this is it.
         </p>
@@ -439,13 +439,13 @@ function ResultsList({
               <p className="font-ui truncate text-xs font-semibold" title={result.repo}>
                 {result.name ?? result.repo}
               </p>
-              <p className="truncate text-[11px] text-[color:var(--muted)]">
+              <p className="truncate text-[0.6875rem] text-[color:var(--muted)]">
                 {result.owner}
                 {result.gated && result.gated !== "open" && (
                   <span className="text-status-warn"> · gated</span>
                 )}
               </p>
-              <p className="mt-0.5 flex gap-3 text-[11px] text-[color:var(--muted)] tabular-nums">
+              <p className="mt-0.5 flex gap-3 text-[0.6875rem] text-[color:var(--muted)] tabular-nums">
                 {result.downloads != null && (
                   <span>{compactCount(result.downloads)} downloads</span>
                 )}
@@ -793,7 +793,7 @@ function CandidateTable({
   return (
     <div className="overflow-hidden rounded-[var(--radius)] border border-[color:var(--border)]">
       <table className="w-full text-xs">
-        <thead className="font-ui bg-[color:var(--panel-soft)] text-[11px] text-[color:var(--muted)]">
+        <thead className="font-ui bg-[color:var(--panel-soft)] text-[0.6875rem] text-[color:var(--muted)]">
           <tr>
             <th className="px-3 py-1.5 text-left font-medium">version</th>
             <th className="px-3 py-1.5 text-right font-medium">size</th>
@@ -819,13 +819,13 @@ function CandidateTable({
                 <td className="px-3 py-2">
                   <span className="font-ui font-semibold">{candidate.label}</span>
                   {recommended === candidate.label && (
-                    <span className="text-status-success ml-2 text-[10px] uppercase">
+                    <span className="text-status-success ml-2 text-[0.625rem] uppercase">
                       recommended
                     </span>
                   )}
                   {candidate.files.length > 1 && (
                     <span
-                      className="ml-2 text-[10px] text-[color:var(--muted)]"
+                      className="ml-2 text-[0.625rem] text-[color:var(--muted)]"
                       title="A split model. Every shard is fetched; the size shown is the whole set."
                     >
                       {candidate.files.length} files
@@ -833,7 +833,7 @@ function CandidateTable({
                   )}
                   {candidate.alreadyOwned && (
                     <p
-                      className="text-status-success mt-0.5 text-[11px]"
+                      className="text-status-success mt-0.5 text-[0.6875rem]"
                       title={candidate.alreadyOwned.path}
                     >
                       already on disk
@@ -843,7 +843,7 @@ function CandidateTable({
                     </p>
                   )}
                   {preflighted?.agreesWithFilename === false && (
-                    <p className="text-status-warn mt-0.5 text-[11px]">
+                    <p className="text-status-warn mt-0.5 text-[0.6875rem]">
                       the file&rsquo;s own metadata says {preflighted.quantization}, which is not
                       what its name says
                     </p>
@@ -967,7 +967,7 @@ function OtherFiles({ files }: { files: CatalogueFile[] }) {
 }
 
 const smallButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
 const selectClass =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 text-xs outline-none focus:border-[color:var(--border-hover)]";

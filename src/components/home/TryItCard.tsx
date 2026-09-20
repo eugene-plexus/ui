@@ -174,7 +174,7 @@ export function TryItCard({ models }: { models: Model[] }) {
       {turn && (
         <p
           data-testid="home-turn-info"
-          className="mt-2 font-mono text-[11px] text-[color:var(--muted)]"
+          className="mt-2 font-mono text-[0.6875rem] text-[color:var(--muted)]"
         >
           {[turn.model, turn.driver, turn.seconds !== null ? `${turn.seconds.toFixed(1)} s` : null]
             .filter((part): part is string => part !== null)

@@ -36,7 +36,7 @@ export function RequestReport({
 
   return (
     <details
-      className="border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[11px]"
+      className="border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[0.6875rem]"
       data-testid="request-report"
     >
       <summary
@@ -106,7 +106,7 @@ export function RequestReport({
         </table>
 
         {explanations.length > 0 && (
-          <ul className="status-warn flex flex-col gap-1 rounded-[var(--radius)] px-2 py-1 font-sans text-[11px]">
+          <ul className="status-warn flex flex-col gap-1 rounded-[var(--radius)] px-2 py-1 font-sans text-[0.6875rem]">
             {explanations.map((line) => (
               <li key={line} className="whitespace-pre-wrap">
                 {line}

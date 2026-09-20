@@ -461,7 +461,7 @@ function ProfileRow({
         <div className="flex items-center gap-2">
           <span className="font-medium">{profile.name}</span>
           {profile.default && (
-            <span className="rounded bg-[color:var(--border)] px-1 text-[9px] tracking-wider uppercase">
+            <span className="rounded bg-[color:var(--border)] px-1 text-[0.5625rem] tracking-wider uppercase">
               default
             </span>
           )}
@@ -490,7 +490,7 @@ function ProfileRow({
         </div>
       </div>
       {(flags.length > 0 || env.length > 0 || profile.extraArgs?.length) && (
-        <p className="mt-1 font-mono text-[10px] break-all text-[color:var(--muted)]">
+        <p className="mt-1 font-mono text-[0.625rem] break-all text-[color:var(--muted)]">
           {[
             ...flags.map(([k, v]) => `${k}=${JSON.stringify(v)}`),
             ...env.map(([k, v]) => `${k}=${v}`),

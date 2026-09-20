@@ -384,12 +384,12 @@ export default function MetricsPage() {
               </table>
             )}
 
-            <p className="mt-3 text-[11px] text-[color:var(--muted)]">
+            <p className="mt-3 text-[0.6875rem] text-[color:var(--muted)]">
               Tokens/sec is measured from the backend that actually answered, not from the whole
               request — so a failover does not make the backend that rescued it look slow. The
               number in brackets is how many requests the median is over.
             </p>
-            <p className="mt-1 text-[11px] text-[color:var(--muted)]">
+            <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">
               <strong>Overhead</strong> is what Eugene Plexus itself costs: the gap between how long
               the backend said it took and how long the gateway saw it take. Compare it against the
               median to decide whether routing is worth worrying about — on a local install it
@@ -409,7 +409,7 @@ export default function MetricsPage() {
                   {recent.map((r, i) => (
                     <li
                       key={`${r.startedAt}-${i}`}
-                      className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 font-mono text-[11px]"
+                      className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 font-mono text-[0.6875rem]"
                     >
                       <span className="text-[color:var(--muted)]">
                         {new Date(r.startedAt).toLocaleTimeString()}
@@ -467,7 +467,7 @@ export default function MetricsPage() {
               </section>
             )}
 
-            <p className="mt-8 text-[11px] text-[color:var(--muted)]">
+            <p className="mt-8 text-[0.6875rem] text-[color:var(--muted)]">
               Recorded on this machine, in a file beside the gateway&rsquo;s config. Never sent
               anywhere, and not part of the install&rsquo;s replicated log — a standby control root
               promoted later starts with no history, because the history described a different

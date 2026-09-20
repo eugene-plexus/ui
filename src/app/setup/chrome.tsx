@@ -23,12 +23,12 @@ export function WizardHeader({ screen }: { screen: number }) {
     <header className="bg-[color:var(--panel)]">
       <div className="flex items-center justify-between px-6 py-4">
         <div>
-          <p className="font-mono text-[10px] tracking-wider text-[color:var(--muted)] uppercase">
+          <p className="font-mono text-[0.625rem] tracking-wider text-[color:var(--muted)] uppercase">
             first-run setup
           </p>
           <h1 className="font-ui text-base font-semibold">Eugene Plexus</h1>
         </div>
-        <p className="font-mono text-[11px] text-[color:var(--muted)]">
+        <p className="font-mono text-[0.6875rem] text-[color:var(--muted)]">
           Step {screen} of {TOTAL_SCREENS}
         </p>
       </div>

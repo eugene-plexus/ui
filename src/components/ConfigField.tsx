@@ -333,15 +333,15 @@ export function ConfigFieldInput({
   }
 
   return (
-    <div className="grid grid-cols-[200px_1fr] items-start gap-4 border-b border-[color:var(--border)] py-3">
+    <div className="grid grid-cols-1 items-start gap-2 border-b border-[color:var(--border)] py-3 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-4">
       <div className="flex flex-col gap-1">
         <label className="text-sm font-medium">
           {field.label}
           {field.required && <span className="text-status-error ml-1">*</span>}
         </label>
-        <code className="font-mono text-[10px] text-[color:var(--muted)]">{field.key}</code>
+        <code className="font-mono text-[0.625rem] text-[color:var(--muted)]">{field.key}</code>
         {field.requiresRestart && (
-          <span className="status-warn w-fit rounded-[var(--radius)] px-1.5 py-0.5 text-[9px] tracking-wider uppercase">
+          <span className="status-warn w-fit rounded-[var(--radius)] px-1.5 py-0.5 text-[0.5625rem] tracking-wider uppercase">
             restart required
           </span>
         )}
@@ -878,7 +878,7 @@ function LibraryFoldersInput({
               remove
             </button>
           </div>
-          <div className="flex flex-wrap items-center gap-2 pl-2 text-[11px] text-[color:var(--muted)]">
+          <div className="flex flex-wrap items-center gap-2 pl-2 text-[0.6875rem] text-[color:var(--muted)]">
             <span className="w-full sm:w-auto">mounted on Linux/macOS nodes at</span>
             <input
               type="text"
@@ -917,7 +917,7 @@ function LibraryFoldersInput({
         >
           add folder
         </button>
-        <a href="/library/folders?sel=library" className="text-[11px] underline">
+        <a href="/library/folders?sel=library" className="text-[0.6875rem] underline">
           every node&rsquo;s view of these folders: Library → Folders
         </a>
       </div>

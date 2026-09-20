@@ -81,14 +81,14 @@ export function LayerMap({
         </ul>
       </div>
 
-      <p className="font-ui mt-3 text-[11px] text-[color:var(--muted)]">
+      <p className="font-ui mt-3 text-[0.6875rem] text-[color:var(--muted)]">
         Select a component in the tree, then open Config to change its settings on that machine.
       </p>
       <Glossary />
 
       {/* The foot of the panel that explains what this thing is, which
           is where someone asking "what IS this" has already arrived. */}
-      <Attribution className="mt-3 border-t border-[color:var(--border)] pt-3 text-[10px]" />
+      <Attribution className="mt-3 border-t border-[color:var(--border)] pt-3 text-[0.625rem]" />
     </nav>
   );
 }
@@ -119,7 +119,9 @@ function LayerCard({
         <LayerIcon name={layer.icon} accent={layer.accent} size={15} />
         {layer.name}
       </p>
-      <p className="mt-1 text-[11px] leading-relaxed text-[color:var(--muted)]">{layer.blurb}</p>
+      <p className="mt-1 text-[0.6875rem] leading-relaxed text-[color:var(--muted)]">
+        {layer.blurb}
+      </p>
       {(homes.length > 0 || visitors.length > 0) && (
         <ul className="mt-2 flex flex-wrap items-center gap-1.5">
           {homes.map((screen) => (
@@ -157,7 +159,7 @@ function MapLink({
       data-map-layer={layer}
       aria-current={active ? "page" : undefined}
       title={screen.blurb}
-      className={`font-ui flex items-center gap-1.5 rounded-[var(--radius)] border px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
+      className={`font-ui flex items-center gap-1.5 rounded-[var(--radius)] border px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
         visiting
           ? "border-dashed border-[color:var(--border)] text-[color:var(--muted)]"
           : "border-[color:var(--border)]"

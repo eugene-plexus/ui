@@ -85,7 +85,7 @@ export function FolderPicker({
         <header className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] px-4 py-3">
           <div>
             <h2 className="font-ui text-sm font-semibold">Choose a directory</h2>
-            <p className="text-[11px] text-[color:var(--muted)]">
+            <p className="text-[0.6875rem] text-[color:var(--muted)]">
               {listing ? (
                 <>
                   on <span className="font-mono">{listing.host}</span> — the machine this component
@@ -158,7 +158,7 @@ export function FolderPicker({
                   {entry.name}
                 </span>
                 {current === null && (
-                  <span className="truncate font-mono text-[10px] text-[color:var(--muted)]">
+                  <span className="truncate font-mono text-[0.625rem] text-[color:var(--muted)]">
                     {entry.path}
                   </span>
                 )}
@@ -168,7 +168,7 @@ export function FolderPicker({
 
         <footer className="flex items-center justify-between gap-3 border-t border-[color:var(--border)] px-4 py-3">
           <span
-            className="truncate font-mono text-[11px] text-[color:var(--muted)]"
+            className="truncate font-mono text-[0.6875rem] text-[color:var(--muted)]"
             title={current ?? ""}
           >
             {current ?? "pick a starting point"}

@@ -161,7 +161,7 @@ function DownloadRow({
             {download.repo}
           </p>
           <p
-            className="font-mono-ui truncate text-[11px] text-[color:var(--muted)]"
+            className="font-mono-ui truncate text-[0.6875rem] text-[color:var(--muted)]"
             title={download.destinationDirectory ?? undefined}
           >
             {download.files.length === 1
@@ -218,7 +218,7 @@ function DownloadRow({
         </div>
       )}
 
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px] text-[color:var(--muted)]">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[0.6875rem] text-[color:var(--muted)]">
         <span className={download.state === "failed" ? "text-status-error" : undefined}>
           {STATE_LABEL[download.state]}
         </span>
@@ -246,14 +246,14 @@ function DownloadRow({
           and the reason is that a publisher requantized under the same
           filename. */}
       {download.restartedFromZero && (
-        <p className="text-status-warn text-[11px]">
+        <p className="text-status-warn text-[0.6875rem]">
           This file changed upstream since the download started, so the partial copy was discarded
           and it is being fetched again from the beginning.
         </p>
       )}
 
       {download.error && (
-        <p className="text-status-error text-[11px]">
+        <p className="text-status-error text-[0.6875rem]">
           {download.error}
           {download.errorCode === "GatedRepo" && (
             <>
@@ -269,11 +269,11 @@ function DownloadRow({
       )}
 
       {!download.error && download.message && download.state !== "done" && (
-        <p className="text-[11px] text-[color:var(--muted)]">{download.message}</p>
+        <p className="text-[0.6875rem] text-[color:var(--muted)]">{download.message}</p>
       )}
 
       {download.state === "done" && (
-        <div className="flex flex-wrap items-start gap-3 text-[11px]">
+        <div className="flex flex-wrap items-start gap-3 text-[0.6875rem]">
           {download.modelId ? (
             <>
               {node && <FinishedRun modelId={download.modelId} node={node} />}
@@ -325,7 +325,7 @@ function FinishedRun({ modelId, node }: { modelId: string; node: TargetNode }) {
 }
 
 const smallButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[11px] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
 /**
  * Poll downloads while any is active. Shared by the discovery page and

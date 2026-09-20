@@ -119,14 +119,14 @@ export function ReachCard({
               Restart Eugene
             </button>
           ) : (
-            <p className="font-ui text-[11px] text-[color:var(--muted)]">
+            <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
               Nothing starts Eugene on this machine automatically, so it cannot restart itself. Stop
               it and start it again the way you started it
               {state.command ? ": " : "."}
               {state.command && <code className="font-mono">{state.command}</code>}
             </p>
           )}
-          <span className="font-ui text-[11px] text-[color:var(--muted)]">
+          <span className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
             This page will reconnect on its own.
           </span>
         </div>
@@ -134,13 +134,13 @@ export function ReachCard({
 
       {remedy && (
         <div className="mt-2">
-          <p className="font-ui text-[11px] text-[color:var(--muted)]">
+          <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
             Allow it by running this as administrator:
           </p>
           <div className="mt-1 flex items-start gap-2">
             <pre
               data-testid="reach-remedy"
-              className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] p-2 font-mono text-[11px]"
+              className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] p-2 font-mono text-[0.6875rem]"
             >
               {remedy}
             </pre>
@@ -152,14 +152,17 @@ export function ReachCard({
       {proof && (
         <p
           data-testid="reach-evidence"
-          className="font-ui status-ok mt-2 rounded-[var(--radius)] px-2 py-1 text-[11px]"
+          className="font-ui status-ok mt-2 rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]"
         >
           {proof}
         </p>
       )}
 
       {note && (
-        <p data-testid="reach-note" className="font-ui mt-2 text-[11px] text-[color:var(--muted)]">
+        <p
+          data-testid="reach-note"
+          className="font-ui mt-2 text-[0.6875rem] text-[color:var(--muted)]"
+        >
           {note}
         </p>
       )}
@@ -167,7 +170,7 @@ export function ReachCard({
       {error && (
         <p
           data-testid="reach-error"
-          className="status-error mt-2 rounded-[var(--radius)] px-2 py-1 text-[11px]"
+          className="status-error mt-2 rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]"
         >
           {error}
         </p>
@@ -178,7 +181,7 @@ export function ReachCard({
           {steps
             .filter((s) => !s.ok)
             .map((s) => (
-              <li key={s.step} className="font-ui text-[11px] text-[color:var(--muted)]">
+              <li key={s.step} className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
                 {s.detail ?? `${s.step} did not work.`}
               </li>
             ))}
@@ -193,13 +196,13 @@ export function ReachCard({
       {startsAt && (
         <p
           data-testid="reach-starts"
-          className="font-ui mt-2 text-[11px] text-[color:var(--muted)]"
+          className="font-ui mt-2 text-[0.6875rem] text-[color:var(--muted)]"
         >
           {startsAt}
         </p>
       )}
 
-      <p className="font-ui mt-2 border-t border-[color:var(--border)] pt-1 text-[11px] text-[color:var(--muted)]">
+      <p className="font-ui mt-2 border-t border-[color:var(--border)] pt-1 text-[0.6875rem] text-[color:var(--muted)]">
         {bound && (
           <>
             Listening: <code className="font-mono">{bound}</code>.{" "}

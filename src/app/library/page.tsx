@@ -293,7 +293,7 @@ function LibraryPageInner() {
 
         {downloads.length > 0 && (
           <div className="max-h-[30vh] overflow-y-auto border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2">
-            <p className="font-ui mb-1.5 text-[11px] font-semibold text-[color:var(--muted)]">
+            <p className="font-ui mb-1.5 text-[0.6875rem] font-semibold text-[color:var(--muted)]">
               {activeDownloads > 0
                 ? `${activeDownloads} download${activeDownloads === 1 ? "" : "s"} in flight`
                 : "recent downloads"}
@@ -306,7 +306,7 @@ function LibraryPageInner() {
           </div>
         )}
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(280px,360px)_1fr] overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:grid sm:grid-cols-[minmax(220px,320px)_minmax(0,1fr)] sm:overflow-hidden">
           <ModelList
             models={models}
             selected={selected}
@@ -314,7 +314,7 @@ function LibraryPageInner() {
             loadableFormats={loadableFormats}
             runtimes={runtimes}
           />
-          <div className="min-h-0 overflow-y-auto px-5 py-4">
+          <div className="min-w-0 shrink-0 px-4 py-4 sm:min-h-0 sm:overflow-y-auto sm:px-5">
             {current ? (
               <ModelDetail
                 key={current.id}
@@ -409,7 +409,7 @@ function ModelList({
   runtimes: Runtime[];
 }) {
   return (
-    <aside className="min-h-0 overflow-y-auto border-r border-[color:var(--border)]">
+    <aside className="max-h-[35dvh] shrink-0 overflow-y-auto border-b border-[color:var(--border)] sm:max-h-none sm:min-h-0 sm:border-r">
       {models == null && <p className="px-4 py-3 text-xs text-[color:var(--muted)]">loading…</p>}
       {models?.length === 0 && (
         <p className="px-4 py-3 text-xs leading-relaxed text-[color:var(--muted)]">
@@ -436,18 +436,18 @@ function ModelList({
                 <span
                   data-testid="model-list-running"
                   title={`Running on the machine in the picker as ${live.runtime}.`}
-                  className="status-success shrink-0 rounded px-1 text-[9px] tracking-wider uppercase"
+                  className="status-success shrink-0 rounded px-1 text-[0.5625rem] tracking-wider uppercase"
                 >
                   {live.live ? "running" : "starting"}
                 </span>
               )}
               {m.status !== "present" && (
-                <span className="status-warn shrink-0 rounded px-1 text-[9px] tracking-wider uppercase">
+                <span className="status-warn shrink-0 rounded px-1 text-[0.5625rem] tracking-wider uppercase">
                   {m.status}
                 </span>
               )}
             </div>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-[color:var(--muted)]">
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[0.625rem] text-[color:var(--muted)]">
               <span className="font-mono">{m.format}</span>
               {m.gguf?.quantization && <span className="font-mono">{m.gguf.quantization}</span>}
               {m.sizeLabel && <span>{m.sizeLabel}</span>}
@@ -524,14 +524,14 @@ function SkippedPanel({ scan }: { scan: Scan }) {
                 {items.slice(0, 12).map((s) => (
                   <li
                     key={s.path}
-                    className="truncate font-mono text-[10px]"
+                    className="truncate font-mono text-[0.625rem]"
                     title={s.detail ?? ""}
                   >
                     {s.path}
                   </li>
                 ))}
                 {items.length > 12 && (
-                  <li className="text-[10px]">… and {items.length - 12} more</li>
+                  <li className="text-[0.625rem]">… and {items.length - 12} more</li>
                 )}
               </ul>
             </div>
@@ -590,7 +590,7 @@ function ModelDetail({
         {model.displayName && (
           <p className="text-xs text-[color:var(--muted)]">{model.displayName}</p>
         )}
-        <p className="mt-1 font-mono text-[10px] break-all text-[color:var(--muted)]">
+        <p className="mt-1 font-mono text-[0.625rem] break-all text-[color:var(--muted)]">
           {model.path}
         </p>
       </div>
@@ -611,7 +611,9 @@ function ModelDetail({
           <button type="button" onClick={() => void forget()} className={`${buttonClass} mt-2`}>
             forget this entry and its profiles
           </button>
-          <p className="mt-1 text-[10px]">No file is deleted. This only drops what we stored.</p>
+          <p className="mt-1 text-[0.625rem]">
+            No file is deleted. This only drops what we stored.
+          </p>
         </div>
       )}
 
@@ -683,7 +685,7 @@ function ModelDetail({
                     : null
                 }
               />
-              <p className="mt-1 text-[11px] text-[color:var(--muted)]">
+              <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">
                 {/* A runtime that exists and is stopped is a different
                     sentence from nothing at all: the settings are already
                     chosen, and why it stopped is the thing worth saying. */}
@@ -788,16 +790,16 @@ function RunningPanel({
           {busy ? "stopping…" : "Stop"}
         </button>
       </div>
-      <p className="mt-1 text-[11px] opacity-80">
+      <p className="mt-1 text-[0.6875rem] opacity-80">
         Stopping frees the memory and keeps the file and its saved settings; Run brings it back.
       </p>
 
       {/* The expert path, kept and demoted. */}
       <details className="mt-2">
-        <summary className="cursor-pointer text-[11px] underline">Run another copy</summary>
+        <summary className="cursor-pointer text-[0.6875rem] underline">Run another copy</summary>
         <div className="mt-1.5">
           <RunButton model={model} node={node} size="small" label="Run another copy" />
-          <p className="mt-1 text-[11px] opacity-80">
+          <p className="mt-1 text-[0.6875rem] opacity-80">
             Another engine loads the same file, using extra memory. This can serve two requests at
             once if your card has room for both copies.
           </p>
@@ -909,7 +911,7 @@ function FitPanel({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="font-ui text-[11px] underline"
+          className="font-ui text-[0.6875rem] underline"
           aria-expanded={open}
         >
           {open ? "hide the numbers" : "show the numbers"}
@@ -981,7 +983,7 @@ function Facts({ model }: { model: LibraryModel }) {
     : [];
 
   return (
-    <dl className="grid grid-cols-[130px_1fr] gap-x-4 gap-y-1.5 text-xs">
+    <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-[130px_minmax(0,1fr)]">
       <Row label="format">
         <span className="font-mono">{model.format}</span>
       </Row>
@@ -1051,7 +1053,7 @@ function Facts({ model }: { model: LibraryModel }) {
 
       {model.gguf?.projectorPath && (
         <Row label="projector">
-          <span className="font-mono text-[10px] break-all">{model.gguf.projectorPath}</span>
+          <span className="font-mono text-[0.625rem] break-all">{model.gguf.projectorPath}</span>
         </Row>
       )}
 
