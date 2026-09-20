@@ -356,6 +356,40 @@ export interface components {
              *     have it dropped with a warning rather than erroring.
              */
             temperature?: number;
+            /**
+             * Format: float
+             * @description Nucleus sampling cutoff. Owned by the caller (the gateway)
+             *     exactly as `temperature` is, and for the same reason: it
+             *     changes what the model says, so a driver never substitutes
+             *     one of its own.
+             *
+             *     **Added 2026-09-19.** `gateway.yaml` had promised since M0
+             *     that `top_p` was passed through to backends that support it
+             *     and dropped with a warning where they do not, and there was
+             *     no field here to carry it — so the gateway accepted the
+             *     value from its caller and silently discarded it, with no
+             *     warning logged anywhere. A knob that is read, validated and
+             *     thrown away is worse than one that is refused.
+             *
+             *     An adapter whose backend has no such knob — the agentic
+             *     CLIs — drops it and says so in its log, once per field, and
+             *     answers the request.
+             */
+            topP?: number;
+            /**
+             * @description Deterministic-sampling seed. Owned by the caller, carried to
+             *     backends that implement it, dropped with a logged warning by
+             *     adapters whose backends do not.
+             *
+             *     **Added 2026-09-19 for the same reason as `topP`**, and it
+             *     is the more load-bearing of the two: a caller asking for a
+             *     seed is asking for a reproducible answer, and silently
+             *     dropping it returns a different answer each time while the
+             *     contract says otherwise. Nothing in a response says whether
+             *     the seed arrived, so the failure is invisible to the caller
+             *     by construction.
+             */
+            seed?: number;
             /** @description Optional stop sequences. */
             stop?: string[];
             /**
@@ -397,8 +431,25 @@ export interface components {
              *     is `tool_calls`.
              */
             toolCalls?: components["schemas"]["ToolCall"][];
-            /** @enum {string} */
-            finishReason: "stop" | "length" | "stop_sequence" | "tool_calls" | "error";
+            /**
+             * @description **`content_filter` is separate from `error` since
+             *     2026-09-19**, and the two were one value for the same
+             *     reason `tool_calls` was folded into `stop` before step 6:
+             *     the map had a row for a state nobody had a use for yet, so
+             *     the state was reported as its nearest neighbour.
+             *
+             *     A filtered answer is not a backend error — nothing broke,
+             *     the backend did exactly what it was configured to do — and
+             *     it is not a natural end either, which is what the caller
+             *     saw. `error` means the generation was truncated because
+             *     something failed mid-stream; `content_filter` means a
+             *     classifier stopped it on purpose. OpenAI and Anthropic each
+             *     have their own name for this state and the gateway renders
+             *     it in the caller's vocabulary, so a client that switches on
+             *     the field gets the vendor value it already understands.
+             * @enum {string}
+             */
+            finishReason: "stop" | "length" | "stop_sequence" | "tool_calls" | "content_filter" | "error";
             usage?: components["schemas"]["Usage"];
             /** Format: uuid */
             requestId?: string;

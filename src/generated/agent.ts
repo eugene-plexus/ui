@@ -77,7 +77,7 @@ export interface paths {
         put?: never;
         /**
          * Exchange the operator's passphrase for a session token.
-         * @description Bcrypt-compares the supplied passphrase against the hash set
+         * @description Verifies the supplied passphrase against the Argon2id hash set
          *     during the first-run wizard. On success, returns a
          *     `SessionToken` the UI presents on every subsequent request.
          *
@@ -1812,9 +1812,17 @@ export interface components {
          */
         RekeyRequest: {
             /**
-             * @description The install's service-token signing key, base64. During a
-             *     promotion's announcement this is the key the agent already
-             *     holds.
+             * @description Base64 of the install's unencrypted Ed25519 private key in
+             *     PKCS8 PEM format. Trusted agents mint operator, service and
+             *     client JWTs with `alg: EdDSA`; verifier children receive only
+             *     the corresponding SubjectPublicKeyInfo public PEM through
+             *     `AUTH_VERIFY_KEY`. The master encryption key is separate.
+             *     During upgrade, an existing 32-byte HS256 key is accepted
+             *     until rotation. A node that has adopted Ed25519 refuses an
+             *     HS256 downgrade, even at a higher epoch or generation.
+             *     The algorithm is determined by trusted key material, never
+             *     the incoming JWT header. Promotion announces the held key;
+             *     explicit rotation generates Ed25519 and invalidates old tokens.
              */
             signingKey: string;
             /** @description The key's generation, as `Snapshot.signingKeyId` names it. */
@@ -2484,8 +2492,10 @@ export interface components {
          */
         RuntimeSpec: {
             /**
-             * @description Operator-supplied label, unique per install. Referenced by
-             *     an inference-driver's config to say which runtime it fronts.
+             * @description Operator-supplied label, unique per node. Referenced by
+             *     an inference-driver on that node to say which runtime it
+             *     fronts. Different nodes may use the same label; install-wide
+             *     runtime identity is the pair (node, name).
              */
             name: string;
             engine: components["schemas"]["EngineKind"];
@@ -3003,9 +3013,14 @@ export interface components {
          *       `autoStart: false`. Not an error; the respawn loop is
          *       suppressed.
          *     * `exited` — exited cleanly and is being respawned (transient).
-         *     * `crashed` — exited non-zero repeatedly and the agent has
-         *       given up. `lastError` and the captured engine output say why;
-         *       `POST .../restart` retries.
+         *     * `crashed` — could not be launched, or exited non-zero. If this
+         *       process never became ready, automatic retries stop immediately
+         *       rather than repeating a failed model load. After readiness,
+         *       unexpected non-zero exits retry with back-off up to five
+         *       consecutive crashes; 60 seconds of continuously observed ready
+         *       time resets that history. Loading time does not count as useful
+         *       uptime. `lastError` and the captured engine output say why;
+         *       `POST .../restart` retries after settings have been corrected.
          * @enum {string}
          */
         RuntimeStatus: "copying" | "starting" | "loading" | "ready" | "stopped" | "exited" | "crashed";
@@ -3392,7 +3407,14 @@ export interface components {
             /**
              * @description Opaque bearer token. Signed and validated server-side; the
              *     UI should never inspect its contents. Lifetime is bounded
-             *     by `expiresAt`.
+             *     by `expiresAt`. New installs and key rotations use JWT
+             *     `alg: EdDSA` with Ed25519. Existing HS256 installs retain
+             *     their 32-byte key until explicit rotation. Agent and control
+             *     hold private signing keys; gateway, library and driver hold
+             *     public verification keys after migration. Verifiers select
+             *     exactly one algorithm from trusted key material, not from
+             *     token headers. Rotation invalidates all prior tokens;
+             *     there is no simultaneous HS256/EdDSA acceptance window.
              */
             sessionToken: string;
             /** Format: date-time */
@@ -3436,7 +3458,7 @@ export interface components {
         /**
          * @description Login request body sent by the UI to `POST /v1/auth/login` on
          *     the agent. The passphrase is the same one the operator set
-         *     in the wizard. The agent bcrypt-compares it; on match,
+         *     in the wizard. The agent verifies its Argon2id hash; on match,
          *     issues a session token.
          */
         AuthLoginRequest: {

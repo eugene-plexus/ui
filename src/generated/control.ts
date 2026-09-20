@@ -994,11 +994,16 @@ export interface components {
              */
             epoch: number;
             /**
-             * @description The current service-token signing key, so this node's
-             *     components can verify tokens minted anywhere in the install.
-             *     **This is what a single-watchdog install could not do**: a
-             *     driver spawned on one host used to reject a gateway's token
-             *     from another because the keys were unrelated.
+             * @description Base64 of the install's unencrypted Ed25519 private key in
+             *     PKCS8 PEM format. This trusted agent is a token minter, so
+             *     enrollment transfers private material to it. It derives
+             *     SubjectPublicKeyInfo public PEM for gateway, library and
+             *     inference-driver children; those receive `AUTH_VERIFY_KEY`
+             *     and their own service token, never this private key.
+             *     New installs and rotations sign JWTs with `alg: EdDSA`.
+             *     An upgraded install retains its existing base64 32-byte
+             *     HS256 key until explicit rotation; no re-enrollment is needed.
+             *     The format selects the algorithm, independently of JWT headers.
              */
             signingKey: string;
             /**
@@ -1588,7 +1593,14 @@ export interface components {
             /**
              * @description Opaque bearer token. Signed and validated server-side; the
              *     UI should never inspect its contents. Lifetime is bounded
-             *     by `expiresAt`.
+             *     by `expiresAt`. New installs and key rotations use JWT
+             *     `alg: EdDSA` with Ed25519. Existing HS256 installs retain
+             *     their 32-byte key until explicit rotation. Agent and control
+             *     hold private signing keys; gateway, library and driver hold
+             *     public verification keys after migration. Verifiers select
+             *     exactly one algorithm from trusted key material, not from
+             *     token headers. Rotation invalidates all prior tokens;
+             *     there is no simultaneous HS256/EdDSA acceptance window.
              */
             sessionToken: string;
             /** Format: date-time */

@@ -236,9 +236,10 @@ export interface paths {
          *     owns the model rather than to the caller.
          *
          *     `top_k` is a real loss and is documented as one: both local
-         *     engines accept it and neither of our contracts carries it, which
-         *     is the same omission `top_p` and `seed` already have on the
-         *     internal request.
+         *     engines accept it and neither of our contracts carries it. It
+         *     was the same omission `top_p` and `seed` had on the internal
+         *     request until 2026-09-19; those two are carried now and `top_k`
+         *     is the last one left.
          *
          *     ### What is refused, with a 400 naming the field
          *
@@ -888,7 +889,23 @@ export interface components {
             /**
              * @description The slot's tiers in priority order, each the driver names
              *     in it. One tier for an unconfigured model; more when a
-             *     `modelSlots` entry adds targets. Empty tiers are omitted.
+             *     `modelSlots` entry adds targets.
+             *
+             *     **An empty tier is kept.** Its index is the `tier` a
+             *     completion reports, so dropping one renumbers every tier
+             *     after it and a fallback comes back claiming to be the
+             *     primary. A configured target with nothing serving it reads
+             *     as `[]` here, which is also the diagnosis an operator
+             *     wants: *you asked for `local-8b` and nothing serves it*.
+             *     (This said "empty tiers are omitted" until 2026-09-19; it
+             *     had been untrue since the 2026-09-10 fix that made it so.)
+             *
+             *     The one tier that can be **absent** is the slot's own name,
+             *     which is implicit rather than something the operator listed.
+             *     It is there whenever any node in the install declares a
+             *     runtime under that name — a primary that is merely down is
+             *     still a primary — and gone for a purely virtual alias, where
+             *     keeping it would renumber the operator's own targets.
              */
             tiers?: string[][];
             /**
@@ -921,13 +938,29 @@ export interface components {
             max_tokens?: number;
             /** Format: float */
             temperature?: number;
-            /** Format: float */
+            /**
+             * Format: float
+             * @description Nucleus sampling cutoff, carried to the backend.
+             *
+             *     **This field was accepted, validated and discarded until
+             *     2026-09-19**: `GenerateRequest` had no `topP` to put it in,
+             *     so the value went no further than this schema and nothing
+             *     was logged. It has one now.
+             */
             top_p?: number;
             /** @description Stop sequences. */
             stop?: string[];
             /**
              * @description Passed through to backends that support deterministic
              *     sampling; dropped with a warning where they do not.
+             *
+             *     **True since 2026-09-19 and unfulfillable before it** —
+             *     there was no `seed` on `GenerateRequest`, so the value was
+             *     dropped by every backend and the warning this sentence
+             *     promises was logged by none of them. A caller asking for a
+             *     seed is asking for a reproducible answer and was getting a
+             *     different one each time, with nothing in the response to
+             *     say so.
              */
             seed?: number;
             /**
@@ -1024,7 +1057,17 @@ export interface components {
             /**
              * @description `stop` for a natural end or a matched stop sequence,
              *     `length` for hitting the token cap, `tool_calls` when the
-             *     model stopped because it wants one or more tools run.
+             *     model stopped because it wants one or more tools run,
+             *     `content_filter` when a safety classifier stopped it.
+             *
+             *     **`content_filter` is OpenAI's own value and is carried
+             *     since 2026-09-19.** Before that the chain was
+             *     `content_filter` → the driver's `error` → `stop`, so a
+             *     filtered answer arrived as a natural end and a caller had
+             *     no way to tell a refusal from a reply. The same mistake as
+             *     `tool_calls` → `stop` before 2026-09-11, one value along:
+             *     a state with no row of its own reported as its nearest
+             *     neighbour.
              *
              *     Until 2026-09-11 this enum was `stop` and `length` only, and
              *     its description said so in as many words — "OpenAI's two
@@ -1035,7 +1078,7 @@ export interface components {
              *     could use.
              * @enum {string}
              */
-            finish_reason: "stop" | "length" | "tool_calls";
+            finish_reason: "stop" | "length" | "tool_calls" | "content_filter";
         };
         /** @description One SSE frame of a streaming completion. */
         ChatCompletionChunk: {
@@ -1087,7 +1130,7 @@ export interface components {
              * @description Null until the terminal chunk.
              * @enum {string|null}
              */
-            finish_reason?: "stop" | "length" | "tool_calls" | null;
+            finish_reason?: "stop" | "length" | "tool_calls" | "content_filter" | null;
         };
         /**
          * @description One tool offered to the model. OpenAI has only ever defined
@@ -1241,6 +1284,14 @@ export interface components {
              * @description Which tier of the slot answered, 1-based. Greater than 1
              *     means every backend in an earlier tier was ineligible or
              *     failed — a cloud target answering for a local model, say.
+             *
+             *     **Positional, counted over the slot's tiers rather than over
+             *     the ones that had anything in them**, which is the only
+             *     reading that answers the question this field exists for:
+             *     *did the primary serve this?* A primary whose companion
+             *     driver is down is a tier with no backends, and it still
+             *     occupies its number. See `ModelRoutingInfo.tiers` for which
+             *     tier can be absent and why.
              */
             tier?: number;
             /**
@@ -1557,9 +1608,12 @@ export interface components {
             /**
              * @description **Read and dropped**, and this is a real loss rather than a
              *     no-op: both local engines accept a top-k and neither of this
-             *     project's internal contracts carries one, which is the same
-             *     gap `top_p` and `seed` have on `GenerateRequest`. Documented
-             *     here so the omission is visible to whoever adds it.
+             *     project's internal contracts carries one. It is now the
+             *     only such gap — `top_p` and `seed` had the same one until
+             *     2026-09-19, when `GenerateRequest` grew `topP` and `seed`.
+             *     Documented here so the omission is visible to whoever adds
+             *     it, and the shape of that fix is now written down one
+             *     document over.
              */
             top_k?: number;
             /**
@@ -1783,10 +1837,20 @@ export interface components {
             /**
              * @description Mapped from the backend's finish reason: `stop` becomes
              *     `end_turn`, `length` becomes `max_tokens`, `tool_calls`
-             *     becomes `tool_use`.
+             *     becomes `tool_use`, and **since 2026-09-19 a backend's
+             *     `content_filter` becomes `refusal`** — Anthropic's own name
+             *     for a classifier stopping the answer, so a client switching
+             *     on this field gets a value from the vocabulary it already
+             *     parses rather than one we invented. Not verified against a
+             *     live Anthropic SDK; the OpenAI door's `content_filter` was.
+             *
+             *     A backend error still reports `end_turn`, because there is
+             *     no Anthropic stop reason for *the backend broke* and the
+             *     truncation is reported where it can be acted on — the log
+             *     line and the metrics row.
              * @enum {string|null}
              */
-            stop_reason?: "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | null;
+            stop_reason?: "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | "refusal" | null;
             stop_sequence?: string | null;
             usage?: components["schemas"]["AnthropicUsage"];
         };
@@ -1900,7 +1964,14 @@ export interface components {
                  *     thing.
                  */
                 message: string;
-                /** @description OpenAI-style class, e.g. `invalid_request_error`. */
+                /**
+                 * @description OpenAI-style class, e.g. `invalid_request_error`. The
+                 *     gateway also emits `upstream_error`, `timeout`,
+                 *     `service_unavailable`, `client_disconnected` and —
+                 *     since 2026-09-19 — **`upstream_auth_error`**, which is
+                 *     the one that says the fault is ours rather than the
+                 *     caller's: a driver refused the gateway's credential.
+                 */
                 type: string;
                 param?: string | null;
                 code?: string | null;
@@ -2052,14 +2123,12 @@ export interface components {
              *
              *     `elapsedMs - backendMs` is therefore the cost of the
              *     gateway-to-driver hop plus the driver's own work: the
-             *     control plane's overhead on this request. This document
-             *     asserted from M0 to M8 that the extra local hop was
-             *     "sub-millisecond against a multi-second generation" and "not
-             *     a cost worth optimising away" - an architectural
-             *     justification nobody had measured. Both numbers were already
-             *     being produced; subtracting them made the claim checkable,
-             *     and **the first time it ran it came back 114-120 ms**. See
-             *     this document's overview.
+             *     control plane's overhead on this attempt, not a measurement
+             *     of GPU compute alone. Both durations use `time.perf_counter()`
+             *     and are truncated to integer milliseconds, so subtraction also
+             *     includes quantization error. Historical 114-120 ms overhead came
+             *     from per-request HTTP-client construction, fixed in R1.1;
+             *     see this document's overview for the measured result.
              */
             backendMs?: number | null;
             served: boolean;
@@ -2744,6 +2813,17 @@ export interface operations {
              *     it arrives as a 400 rather than the retryable 502 it used to
              *     be — a difference that decides whether a harness fixes the
              *     prompt or retries the same one forever.
+             *
+             *     **A driver's own 401 or 403 is NOT one of these, since
+             *     2026-09-19.** It was, and it was the one 4xx the caller
+             *     could do nothing about: it means the gateway's credential
+             *     to that driver was refused — a rotated service token on one
+             *     node is the shape it takes — so the request was fine and
+             *     the install is not. Reporting it as
+             *     `invalid_request_error` sent a harness to re-read its own
+             *     prompt for a fault that was never there. It is a 502 with
+             *     `upstream_auth_error` now, and the message names the
+             *     driver.
              */
             400: {
                 headers: {
@@ -2785,6 +2865,14 @@ export interface operations {
              * @description Every eligible backend failed. Returned after the priority
              *     list is exhausted, so this means the cascade ran and lost,
              *     not that one backend hiccuped.
+             *
+             *     **One 502 does mean a single backend, and is named as
+             *     such:** a driver that answered 401 or 403 refused the
+             *     gateway's own credential. That is an install fault rather
+             *     than a request fault, and reporting it in the caller's 4xx
+             *     range told a harness to fix a prompt that was correct.
+             *     `error.type` is `upstream_auth_error` and the message names
+             *     the driver whose credential was refused.
              */
             502: {
                 headers: {
@@ -2915,7 +3003,17 @@ export interface operations {
                     "application/json": components["schemas"]["AnthropicErrorResponse"];
                 };
             };
-            /** @description Every eligible backend failed, after the cascade ran. */
+            /**
+             * @description Every eligible backend failed, after the cascade ran — or a
+             *     driver refused the gateway's own credential (401/403 from
+             *     the driver), which is one backend rather than all of them
+             *     and is an install fault rather than a request fault. Both
+             *     render as `api_error` on this door, where the OpenAI door
+             *     distinguishes them by `error.type`: Anthropic's error
+             *     vocabulary has no member for *our upstream refused us*, and
+             *     `permission_error` here would read as the caller's
+             *     credential being wrong when it is ours.
+             */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -3005,7 +3103,10 @@ export interface operations {
             };
             /**
              * @description Every eligible backend for this model failed. Note "for this
-             *     model": the cascade never reached a different one.
+             *     model": the cascade never reached a different one. A driver
+             *     that refused the gateway's own credential also lands here,
+             *     with `error.type` `upstream_auth_error`, for the reason
+             *     given on `POST /v1/chat/completions`.
              */
             502: {
                 headers: {
