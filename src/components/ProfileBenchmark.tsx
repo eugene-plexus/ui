@@ -179,6 +179,7 @@ export function BenchmarkPanel({
           Generated tokens per sample
           <input
             id={`${id}-tokens`}
+            disabled={!target || busy}
             type="number"
             min={16}
             max={256}
@@ -192,6 +193,7 @@ export function BenchmarkPanel({
           Repetitions
           <input
             id={`${id}-repetitions`}
+            disabled={!target || busy}
             type="number"
             min={1}
             max={5}
