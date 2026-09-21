@@ -335,6 +335,16 @@ export interface components {
     schemas: {
         GenerateRequest: {
             /**
+             * @description A2 provenance: names of settings explicitly requested by the caller,
+             *     using this request's field names (maxTokens, temperature, topP, seed,
+             *     stop, tools, toolChoice, responseFormat). The gateway preserves this
+             *     list on each fallback attempt. An adapter must refuse a known unsupported
+             *     explicit setting with 400, rather than silently dropping it. Settings
+             *     supplied only by profiles/defaults retain the adapter's default behavior.
+             *     This field is internal and is not forwarded to upstream providers.
+             */
+            callerSettings?: string[];
+            /**
              * @description Full prompt as an ordered conversation. Whatever system
              *     message the caller wants is already in here; the driver does
              *     not modify, prepend to, or reorder it.
@@ -343,8 +353,8 @@ export interface components {
             /**
              * @description Maximum output tokens. Backend-clamped. Owned by the caller
              *     (the gateway) — the driver applies no local default. Adapters
-             *     whose backends don't expose this knob (agentic CLIs) ignore
-             *     it silently.
+             *     whose backends don't expose this knob (agentic CLIs) refuse it when
+             *     callerSettings marks it explicit; inherited defaults remain ignored.
              */
             maxTokens?: number;
             /**
@@ -353,7 +363,7 @@ export interface components {
              *     (the gateway, which resolves it from the model's settings
              *     profile) — the driver applies no local default. Backends that
              *     reject the parameter outright, as some reasoning models do,
-             *     have it dropped with a warning rather than erroring.
+             *     refuse explicit callerSettings and omit inherited defaults.
              */
             temperature?: number;
             /**

@@ -162,6 +162,12 @@ export interface paths {
          *     not retain. Being on disk does not guarantee a metadata basis;
          *     `notes` names assumptions and when a rescan can improve them.
          *
+         *     For GGUF, memory guidance covers the main model and every shard,
+         *     without a separate vision projector. Finding a projector beside
+         *     the model does not load it. `notes` calls out its exclusion;
+         *     launching with a projector needs additional memory. The model's
+         *     `sizeBytes` still includes that file as part of its disk footprint.
+         *
          *     Two things it answers that the library browser cannot: whether a
          *     model that fits at 8k still fits at 128k, and what the actual
          *     arithmetic was. Both matter because the trained context of a
@@ -2280,7 +2286,12 @@ export interface components {
             verdict: components["schemas"]["FitVerdict"];
             /** @description `weightsBytes + kvCacheBytes + overheadBytes`. */
             requiredBytes: number;
-            /** @description Summed over every file in the candidate, shards included. */
+            /**
+             * @description Summed over the candidate's files, shards included. For an
+             *     on-disk GGUF, excludes a separate vision projector whose size
+             *     is known: guidance covers loading the main model. Unknown
+             *     projector sizes retain the conservative disk total.
+             */
             weightsBytes?: number;
             /**
              * @description `contextLength × attentionLayers × headCountKv ×

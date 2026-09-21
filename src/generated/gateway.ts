@@ -227,13 +227,13 @@ export interface paths {
          *     this project removed from the driver at step 7, one layer up, in
          *     the client it most wants to keep.
          *
-         *     ### What is dropped, and why dropping is honest
+         *     ### Compatibility hints and explicit refusals (A2)
          *
-         *     `cache_control`, `thinking`, `top_k`, `metadata`,
-         *     `context_management` and any unknown field are **dropped
-         *     silently**. A blanket unknown-field refusal passes every refusal
-         *     test and then fails on the first real request, because this wire
-         *     carries a great deal we have no equivalent for.
+         *     `cache_control`, `thinking` and `context_management` remain accepted for
+         *     measured Claude Code compatibility, but are not enforced. Non-null ignored
+         *     hints are named in `x-eugene-plexus-ignored-settings` on both response modes.
+         *     `metadata` is discarded as an opaque annotation. Unknown top-level fields
+         *     and non-null `top_k` are rejected with 400 naming the field.
          *
          *     `cache_control` appears on system blocks, on the last user
          *     content block **and on `tool_result` blocks**; prompt caching is
@@ -942,6 +942,12 @@ export interface components {
              */
             on_demand?: boolean;
         };
+        /**
+         * @description Supported chat settings only. Unknown properties, including nested message,
+         *     tool and response-format properties, return 400 with a field name. Arbitrary
+         *     JSON Schemas inside function parameters and response schemas are preserved.
+         *     Validation errors do not echo request values. See docs/api-compatibility.md.
+         */
         ChatCompletionRequest: {
             /**
              * @description A model id from `GET /v1/models`. The gateway resolves it to
@@ -950,11 +956,18 @@ export interface components {
             model: string;
             messages: components["schemas"]["ChatCompletionMessage"][];
             /**
-             * @description Maximum output tokens. Filled from the model's settings
-             *     profile when omitted, then always sent downstream
-             *     explicitly.
+             * @description Positive JSON integer generation limit; booleans, strings and floats
+             *     are rejected. Null or absent uses the profile then gateway default.
+             *     Normalized before defaults and preserved on every fallback attempt.
+             *     Engine token accounting is not guaranteed to match OpenAI's.
              */
-            max_tokens?: number;
+            max_tokens?: number | null;
+            /**
+             * @description Alias of max_tokens. If both are non-null they must be equal, otherwise
+             *     400 names max_completion_tokens. Neither spelling takes precedence over
+             *     a conflicting value. This does not add reasoning-token support to engines.
+             */
+            max_completion_tokens?: number | null;
             /** Format: float */
             temperature?: number;
             /**
@@ -967,8 +980,8 @@ export interface components {
              *     was logged. It has one now.
              */
             top_p?: number;
-            /** @description Stop sequences. */
-            stop?: string[];
+            /** @description One stop sequence or up to four sequences; forwarded as an array. */
+            stop?: string | string[];
             /**
              * @description Passed through to backends that support deterministic
              *     sampling; dropped with a warning where they do not.
@@ -988,8 +1001,37 @@ export interface components {
              * @default false
              */
             stream: boolean;
-            /** @description Opaque client-supplied identifier, echoed into logs only. */
+            /** @description Ignored client annotation; not stored, forwarded or used as identity. */
             user?: string;
+            /** @description Ignored annotations; not provider storage or queryable metadata. */
+            metadata?: {
+                [key: string]: string;
+            };
+            /** @description Ignored annotation; not an authenticated user identity. */
+            safety_identifier?: string;
+            /**
+             * @description Only one completion is supported; any other non-null value returns 400.
+             * @constant
+             */
+            n?: 1;
+            /**
+             * @description Only false is supported; log probabilities are not implemented.
+             * @constant
+             */
+            logprobs?: false;
+            /**
+             * @description Only false is supported; provider completion storage is not implemented.
+             * @constant
+             */
+            store?: false;
+            /**
+             * @description With streaming, true adds a usage-only chunk before DONE when the driver
+             *     reports usage. False omits usage. If absent, retains Eugene's historical
+             *     final choice chunk containing usage. Does not affect retained metrics.
+             */
+            stream_options?: {
+                include_usage?: boolean;
+            };
             /**
              * @description Tools the model may call. Passed through to the backend
              *     unchanged; the gateway never invents, filters or reorders
@@ -1560,13 +1602,10 @@ export interface components {
         /**
          * @description Request body for `POST /v1/messages`, in Anthropic's shape.
          *
-         *     **Deliberately permissive, and the reason is a measurement.**
-         *     Every field this gateway does not honour is *ignored* rather
-         *     than rejected, because a real Claude Code request carries
-         *     `thinking`, `cache_control`, `metadata` and
-         *     `context_management` on the very first call, and a schema that
-         *     refused an unknown field would refuse every request from the
-         *     client this endpoint exists for.
+         *     Measured Claude Code hints (`thinking`, `cache_control`,
+         *     `context_management`) are accepted with a response header naming ignored
+         *     settings. Metadata is discarded. Unknown top-level settings and top_k
+         *     are explicitly rejected. This is a text/tool translation, not full parity.
          *
          *     Consequently **this schema does not decide what is refused**.
          *     The refusals — image and document blocks, server-side tools,
@@ -1625,14 +1664,8 @@ export interface components {
             /** Format: float */
             top_p?: number;
             /**
-             * @description **Read and dropped**, and this is a real loss rather than a
-             *     no-op: both local engines accept a top-k and neither of this
-             *     project's internal contracts carries one. It is now the
-             *     only such gap — `top_p` and `seed` had the same one until
-             *     2026-09-19, when `GenerateRequest` grew `topP` and `seed`.
-             *     Documented here so the omission is visible to whoever adds
-             *     it, and the shape of that fix is now written down one
-             *     document over.
+             * @description Unsupported. A non-null value returns 400 naming top_k. Before A2
+             *     this was silently discarded despite controlling generation.
              */
             top_k?: number;
             /**
@@ -1671,10 +1704,9 @@ export interface components {
              *     true for the one configuration asking for no thinking at
              *     all.
              *
-             *     Dropping it is not a loss of control. A local model's
-             *     reasoning output is governed by `thinkingMode` on its
-             *     settings profile and by the driver's thinking filter, which
-             *     is the operator's decision rather than the caller's.
+             *     This is a compatibility concession, not enforcement of the caller's
+             *     reasoning budget. Non-null values are disclosed on the ignored-settings
+             *     response header. The operator's profile governs local thinking behavior.
              */
             thinking?: {
                 [key: string]: unknown;
