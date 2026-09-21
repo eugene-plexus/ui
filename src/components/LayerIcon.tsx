@@ -10,6 +10,7 @@ import {
   KeyRound,
   Monitor,
   Radio,
+  Route,
   Server,
   ShieldCheck,
   Terminal,
@@ -51,6 +52,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   FolderOpen,
   FolderTree,
   KeyRound,
+  Route,
 };
 
 export function LayerIcon({

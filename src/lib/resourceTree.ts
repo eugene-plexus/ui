@@ -152,6 +152,11 @@ const PAGES: Record<string, PageRef[]> = {
   ],
   gateway: [
     { id: "metrics", label: "Metrics", route: "/metrics", icon: "Radio" },
+    // The priority lists (`modelSlots`) as their own page rather than a
+    // JSON field on Config: they grow with the install, and their real
+    // failure mode — a misspelled target — needs the routing table on
+    // screen while editing (2026-09-21).
+    { id: "routing", label: "Routing", route: "/routing", icon: "Route" },
     { id: "config", label: "Config", route: "/config", icon: "Server" },
   ],
   library: [
@@ -740,6 +745,7 @@ export function defaultSelectionFor(
     case "/inference":
       return "install";
     case "/metrics":
+    case "/routing":
       return "gateway";
     case "/library":
     case "/library/folders":

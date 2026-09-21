@@ -416,7 +416,7 @@ describe("the page menu", () => {
   it("gives each object the pages the design lists", () => {
     const tree = buildTree(TWO_MACHINE);
     const pagesOf = (sel: string) => findNode(tree, sel)?.pages.map((p) => p.label);
-    expect(pagesOf("gateway")).toEqual(["Metrics", "Config"]);
+    expect(pagesOf("gateway")).toEqual(["Metrics", "Routing", "Config"]);
     expect(pagesOf("library")).toEqual(["Models", "Folders", "Discover", "Config"]);
     expect(pagesOf("library:node:nas")).toEqual(["Folders"]);
     expect(pagesOf("control")).toEqual(["Nodes", "Config"]);
@@ -528,6 +528,10 @@ describe("an old link still lands on the right object", () => {
     expect(defaultSelectionFor("/playground/")).toBe("install");
     expect(defaultSelectionFor("/inference/")).toBe("install");
     expect(defaultSelectionFor("/metrics/")).toBe("gateway");
+    // The Routing page is the gateway's (2026-09-21): a bare `/routing`
+    // link — a bookmark, the Config page's cross-link — must light the
+    // gateway row, or the page menu renders nothing, silently.
+    expect(defaultSelectionFor("/routing/")).toBe("gateway");
     expect(defaultSelectionFor("/library/?model=x")).toBe("library");
     expect(defaultSelectionFor("/discover/")).toBe("library");
     expect(defaultSelectionFor("/nodes/")).toBe("control");

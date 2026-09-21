@@ -217,13 +217,13 @@ export function ConfigFieldInput({
       );
     }
 
-    // `model_slots` (M6): the gateway's priority lists, an ordered array
-    // of `{model, targets}`. Edited as JSON in a textarea for now — the
-    // design names a structured editor as the UI gap it is. Parsed on
-    // every keystroke; a parse error is shown and nothing is sent, so a
-    // half-typed list never reaches the server as a rejected patch.
+    // `model_slots` (M6): the gateway's priority lists. Edited on their
+    // own page since 2026-09-21 — they grow with the install, and the
+    // structured editor needs the routing table beside the form. This
+    // field is a summary and a link, both ways per
+    // `cross-link-related-settings`; the Routing page links back here.
     if (field.valueType === "model_slots") {
-      return <ModelSlotsInput value={value} pending={pending} onChange={onChange} />;
+      return <ModelSlotsSummary value={value} />;
     }
 
     // Peer-reference dropdown: a `componentKindHint` tells us this
@@ -426,71 +426,31 @@ const URL_LIST_COPY: ListCopy = {
  * entries without saying so is worse than an error either way.
  */
 /**
- * Editor for `model_slots`: the JSON array itself, with a parse check.
- *
- * Deliberately not a structured form yet. A slot is `{model, targets[]}`
- * and the server validates every entry with a message that names the
- * line; a textarea that shows the array as the server holds it, and
- * refuses to send what does not parse, is honest and small. The
- * structured editor is a `ui` change with no contract consequence.
+ * Read-only summary for `model_slots`, linking to the Routing page that
+ * owns the editing (2026-09-21). The JSON textarea this replaced lives on
+ * — as the expert override on that page, beside the routing table the
+ * structured editor reads. Two editors for one setting is how the two
+ * drift, so this one is a sentence and a link.
  */
-function ModelSlotsInput({
-  value,
-  pending,
-  onChange,
-}: {
-  value: unknown;
-  pending: boolean;
-  onChange: (newValue: unknown) => void;
-}) {
-  const serialized = JSON.stringify(Array.isArray(value) ? value : [], null, 2);
-  const [text, setText] = useState<string>(serialized);
-  const [parseError, setParseError] = useState<string | null>(null);
-  const mirrored = useRef<string>(serialized);
-
-  useEffect(() => {
-    if (serialized !== mirrored.current) {
-      mirrored.current = serialized;
-      setText(serialized);
-      setParseError(null);
-    }
-  }, [serialized]);
-
+function ModelSlotsSummary({ value }: { value: unknown }) {
+  const slots = Array.isArray(value) ? value : [];
+  const names = slots
+    .map((s) => (typeof s === "object" && s !== null ? (s as Record<string, unknown>).model : null))
+    .filter((m): m is string => typeof m === "string" && m.trim() !== "");
   return (
-    <div className="space-y-1">
-      <textarea
-        value={text}
-        rows={Math.min(14, Math.max(4, text.split("\n").length + 1))}
-        spellCheck={false}
-        disabled={pending}
-        onChange={(e) => {
-          const next = e.target.value;
-          setText(next);
-          try {
-            const parsed: unknown = JSON.parse(next);
-            if (!Array.isArray(parsed)) {
-              setParseError("must be a JSON array of {model, targets} entries");
-              return;
-            }
-            setParseError(null);
-            mirrored.current = JSON.stringify(parsed, null, 2);
-            onChange(parsed);
-          } catch (err) {
-            setParseError(err instanceof Error ? err.message : String(err));
-          }
-        }}
-        className="w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50"
-      />
-      <p className="text-sm leading-relaxed text-[color:var(--muted)]">
-        One entry per name a client may ask for:{" "}
-        <span className="font-mono">
-          {'{"model": "coder", "targets": ["qwen3-coder-30b", "claude-opus-4-7"]}'}
-        </span>
-        . Targets are model ids — each one is every replica serving it — tried in order after the
-        model&rsquo;s own drivers.
-      </p>
-      {parseError && <p className="status-error text-sm">Not saved: {parseError}</p>}
-    </div>
+    <p
+      className="text-sm leading-relaxed text-[color:var(--muted)]"
+      data-testid="model-slots-summary"
+    >
+      {slots.length === 0
+        ? "No priority lists."
+        : `${slots.length} priority ${slots.length === 1 ? "list" : "lists"}: ${names.join(", ")}.`}{" "}
+      Edited on{" "}
+      <Link href="/routing?sel=gateway" className="underline">
+        the gateway&rsquo;s Routing page
+      </Link>
+      , where each entry shows what serves it right now.
+    </p>
   );
 }
 

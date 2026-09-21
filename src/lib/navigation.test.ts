@@ -93,8 +93,8 @@ describe("the registry agrees with the website", () => {
 });
 
 describe("every screen resolves", () => {
-  it("has eight navigable screens", () => {
-    expect(SCREENS).toHaveLength(8);
+  it("has nine navigable screens", () => {
+    expect(SCREENS).toHaveLength(9);
   });
 
   it("puts Home at the root and the playground beside it, both under Your tools", () => {
@@ -158,6 +158,17 @@ describe("every screen resolves", () => {
     expect(library.map((s) => s.href)).toEqual(["/library", "/discover"]);
     expect(new Set(library.map((s) => s.icon)).size).toBe(2);
   });
+
+  it("gives the two Gateway screens two icons, Routing after Metrics", () => {
+    // Routing (2026-09-21): the priority lists as their own screen. It
+    // files under the gateway — the lists are the gateway's own config —
+    // and spans drivers, because every row resolves to the drivers
+    // serving a model id.
+    const gateway = SCREENS.filter((s) => s.layer === "gateway");
+    expect(gateway.map((s) => s.href)).toEqual(["/metrics", "/routing"]);
+    expect(new Set(gateway.map((s) => s.icon)).size).toBe(2);
+    expect(SCREENS.find((s) => s.href === "/routing")?.spans).toEqual(["drivers"]);
+  });
 });
 
 describe("the groups are the page's two halves", () => {
@@ -175,6 +186,7 @@ describe("the groups are the page's two halves", () => {
       "/",
       "/playground",
       "/metrics",
+      "/routing",
       "/inference",
     ]);
     expect(NAV_GROUPS.at(1)?.screens.map((s) => s.href)).toEqual([

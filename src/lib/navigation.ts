@@ -45,7 +45,8 @@ export type IconName =
   | "Monitor"
   | "FolderOpen"
   | "FolderTree"
-  | "KeyRound";
+  | "KeyRound"
+  | "Route";
 
 /**
  * A colour *role*, not a colour. `left` and `right` resolve to the
@@ -172,7 +173,7 @@ export interface Screen {
 }
 
 /**
- * The eight navigable screens.
+ * The nine navigable screens.
  *
  * Order within each group is the diagram's order, not alphabetical:
  * tools → gateway → drivers for the request path, then the rail's
@@ -224,6 +225,15 @@ export const SCREENS: readonly Screen[] = [
     layer: "gateway",
     spans: [],
     blurb: "What the gateway served, per request and per attempt.",
+  },
+  {
+    href: "/routing",
+    label: "Routing",
+    icon: "Route",
+    layer: "gateway",
+    spans: ["drivers"],
+    blurb:
+      "Priority lists: which backends serve each model name, and what is tried when they fail.",
   },
   {
     href: "/inference",
