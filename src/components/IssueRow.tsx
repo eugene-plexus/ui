@@ -82,7 +82,15 @@ function UnlockForm({ onFixed }: { onFixed: () => Promise<void> }) {
     setBusy(true);
     setProblem(null);
     const token = getSessionToken();
-    const outcome = token ? await unlockControlRoot(passphrase, token) : ("unavailable" as const);
+    // Patient, unlike the sign-in path: this form has a spinner and a
+    // person watching it, and Argon2id on the root's own host decides
+    // how long a correct passphrase takes. The live report this fixes
+    // was "I always have to enter the passphrase twice" — the first
+    // attempt succeeded after an 8 s client timeout had already called
+    // it a failure.
+    const outcome = token
+      ? await unlockControlRoot(passphrase, token, { timeoutMs: 30_000, confirmAttempts: 4 })
+      : ("unavailable" as const);
     if (outcome === "unlocked") {
       setPassphrase("");
       // The issue disappears when the next read finds the root open, and

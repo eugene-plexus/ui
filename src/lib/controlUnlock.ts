@@ -57,9 +57,24 @@ export function isLockedError(e: unknown): boolean {
   return problem.type?.endsWith("#locked") === true || problem.title === "Locked";
 }
 
+/** The confirmation read below. Status is cheap — no key derivation —
+ * so a root that is up answers this fast even mid-Argon2id. */
+const CONFIRM_TIMEOUT_MS = 4000;
+const CONFIRM_RETRY_MS = 2000;
+
 export async function unlockControlRoot(
   passphrase: string,
   sessionToken: string,
+  options: {
+    timeoutMs?: number;
+    /** How many status reads to spend confirming after a login that
+     * did not answer, ~2 s apart. The abandoned login may still be
+     * deriving server-side, so one immediate read can be too early.
+     * Sign-in keeps the default of 1 — it must not hold the login
+     * screen against a genuinely dead root — and the Issues unlock
+     * form, which has a spinner and a person watching it, polls. */
+    confirmAttempts?: number;
+  } = {},
 ): Promise<ControlUnlockOutcome> {
   try {
     // `bearer`, not the stored session: the proxy spends this credential
@@ -73,12 +88,37 @@ export async function unlockControlRoot(
       { passphrase },
       {
         bearer: sessionToken,
-        timeoutMs: UNLOCK_TIMEOUT_MS,
+        timeoutMs: options.timeoutMs ?? UNLOCK_TIMEOUT_MS,
       },
     );
     return "unlocked";
   } catch (e) {
+    // A 401 is the root ANSWERING: it holds a different passphrase.
+    // Definitive — no second look could change it.
     if (e instanceof ApiError && e.status === 401) return "mismatch";
+    // Everything else is "we did not hear an answer", which is not the
+    // same as "nothing happened". Argon2id on a slow NAS can outlive
+    // this client's patience while the login SUCCEEDS server-side --
+    // reported from the live install as "I always have to enter the
+    // passphrase twice": the first attempt unsealed the root after the
+    // timeout fired, and the second found it already open. So ask the
+    // status endpoint, which derives nothing and answers fast, before
+    // calling the attempt a failure -- and ask more than once where the
+    // caller allows it, because the abandoned login may still be
+    // deriving at the first read.
+    const attempts = Math.max(1, options.confirmAttempts ?? 1);
+    for (let i = 0; i < attempts; i += 1) {
+      if (i > 0) await new Promise((resolve) => setTimeout(resolve, CONFIRM_RETRY_MS));
+      try {
+        const status = await api.get<{ unlocked?: boolean }>("control", "/v1/auth/status", {
+          bearer: sessionToken,
+          timeoutMs: CONFIRM_TIMEOUT_MS,
+        });
+        if (status.unlocked === true) return "unlocked";
+      } catch {
+        // The root is not answering; keep trying within the budget.
+      }
+    }
     return "unavailable";
   }
 }

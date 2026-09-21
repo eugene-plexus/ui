@@ -321,6 +321,13 @@ describe("image wiring", () => {
   });
 });
 
+describe("arrival", () => {
+  it("the composer holds keyboard focus once a model is routable, without a click", async () => {
+    await renderReady();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("composer")));
+  });
+});
+
 describe("stop and retry", () => {
   it("Stop keeps the partial answer and reads as a notice, not an error", async () => {
     handlers.set("POST gateway/v1/chat/completions", hangingSse("Half an ans"));

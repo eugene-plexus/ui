@@ -147,7 +147,13 @@ describe("the sealed root is fixed from inside the list", () => {
     fireEvent.click(screen.getByTestId("issues-unlock-submit"));
 
     await waitFor(() => expect(unlockControlRoot).toHaveBeenCalledTimes(1));
-    expect(unlockControlRoot).toHaveBeenCalledWith("correct horse battery staple", "test-token");
+    // The patient variant, deliberately: this form has a spinner and a
+    // person watching, and the 8 s sign-in default is what produced the
+    // live "enter it twice" report when Argon2id outlived it.
+    expect(unlockControlRoot).toHaveBeenCalledWith("correct horse battery staple", "test-token", {
+      timeoutMs: 30_000,
+      confirmAttempts: 4,
+    });
     // And the list is pulled forward rather than left stale for half a
     // minute after the thing it reports was fixed.
     await waitFor(() => expect(onFixed).toHaveBeenCalledTimes(1));

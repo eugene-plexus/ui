@@ -99,7 +99,10 @@ describe("when something is wrong", () => {
     fireEvent.click(screen.getByTestId("issues-unlock-submit"));
 
     await waitFor(() => expect(unlockControlRoot).toHaveBeenCalledTimes(1));
-    expect(unlockControlRoot).toHaveBeenCalledWith("the install passphrase", "test-token");
+    expect(unlockControlRoot).toHaveBeenCalledWith("the install passphrase", "test-token", {
+      timeoutMs: 30_000,
+      confirmAttempts: 4,
+    });
     await waitFor(() => expect(onFixed).toHaveBeenCalledTimes(1));
   });
 

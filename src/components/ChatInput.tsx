@@ -70,6 +70,20 @@ export function ChatInput({
     wasPending.current = pending;
   }, [pending, disabled]);
 
+  // And on arrival: the page opens ready to type, without a click. The
+  // composer starts disabled until a model is routable, so this fires
+  // on the first enable rather than on mount — and only while nothing
+  // else holds focus, because stealing the caret from a person already
+  // typing in the diagnostic panel would be worse than the click.
+  const focusedOnArrival = useRef(false);
+  useEffect(() => {
+    if (focusedOnArrival.current || disabled) return;
+    focusedOnArrival.current = true;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    textarea.current?.focus();
+  }, [disabled]);
+
   useEffect(() => {
     if (!seed || seed.nonce === seenNonce.current) return;
     seenNonce.current = seed.nonce;
