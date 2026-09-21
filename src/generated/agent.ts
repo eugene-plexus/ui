@@ -161,23 +161,37 @@ export interface paths {
          *     nothing to re-read, so a lost key is re-minted rather than
          *     recovered.
          *
-         *     ### Which agent to ask
-         *
-         *     A client key is an **install-wide** credential — the whole
-         *     install shares one signing key, so a key minted anywhere
-         *     verifies everywhere. Its *record* is not install-wide: it lives
-         *     on the agent that minted it, and the gateway checks revocations
-         *     against **its own node's agent**. So mint against the node the
-         *     gateway runs on. A console on another machine reaches that agent
-         *     the way it reaches anything else, through `node:<name>` — nobody
-         *     has to open a browser on that machine
-         *     (`one-console-never-hop-nodes`).
+         *     Any enrolled agent forwards management to the active control root using
+         *     the caller's operator credential. Records and revocations are install-wide.
+         *     An unenrolled agent owns a standalone registry. Existing records migrate
+         *     automatically using the enrolled node identity; migration status is visible
+         *     in the list response. Unavailable authorities return 503 for writes.
          *
          *     Operator-only, and it is one of the few endpoints where that
          *     matters as much as it does on the trust root: a token minted
          *     here outlives every session.
          */
         post: operations["createClientKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/client-keys/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read bounded-age client authorization policy
+         * @description Operator or gateway service only. Enrolled agents relay the active control policy without renewing its timestamp; standalone agents issue local policy. Unavailable authorities return 503.
+         */
+        get: operations["getClientKeyPolicy"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -193,32 +207,10 @@ export interface paths {
         };
         /**
          * The ids of client keys that must no longer be accepted.
-         * @description What the **gateway** polls, and the only part of the key records
-         *     a component may read. Ids only: a revoked key's name is the
-         *     operator's business, and the gateway needs nothing but the `jti`
-         *     to refuse.
-         *
-         *     Accepts the operator's session token or `service:gateway`
-         *     exactly — not any service token. A leaked driver or library
-         *     token learns nothing from here, the same narrowing that starting
-         *     and stopping a runtime already applies.
-         *
-         *     **Bounded, not instant.** The gateway caches this list and
-         *     re-reads it when its copy is older than its routing refresh
-         *     interval, so a revoked key stops working within about that
-         *     interval rather than on the next request. `revision` changes
-         *     whenever the set does, so a reader can log the change instead of
-         *     the poll. A key whose `expiresAt` has passed is dropped from the
-         *     set — its signature check already refuses it, and a revocation
-         *     list that only grows is a leak.
-         *
-         *     **When this endpoint cannot be reached the gateway keeps its
-         *     last answer and serves.** Refusing every client key because the
-         *     local agent blipped would take an install's harnesses down for a
-         *     restart, and the token still has to carry a valid signature and
-         *     an unexpired `exp`. The strong revocation, unchanged since M7,
-         *     is rotating the install's signing key, which invalidates
-         *     everything at once.
+         * @description Compatibility endpoint for older gateways. Enrolled agents return the
+         *     active control root's revoked identifiers. New gateways use /policy,
+         *     which also registers permitted identifiers and bounds cache age.
+         *     Operator or service:gateway only. No empty fallback on authority failure.
          */
         get: operations["listRevokedClientKeys"];
         put?: never;
@@ -246,9 +238,11 @@ export interface paths {
          *     cannot tell "this key was never made here" from "this key was
          *     turned off".
          *
-         *     Takes effect at the gateway within one of its routing refresh
-         *     intervals (15 s by default), not on the next request. The
-         *     endpoint above says why.
+         *     New gateways refresh every 15 seconds, with a 4-second request timeout.
+         *     During outages their last policy expires after 60 seconds (up to five
+         *     seconds of clock tolerance); client access then fails closed. Known
+         *     revocations remain denied after restart. Upgrade every gateway and agent
+         *     before relying on this bound.
          *
          *     Revoking a key nobody still holds the token for is the normal
          *     case: the record's `id` identifies it, and the token was shown
@@ -2023,94 +2017,57 @@ export interface components {
              */
             keyringAvailable?: boolean;
         };
-        /**
-         * @description A long-lived bearer this install minted for an app outside it
-         *     (hobbyist UX S4, 2026-09-15) — as a *record*, never as the token.
-         *
-         *     Before these existed the only key a person could paste into
-         *     Continue or Open WebUI was the operator session token: full
-         *     authority, expired in fourteen days, and shown only inside the
-         *     playground's diagnostic panel. A client key carries
-         *     `aud: client`, which the gateway accepts on its three
-         *     OpenAI-compatible paths and nothing else accepts anywhere.
-         */
         ClientKey: {
-            /**
-             * @description The token's `jti` claim, and what `DELETE` takes. Random per
-             *     key; the only thing the gateway needs in order to refuse one.
-             */
             id: string;
-            /**
-             * @description What the operator called it — "Continue on the laptop",
-             *     "phone". Not unique: two keys for the same app are a normal
-             *     thing to want, and refusing the second would be a rule
-             *     invented for the list's benefit rather than the person's.
-             */
             name: string;
-            /**
-             * @description The last few characters of the token, so a key in this list
-             *     can be matched against one already pasted into an app.
-             *
-             *     **Deliberately the tail and not a prefix.** The token is a
-             *     JWT: every key this install mints begins with the same
-             *     `eyJhbGciOiJIUzI1NiIs…` header, so a prefix identifies
-             *     nothing. Short enough to be useless on its own.
-             */
             tail: string;
             /** Format: date-time */
             createdAt: string;
-            /**
-             * Format: date-time
-             * @description The `exp` claim. Past it the gateway refuses the token on
-             *     signature validation alone, with no list to consult.
-             */
+            /** Format: date-time */
             expiresAt: string;
-            /**
-             * Format: date-time
-             * @description Set once the key has been revoked. The record is kept until
-             *     `expiresAt` passes so the list can say "turned off" rather
-             *     than going silent.
-             */
+            /** Format: date-time */
             revokedAt?: string;
             /**
              * Format: date-time
-             * @description Reserved. Nothing writes it: the agent never sees a client
-             *     key — the gateway does — and reporting a *last used* the
-             *     install cannot observe would be worse than reporting none.
-             *     Kept in the shape so a future gateway-side counter has
-             *     somewhere to land.
+             * @description Reserved; not currently measured.
              */
             lastUsedAt?: string;
+            originNode?: string;
+            /** @description True for a record imported from a pre-A3 node-local registry. */
+            migrated?: boolean;
         };
         ClientKeyList: {
             keys: components["schemas"]["ClientKey"][];
+            authority?: string;
+            revision?: number;
+            /** @enum {string} */
+            scope?: "install" | "standalone";
+            /** @enum {string} */
+            migration?: "complete" | "pending" | "error" | "standalone";
+            detail?: string;
         };
         ClientKeyCreateRequest: {
-            /**
-             * @description What this key is for, in the operator's words. Shown in the
-             *     list and nowhere else; it is not part of the token.
-             */
             name: string;
-            /**
-             * @description How long the key lives. A year by default: long enough that
-             *     a person who set up Continue once does not come back to a
-             *     dead key, short enough that a key forgotten in a config file
-             *     eventually stops working. **No "never expires" option** —
-             *     the revocation path here is a bounded-staleness list, and a
-             *     token with no expiry at all leans on it entirely.
-             * @default 365
-             */
+            /** @default 365 */
             ttlDays: number;
         };
-        /** @description The one and only time the token is on the wire from this agent. */
         ClientKeyCreated: {
             key: components["schemas"]["ClientKey"];
-            /**
-             * @description The bearer itself. Not stored: the agent keeps the record
-             *     and forgets this. A caller that does not keep it mints
-             *     another.
-             */
+            /** @description Returned once; never persisted in the registry or gateway cache. */
             token: string;
+        };
+        /**
+         * @description Positive registry: only listed, unrevoked, unexpired identifiers may be
+         *     authorized. Default refresh 15 seconds, maximum age 60 seconds (up to
+         *     five seconds clock tolerance). Missing/stale policy causes client-only
+         *     503; known revoked keys remain refused. Operator/service auth is unaffected.
+         */
+        ClientKeyPolicy: {
+            authority: string;
+            revision: number;
+            /** @description Authority UTC Unix timestamp. Intermediaries must not renew it. */
+            generatedAt: number;
+            keys: components["schemas"]["ClientKeyPolicyEntry"][];
         };
         /**
          * @description What the gateway polls. Ids only, and the revision at which the
@@ -3562,6 +3519,13 @@ export interface components {
         AuthLoginRequest: {
             passphrase: string;
         };
+        ClientKeyPolicyEntry: {
+            id: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            revokedAt?: string;
+        };
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
@@ -4342,6 +4306,27 @@ export interface operations {
             };
         };
     };
+    getClientKeyPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current authority policy; never an empty fallback on failure. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyPolicy"];
+                };
+            };
+            503: components["responses"]["Problem"];
+        };
+    };
     listRevokedClientKeys: {
         parameters: {
             query?: never;
@@ -4382,7 +4367,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Problem"];
-            /** @description No key with that id on this agent. */
+            /** @description No key with that id in the authoritative registry. */
             404: {
                 headers: {
                     [name: string]: unknown;

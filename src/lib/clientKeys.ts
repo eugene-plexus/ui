@@ -21,37 +21,12 @@ import type { ComponentPlacementList } from "./types";
 
 // --- where the records live ------------------------------------------
 
-/**
- * Which proxy target mints and lists this install's client keys.
- *
- * A client key is install-wide — the whole install shares one signing
- * key, so a key minted anywhere verifies everywhere — but its **record**
- * is not: it lives on the agent that minted it, and the gateway checks
- * revocations against its own node's agent. Mint anywhere else and
- * "revoke" would be a button that changes nothing, which is the silent
- * failure P4 forbids.
- *
- * So: the agent on the gateway's node. Found from the control root's
- * placement list, which is the only view that carries the node
- * dimension. Reached through `node:<name>` when it is not this machine —
- * nobody has to open a browser over there
- * (`one-console-never-hop-nodes`).
- *
- * Falls back to the local agent when the root did not answer or names no
- * gateway. On a standalone install that is the right answer; on a
- * multi-node install with a sealed root it is a guess, and the card says
- * which machine it used so a wrong guess is visible rather than silent.
- */
+/** Any enrolled agent forwards to the active install registry. */
 export function clientKeyTarget(
-  placement: ComponentPlacementList | null,
+  _placement: ComponentPlacementList | null,
   localNode: string | null,
-): { target: string; node: string | null; derived: "gateway-node" | "local" } {
-  const gateway = (placement?.components ?? []).find((c) => c.kind === "gateway");
-  const node = gateway?.node ?? null;
-  if (node === null || node === "" || (localNode !== null && node === localNode)) {
-    return { target: "agent", node: node ?? localNode, derived: node ? "gateway-node" : "local" };
-  }
-  return { target: `node:${node}`, node, derived: "gateway-node" };
+): { target: string; node: string | null; derived: "local" } {
+  return { target: "agent", node: localNode, derived: "local" };
 }
 
 // --- the key, as a person reads it -----------------------------------

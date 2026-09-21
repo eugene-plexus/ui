@@ -78,10 +78,8 @@ const TONE_CLASS = {
  *
  * The verdict is the only thing here allowed to call the address right.
  *
- * **The key is minted on the gateway's node**, because that is the agent
- * the gateway asks about revocations. Minting anywhere else would leave
- * a Remove button that changes nothing. `clientKeyTarget` works out
- * which, and the card names the machine.
+ * Key management uses the local agent, which forwards to the control root
+ * when enrolled. The response identifies registry scope and migration status.
  */
 export function UseFromAppsCard({
   models,
@@ -101,6 +99,7 @@ export function UseFromAppsCard({
   /** S5's `reach.boundAddresses`: what this install is really listening on. */
   boundAddresses?: BoundAddressLike[] | null;
 }) {
+  const [registry, setRegistry] = useState<ClientKeyList | null>(null);
   const [keys, setKeys] = useState<ClientKey[] | null>(null);
   const [fresh, setFresh] = useState<ClientKeyCreated | null>(null);
   const [name, setName] = useState("");
@@ -131,11 +130,13 @@ export function UseFromAppsCard({
     try {
       const list = await api.get<ClientKeyList>(where.target, "/v1/auth/client-keys");
       setKeys(list.keys ?? []);
+      setRegistry(list);
       setError(null);
     } catch (e) {
       // An agent on another node that is down costs this card its list
       // and nothing else; the address and the model id are still right.
       setKeys([]);
+      setRegistry(null);
       setError(describeError(e));
     }
   }, [where.target]);
@@ -469,9 +470,37 @@ export function UseFromAppsCard({
       </form>
       <p className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]">
         Good for a year, works only for chatting with your models, and can be turned off on its own.
-        Kept on {where.node ?? "this machine"}
-        {where.derived === "gateway-node" ? ", the machine running the gateway" : ""}.
+        {registry?.scope === "install"
+          ? " Keys and revocations apply to every gateway in this install."
+          : registry?.scope === "standalone"
+            ? " This machine currently manages its own keys."
+            : " Registry status has not been confirmed."}
       </p>
+
+      {registry?.migration && (
+        <p
+          data-testid="key-migration"
+          role="status"
+          className={
+            registry.migration === "error" || registry.migration === "pending"
+              ? "status-warn mt-2 text-xs"
+              : "font-ui mt-2 text-xs text-[color:var(--muted)]"
+          }
+        >
+          {registry.detail ??
+            (registry.migration === "standalone"
+              ? "Existing keys will migrate when this machine joins an install."
+              : "Existing keys are registered install-wide.")}
+        </p>
+      )}
+      <p className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]">
+        Gateways normally notice a revocation within 20 seconds. If the registry is unreachable,
+        client access stops when its cached policy is 60 seconds old (up to 5 seconds clock
+        tolerance).
+      </p>
+      <button type="button" onClick={() => void load()} className="font-ui mt-1 text-xs underline">
+        Refresh key status
+      </button>
 
       {error && (
         <p
@@ -492,6 +521,7 @@ export function UseFromAppsCard({
                 className="font-ui flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-[color:var(--border)] pt-1 text-[0.6875rem]"
               >
                 <span className="font-semibold">{key.name}</span>
+                {key.migrated && <span>migrated from {key.originNode ?? "another node"}</span>}
                 <code className="font-mono">{keyLabel(key.tail)}</code>
                 <span className="text-[color:var(--muted)]">{status.text}</span>
                 <button

@@ -4,6 +4,94 @@
  */
 
 export interface paths {
+    "/v1/auth/client-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List install-wide client-key records
+         * @description Operator only; active root only. Contains records, never bearer tokens.
+         */
+        get: operations["listClientKeys"];
+        put?: never;
+        /**
+         * Create an install-wide client key
+         * @description Operator only; active, unlocked root. Persist the record before returning the token.
+         */
+        post: operations["createClientKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/client-keys/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Issue current client-key authorization policy
+         * @description Operator or agent/gateway service token only. Only the active root issues fresh policy. No signing secret is returned.
+         */
+        get: operations["getClientKeyPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/client-keys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a key throughout the install
+         * @description Operator only; active root. Durable and idempotent. Healthy gateways observe the change within 20 seconds by default; stale policy expires after 60 seconds plus five seconds clock tolerance.
+         */
+        delete: operations["revokeClientKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/nodes/{name}/client-keys/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import existing node-local client-key records
+         * @description Authenticated by the enrolled node signature, not a service bearer. Active root only. Idempotent and revocation-preserving; a node cannot overwrite another node's record.
+         */
+        post: operations["importLegacyClientKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/nodes": {
         parameters: {
             query?: never;
@@ -694,6 +782,68 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ClientKey: {
+            id: string;
+            name: string;
+            tail: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            revokedAt?: string;
+            /**
+             * Format: date-time
+             * @description Reserved; not currently measured.
+             */
+            lastUsedAt?: string;
+            originNode?: string;
+            /** @description True for a record imported from a pre-A3 node-local registry. */
+            migrated?: boolean;
+        };
+        ClientKeyList: {
+            keys: components["schemas"]["ClientKey"][];
+            authority?: string;
+            revision?: number;
+            /** @enum {string} */
+            scope?: "install" | "standalone";
+            /** @enum {string} */
+            migration?: "complete" | "pending" | "error" | "standalone";
+            detail?: string;
+        };
+        ClientKeyCreateRequest: {
+            name: string;
+            /** @default 365 */
+            ttlDays: number;
+        };
+        ClientKeyCreated: {
+            key: components["schemas"]["ClientKey"];
+            /** @description Returned once; never persisted in the registry or gateway cache. */
+            token: string;
+        };
+        /**
+         * @description Positive registry: only listed, unrevoked, unexpired identifiers may be
+         *     authorized. Default refresh 15 seconds, maximum age 60 seconds (up to
+         *     five seconds clock tolerance). Missing/stale policy causes client-only
+         *     503; known revoked keys remain refused. Operator/service auth is unaffected.
+         */
+        ClientKeyPolicy: {
+            authority: string;
+            revision: number;
+            /** @description Authority UTC Unix timestamp. Intermediaries must not renew it. */
+            generatedAt: number;
+            keys: components["schemas"]["ClientKeyPolicyEntry"][];
+        };
+        ClientKeyImport: {
+            keys: components["schemas"]["ClientKey"][];
+            /**
+             * @description Base64 Ed25519 signature by the enrolled node over UTF-8
+             *     'eugene-plexus/client-keys/import/v1\n' followed by canonical JSON
+             *     {"node":name,"keys":keys}, sorted keys, compact separators, ensure_ascii=false.
+             *     Idempotent; imported revocations cannot be cleared by replay.
+             */
+            signature: string;
+        };
         NodeList: {
             nodes: components["schemas"]["Node"][];
         };
@@ -1148,7 +1298,7 @@ export interface components {
          *     enrolled again.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "rotateSigningKey" | "promote";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "importClientKeys" | "revokeClientKey" | "rotateSigningKey" | "promote";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -1173,6 +1323,11 @@ export interface components {
          *     `GET /v1/nodes`.
          */
         Snapshot: {
+            clientKeys?: components["schemas"]["ClientKey"][];
+            /** @description Node-to-digest map of committed legacy imports, replicated with the registry. */
+            clientKeyImports?: {
+                [key: string]: string;
+            };
             /** Format: int64 */
             index: number;
             /** Format: int64 */
@@ -1436,6 +1591,42 @@ export interface components {
              */
             passphrase: string;
         };
+        ClientKeyPolicyEntry: {
+            id: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            revokedAt?: string;
+        };
+        /**
+         * @description Error response shape, modeled on RFC 7807 (problem+json). Every
+         *     Eugene Plexus component returns this for 4xx / 5xx responses.
+         */
+        Problem: {
+            /**
+             * @description A URI reference identifying the problem type, per RFC 7807.
+             *     Modeled as a plain string rather than `format: uri` to keep
+             *     sentinel values like `about:blank` and ergonomic at call sites.
+             * @default about:blank
+             */
+            type: string;
+            /** @description Short human-readable summary. */
+            title: string;
+            /** @description HTTP status code. */
+            status: number;
+            /** @description Human-readable explanation specific to this occurrence. */
+            detail?: string;
+            /**
+             * @description A URI reference identifying the specific occurrence. Modeled
+             *     as a plain string for the same reason as `type`.
+             */
+            instance?: string;
+            /**
+             * @description Eugene Plexus component name that originated the error
+             *     (e.g. `"gateway"`, `"inference-driver:left"`).
+             */
+            component?: string;
+        };
         /**
          * @description What kind of device this is.
          *
@@ -1490,35 +1681,6 @@ export interface components {
              *     surprising.
              */
             memoryFreeBytes?: number;
-        };
-        /**
-         * @description Error response shape, modeled on RFC 7807 (problem+json). Every
-         *     Eugene Plexus component returns this for 4xx / 5xx responses.
-         */
-        Problem: {
-            /**
-             * @description A URI reference identifying the problem type, per RFC 7807.
-             *     Modeled as a plain string rather than `format: uri` to keep
-             *     sentinel values like `about:blank` and ergonomic at call sites.
-             * @default about:blank
-             */
-            type: string;
-            /** @description Short human-readable summary. */
-            title: string;
-            /** @description HTTP status code. */
-            status: number;
-            /** @description Human-readable explanation specific to this occurrence. */
-            detail?: string;
-            /**
-             * @description A URI reference identifying the specific occurrence. Modeled
-             *     as a plain string for the same reason as `type`.
-             */
-            instance?: string;
-            /**
-             * @description Eugene Plexus component name that originated the error
-             *     (e.g. `"gateway"`, `"inference-driver:left"`).
-             */
-            component?: string;
         };
         /**
          * @description Which Eugene Plexus component class a topology entry
@@ -1951,6 +2113,121 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listClientKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authoritative registry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyList"];
+                };
+            };
+        };
+    };
+    createClientKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientKeyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Key and one-time bearer token. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyCreated"];
+                };
+            };
+        };
+    };
+    getClientKeyPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyPolicy"];
+                };
+            };
+            503: components["responses"]["Problem"];
+        };
+    };
+    revokeClientKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revocation durably recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    importLegacyClientKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientKeyImport"];
+            };
+        };
+        responses: {
+            /** @description Import committed; metadata confirms migration. Keys are empty to avoid disclosing the operator registry to a node. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
     listNodes: {
         parameters: {
             query?: never;

@@ -24,7 +24,7 @@ function placement(rows: Array<{ node: string; kind: string; name?: string }>) {
 }
 
 describe("clientKeyTarget", () => {
-  it("addresses the gateway's node when it is not this one", () => {
+  it("uses the local agent even when gateways run elsewhere", () => {
     const where = clientKeyTarget(
       placement([
         { node: "nas", kind: "gateway" },
@@ -32,9 +32,9 @@ describe("clientKeyTarget", () => {
       ]),
       "amish",
     );
-    expect(where.target).toBe("node:nas");
-    expect(where.node).toBe("nas");
-    expect(where.derived).toBe("gateway-node");
+    expect(where.target).toBe("agent");
+    expect(where.node).toBe("amish");
+    expect(where.derived).toBe("local");
   });
 
   it("stays local when the gateway is on this node", () => {
