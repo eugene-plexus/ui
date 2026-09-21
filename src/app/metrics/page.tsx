@@ -82,6 +82,8 @@ interface MetricsSummary {
 }
 
 interface MetricAttempt {
+  retryDisposition?: "safe" | "terminal" | "indeterminate" | null;
+  usageKnown?: boolean;
   driver: string;
   runtime?: string | null;
   backend?: string | null;
@@ -106,6 +108,8 @@ interface MetricCandidate {
 }
 
 interface MetricRequest {
+  requestId?: string | null;
+  elapsedMs?: number | null;
   clientKeyId?: string | null;
   clientKeyName?: string | null;
   startedAt: string;
@@ -505,7 +509,7 @@ export default function MetricsPage() {
                       )}
                       <span className="break-all">{r.requestedModel}</span>{" "}
                       <span className="text-[color:var(--muted)]">
-                        {ms(r.totalMs)}
+                        {ms(r.elapsedMs ?? r.totalMs)}
                         {r.completionTokens != null && ` · ${r.completionTokens} tok`}
                         {r.streamed && " · streamed"}
                         {r.swappedIn && ` · woken after ${ms(r.waitedMs ?? 0)}`}
@@ -516,7 +520,12 @@ export default function MetricsPage() {
                         {r.routingMs != null &&
                           ` · ${ms(r.routingMs)} routing${r.refreshed ? " (refreshed)" : ""}`}
                       </span>
-                      {r.tries.length > 1 && (
+                      {r.requestId && (
+                        <div className="break-all text-[color:var(--muted)]">
+                          Request {r.requestId}
+                        </div>
+                      )}
+                      {r.tries.length > 0 && (
                         <div className="mt-1 pl-4 text-[color:var(--muted)]">
                           {r.tries.map((t, j) => (
                             <div key={j}>
@@ -526,6 +535,15 @@ export default function MetricsPage() {
                                   Math.max(0, t.elapsedMs - t.backendMs),
                                 )} us)`}
                               {t.error && ` — ${t.error}`}
+                              {t.retryDisposition &&
+                                ` · ${
+                                  t.retryDisposition === "indeterminate"
+                                    ? "outcome unknown; not replayed"
+                                    : t.retryDisposition === "safe"
+                                      ? "safe to retry before output"
+                                      : "request refused"
+                                }`}
+                              {t.usageKnown !== true && " · usage unknown (not zero cost)"}
                             </div>
                           ))}
                         </div>

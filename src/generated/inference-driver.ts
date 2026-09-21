@@ -653,6 +653,14 @@ export interface components {
             runtime?: string;
             /** @description Backend capabilities the gateway keys off when routing. */
             capabilities?: {
+                /**
+                 * @description Explicit callerSettings this active adapter can carry without
+                 *     dropping them. This does not promise the provider accepts every
+                 *     possible value. Absent means unknown; ineligible for requests
+                 *     requiring explicit settings. The driver still validates before
+                 *     execution, including after a configuration change.
+                 */
+                supportedSettings?: string[];
                 /** @description Whether `/v1/generate/stream` emits true incremental tokens. */
                 streaming?: boolean;
                 /**
@@ -834,6 +842,17 @@ export interface components {
              *     (e.g. `"gateway"`, `"inference-driver:left"`).
              */
             component?: string;
+            /**
+             * @description Safe means this attempt did not accept application work and may
+             *     be replayed before any output. Terminal means the request must
+             *     be corrected. Indeterminate means work may have occurred; do not
+             *     replay automatically. Missing classification on a server failure
+             *     is indeterminate, never implicit permission to retry.
+             * @enum {string}
+             */
+            retryDisposition?: "safe" | "terminal" | "indeterminate";
+            /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
+            retryAfterSeconds?: number;
         };
         /**
          * @description Current effective config values, keyed by `ConfigField.key`.

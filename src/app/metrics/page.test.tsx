@@ -247,6 +247,37 @@ describe("metrics page", () => {
     // inferred from a larger number.
     expect(await screen.findByText(/210 ms routing \(refreshed\)/)).toBeInTheDocument();
   });
+
+  it("shows correlation, full elapsed time and unknown attempt usage", async () => {
+    requests = {
+      requests: [
+        {
+          startedAt: "2026-09-21T12:00:00Z",
+          requestedModel: "alias",
+          attempts: 1,
+          totalMs: 50,
+          elapsedMs: 900,
+          requestId: "request-fixture",
+          outcome: "error",
+          tries: [
+            {
+              driver: "primary",
+              elapsedMs: 50,
+              served: false,
+              retryDisposition: "indeterminate",
+              usageKnown: false,
+            },
+          ],
+        },
+      ],
+    };
+    render(<MetricsPage />);
+    expect(await screen.findByText("Request request-fixture")).toBeInTheDocument();
+    expect(screen.getByText(/outcome unknown; not replayed/)).toHaveTextContent(
+      "usage unknown (not zero cost)",
+    );
+    expect(screen.getByText("900 ms")).toBeInTheDocument();
+  });
 });
 
 it("shows per-key usage with incomplete accounting and retention limits", async () => {

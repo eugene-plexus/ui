@@ -1703,6 +1703,17 @@ export interface components {
              *     (e.g. `"gateway"`, `"inference-driver:left"`).
              */
             component?: string;
+            /**
+             * @description Safe means this attempt did not accept application work and may
+             *     be replayed before any output. Terminal means the request must
+             *     be corrected. Indeterminate means work may have occurred; do not
+             *     replay automatically. Missing classification on a server failure
+             *     is indeterminate, never implicit permission to retry.
+             * @enum {string}
+             */
+            retryDisposition?: "safe" | "terminal" | "indeterminate";
+            /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
+            retryAfterSeconds?: number;
         };
         /**
          * @description What kind of device this is.

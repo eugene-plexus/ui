@@ -2175,6 +2175,15 @@ export interface components {
         };
         /** @description One backend touched by one request, in the order tried. */
         MetricAttempt: {
+            /**
+             * @description Failure classification; absent for success or historical rows.
+             * @enum {string}
+             */
+            retryDisposition?: "safe" | "terminal" | "indeterminate";
+            /** @description Whether token usage is known for this attempt; false is not zero cost. */
+            usageKnown?: boolean;
+            promptTokens?: number;
+            completionTokens?: number;
             driver: string;
             runtime?: string | null;
             node?: string | null;
@@ -2209,6 +2218,10 @@ export interface components {
             error?: string | null;
         };
         MetricRequest: {
+            /** @description Gateway-generated correlation ID shared by every driver attempt. */
+            requestId?: string;
+            /** @description Entire request lifetime, including preparation, wake and every attempt. */
+            elapsedMs?: number;
             /** @description Verified key identifier; absent for operator/service requests and pre-A5 rows. */
             clientKeyId?: string;
             /** @description Registry name captured for this request. */
@@ -2410,6 +2423,17 @@ export interface components {
              *     (e.g. `"gateway"`, `"inference-driver:left"`).
              */
             component?: string;
+            /**
+             * @description Safe means this attempt did not accept application work and may
+             *     be replayed before any output. Terminal means the request must
+             *     be corrected. Indeterminate means work may have occurred; do not
+             *     replay automatically. Missing classification on a server failure
+             *     is indeterminate, never implicit permission to retry.
+             * @enum {string}
+             */
+            retryDisposition?: "safe" | "terminal" | "indeterminate";
+            /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
+            retryAfterSeconds?: number;
         };
         /**
          * @description Acknowledgement returned by `POST /v1/admin/restart`. The
