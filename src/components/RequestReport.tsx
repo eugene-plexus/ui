@@ -118,10 +118,22 @@ export function RequestReport({
         <details>
           <summary className="cursor-pointer text-[color:var(--muted)]">
             Request body as sent ({report.body.length.toLocaleString("en-US")} bytes)
+            {report.body.length > DISPLAY_LIMIT ? " — display truncated, copy is whole" : ""}
           </summary>
-          <pre className="mt-1 max-h-60 overflow-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-2 break-all whitespace-pre-wrap">
-            {report.body}
-          </pre>
+          <div className="mt-1 flex flex-col gap-1">
+            {report.body.length > DISPLAY_LIMIT && (
+              <span className="text-[color:var(--muted)]">
+                <CopyButton
+                  text={report.body}
+                  label="Copy the whole body"
+                  title="The full JSON as sent, inline image bytes included"
+                />
+              </span>
+            )}
+            <pre className="max-h-60 overflow-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-2 break-all whitespace-pre-wrap">
+              {truncateForDisplay(report.body)}
+            </pre>
+          </div>
         </details>
 
         {curl !== null ? (
@@ -148,7 +160,7 @@ export function RequestReport({
               data-testid="report-curl"
               className="max-h-40 overflow-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-2 break-all whitespace-pre-wrap"
             >
-              {curl}
+              {truncateForDisplay(curl)}
             </pre>
           </div>
         ) : (
@@ -160,6 +172,17 @@ export function RequestReport({
       </div>
     </details>
   );
+}
+
+// Past this, rendering the string is what hangs -- a request carrying
+// 10 MB of inline image bytes is legal since the image slice, and a
+// 13 MB <pre> with break-all is a frozen tab. The COPY buttons always
+// carry the whole string; only the display is cut.
+const DISPLAY_LIMIT = 262_144;
+
+function truncateForDisplay(s: string): string {
+  if (s.length <= DISPLAY_LIMIT) return s;
+  return `${s.slice(0, DISPLAY_LIMIT)}\n… display truncated at 256 KB of ${s.length.toLocaleString("en-US")} bytes; Copy carries all of it.`;
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {

@@ -21,6 +21,33 @@
 
 import type { ChatCompletionMessage } from "./types";
 
+/** A data URL that is valid, empty, and eight bytes long. */
+const STRIPPED_IMAGE_URL = "data:,";
+
+/**
+ * The same messages with every inline image's bytes removed.
+ *
+ * Written for the storage fallback below: a conversation with 10 MB of
+ * base64 images does not fit in `sessionStorage`, and before images the
+ * failure mode was already "the conversation does not survive a
+ * reload". Losing the whole transcript to one screenshot is worse than
+ * a reload that keeps the words and drops the pixels -- the request
+ * that was SENT is unchanged either way, and the report holds it.
+ */
+export function stripImageBytes(messages: ChatCompletionMessage[]): ChatCompletionMessage[] {
+  return messages.map((message) => {
+    if (!Array.isArray(message.content)) return message;
+    return {
+      ...message,
+      content: message.content.map((part) =>
+        part.type === "image_url"
+          ? { ...part, image_url: { ...part.image_url, url: STRIPPED_IMAGE_URL } }
+          : part,
+      ),
+    };
+  });
+}
+
 export const PLAYGROUND_STORAGE_KEY = "eugene-playground";
 
 export interface PlaygroundTranscript {
@@ -71,6 +98,19 @@ export function writePlaygroundTranscript(transcript: PlaygroundTranscript): voi
   try {
     sessionStorage.setItem(PLAYGROUND_STORAGE_KEY, serializeTranscript(transcript));
   } catch {
-    // Private mode / quota; the conversation just does not survive a reload.
+    // Almost always the quota, and almost always because of inline
+    // image bytes. Retry with the pixels stripped so the words survive
+    // a reload; if even that fails (private mode), give up as before.
+    try {
+      sessionStorage.setItem(
+        PLAYGROUND_STORAGE_KEY,
+        serializeTranscript({
+          model: transcript.model,
+          messages: stripImageBytes(transcript.messages),
+        }),
+      );
+    } catch {
+      // The conversation just does not survive a reload.
+    }
   }
 }

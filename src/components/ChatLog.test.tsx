@@ -24,14 +24,14 @@ vi.mock("@/lib/useAutoScroll", () => ({
 }));
 
 describe("ChatLog with tool calls", () => {
-  it("renders image content without exposing data URLs or offering a text-only edit", () => {
+  it("renders image content as the image, without data URLs as text or a text-only edit", () => {
     render(
       <ChatLog
         messages={[
           {
             role: "user",
             content: [
-              { type: "text", text: "Describe this " },
+              { type: "text", text: "Describe this" },
               { type: "image_url", image_url: { url: "data:image/png;base64,PRIVATE" } },
             ],
           },
@@ -40,9 +40,36 @@ describe("ChatLog with tool calls", () => {
         onEditUserMessage={vi.fn()}
       />,
     );
-    expect(screen.getByText("Describe this [Image attachment]")).toBeInTheDocument();
+    // The pixels render (the composer can attach them now); the bytes
+    // still never appear as text, and an Edit that would flatten the
+    // message to its text half is still not offered.
+    expect(screen.getByText("Describe this")).toBeInTheDocument();
+    expect(screen.getByTestId("message-image")).toHaveAttribute(
+      "src",
+      "data:image/png;base64,PRIVATE",
+    );
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     expect(document.body.textContent).not.toContain("PRIVATE");
+  });
+
+  it("an image the storage fallback stripped says so instead of rendering a broken frame", () => {
+    render(
+      <ChatLog
+        messages={[
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "still here" },
+              { type: "image_url", image_url: { url: "data:," } },
+            ],
+          },
+        ]}
+        pending={false}
+      />,
+    );
+    expect(screen.getByText("still here")).toBeInTheDocument();
+    expect(screen.queryByTestId("message-image")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-image-stripped")).toBeInTheDocument();
   });
   it("renders a tool-call-only turn as a card that says whether the arguments parse", () => {
     render(

@@ -3,6 +3,16 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { type AttachmentText, checkAttachment, inlineAttachments } from "@/lib/diagnostic";
+import {
+  type ImageAttachment,
+  buildMessageContent,
+  checkImageAttachment,
+  checkImageSet,
+  imageDimensions,
+  isImageMime,
+  toDataUrl,
+} from "@/lib/imageAttachments";
+import type { MessageContentPart } from "@/lib/types";
 
 /**
  * Bottom-anchored composer.
@@ -15,11 +25,13 @@ import { type AttachmentText, checkAttachment, inlineAttachments } from "@/lib/d
  * the same text seeded twice is still a second request to seed it, and
  * comparing the strings would silently ignore the second.
  *
- * **Attachments** are text files, read in the browser and inlined into
- * the message with a fence naming each one -- the only wire shape the
- * contract has (`content` is a string) and the one a coding harness uses
- * when it pastes a file into a conversation. `onSend` still receives one
- * string: what is sent is what the transcript shows.
+ * **Attachments** come in two kinds, routed by MIME type. Text files
+ * are read in the browser and inlined into the message with a fence
+ * naming each one -- what a coding harness does when it pastes a file.
+ * PNG and JPEG images become inline `image_url` content parts, the
+ * only image form the contract carries (remote URLs are never
+ * fetched). A message with no images is still a plain string, so
+ * text-only requests are byte-for-byte what they always were.
  */
 export function ChatInput({
   onSend,
@@ -27,17 +39,23 @@ export function ChatInput({
   seed,
   pending = false,
   onStop,
+  imageNote,
 }: {
-  onSend: (text: string) => void;
+  onSend: (content: string | MessageContentPart[]) => void;
   disabled: boolean;
   seed?: { text: string; nonce: number };
   /** A turn is in flight. With `onStop`, Send becomes Stop and Escape
    * cancels; whatever streamed so far is kept by the caller. */
   pending?: boolean;
   onStop?: () => void;
+  /** Why attached images may not work against the selected model, or
+   * null. Shown only while images are attached: it is about the
+   * combination, not about either half alone. */
+  imageNote?: string | null;
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<AttachmentText[]>([]);
+  const [images, setImages] = useState<ImageAttachment[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -65,14 +83,20 @@ export function ChatInput({
     }
   }, [seed]);
 
-  const hasContent = value.trim() !== "" || files.length > 0;
+  const hasContent = value.trim() !== "" || files.length > 0 || images.length > 0;
+  // The request-level image limits (count, total bytes) belong to the
+  // set, not to any one file, so they are checked here where the set
+  // is known and they block Send rather than surfacing as the
+  // gateway's 400 after megabytes crossed the wire.
+  const imageSetError = checkImageSet(images);
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (!hasContent || disabled) return;
-    onSend(inlineAttachments(value, files));
+    if (!hasContent || disabled || imageSetError !== null) return;
+    onSend(buildMessageContent(inlineAttachments(value, files), images));
     setValue("");
     setFiles([]);
+    setImages([]);
     setFileError(null);
   }
 
@@ -101,10 +125,32 @@ export function ChatInput({
   async function addFiles(list: FileList | null) {
     if (!list) return;
     const added: AttachmentText[] = [];
+    const addedImages: ImageAttachment[] = [];
     let error: string | null = null;
     for (const file of Array.from(list)) {
-      // Decoded as UTF-8 with replacement, so a binary file announces
-      // itself as U+FFFD and is refused rather than inlined as mojibake.
+      // MIME decides the route: a PNG or JPEG becomes an inline image
+      // part; everything else takes the text path, whose UTF-8 check
+      // refuses any other binary rather than inlining mojibake.
+      if (isImageMime(file.type)) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const refusal = checkImageAttachment(file.name, file.type, bytes);
+        if (refusal) {
+          error = refusal;
+          continue;
+        }
+        // checkImageAttachment proved the header parses, so the
+        // dimensions read again here cannot be null.
+        const dims = imageDimensions(file.type, bytes);
+        addedImages.push({
+          name: file.name,
+          mime: file.type,
+          size: bytes.length,
+          width: dims?.width ?? 0,
+          height: dims?.height ?? 0,
+          dataUrl: toDataUrl(file.type, bytes),
+        });
+        continue;
+      }
       const text = new TextDecoder("utf-8").decode(await file.arrayBuffer());
       const refusal = checkAttachment(file.name, file.size, text);
       if (refusal) {
@@ -114,6 +160,7 @@ export function ChatInput({
       added.push({ name: file.name, size: file.size, text });
     }
     setFiles((current) => [...current, ...added]);
+    setImages((current) => [...current, ...addedImages]);
     setFileError(error);
     if (fileInput.current) fileInput.current.value = "";
   }
@@ -123,8 +170,33 @@ export function ChatInput({
       onSubmit={submit}
       className="flex flex-col gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] p-3"
     >
-      {(files.length > 0 || fileError) && (
+      {(files.length > 0 || images.length > 0 || fileError) && (
         <div className="font-ui flex flex-wrap items-center gap-2 text-[0.6875rem]">
+          {images.map((img, i) => (
+            <span
+              key={`${img.name}-${i}`}
+              data-testid="image-chip"
+              className="flex items-center gap-1.5 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-1.5 py-0.5 text-[color:var(--muted)]"
+            >
+              {/* The pixels the model will see; alt is the filename the
+                  chip already shows, so screen readers hear it once. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img.dataUrl} alt="" className="h-7 w-7 rounded-[2px] object-cover" />
+              <span className="font-mono text-[color:var(--foreground)]">{img.name}</span>
+              <span>
+                {img.width}×{img.height}
+              </span>
+              <button
+                type="button"
+                onClick={() => setImages((current) => current.filter((_, j) => j !== i))}
+                title="Remove this image"
+                className="px-1 hover:text-[color:var(--foreground)]"
+                aria-label={`Remove ${img.name}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
           {files.map((f, i) => (
             <span
               key={`${f.name}-${i}`}
@@ -147,6 +219,22 @@ export function ChatInput({
           {fileError && (
             <span className="status-error rounded-[var(--radius)] px-2 py-0.5">{fileError}</span>
           )}
+          {imageSetError && (
+            <span
+              data-testid="image-set-error"
+              className="status-error rounded-[var(--radius)] px-2 py-0.5"
+            >
+              {imageSetError}
+            </span>
+          )}
+          {images.length > 0 && !imageSetError && imageNote && (
+            <span
+              data-testid="image-model-note"
+              className="status-warn rounded-[var(--radius)] px-2 py-0.5"
+            >
+              {imageNote}
+            </span>
+          )}
         </div>
       )}
       <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
@@ -161,7 +249,7 @@ export function ChatInput({
           placeholder={
             disabled
               ? "Waiting…"
-              : "Send a message… (Enter to send, Shift+Enter for newline; attach text files to inline them)"
+              : "Send a message… (Enter to send, Shift+Enter for newline; attach text files or PNG/JPEG images)"
           }
           disabled={disabled}
           className="min-w-0 basis-full resize-none rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50 sm:flex-1 sm:basis-auto"
@@ -179,7 +267,7 @@ export function ChatInput({
           type="button"
           onClick={() => fileInput.current?.click()}
           disabled={disabled}
-          title="Attach text files; their contents are inlined into the message, as a harness would paste them"
+          title="Attach text files (inlined into the message, as a harness would paste them) or PNG/JPEG images (sent inline, up to 4 per request, 5 MB each)"
           className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
         >
           Attach
@@ -197,7 +285,7 @@ export function ChatInput({
         ) : (
           <button
             type="submit"
-            disabled={disabled || !hasContent}
+            disabled={disabled || !hasContent || imageSetError !== null}
             className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
           >
             Send

@@ -139,11 +139,18 @@ function ChatBubble({
   // `content` is nullable since tool calling landed: an assistant turn
   // that only calls a tool has no text, and its calls are rendered as
   // cards below the (then empty) bubble.
-  const text = Array.isArray(message.content)
-    ? message.content
-        .map((part) => (part.type === "text" ? part.text : "[Image attachment]"))
-        .join("")
-    : (message.content ?? "");
+  const parts = Array.isArray(message.content) ? message.content : null;
+  const text = parts
+    ? parts.map((part) => (part.type === "text" ? part.text : "")).join("")
+    : typeof message.content === "string"
+      ? message.content
+      : "";
+  // Rendered as the images they are, since the composer can attach
+  // them now (until then this was a "[Image attachment]" placeholder).
+  // A remote URL never appears here -- the contract takes inline data
+  // URLs only -- so this renders bytes already in the transcript, not
+  // a fetch. The bytes still never appear as TEXT anywhere.
+  const images = parts?.filter((part) => part.type === "image_url") ?? [];
   const calls = message.role === "assistant" ? (message.tool_calls ?? []) : [];
 
   return (
@@ -159,7 +166,7 @@ function ChatBubble({
           <pre className="font-mono break-all whitespace-pre-wrap">{text}</pre>
         </div>
       ) : (
-        (text || calls.length === 0) && (
+        (text || images.length > 0 || calls.length === 0) && (
           <div
             className={`max-w-[80%] rounded-[var(--radius)] px-4 py-2 text-sm leading-relaxed text-[color:var(--foreground)] backdrop-blur-[var(--bubble-blur)] ${
               isUser
@@ -167,6 +174,33 @@ function ChatBubble({
                 : "border border-[color:var(--border)] bg-[color:var(--bubble-bg)]"
             }`}
           >
+            {images.length > 0 && (
+              <span className={`flex flex-wrap gap-2 ${text ? "mb-2" : ""}`}>
+                {images.map((part, i) =>
+                  // A stripped transcript (the storage fallback) holds
+                  // "data:," where the bytes were; a broken frame is
+                  // worse than saying what happened.
+                  part.image_url.url.length > 8 ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={i}
+                      data-testid="message-image"
+                      src={part.image_url.url}
+                      alt={`Attached image ${i + 1}`}
+                      className="max-h-64 max-w-full rounded-[var(--radius)] border border-[color:var(--border)]"
+                    />
+                  ) : (
+                    <span
+                      key={i}
+                      data-testid="message-image-stripped"
+                      className="font-ui rounded-[var(--radius)] border border-dashed border-[color:var(--border)] px-2 py-1 text-[0.6875rem] text-[color:var(--muted)]"
+                    >
+                      image sent; not kept across the reload
+                    </span>
+                  ),
+                )}
+              </span>
+            )}
             {isUser ? <Collapsible text={text} /> : <Markdown>{text}</Markdown>}
           </div>
         )

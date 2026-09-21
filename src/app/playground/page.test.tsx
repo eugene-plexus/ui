@@ -222,6 +222,105 @@ describe("sampling wiring", () => {
   });
 });
 
+/** The smallest byte string the PNG checks accept, sized as asked. */
+function pngBytes(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(33);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  bytes.set([0, 0, 0, 13], 8);
+  bytes.set([0x49, 0x48, 0x44, 0x52], 12);
+  const u32 = (offset: number, value: number) => {
+    bytes[offset] = (value >>> 24) & 0xff;
+    bytes[offset + 1] = (value >>> 16) & 0xff;
+    bytes[offset + 2] = (value >>> 8) & 0xff;
+    bytes[offset + 3] = value & 0xff;
+  };
+  u32(16, width);
+  u32(20, height);
+  return bytes;
+}
+
+function pngFile(name: string): File {
+  return new File([pngBytes(64, 48).buffer as ArrayBuffer], name, { type: "image/png" });
+}
+
+async function attach(file: File) {
+  fireEvent.change(screen.getByTestId("attach-input"), { target: { files: [file] } });
+  await waitFor(() => expect(screen.getByTestId("image-chip")).toBeInTheDocument());
+}
+
+describe("image wiring", () => {
+  it("an attached PNG rides as an inline content part and renders in the transcript", async () => {
+    handlers.set("POST gateway/v1/chat/completions", () => sse(["A square."], "stop"));
+    await renderReady();
+    await attach(pngFile("shot.png"));
+
+    send("what is this");
+    await waitFor(() => expect(chatCalls()).toHaveLength(1));
+    const body = chatCalls()[0]!.body!;
+    const content = (body.messages as Array<{ role: string; content: unknown }>).find(
+      (m) => m.role === "user",
+    )!.content as Array<{ type: string; text?: string; image_url?: { url: string } }>;
+    expect(content[0]).toEqual({ type: "text", text: "what is this" });
+    expect(content[1]?.type).toBe("image_url");
+    expect(content[1]?.image_url?.url.startsWith("data:image/png;base64,")).toBe(true);
+
+    // The transcript renders the pixels, and stores the same parts the
+    // wire carried.
+    await waitFor(() => expect(screen.getByText("A square.")).toBeInTheDocument());
+    expect(screen.getByTestId("message-image")).toBeInTheDocument();
+    const stored = JSON.parse(sessionStorage.getItem("eugene-playground") ?? "{}") as {
+      messages?: Array<{ content: unknown }>;
+    };
+    expect(Array.isArray(stored.messages?.[0]?.content)).toBe(true);
+  });
+
+  it("a model reporting image_input false warns while an image is attached, before Send", async () => {
+    handlers.set("GET gateway/v1/models", () =>
+      json(200, {
+        object: "list",
+        data: [
+          {
+            id: "qwen3-14b",
+            object: "model",
+            created: 0,
+            owned_by: "eugene-plexus",
+            x_eugene_plexus: { surfaces: ["chat"], image_input: false },
+          },
+        ],
+      }),
+    );
+    await renderReady();
+    expect(screen.queryByTestId("image-model-note")).not.toBeInTheDocument();
+    await attach(pngFile("shot.png"));
+    expect(screen.getByTestId("image-model-note").textContent).toContain("does not take images");
+    expect(chatCalls()).toHaveLength(0);
+  });
+
+  it("a model with no opinion gets no warning — absent is not false", async () => {
+    await renderReady();
+    await attach(pngFile("shot.png"));
+    expect(screen.queryByTestId("image-model-note")).not.toBeInTheDocument();
+  });
+
+  it("a fifth image blocks Send with the count named, before any bytes cross the wire", async () => {
+    await renderReady();
+    const files = [1, 2, 3, 4, 5].map((i) => pngFile(`${i}.png`));
+    fireEvent.change(screen.getByTestId("attach-input"), { target: { files } });
+    await waitFor(() => expect(screen.getAllByTestId("image-chip")).toHaveLength(5));
+    expect(screen.getByTestId("image-set-error").textContent).toContain("at most 4");
+    fireEvent.change(screen.getByTestId("composer"), { target: { value: "look" } });
+    const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    expect(sendButton.disabled).toBe(true);
+    // Removing one image clears the refusal and Send comes back.
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove 5.png" })[0]!);
+    await waitFor(() => expect(screen.queryByTestId("image-set-error")).not.toBeInTheDocument());
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect(chatCalls()).toHaveLength(0);
+  });
+});
+
 describe("stop and retry", () => {
   it("Stop keeps the partial answer and reads as a notice, not an error", async () => {
     handlers.set("POST gateway/v1/chat/completions", hangingSse("Half an ans"));

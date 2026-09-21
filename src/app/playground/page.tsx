@@ -41,6 +41,7 @@ import type {
   ChatCompletionMessage,
   ComponentList,
   CompletionRoutingInfo,
+  MessageContentPart,
   Model,
   ToolChoice,
 } from "@/lib/types";
@@ -448,8 +449,8 @@ export default function PlaygroundPage() {
     abortRef.current?.abort();
   }
 
-  function handleSend(text: string) {
-    void runTurn([...messages, { role: "user", content: text }]);
+  function handleSend(content: string | MessageContentPart[]) {
+    void runTurn([...messages, { role: "user", content }]);
   }
 
   /** The operator answered the model's tool calls: one `tool` message per
@@ -638,6 +639,15 @@ export default function PlaygroundPage() {
           seed={seed}
           pending={pending}
           onStop={stopTurn}
+          // Warn before Send, never strip -- the tools rule. Only an
+          // explicit false warns: an absent flag is a gateway with no
+          // opinion, not a model with no eyes.
+          imageNote={
+            selected?.x_eugene_plexus?.image_input === false
+              ? "The selected model does not take images: no backend serving it confirmed image " +
+                "input, so the gateway will refuse this request rather than drop the pictures."
+              : null
+          }
         />
       </main>
     </AppShell>
@@ -699,6 +709,7 @@ function ModelPicker({
         {selected?.x_eugene_plexus?.context_length != null &&
           ` · ${selected.x_eugene_plexus.context_length.toLocaleString()} ctx`}
         {selected?.x_eugene_plexus?.tool_calling === true && " · tools"}
+        {selected?.x_eugene_plexus?.image_input === true && " · images"}
         {replicas > 1 && ` · ${replicas} replicas`}
       </p>
     </div>
