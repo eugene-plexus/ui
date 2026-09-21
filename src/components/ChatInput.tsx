@@ -25,10 +25,16 @@ export function ChatInput({
   onSend,
   disabled,
   seed,
+  pending = false,
+  onStop,
 }: {
   onSend: (text: string) => void;
   disabled: boolean;
   seed?: { text: string; nonce: number };
+  /** A turn is in flight. With `onStop`, Send becomes Stop and Escape
+   * cancels; whatever streamed so far is kept by the caller. */
+  pending?: boolean;
+  onStop?: () => void;
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<AttachmentText[]>([]);
@@ -36,6 +42,15 @@ export function ChatInput({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const seenNonce = useRef(0);
+  const wasPending = useRef(false);
+
+  // When the turn finishes, put the caret back in the composer: the
+  // next thing an operator does after reading a reply is type, and a
+  // disabled textarea drops focus so it cannot come back by itself.
+  useEffect(() => {
+    if (wasPending.current && !pending && !disabled) textarea.current?.focus();
+    wasPending.current = pending;
+  }, [pending, disabled]);
 
   useEffect(() => {
     if (!seed || seed.nonce === seenNonce.current) return;
@@ -67,6 +82,21 @@ export function ChatInput({
       submit(e);
     }
   }
+
+  // Escape stops the in-flight turn from anywhere on the page: the
+  // textarea is disabled while pending, so a key handler on it would
+  // never fire exactly when stopping is possible.
+  useEffect(() => {
+    if (!pending || !onStop) return;
+    const handler = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onStop();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [pending, onStop]);
 
   async function addFiles(list: FileList | null) {
     if (!list) return;
@@ -154,13 +184,25 @@ export function ChatInput({
         >
           Attach
         </button>
-        <button
-          type="submit"
-          disabled={disabled || !hasContent}
-          className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
-        >
-          Send
-        </button>
+        {pending && onStop ? (
+          <button
+            type="button"
+            data-testid="stop-turn"
+            onClick={onStop}
+            title="Stop this turn (Escape). Whatever has streamed so far is kept."
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={disabled || !hasContent}
+            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
+          >
+            Send
+          </button>
+        )}
       </div>
     </form>
   );

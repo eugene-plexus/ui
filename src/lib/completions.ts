@@ -132,6 +132,12 @@ export interface CompletionOptions {
    * defaults. A local default in the UI would silently override that. */
   temperature?: number;
   maxTokens?: number;
+  topP?: number;
+  /** `0` is a real seed, so presence is `!= null` -- a truthiness check
+   * here would drop exactly the value most people type first. */
+  seed?: number;
+  /** Up to four sequences; the contract forwards them as an array. */
+  stop?: string[];
   /** Tool definitions, passed through exactly as a harness would send
    * them. The gateway never executes tools and neither does this client. */
   tools?: Tool[];
@@ -166,6 +172,9 @@ export function buildChatRequest(opts: CompletionOptions, stream: boolean): Chat
   const body: ChatCompletionRequest = { model: opts.model, messages: opts.messages, stream };
   if (opts.temperature != null) body.temperature = opts.temperature;
   if (opts.maxTokens != null) body.max_tokens = opts.maxTokens;
+  if (opts.topP != null) body.top_p = opts.topP;
+  if (opts.seed != null) body.seed = opts.seed;
+  if (opts.stop != null && opts.stop.length > 0) body.stop = opts.stop;
   if (opts.tools && opts.tools.length > 0) body.tools = opts.tools;
   if (opts.toolChoice != null) body.tool_choice = opts.toolChoice;
   if (opts.responseFormat != null) body.response_format = opts.responseFormat;

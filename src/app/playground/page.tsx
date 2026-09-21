@@ -6,8 +6,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ChatInput } from "@/components/ChatInput";
 import { ChatLog, type ToolResult } from "@/components/ChatLog";
+import { CopyButton } from "@/components/CopyButton";
 import { DiagnosticPanel, type GatewayMode } from "@/components/DiagnosticPanel";
 import { RequestReport } from "@/components/RequestReport";
+import { SamplingPanel } from "@/components/SamplingPanel";
 import { EXAMPLE_TOOLS_TEXT, type ResponseFormatChoice, ToolsPanel } from "@/components/ToolsPanel";
 import { ApiError, api } from "@/lib/api";
 import {
@@ -26,6 +28,14 @@ import {
   parseToolDefinitions,
 } from "@/lib/diagnostic";
 import { readPlaygroundTranscript, writePlaygroundTranscript } from "@/lib/playgroundTranscript";
+import {
+  EMPTY_SAMPLING,
+  type SamplingDraft,
+  activeSamplingCount,
+  normalizeSamplingDraft,
+  parseSampling,
+  withSystemPrompt,
+} from "@/lib/sampling";
 import { getSessionToken } from "@/lib/session";
 import type {
   ChatCompletionMessage,
@@ -48,6 +58,7 @@ import { useSetupGate } from "@/lib/useSetupGate";
 
 const DIAGNOSTIC_KEY = "eugene-playground-diagnostic";
 const TOOLS_KEY = "eugene-playground-tools";
+const SAMPLING_KEY = "eugene-playground-sampling";
 
 // Generation on a large local quant is slow but not unbounded. Past
 // this, something is wedged and the operator wants an error rather than
@@ -75,6 +86,31 @@ interface TurnInfo extends CompletionRoutingInfo {
   model?: string;
   promptTokens?: number;
   completionTokens?: number;
+  /** `length` and `content_filter` change what the text above means,
+   * so the bar badges them; `stop` and `tool_calls` are the quiet
+   * normal cases. */
+  finishReason?: string | null;
+  /** From the client's own clock: send to first parsed frame. */
+  firstFrameMs?: number | null;
+  /** Completion tokens over the time after the first frame — an
+   * approximate decode rate measured where the person sits, not the
+   * backend's own number. Null when the window is too small to mean
+   * anything. */
+  tokPerSec?: number | null;
+}
+
+/** The decode rate as this browser saw it. Below two tokens or a
+ * quarter second of decode the division is noise, so it is withheld
+ * rather than rendered as a confident wrong number. */
+function clientTokPerSec(
+  completionTokens: number | undefined,
+  elapsedMs: number | null,
+  firstFrameMs: number | null,
+): number | null {
+  if (completionTokens == null || elapsedMs == null || firstFrameMs == null) return null;
+  const windowMs = elapsedMs - firstFrameMs;
+  if (completionTokens < 2 || windowMs < 250) return null;
+  return completionTokens / (windowMs / 1000);
 }
 
 function readJson<T>(key: string): T | null {
@@ -109,6 +145,8 @@ export default function PlaygroundPage() {
   const [report, setReport] = useState<Report | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A deliberate stop is not a failure and must not read like one.
+  const [notice, setNotice] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   // First-run and sign-in, shared with Home so the two pages of the
   // install root cannot bounce differently.
@@ -131,10 +169,18 @@ export default function PlaygroundPage() {
   const [toolChoice, setToolChoice] = useState<ToolChoice>("auto");
   const [responseFormat, setResponseFormat] = useState<ResponseFormatChoice>("text");
 
+  // The request's own knobs. Raw strings in state — empty means "not
+  // sent", parsed once per send by the same helper the panel's error
+  // line uses.
+  const [sampling, setSampling] = useState<SamplingDraft>(EMPTY_SAMPLING);
+
   const page = useMemo(pageLocation, []);
   const parsedTools = useMemo(() => parseToolDefinitions(toolDefs), [toolDefs]);
   const toolNames = "tools" in parsedTools ? parsedTools.tools.map((t) => t.function.name) : [];
   const toolsError = "error" in parsedTools ? parsedTools.error : null;
+  const parsedSampling = useMemo(() => parseSampling(sampling), [sampling]);
+  const samplingError = "error" in parsedSampling ? parsedSampling.error : null;
+  const samplingCount = useMemo(() => activeSamplingCount(sampling), [sampling]);
 
   const transport: Transport = useMemo(
     () =>
@@ -149,6 +195,10 @@ export default function PlaygroundPage() {
   modelRef.current = model;
   const transportRef = useRef<Transport>(PROXY);
   transportRef.current = transport;
+  // The in-flight turn's controller, so Stop can end it. Cleared when
+  // the turn settles; aborted-and-cleared is how a stop is told apart
+  // from a failure in the catch below.
+  const abortRef = useRef<AbortController | null>(null);
 
   // The diagnostic's defaults, once the gate is open: the session token
   // as the key, and the gateway's probable address from the topology.
@@ -166,6 +216,8 @@ export default function PlaygroundPage() {
     if (typeof tools?.definitions === "string" && tools.definitions.trim()) {
       setToolDefs(tools.definitions);
     }
+    const storedSampling = readJson<unknown>(SAMPLING_KEY);
+    if (storedSampling !== null) setSampling(normalizeSamplingDraft(storedSampling));
     let cancelled = false;
     void (async () => {
       try {
@@ -195,6 +247,11 @@ export default function PlaygroundPage() {
     if (setupGate !== "ready") return;
     writeJson(TOOLS_KEY, { enabled: toolsOn, definitions: toolDefs } satisfies PersistedTools);
   }, [setupGate, toolsOn, toolDefs]);
+
+  useEffect(() => {
+    if (setupGate !== "ready") return;
+    writeJson(SAMPLING_KEY, sampling);
+  }, [setupGate, sampling]);
 
   // The model list is the gateway's routing table, so it changes as
   // runtimes come and go. Refresh on a slow interval rather than once at
@@ -271,10 +328,18 @@ export default function PlaygroundPage() {
       setError(toolsError);
       return;
     }
+    if ("error" in parsedSampling) {
+      setError(parsedSampling.error);
+      return;
+    }
+    const values = parsedSampling.values;
     setError(null);
+    setNotice(null);
     setTurnInfo(null);
     setMessages(outgoing);
     setPending(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       // The assistant message is appended empty and then grown in place.
@@ -300,14 +365,24 @@ export default function PlaygroundPage() {
           model: chosen,
           // Full history every turn: the gateway and the drivers below it
           // are stateless by contract, so the transcript is the caller's
-          // to carry.
-          messages: outgoing,
+          // to carry. The system prompt rides only here — prepending it
+          // into the stored transcript would send two on the next turn.
+          messages: withSystemPrompt(outgoing, values.system, (content) => ({
+            role: "system",
+            content,
+          })),
           timeoutMs: REQUEST_TIMEOUT_MS,
+          temperature: values.temperature,
+          maxTokens: values.maxTokens,
+          topP: values.topP,
+          seed: values.seed,
+          stop: values.stop,
           tools: toolsOn && "tools" in parsedTools ? parsedTools.tools : undefined,
           toolChoice: toolsOn ? toolChoice : undefined,
           responseFormat: responseFormat === "json_object" ? { type: "json_object" } : undefined,
           transport: transportRef.current,
           reproduceBaseUrl: normalizeBaseUrl(baseUrl) || guess,
+          signal: controller.signal,
           onReport: setReport,
           // Cards fill in as fragments land, the way the text does.
           onToolCalls: (calls) =>
@@ -338,8 +413,22 @@ export default function PlaygroundPage() {
         model: response.model,
         promptTokens: response.usage?.prompt_tokens,
         completionTokens: response.usage?.completion_tokens,
+        finishReason: response.choices?.[0]?.finish_reason ?? null,
+        firstFrameMs: response.report.firstFrameMs,
+        tokPerSec: clientTokPerSec(
+          response.usage?.completion_tokens,
+          response.report.elapsedMs,
+          response.report.firstFrameMs,
+        ),
       });
     } catch (e) {
+      if (controller.signal.aborted) {
+        // The operator pressed Stop. Whatever streamed is already in
+        // the transcript; the only thing to say is that the end of the
+        // answer is missing on purpose.
+        setNotice("Stopped. Whatever had already arrived is kept above.");
+        return;
+      }
       const detail =
         e instanceof ApiError
           ? (errorMessage(e.body) ?? `${e.status} ${e.statusText}`)
@@ -348,8 +437,15 @@ export default function PlaygroundPage() {
             : String(e);
       setError(detail);
     } finally {
+      abortRef.current = null;
       setPending(false);
     }
+  }
+
+  /** End the in-flight turn. The stream's fetch is aborted at whichever
+   * boundary it is on — waiting for headers or mid-body. */
+  function stopTurn() {
+    abortRef.current?.abort();
   }
 
   function handleSend(text: string) {
@@ -378,6 +474,16 @@ export default function PlaygroundPage() {
     void runTurn(messages.slice(0, lastUser + 1));
   }
 
+  // After a failure the history already ends with what was sent — the
+  // reply never arrived — so a retry is the same history again. Offered
+  // right in the error strip, because "try it again" is the first thing
+  // anyone does about a transient failure and re-typing is the worst way.
+  const lastRole = messages[messages.length - 1]?.role;
+  const canRetry = !pending && (lastRole === "user" || lastRole === "tool");
+  function handleRetry() {
+    void runTurn(messages);
+  }
+
   /** Put an earlier message back in the composer and drop everything from it
    * onward. Destructive by design and by expectation - an edited message with
    * the old replies still under it would be a transcript that never happened. */
@@ -385,6 +491,7 @@ export default function PlaygroundPage() {
     setMessages(messages.slice(0, index));
     setTurnInfo(null);
     setError(null);
+    setNotice(null);
     setSeed({ text: content, nonce: Date.now() });
   }
 
@@ -393,6 +500,7 @@ export default function PlaygroundPage() {
     setTurnInfo(null);
     setReport(null);
     setError(null);
+    setNotice(null);
   }
 
   if (setupGate === "checking") {
@@ -422,14 +530,18 @@ export default function PlaygroundPage() {
             onClick={() => setPanelsOpen((o) => !o)}
             aria-pressed={panelsOpen}
             className={`font-ui rounded-[var(--radius)] border px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
-              panelsOpen || mode === "direct" || toolsOn
+              panelsOpen || mode === "direct" || toolsOn || samplingCount > 0
                 ? "border-[color:var(--accent-left)]"
                 : "border-[color:var(--border)]"
             }`}
-            title="Which path to the gateway, tool definitions, and the request report"
+            title="Which path to the gateway, tool definitions, request settings, and the request report"
           >
             Diagnostic{mode === "direct" ? " · direct" : ""}
             {toolsOn ? " · tools" : ""}
+            {/* Hidden state is never silent: a closed panel with a seed
+                set would otherwise change every answer with nothing on
+                screen saying why. */}
+            {samplingCount > 0 ? " · settings" : ""}
           </button>
           <button
             type="button"
@@ -439,6 +551,14 @@ export default function PlaygroundPage() {
           >
             New
           </button>
+          {messages.length > 0 && (
+            <CopyButton
+              text={JSON.stringify(messages, null, 2)}
+              label="Copy JSON"
+              title="The messages array exactly as a harness would replay it, tool calls and results included"
+              className="border border-[color:var(--border)] px-3 py-1 text-xs"
+            />
+          )}
         </>
       }
     >
@@ -469,6 +589,9 @@ export default function PlaygroundPage() {
               onResponseFormat={setResponseFormat}
               modelToolCalling={selected?.x_eugene_plexus?.tool_calling}
             />
+            <div className="flex sm:col-span-2">
+              <SamplingPanel draft={sampling} onDraft={setSampling} error={samplingError} />
+            </div>
           </div>
         )}
 
@@ -484,9 +607,38 @@ export default function PlaygroundPage() {
 
         {turnInfo && <RoutingBar info={turnInfo} />}
         {report && <RequestReport report={report} page={page} apiKey={apiKey || null} />}
-        {error && <div className="status-error border-t px-4 py-2 text-xs">{error}</div>}
+        {error && (
+          <div className="status-error flex items-center gap-3 border-t px-4 py-2 text-xs">
+            <span className="min-w-0 flex-1">{error}</span>
+            {canRetry && (
+              <button
+                type="button"
+                data-testid="retry-turn"
+                onClick={handleRetry}
+                title="Send the same history again; nothing needs re-typing"
+                className="font-ui shrink-0 rounded-[var(--radius)] border border-current px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
+              >
+                Try again
+              </button>
+            )}
+          </div>
+        )}
+        {notice && (
+          <div
+            data-testid="turn-notice"
+            className="font-ui border-t border-[color:var(--border)] px-4 py-2 text-xs text-[color:var(--muted)]"
+          >
+            {notice}
+          </div>
+        )}
 
-        <ChatInput onSend={handleSend} disabled={pending || model == null} seed={seed} />
+        <ChatInput
+          onSend={handleSend}
+          disabled={pending || model == null}
+          seed={seed}
+          pending={pending}
+          onStop={stopTurn}
+        />
       </main>
     </AppShell>
   );
@@ -533,6 +685,7 @@ function ModelPicker({
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
+        aria-label="Model"
         className="font-ui max-w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 text-xs outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50 sm:max-w-[420px]"
       >
         {models.map((m) => (
@@ -564,6 +717,12 @@ function RoutingBar({ info }: { info: TurnInfo }) {
   if (info.promptTokens != null && info.completionTokens != null) {
     parts.push(`${info.promptTokens}→${info.completionTokens} tok`);
   }
+  // Both from this browser's clock: what the person sitting here
+  // experienced, not the backend's own accounting. The rate is decode
+  // only (after the first frame), and approximate — hence the tilde.
+  if (info.firstFrameMs != null)
+    parts.push(`first token ${(info.firstFrameMs / 1000).toFixed(2)}s`);
+  if (info.tokPerSec != null) parts.push(`~${info.tokPerSec.toFixed(1)} tok/s`);
   // The window that applied to *this* turn, which is not the smallest
   // across every replica -- that one is on the model picker above.
   if (info.context_length != null) {
@@ -593,6 +752,29 @@ function RoutingBar({ info }: { info: TurnInfo }) {
           }
         >
           input truncated
+        </span>
+      )}
+      {/* The two finish reasons that change what the text above means.
+          `stop` and `tool_calls` are the quiet normal cases and stay
+          out of the bar — a badge that is always there is one people
+          learn to skip. */}
+      {info.finishReason === "length" && (
+        <span
+          className="status-warn px-1"
+          title={
+            "The reply stopped at the token limit, not at a natural end. Raise max_tokens " +
+            "in Request settings, or clear it to use the model's own setting."
+          }
+        >
+          hit the token limit
+        </span>
+      )}
+      {info.finishReason === "content_filter" && (
+        <span
+          className="status-warn px-1"
+          title="The backend's own safety layer ended the reply. The text above is what it allowed."
+        >
+          filtered by the backend
         </span>
       )}
     </div>
