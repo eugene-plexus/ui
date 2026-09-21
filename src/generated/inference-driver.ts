@@ -335,6 +335,14 @@ export interface components {
     schemas: {
         GenerateRequest: {
             /**
+             * @description Internal routing policy. When true the driver must refuse before
+             *     forwarding any prompt/image unless its active engine is classified
+             *     local. Never forward this field upstream. Checked on the active
+             *     engine at execution, so stale gateway metadata cannot relax policy.
+             * @default false
+             */
+            localOnly: boolean;
+            /**
              * @description A2 provenance: names of settings explicitly requested by the caller,
              *     using this request's field names (maxTokens, temperature, topP, seed,
              *     stop, tools, toolChoice, responseFormat). The gateway preserves this
@@ -551,6 +559,11 @@ export interface components {
          */
         EmbedRequest: {
             /**
+             * @description Internal policy; require a local active engine before forwarding any input.
+             * @default false
+             */
+            localOnly: boolean;
+            /**
              * @description One entry per vector to produce. Order is preserved: the
              *     n-th vector in the response is the n-th input, which is the
              *     only thing that lets a caller match them up, since an
@@ -586,6 +599,23 @@ export interface components {
          *     topology, not here.
          */
         DriverInfo: {
+            /**
+             * @description Active engine's configured trust classification. Managed local
+             *     runtimes are local; cloud APIs and subscription CLIs are external.
+             *     Custom HTTP endpoints require an explicit operator assertion;
+             *     URLs, hostnames and loopback addresses never prove locality.
+             *     Unknown and absent are ineligible for local-only routing.
+             * @default unknown
+             * @enum {string}
+             */
+            locality: "local" | "external" | "unknown";
+            /**
+             * @description True only when this driver enforces GenerateRequest/EmbedRequest
+             *     localOnly against the active engine before invoking it. A local
+             *     classification alone is insufficient for a protected request.
+             * @default false
+             */
+            localOnlyEnforced: boolean;
             backend: components["schemas"]["BackendKind"];
             /**
              * @description Operator-friendly provider key from the driver's

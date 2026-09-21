@@ -75,7 +75,8 @@ it("makes a scoped key with the chosen limits", async () => {
   await screen.findByText("Keys and revocations apply to every gateway in this install.", {
     exact: false,
   });
-  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("checkbox", { name: /Allow all models/ }));
+  fireEvent.click(screen.getByRole("checkbox", { name: /Local-only inference/ }));
   fireEvent.change(screen.getByRole("textbox", { name: /Allowed model IDs/ }), {
     target: { value: "alias\nactual\nactual" },
   });
@@ -86,6 +87,7 @@ it("makes a scoped key with the chosen limits", async () => {
     expect(post).toHaveBeenCalledWith("agent", "/v1/auth/client-keys", {
       name: "My app",
       limits: {
+        localOnly: true,
         allowedModels: ["alias", "actual"],
         maxConcurrentRequests: 1,
         requestsPerMinute: 12,
@@ -110,17 +112,30 @@ it("makes legacy access explicit and edits limits without minting another token"
   expect(await screen.findByText(/Legacy \/ unrestricted/)).toBeInTheDocument();
   fireEvent.click(screen.getByText("Set limits"));
   const row = screen.getByTestId("key-list");
-  fireEvent.click(within(row).getByRole("checkbox"));
+  fireEvent.click(within(row).getByRole("checkbox", { name: /Allow all models/ }));
   get.mockResolvedValue({
     keys: [
-      { ...key, limits: { allowedModels: [], maxConcurrentRequests: 2, requestsPerMinute: 60 } },
+      {
+        ...key,
+        limits: {
+          localOnly: false,
+          allowedModels: [],
+          maxConcurrentRequests: 2,
+          requestsPerMinute: 60,
+        },
+      },
     ],
     scope: "install",
   });
   fireEvent.click(within(row).getByText("Save limits"));
   await waitFor(() =>
     expect(put).toHaveBeenCalledWith("agent", "/v1/auth/client-keys/legacy/limits", {
-      limits: { allowedModels: [], maxConcurrentRequests: 2, requestsPerMinute: 60 },
+      limits: {
+        localOnly: false,
+        allowedModels: [],
+        maxConcurrentRequests: 2,
+        requestsPerMinute: 60,
+      },
     }),
   );
   expect(await screen.findByText(/No models allowed/)).toBeInTheDocument();

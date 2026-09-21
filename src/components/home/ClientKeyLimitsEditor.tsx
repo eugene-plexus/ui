@@ -1,10 +1,12 @@
 "use client";
 
 import { useId } from "react";
+import Link from "next/link";
 
 import type { ClientKeyLimits } from "@/lib/types";
 
 export const DEFAULT_CLIENT_LIMITS: ClientKeyLimits = {
+  localOnly: false,
   allowedModels: null,
   maxConcurrentRequests: 2,
   requestsPerMinute: 60,
@@ -26,6 +28,22 @@ export function ClientKeyLimitsEditor({
   return (
     <fieldset disabled={disabled} className="font-ui basis-full space-y-2 text-xs">
       <legend className="mb-2 font-semibold">Key permissions and limits</legend>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={value.localOnly === true}
+          onChange={(e) => onChange({ ...value, localOnly: e.target.checked })}
+        />
+        Local-only inference: never fall back to cloud or unconfirmed endpoints
+      </label>
+      <p className="text-[color:var(--muted)]">
+        Models Eugene runs locally qualify automatically. For other local servers, confirm Endpoint
+        trust in the driver’s Provider settings. Cloud subscriptions remain external.{" "}
+        <Link href="/inference/" className="underline">
+          Find the driver
+        </Link>
+        .
+      </p>
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
@@ -104,5 +122,5 @@ export function describeClientLimits(value?: ClientKeyLimits | null): string {
       : value.allowedModels.length === 0
         ? "No models allowed"
         : value.allowedModels.join(", ");
-  return `${models} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute`;
+  return `${models}${value.localOnly ? " · Local-only" : ""} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute`;
 }

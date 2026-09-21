@@ -2055,6 +2055,15 @@ export interface components {
             keyringAvailable?: boolean;
         };
         ClientKeyLimits: {
+            /**
+             * @description Permit only backends explicitly classified local by drivers enforcing
+             *     the local-only request policy. External, unknown and older drivers
+             *     are ineligible, including through aliases, fallback and wake. The
+             *     caller cannot relax this restriction. Local is a configured trust
+             *     boundary, not a promise to sandbox a malicious backend.
+             * @default false
+             */
+            localOnly: boolean;
             /** @description Null permits all. Empty permits none. Exact alias and actual target IDs must both be allowed. */
             allowedModels?: string[] | null;
             /** @default 2 */
