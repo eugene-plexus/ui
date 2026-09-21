@@ -26,10 +26,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DiscoverPage from "./page";
 
+const nav = vi.hoisted(() => ({
+  params: new URLSearchParams(),
+  replace: vi.fn(),
+}));
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ replace: nav.replace, push: vi.fn(), refresh: vi.fn() }),
   usePathname: () => "/discover",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => nav.params,
 }));
 
 vi.mock("@/components/AppShell", () => ({
@@ -48,7 +53,7 @@ const OVERHEAD = 1024 ** 3;
 const FREE_VRAM = 31_000_000_000;
 
 /** Every request this page made, in order, split into path and query. */
-let seen: { path: string; params: URLSearchParams }[];
+let seen: { path: string; params: URLSearchParams; body?: unknown }[];
 
 function lastQuery(path: string): URLSearchParams {
   const hit = [...seen].reverse().find((r) => r.path === path);
@@ -69,14 +74,23 @@ function asked(path: string): number {
  * 8,192 tokens, which is `fit.py`'s fallback and the branch nearly every
  * catalogue verdict takes.
  */
-function modelBody(contextLength: number) {
+interface ModelBodyOptions {
+  projectors?: { path: string; sizeBytes: number; role: string }[];
+  warnings?: string[];
+  chatTemplate?: boolean;
+  recommended?: { label: string; reason: string };
+  candidates?: [];
+  resolvedCommit?: string;
+}
+
+function modelBody(contextLength: number, options: ModelBodyOptions = {}) {
   const kv = Math.trunc(WEIGHTS * 0.15 * (contextLength / 8192));
   const required = WEIGHTS + kv + OVERHEAD;
   return {
     repo: REPO,
     name: "Qwen3.8 27B",
     owner: "unsloth",
-    candidates: [
+    candidates: options.candidates ?? [
       {
         label: "Q4_K_M",
         format: "gguf",
@@ -94,9 +108,34 @@ function modelBody(contextLength: number) {
         },
       },
     ],
-    projectors: [],
+    projectors: options.projectors ?? [],
     otherFiles: [],
-    warnings: [],
+    warnings: options.warnings ?? [],
+    ...(options.chatTemplate !== undefined ? { chatTemplate: options.chatTemplate } : {}),
+    ...(options.recommended ? { recommended: options.recommended } : {}),
+    ...(options.resolvedCommit ? { resolvedCommit: options.resolvedCommit } : {}),
+  };
+}
+
+const PROJECTORS = [
+  { path: "mmproj-F16.gguf", sizeBytes: 856_000_000, role: "projector" },
+  { path: "mmproj-BF16.gguf", sizeBytes: 1_712_000_000, role: "projector" },
+];
+
+/** The library's own multimodal sentence, verbatim — the API prose the
+ * vision box replaces on screen. */
+const RAW_PROJECTOR_WARNING =
+  "This is a multimodal model: 2 vision projectors are published separately, and one has " +
+  "to be downloaded alongside the quant for the model to see images. They are listed " +
+  "under `projectors`.";
+
+/** A multimodal repo with a recommendation, the shape the ask names. */
+function visionOptions(extra: ModelBodyOptions = {}): ModelBodyOptions {
+  return {
+    projectors: PROJECTORS,
+    warnings: [RAW_PROJECTOR_WARNING],
+    recommended: { label: "Q4_K_M", reason: "Largest that fits." },
+    ...extra,
   };
 }
 
@@ -136,6 +175,8 @@ let handlers: Map<string, Handler>;
 
 beforeEach(() => {
   seen = [];
+  nav.params = new URLSearchParams();
+  nav.replace = vi.fn();
   handlers = new Map<string, Handler>([
     ["GET agent/v1/node", () => ok({ enrolled: false, devices: [] })],
     ["GET control/v1/nodes", () => ({ status: 503, body: { detail: "no root" } })],
@@ -166,7 +207,11 @@ beforeEach(() => {
       const route = String(input).replace(/^[/]api[/]proxy[/]/, "");
       const [path = "", query = ""] = route.split("?");
       const params = new URLSearchParams(query);
-      seen.push({ path, params });
+      seen.push({
+        path,
+        params,
+        body: init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined,
+      });
       const handler = handlers.get(`${init?.method ?? "GET"} ${path}`);
       const result = handler ? handler(params) : { status: 418, body: { detail: `?? ${path}` } };
       return new Response(result.body === undefined ? null : JSON.stringify(result.body), {
@@ -263,5 +308,213 @@ describe("the context control", () => {
     // explicit by design. Dropping the stale answer is this page's
     // business; spending the bandwidth again is the operator's.
     expect(asked("library/v1/catalogue/model/preflight")).toBe(1);
+  });
+});
+
+function useModel(options: ModelBodyOptions) {
+  handlers.set("GET library/v1/catalogue/model", (params) =>
+    ok(modelBody(Number(params.get("contextLength")), options)),
+  );
+}
+
+function lastDownloadBody(): { repo: string; files: string[] } {
+  const hit = [...seen].reverse().find((r) => r.path === "library/v1/downloads" && r.body);
+  if (!hit) throw new Error("no download was posted");
+  return hit.body as { repo: string; files: string[] };
+}
+
+describe("vision pairing", () => {
+  beforeEach(() => {
+    handlers.set("POST library/v1/downloads", () => ok({}));
+  });
+
+  it("rides by default: the button names both sizes and the download carries the projector", async () => {
+    useModel(visionOptions());
+    await openTheRepo();
+
+    // The fact is a control now, on and visible, and the raw API prose
+    // ("listed under `projectors`") is not shown beside it.
+    const checkbox = screen.getByTestId("vision-checkbox") as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+    expect(screen.queryByText(/listed under/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("takes-images")).toBeInTheDocument();
+
+    const button = screen.getByTestId("repo-recommended-download");
+    expect(button.textContent).toContain("+ 856.00 MB vision");
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(lastDownloadBody().files).toEqual(["Qwen3.8-27B-Q4_K_M.gguf", "mmproj-F16.gguf"]);
+  });
+
+  it("unchecked, the download is the quant alone and the button says only its size", async () => {
+    useModel(visionOptions());
+    await openTheRepo();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("vision-checkbox"));
+    });
+    const button = screen.getByTestId("repo-recommended-download");
+    expect(button.textContent).not.toContain("vision");
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(lastDownloadBody().files).toEqual(["Qwen3.8-27B-Q4_K_M.gguf"]);
+  });
+
+  it("a different projector precision can be picked and is the one fetched", async () => {
+    useModel(visionOptions());
+    await openTheRepo();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: /mmproj-BF16/ }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("repo-recommended-download"));
+    });
+    expect(lastDownloadBody().files).toEqual(["Qwen3.8-27B-Q4_K_M.gguf", "mmproj-BF16.gguf"]);
+  });
+
+  it("only the projector sentence is replaced; other warnings still render", async () => {
+    useModel(visionOptions({ warnings: [RAW_PROJECTOR_WARNING, "This model is gated."] }));
+    await openTheRepo();
+    expect(screen.getByText("This model is gated.")).toBeInTheDocument();
+    expect(screen.queryByText(/listed under/)).not.toBeInTheDocument();
+  });
+
+  it("a text-only repo shows neither the box nor the capability", async () => {
+    await openTheRepo();
+    expect(screen.queryByTestId("vision-pairing")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("takes-images")).not.toBeInTheDocument();
+  });
+});
+
+describe("the recommended card", () => {
+  it("knows its files are already downloading and does not offer a second fetch", async () => {
+    useModel(visionOptions());
+    handlers.set("GET library/v1/downloads", () =>
+      ok({
+        downloads: [
+          {
+            id: "d1",
+            repo: REPO,
+            state: "downloading",
+            files: [{ path: "Qwen3.8-27B-Q4_K_M.gguf", destinationPath: "/models/q.gguf" }],
+          },
+        ],
+      }),
+    );
+    await openTheRepo();
+    const button = screen.getByTestId("repo-recommended-download") as HTMLButtonElement;
+    expect(button.textContent).toBe("downloading");
+    expect(button.disabled).toBe(true);
+  });
+
+  it("offers the exact-fit check, and the card's verdict follows the preflight", async () => {
+    useModel(visionOptions());
+    await openTheRepo();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("repo-recommended-check"));
+    });
+    await waitFor(() => expect(asked("library/v1/catalogue/model/preflight")).toBe(1));
+    expect(screen.getByTestId("repo-recommended-check").textContent).toBe("exact fit checked");
+  });
+});
+
+describe("honesty on the detail", () => {
+  it("a repo with nothing launchable says so instead of an empty table", async () => {
+    useModel({ candidates: [] });
+    await openTheRepo();
+    expect(screen.getByTestId("no-candidates")).toBeInTheDocument();
+  });
+
+  it("a missing chat template is warned about; present or unknown is not", async () => {
+    useModel({ chatTemplate: false });
+    await openTheRepo();
+    expect(screen.getByTestId("no-chat-template")).toBeInTheDocument();
+  });
+
+  it("chatTemplate true renders no warning", async () => {
+    useModel({ chatTemplate: true });
+    await openTheRepo();
+    expect(screen.queryByTestId("no-chat-template")).not.toBeInTheDocument();
+  });
+
+  it("the header names the pinned revision", async () => {
+    useModel({ resolvedCommit: "abc1234def5678" });
+    await openTheRepo();
+    expect(screen.getByText(/pinned at abc1234/)).toBeInTheDocument();
+  });
+});
+
+describe("the results list", () => {
+  it("rows carry recency and format, so 'recently updated' has dates on it", async () => {
+    const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000).toISOString();
+    handlers.set("GET library/v1/catalogue/search", () =>
+      ok({
+        results: [
+          {
+            repo: REPO,
+            name: "Qwen3.8 27B",
+            owner: "unsloth",
+            lastModified: tenDaysAgo,
+            formats: ["gguf"],
+          },
+        ],
+      }),
+    );
+    render(<DiscoverPage />);
+    await screen.findByTestId("result-age", {}, { timeout: 5000 });
+    expect(screen.getByTestId("result-age").textContent).toBe("updated 10 days ago");
+    expect(screen.getByText("gguf")).toBeInTheDocument();
+  });
+});
+
+describe("selection and preferences survive", () => {
+  it("?repo= opens the detail without a click, and selection is mirrored to the URL", async () => {
+    nav.params = new URLSearchParams(`repo=${REPO}`);
+    render(<DiscoverPage />);
+    await screen.findByTestId("all-versions", {}, { timeout: 5000 });
+    expect(asked("library/v1/catalogue/model")).toBeGreaterThan(0);
+  });
+
+  it("clicking a repo writes ?repo= into the URL", async () => {
+    await openTheRepo();
+    await waitFor(() =>
+      expect(nav.replace).toHaveBeenCalledWith(`/discover?repo=${encodeURIComponent(REPO)}`, {
+        scroll: false,
+      }),
+    );
+  });
+
+  it("mirroring the selection preserves the tree's ?sel=, never clobbers it", async () => {
+    // The tree's selection rides in ?sel= on every page. A repo click
+    // that rewrote the query from scratch would silently deselect the
+    // tree — invisible in the test above, whose query starts empty.
+    window.history.replaceState(null, "", "/discover?sel=agent%3Anode-a");
+    try {
+      await openTheRepo();
+      await waitFor(() => {
+        const urls = nav.replace.mock.calls.map((c) => String(c[0]));
+        const withRepo = urls.find((u) => u.includes("repo="));
+        expect(withRepo).toBeDefined();
+        expect(withRepo).toContain("sel=agent%3Anode-a");
+      });
+    } finally {
+      window.history.replaceState(null, "", "/discover");
+    }
+  });
+
+  it("the scoring context and sort come back from the browser's own store", async () => {
+    localStorage.setItem(
+      "eugene-discover-prefs",
+      JSON.stringify({ contextLength: 32768, sort: "modified", format: "" }),
+    );
+    await openTheRepo();
+    await waitFor(() =>
+      expect(lastQuery("library/v1/catalogue/model").get("contextLength")).toBe("32768"),
+    );
+    expect(lastQuery("library/v1/catalogue/search").get("sort")).toBe("modified");
+    expect(lastQuery("library/v1/catalogue/search").get("format")).toBeNull();
   });
 });

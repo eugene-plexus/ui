@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
@@ -11,6 +12,7 @@ import { ApiError, api } from "@/lib/api";
 import { NodePicker } from "@/components/NodePicker";
 import { StarterSetPanel } from "@/components/StarterSetPanel";
 import { contextLabel } from "@/lib/starter";
+import { relativeAge } from "@/lib/relativeTime";
 import { type NodeBudget, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import type {
   CatalogueCandidate,
@@ -78,7 +80,30 @@ const SORT_LABEL: Record<CatalogueSort, string> = {
   created: "newest",
 };
 
+/** Format, sort and the scoring context survive a reload, per browser.
+ * The person who always scores at 32k was being reset to 8k every
+ * visit, and the number silently decides every verdict on the screen. */
+const PREFS_KEY = "eugene-discover-prefs";
+
+interface DiscoverPrefs {
+  contextLength?: number;
+  format?: ModelFormat | "";
+  sort?: CatalogueSort;
+}
+
 export default function DiscoverPage() {
+  // `useSearchParams` suspends during prerender, so the boundary is
+  // required rather than decorative — the library page's own pattern.
+  return (
+    <Suspense fallback={null}>
+      <DiscoverPageInner />
+    </Suspense>
+  );
+}
+
+function DiscoverPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [format, setFormat] = useState<ModelFormat | "">("gguf");
@@ -87,7 +112,12 @@ export default function DiscoverPage() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  // `?repo=` seeds the selection, so a reload keeps the repo open and a
+  // link from anywhere else lands on the detail — the `?sel=` rule the
+  // tree already follows, applied to this screen's own subject.
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(
+    () => searchParams.get("repo") || null,
+  );
   const [contextLength, setContextLength] = useState(8192);
   // What the library made of the query: `repo` means it parsed as a
   // pasted reference and `results` holds that one repo.
@@ -107,6 +137,60 @@ export default function DiscoverPage() {
     const id = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(id);
   }, [query]);
+
+  // Preferences restored after mount, the way the playground does it —
+  // a lazy initializer reading localStorage would render differently
+  // than the static export's prerender and React would warn.
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PREFS_KEY);
+      if (raw) {
+        const prefs = JSON.parse(raw) as DiscoverPrefs;
+        if (
+          typeof prefs.contextLength === "number" &&
+          CONTEXT_CHOICES.includes(prefs.contextLength)
+        ) {
+          setContextLength(prefs.contextLength);
+        }
+        if (prefs.format === "" || prefs.format === "gguf" || prefs.format === "safetensors") {
+          setFormat(prefs.format);
+        }
+        if (typeof prefs.sort === "string" && prefs.sort in SORT_LABEL) setSort(prefs.sort);
+      }
+    } catch {
+      // Private mode or a stale shape: the defaults stand.
+    }
+    setPrefsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    try {
+      localStorage.setItem(
+        PREFS_KEY,
+        JSON.stringify({ contextLength, format, sort } satisfies DiscoverPrefs),
+      );
+    } catch {
+      // The screen just does not remember.
+    }
+  }, [prefsLoaded, contextLength, format, sort]);
+
+  // The URL mirrors the selection; state drives. `replace` rather than
+  // `push` so paging through repos does not bury Back under every
+  // click. The other params are preserved — `?sel=` is the tree's and
+  // clobbering it would deselect the tree on every repo click — and
+  // read off `window.location` rather than `useSearchParams`, whose
+  // object in the dependency list would re-fire this effect on its own
+  // replace.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if ((params.get("repo") || null) === selectedRepo) return;
+    if (selectedRepo) params.set("repo", selectedRepo);
+    else params.delete("repo");
+    const qs = params.toString();
+    router.replace(qs ? `/discover?${qs}` : "/discover", { scroll: false });
+  }, [router, selectedRepo]);
 
   useEffect(() => {
     void (async () => {
@@ -445,11 +529,20 @@ function ResultsList({
                   <span className="text-status-warn"> · gated</span>
                 )}
               </p>
-              <p className="mt-0.5 flex gap-3 text-[0.6875rem] text-[color:var(--muted)] tabular-nums">
+              <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[0.6875rem] text-[color:var(--muted)] tabular-nums">
                 {result.downloads != null && (
                   <span>{compactCount(result.downloads)} downloads</span>
                 )}
                 {result.likes != null && <span>{compactCount(result.likes)} likes</span>}
+                {/* "recently updated" was an order with no dates on it. */}
+                {relativeAge(result.lastModified) && (
+                  <span data-testid="result-age">updated {relativeAge(result.lastModified)}</span>
+                )}
+                {(result.formats ?? []).map((f) => (
+                  <span key={f} className="font-mono-ui uppercase">
+                    {f === "safetensors" ? "ST" : f}
+                  </span>
+                ))}
               </p>
             </button>
           </li>
@@ -550,6 +643,11 @@ function RepoDetail({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [projector, setProjector] = useState<string | null>(null);
+  // Whether the vision part rides along. On by default: a person who
+  // downloads a multimodal model without it gets a model that cannot
+  // see, and discovers that days later in a chat. The box below the
+  // button is where turning it off lives, visibly.
+  const [withVision, setWithVision] = useState(true);
   const [preflights, setPreflights] = useState<Record<string, CataloguePreflight>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -621,12 +719,15 @@ function RepoDetail({
     }
   }
 
-  async function download(candidate: CatalogueCandidate, includeProjector: boolean) {
+  async function download(candidate: CatalogueCandidate) {
     setBusy(candidate.label);
     setActionError(null);
     try {
       const files = candidate.files.map((file) => file.path);
-      if (includeProjector && projector) files.push(projector);
+      // The vision part rides in the same download, into the same
+      // directory — which is what pairs it: the scan finds a projector
+      // beside its model and the launch line picks it up unaided.
+      if (withVision && projector) files.push(projector);
       await api.post("library", "/v1/downloads", {
         repo,
         revision: detail?.resolvedCommit ?? detail?.revision ?? "main",
@@ -655,6 +756,26 @@ function RepoDetail({
 
   const recommendedCandidate =
     detail.candidates.find((c) => c.label === detail.recommended?.label) ?? null;
+  const recommendedPreflight = recommendedCandidate
+    ? preflights[recommendedCandidate.label]
+    : undefined;
+  const recommendedDownloading =
+    recommendedCandidate?.files.some((f) => activeDestinations.has(f.path)) ?? false;
+
+  const projectors = detail.projectors ?? [];
+  const projectorFile = projectors.find((p) => p.path === projector) ?? null;
+
+  // The library's multimodal warning is API prose — it says "listed
+  // under `projectors`", a field name — and the vision box below now
+  // says the same thing in people words with the control attached. The
+  // other warnings (gated, licence) still render as sentences.
+  const warnings = (detail.warnings ?? []).filter((w) => !w.includes("listed under `projectors`"));
+
+  /** What the Download button fetches, said on the button. */
+  const downloadLabel = (candidate: CatalogueCandidate) =>
+    withVision && projectorFile
+      ? `Download ${formatBytes(candidate.sizeBytes)} + ${formatBytes(projectorFile.sizeBytes)} vision`
+      : `Download ${formatBytes(candidate.sizeBytes)}`;
 
   return (
     <div className={`max-w-4xl space-y-4 ${loading ? "opacity-60 transition-opacity" : ""}`}>
@@ -674,14 +795,49 @@ function RepoDetail({
               </span>
             </>
           )}
+          {projectors.length > 0 && (
+            <>
+              {" "}
+              ·{" "}
+              <span
+                data-testid="takes-images"
+                className="text-status-success"
+                title="A vision part ships in this repository. Downloaded beside the model, it is found and used automatically when the model launches."
+              >
+                takes images
+              </span>
+            </>
+          )}
+          {detail.resolvedCommit && (
+            <>
+              {" "}
+              ·{" "}
+              <span title="Downloads fetch exactly this revision. A file the publisher replaces upstream mid-download is detected and refetched, never spliced into your copy.">
+                pinned at {detail.resolvedCommit.slice(0, 7)}
+              </span>
+            </>
+          )}
         </p>
       </div>
 
-      {(detail.warnings ?? []).map((warning) => (
+      {warnings.map((warning) => (
         <p key={warning} className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs">
           {warning}
         </p>
       ))}
+
+      {detail.chatTemplate === false && (
+        <div
+          data-testid="no-chat-template"
+          className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs"
+        >
+          <p className="font-semibold">No chat template</p>
+          <p className="mt-0.5">
+            This looks like a base model: it continues text rather than holding a conversation. Chat
+            apps will get odd answers from it. Fine if raw completion is what you want.
+          </p>
+        </div>
+      )}
 
       {/* The recommendation is a card with its own button, above the
           table, rather than a highlighted row inside it. §0.5: the wall
@@ -697,30 +853,65 @@ function RepoDetail({
             <p className="font-ui text-sm font-semibold">
               Suggested version: {detail.recommended.label}
             </p>
-            {recommendedCandidate.fit && (
-              <FitBadge fit={recommendedCandidate.fit} compact withContext />
+            {/* A preflighted verdict wins here exactly as it does in the
+                table: the card is the golden path, so it must not keep
+                quoting the estimate after the real arithmetic arrived. */}
+            {(recommendedPreflight?.fit ?? recommendedCandidate.fit) && (
+              <FitBadge
+                fit={(recommendedPreflight?.fit ?? recommendedCandidate.fit)!}
+                compact
+                withContext
+              />
             )}
           </div>
           <p className="mt-1">{detail.recommended.reason}</p>
           {detail.recommended.lowQualityWarning && (
             <p className="mt-1 font-semibold">{detail.recommended.lowQualityWarning}</p>
           )}
-          <div className="mt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => download(recommendedCandidate, (detail.projectors ?? []).length > 0)}
-              disabled={busy !== null || !!recommendedCandidate.alreadyOwned}
+              onClick={() => download(recommendedCandidate)}
+              disabled={
+                busy !== null || !!recommendedCandidate.alreadyOwned || recommendedDownloading
+              }
               className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               data-testid="repo-recommended-download"
             >
               {recommendedCandidate.alreadyOwned
                 ? "Already on disk"
+                : recommendedDownloading
+                  ? "downloading"
+                  : busy === recommendedCandidate.label
+                    ? "starting…"
+                    : downloadLabel(recommendedCandidate)}
+            </button>
+            <button
+              type="button"
+              onClick={() => void preflight(recommendedCandidate)}
+              disabled={busy !== null || !!recommendedPreflight}
+              className={smallButton}
+              data-testid="repo-recommended-check"
+              title="Reads this file's own metadata over the network — about 11 MB of a multi-gigabyte file — so the verdict above is computed from the model's real shape instead of estimated from its size."
+            >
+              {recommendedPreflight
+                ? "exact fit checked"
                 : busy === recommendedCandidate.label
-                  ? "starting…"
-                  : `Download ${formatBytes(recommendedCandidate.sizeBytes)}`}
+                  ? "checking…"
+                  : "check exact fit"}
             </button>
           </div>
         </section>
+      )}
+
+      {projectors.length > 0 && (
+        <VisionPairing
+          projectors={projectors}
+          chosen={projector}
+          onChoose={setProjector}
+          enabled={withVision}
+          onEnabled={setWithVision}
+        />
       )}
 
       {actionError && (
@@ -733,23 +924,29 @@ function RepoDetail({
         All versions
       </h3>
 
-      <CandidateTable
-        candidates={detail.candidates}
-        contextLength={contextLength}
-        recommended={detail.recommended?.label ?? null}
-        preflights={preflights}
-        busy={busy}
-        hasProjectors={(detail.projectors ?? []).length > 0}
-        activeDestinations={activeDestinations}
-        onPreflight={preflight}
-        onDownload={download}
-      />
-
-      {(detail.projectors ?? []).length > 0 && (
-        <ProjectorPicker
-          projectors={detail.projectors ?? []}
-          chosen={projector}
-          onChoose={setProjector}
+      {detail.candidates.length === 0 ? (
+        <p
+          data-testid="no-candidates"
+          className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-xs text-[color:var(--muted)]"
+        >
+          Nothing in this repository can be launched as a model. It may hold only documentation or
+          files in a format this install does not serve — the other files are listed below.
+        </p>
+      ) : (
+        <CandidateTable
+          candidates={detail.candidates}
+          contextLength={contextLength}
+          recommended={detail.recommended?.label ?? null}
+          preflights={preflights}
+          busy={busy}
+          downloadTitle={
+            withVision && projectorFile
+              ? `The chosen vision part (${formatBytes(projectorFile.sizeBytes)}) is fetched with it`
+              : undefined
+          }
+          activeDestinations={activeDestinations}
+          onPreflight={preflight}
+          onDownload={download}
         />
       )}
 
@@ -768,7 +965,7 @@ function CandidateTable({
   recommended,
   preflights,
   busy,
-  hasProjectors,
+  downloadTitle,
   activeDestinations,
   onPreflight,
   onDownload,
@@ -778,10 +975,12 @@ function CandidateTable({
   recommended: string | null;
   preflights: Record<string, CataloguePreflight>;
   busy: string | null;
-  hasProjectors: boolean;
+  /** Set when the vision part rides along, so every download button in
+   * the table says so on hover. */
+  downloadTitle?: string;
   activeDestinations: Set<string>;
   onPreflight: (candidate: CatalogueCandidate) => void;
-  onDownload: (candidate: CatalogueCandidate, includeProjector: boolean) => void;
+  onDownload: (candidate: CatalogueCandidate) => void;
 }) {
   // Largest first: the operator is usually looking for the best thing
   // that fits, and the recommendation is near the top of that order.
@@ -868,9 +1067,10 @@ function CandidateTable({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onDownload(candidate, hasProjectors)}
+                    onClick={() => onDownload(candidate)}
                     disabled={busy !== null || downloading}
                     className={`${smallButton} ml-1`}
+                    title={downloadTitle}
                   >
                     {downloading ? "downloading" : "download"}
                   </button>
@@ -884,38 +1084,75 @@ function CandidateTable({
   );
 }
 
-function ProjectorPicker({
+/**
+ * The vision half of a multimodal download, as a control.
+ *
+ * The library used to say this as a warning — API prose naming a field
+ * — while every download silently included a projector. Now the fact
+ * and the choice sit together: a checkbox, on by default, and the size
+ * it adds is on the Download button itself. Downloading it beside the
+ * model IS the pairing: the scan finds a projector next to its model
+ * and the launch line uses it with nothing else configured.
+ */
+function VisionPairing({
   projectors,
   chosen,
   onChoose,
+  enabled,
+  onEnabled,
 }: {
   projectors: CatalogueFile[];
   chosen: string | null;
   onChoose: (path: string) => void;
+  enabled: boolean;
+  onEnabled: (value: boolean) => void;
 }) {
   return (
-    <div className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-xs">
-      <p className="font-ui font-semibold">Vision projector</p>
+    <div
+      data-testid="vision-pairing"
+      className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-xs"
+    >
+      <label className="font-ui flex items-center gap-2 font-semibold">
+        <input
+          type="checkbox"
+          data-testid="vision-checkbox"
+          checked={enabled}
+          onChange={(event) => onEnabled(event.target.checked)}
+        />
+        Also get the part that lets it see images
+      </label>
       <p className="mt-0.5 text-[color:var(--muted)]">
-        This model can take images, and the part that does it ships separately. One of these is
-        downloaded alongside whichever version you pick.
+        This model takes images, and the vision part ships as its own file. It downloads beside
+        whichever version you pick and is used automatically when the model launches. Without it the
+        model runs, and is text-only.
       </p>
-      <div className="mt-2 space-y-1">
-        {projectors.map((file) => (
-          <label key={file.path} className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="projector"
-              checked={chosen === file.path}
-              onChange={() => onChoose(file.path)}
-            />
-            <span className="font-mono-ui">{file.path}</span>
-            <span className="text-[color:var(--muted)] tabular-nums">
-              {formatBytes(file.sizeBytes)}
-            </span>
-          </label>
-        ))}
-      </div>
+      {projectors.length > 1 && enabled && (
+        <div className="mt-2 space-y-1">
+          <p className="text-[color:var(--muted)]">
+            More than one precision is published. Bigger is sharper image understanding; either
+            works.
+          </p>
+          {projectors.map((file) => (
+            <label key={file.path} className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="projector"
+                checked={chosen === file.path}
+                onChange={() => onChoose(file.path)}
+              />
+              <span className="font-mono-ui">{file.path}</span>
+              <span className="text-[color:var(--muted)] tabular-nums">
+                {formatBytes(file.sizeBytes)}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+      {projectors.length === 1 && enabled && (
+        <p className="font-mono-ui mt-1 text-[color:var(--muted)]">
+          {projectors[0]?.path} · {formatBytes(projectors[0]?.sizeBytes)}
+        </p>
+      )}
     </div>
   );
 }
