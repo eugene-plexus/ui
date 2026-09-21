@@ -3102,6 +3102,8 @@ export interface components {
             parallelSlots?: number;
             /** @description Whether this runtime was started in embedding mode. */
             embeddings?: boolean;
+            /** @description Whether the loaded runtime explicitly reports image input. */
+            vision?: boolean;
             /** @description Whether a projector was loaded alongside the model. */
             multimodal?: boolean;
         };

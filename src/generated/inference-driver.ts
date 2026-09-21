@@ -626,6 +626,12 @@ export interface components {
                 /** @description Whether `/v1/generate/stream` emits true incremental tokens. */
                 streaming?: boolean;
                 /**
+                 * @description Whether the loaded model is confirmed to accept inline PNG/JPEG
+                 *     images. Unknown or unverified backends report false. Rechecked
+                 *     before image generation; never inferred from the provider name.
+                 */
+                imageInput?: boolean;
+                /**
                  * @description Whether this driver can carry `tools` to its backend and
                  *     report `toolCalls` back.
                  *
@@ -696,6 +702,32 @@ export interface components {
          * @enum {string}
          */
         Role: "system" | "user" | "assistant" | "tool";
+        TextContentPart: {
+            /** @constant */
+            type: "text";
+            text: string;
+        };
+        ImageContentPart: {
+            /** @constant */
+            type: "image_url";
+            image_url: {
+                /** @description Inline base64 PNG or JPEG data URL. No remote references. */
+                url: string;
+                /**
+                 * @description Explicit high/low processing modes are not supported.
+                 * @enum {string}
+                 */
+                detail?: "auto";
+            };
+        };
+        MessageContentPart: components["schemas"]["TextContentPart"] | components["schemas"]["ImageContentPart"];
+        /**
+         * @description Text, null for an assistant tool-call turn, or ordered user content parts.
+         *     Images are inline PNG/JPEG only: four per request, 5 MiB decoded each,
+         *     10 MiB decoded total, 16 million pixels each, maximum dimension 8192.
+         *     JSON bodies are limited to 16 MiB. Remote URLs are never fetched.
+         */
+        MessageContent: string | null | components["schemas"]["MessageContentPart"][];
         /**
          * @description A single message in a conversation. Deliberately close to the
          *     OpenAI / Anthropic chat message format so drivers don't have to
@@ -703,14 +735,7 @@ export interface components {
          */
         Message: {
             role: components["schemas"]["Role"];
-            /**
-             * @description Message text. Text-only for now; multimodal extensions
-             *     deferred. **Nullable, and no longer required:** an assistant
-             *     turn that only calls a tool has no text to carry, and the
-             *     alternative — an empty string — would assert the model said
-             *     nothing when in fact it said something that was not text.
-             */
-            content?: string | null;
+            content?: components["schemas"]["MessageContent"];
             /**
              * @description On an **assistant** message: the tool calls the model made,
              *     in OpenAI's `{id, type, function: {name, arguments}}` shape.

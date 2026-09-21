@@ -24,6 +24,26 @@ vi.mock("@/lib/useAutoScroll", () => ({
 }));
 
 describe("ChatLog with tool calls", () => {
+  it("renders image content without exposing data URLs or offering a text-only edit", () => {
+    render(
+      <ChatLog
+        messages={[
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Describe this " },
+              { type: "image_url", image_url: { url: "data:image/png;base64,PRIVATE" } },
+            ],
+          },
+        ]}
+        pending={false}
+        onEditUserMessage={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Describe this [Image attachment]")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("PRIVATE");
+  });
   it("renders a tool-call-only turn as a card that says whether the arguments parse", () => {
     render(
       <ChatLog

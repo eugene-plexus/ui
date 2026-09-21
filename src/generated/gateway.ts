@@ -896,6 +896,12 @@ export interface components {
              */
             surfaces?: ("chat" | "embeddings")[];
             /**
+             * @description At least one backend confirms image input for its loaded model.
+             *     Image requests route only to those backends, including fallback.
+             *     Inline PNG/JPEG only; see MessageContent for request limits.
+             */
+            image_input?: boolean;
+            /**
              * @description Whether a request for this model may carry `tools`.
              *
              *     **True only when every backend serving it can**, by the same
@@ -1071,14 +1077,7 @@ export interface components {
         ChatCompletionMessage: {
             /** @enum {string} */
             role: "system" | "user" | "assistant" | "tool";
-            /**
-             * @description The message text. **Nullable, and that is not laxity:** an
-             *     assistant message that only calls a tool has no text, and
-             *     OpenAI sends `content: null` alongside `tool_calls` for it.
-             *     A schema that required a string here would reject the
-             *     single most common assistant turn in an agent loop.
-             */
-            content?: string | null;
+            content?: components["schemas"]["MessageContent"];
             /** @description Optional participant name, per OpenAI. */
             name?: string;
             /**
@@ -2316,6 +2315,32 @@ export interface components {
          * @enum {string}
          */
         BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http";
+        TextContentPart: {
+            /** @constant */
+            type: "text";
+            text: string;
+        };
+        ImageContentPart: {
+            /** @constant */
+            type: "image_url";
+            image_url: {
+                /** @description Inline base64 PNG or JPEG data URL. No remote references. */
+                url: string;
+                /**
+                 * @description Explicit high/low processing modes are not supported.
+                 * @enum {string}
+                 */
+                detail?: "auto";
+            };
+        };
+        MessageContentPart: components["schemas"]["TextContentPart"] | components["schemas"]["ImageContentPart"];
+        /**
+         * @description Text, null for an assistant tool-call turn, or ordered user content parts.
+         *     Images are inline PNG/JPEG only: four per request, 5 MiB decoded each,
+         *     10 MiB decoded total, 16 million pixels each, maximum dimension 8192.
+         *     JSON bodies are limited to 16 MiB. Remote URLs are never fetched.
+         */
+        MessageContent: string | null | components["schemas"]["MessageContentPart"][];
         /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
          *     Eugene Plexus component returns this for 4xx / 5xx responses.

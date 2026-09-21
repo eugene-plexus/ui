@@ -175,6 +175,7 @@ describe("recipes", () => {
     expect(one.snippet).toContain("ANTHROPIC_BASE_URL=http://192.168.1.20:8080\n");
     expect(one.snippet).not.toContain("ANTHROPIC_BASE_URL=http://192.168.1.20:8080/v1");
     expect(one.snippet).toContain(`ANTHROPIC_MODEL=${STRINGS.model}`);
+    expect(one.snippet).toContain("CLAUDE_CODE_EFFORT_LEVEL=unset");
   });
 
   it("tells Claude Code's reader to use AUTH_TOKEN rather than API_KEY", () => {

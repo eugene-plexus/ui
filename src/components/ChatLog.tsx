@@ -90,8 +90,15 @@ export function ChatLog({
                 : undefined
             }
             onEdit={
-              !pending && msg.role === "user" && onEditUserMessage
-                ? () => onEditUserMessage(messages.indexOf(msg), msg.content ?? "")
+              !pending &&
+              msg.role === "user" &&
+              typeof msg.content === "string" &&
+              onEditUserMessage
+                ? () =>
+                    onEditUserMessage(
+                      messages.indexOf(msg),
+                      typeof msg.content === "string" ? msg.content : "",
+                    )
                 : undefined
             }
           />
@@ -132,7 +139,11 @@ function ChatBubble({
   // `content` is nullable since tool calling landed: an assistant turn
   // that only calls a tool has no text, and its calls are rendered as
   // cards below the (then empty) bubble.
-  const text = message.content ?? "";
+  const text = Array.isArray(message.content)
+    ? message.content
+        .map((part) => (part.type === "text" ? part.text : "[Image attachment]"))
+        .join("")
+    : (message.content ?? "");
   const calls = message.role === "assistant" ? (message.tool_calls ?? []) : [];
 
   return (

@@ -127,12 +127,14 @@ export function recipes(s: Strings): Recipe[] {
         `ANTHROPIC_BASE_URL=${anthropicBaseUrl(s)}`,
         `ANTHROPIC_AUTH_TOKEN=${s.key}`,
         `ANTHROPIC_MODEL=${s.model}`,
+        "CLAUDE_CODE_EFFORT_LEVEL=unset",
       ].join("\n"),
       note:
         "No /v1 on the base URL here — Claude Code adds it. Use ANTHROPIC_AUTH_TOKEN, " +
         "not ANTHROPIC_API_KEY: the API-key variable needs a one-off approval prompt, and " +
         "if you are signed in to a Claude subscription it is ignored and your Anthropic " +
-        "token is sent instead.",
+        "token is sent instead. Claude Code 2.1.207 also needs EFFORT_LEVEL=unset " +
+        "for local models: native Anthropic effort controls are not supported.",
     },
     {
       name: "Continue",
@@ -159,7 +161,10 @@ export function recipes(s: Strings): Recipe[] {
       name: "Open WebUI",
       where: "Settings → Connections → OpenAI API",
       snippet: [`URL:  ${s.baseUrl}`, `Key:  ${s.key}`].join("\n"),
-      note: "Open WebUI asks the endpoint which models it has, so there is no model to type.",
+      note:
+        "Open WebUI asks the endpoint which models it has, so there is no model to type. " +
+        "For images, select a vision model with its matching projector loaded. " +
+        "PNG and JPEG attachments are supported; text-only models refuse them.",
     },
     {
       name: "SillyTavern",
