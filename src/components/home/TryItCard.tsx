@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { ChatLog } from "@/components/ChatLog";
 import { describeError } from "@/lib/api";
 import { PROXY, streamChatCompletion } from "@/lib/completions";
+import { homeReadiness } from "@/lib/homeReadiness";
 import { readPlaygroundTranscript, writePlaygroundTranscript } from "@/lib/playgroundTranscript";
-import type { ChatCompletionMessage, Model } from "@/lib/types";
+import type { ChatCompletionMessage, Model, RoutingTableView } from "@/lib/types";
 
 // The playground's ceiling, for the same reason: past this something is
 // wedged and the person wants an error rather than a spinner.
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const DRAFT_KEY = "eugene-home-draft";
 
 /** What served the last turn, for the one line under the reply. */
 interface TurnInfo {
@@ -35,7 +37,13 @@ interface TurnInfo {
  * *why*; this card answers *whether*, and a person who wants the rest
  * is one click from it.
  */
-export function TryItCard({ models }: { models: Model[] }) {
+export function TryItCard({
+  models,
+  routing,
+}: {
+  models: Model[];
+  routing: RoutingTableView | null;
+}) {
   const [messages, setMessages] = useState<ChatCompletionMessage[]>([]);
   const [model, setModel] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
@@ -43,6 +51,13 @@ export function TryItCard({ models }: { models: Model[] }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turn, setTurn] = useState<TurnInfo | null>(null);
+  const active = useRef<{
+    controller: AbortController;
+    previous: ChatCompletionMessage[];
+    model: string;
+    delivered: boolean;
+  } | null>(null);
+  const readiness = homeReadiness(model, routing);
 
   // The stored conversation, read after mount so the first render matches
   // the exported HTML. The playground's own pick is honoured when it is
@@ -51,7 +66,21 @@ export function TryItCard({ models }: { models: Model[] }) {
     const stored = readPlaygroundTranscript();
     setMessages(stored.messages);
     setModel(stored.model);
+    try {
+      setText(sessionStorage.getItem(DRAFT_KEY) ?? "");
+    } catch {
+      /* private mode */
+    }
     setHydrated(true);
+    return () => {
+      const request = active.current;
+      active.current = null;
+      if (request) {
+        if (!request.delivered)
+          writePlaygroundTranscript({ model: request.model, messages: request.previous });
+        request.controller.abort();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -63,14 +92,35 @@ export function TryItCard({ models }: { models: Model[] }) {
 
   useEffect(() => {
     if (!hydrated) return;
-    writePlaygroundTranscript({ model, messages });
+    // The next page can mount before this one's passive cleanup. Until an
+    // answer starts, keep the pending turn as a draft, not replayable history.
+    const request = active.current;
+    writePlaygroundTranscript({
+      model,
+      messages: request && !request.delivered ? request.previous : messages,
+    });
   }, [hydrated, model, messages]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      sessionStorage.setItem(DRAFT_KEY, text);
+    } catch {
+      /* private mode */
+    }
+  }, [hydrated, text]);
 
   async function send(event: FormEvent) {
     event.preventDefault();
     const content = text.trim();
-    if (!content || pending || !model) return;
-    setText("");
+    if (!content || active.current || !model || !readiness.canSend) return;
+    const request = {
+      controller: new AbortController(),
+      previous: messages,
+      model,
+      delivered: false,
+    };
+    active.current = request;
     setError(null);
     setTurn(null);
     const outgoing: ChatCompletionMessage[] = [...messages, { role: "user", content }];
@@ -81,17 +131,11 @@ export function TryItCard({ models }: { models: Model[] }) {
       // reply appears as it is generated, which is what a first token
       // looks like to the person waiting for one.
       let streamed = "";
-      let appended = false;
       const upsert = (message: ChatCompletionMessage) => {
-        setMessages((prev) => {
-          if (!appended) {
-            appended = true;
-            return [...prev, message];
-          }
-          const next = [...prev];
-          next[next.length - 1] = message;
-          return next;
-        });
+        if (active.current !== request || request.controller.signal.aborted) return;
+        request.delivered = true;
+        setText("");
+        setMessages([...outgoing, message]);
       };
       const response = await streamChatCompletion(
         {
@@ -99,12 +143,14 @@ export function TryItCard({ models }: { models: Model[] }) {
           messages: outgoing,
           timeoutMs: REQUEST_TIMEOUT_MS,
           transport: PROXY,
+          signal: request.controller.signal,
         },
         (delta) => {
           streamed += delta;
           upsert({ role: "assistant", content: streamed });
         },
       );
+      if (active.current !== request) return;
       const choice = response.choices?.[0];
       if (choice) upsert(choice.message);
       if (response.truncatedBy) setError(`The answer was cut short: ${response.truncatedBy}`);
@@ -115,9 +161,20 @@ export function TryItCard({ models }: { models: Model[] }) {
         seconds: latency != null ? latency / 1000 : null,
       });
     } catch (e) {
-      setError(describeError(e));
+      if (active.current !== request) return;
+      if (!request.delivered) setMessages(request.previous);
+      setError(
+        request.controller.signal.aborted
+          ? request.delivered
+            ? "Cancelled. The partial answer is kept above."
+            : "Cancelled. Your unfinished message is kept here."
+          : describeError(e),
+      );
     } finally {
-      setPending(false);
+      if (active.current === request) {
+        active.current = null;
+        setPending(false);
+      }
     }
   }
 
@@ -133,6 +190,26 @@ export function TryItCard({ models }: { models: Model[] }) {
           Continue in the Playground
         </Link>
       </div>
+      <p
+        data-testid="home-model-status"
+        data-state={readiness.kind}
+        role="status"
+        className="mt-2 text-xs text-[color:var(--muted)]"
+      >
+        {pending
+          ? readiness.kind === "on-demand"
+            ? "Starting the model and waiting for its answer…"
+            : "Waiting for the answer…"
+          : readiness.message}
+        {!readiness.canSend && readiness.kind !== "loading" && (
+          <>
+            {" "}
+            <Link href="/inference" className="underline">
+              Check the model
+            </Link>
+          </>
+        )}
+      </p>
       <form onSubmit={send} className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
         <select
           value={model ?? ""}
@@ -160,11 +237,20 @@ export function TryItCard({ models }: { models: Model[] }) {
         />
         <button
           type="submit"
-          disabled={disabled || text.trim() === ""}
+          disabled={disabled || !readiness.canSend || text.trim() === ""}
           className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
         >
           Send
         </button>
+        {pending && (
+          <button
+            type="button"
+            onClick={() => active.current?.controller.abort()}
+            className="font-ui px-3 py-2 text-sm underline"
+          >
+            Cancel
+          </button>
+        )}
       </form>
       {messages.length > 0 && (
         <div className="mt-3 h-64 overflow-hidden rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)]">

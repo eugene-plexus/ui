@@ -77,7 +77,7 @@ export class DirectFetchError extends Error {
 async function directFetch(
   transport: Extract<Transport, { kind: "direct" }>,
   path: string,
-  init: { method: "GET" | "POST"; body?: string; accept: string },
+  init: { method: "GET" | "POST"; body?: string; accept: string; signal?: AbortSignal },
 ): Promise<Response> {
   const url = urlFor(transport, path);
   const headers: Record<string, string> = {
@@ -90,7 +90,12 @@ async function directFetch(
     // Plain `fetch`, on purpose: no `lib/api.ts`, no session, no 401
     // redirect. This is the harness's path and must have nothing of ours
     // on it.
-    response = await fetch(url, { method: init.method, headers, body: init.body });
+    response = await fetch(url, {
+      method: init.method,
+      headers,
+      body: init.body,
+      signal: init.signal,
+    });
   } catch (e) {
     throw new DirectFetchError(url, e);
   }
@@ -135,6 +140,8 @@ export interface CompletionOptions {
   /** The playground's own ceiling, not the model's. A wedged backend
    * should surface as an error, not a spinner that never resolves. */
   timeoutMs?: number;
+  /** Cancels both waiting for headers and reading the answer. */
+  signal?: AbortSignal;
   /** Which path to the gateway. Default: the agent's proxy. */
   transport?: Transport;
   /** Where a harness would find the gateway, for the report's `curl`
@@ -356,6 +363,33 @@ export async function streamChatCompletion(
   opts: CompletionOptions,
   onToken: (delta: string) => void,
 ): Promise<ChatCompletionResponse & { truncatedBy?: string; report: RequestReport }> {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  opts.signal?.addEventListener("abort", cancel, { once: true });
+  if (opts.signal?.aborted) cancel();
+  let timedOut = false;
+  const timer =
+    opts.timeoutMs && opts.timeoutMs > 0
+      ? setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, opts.timeoutMs)
+      : undefined;
+  try {
+    return await readChatCompletion({ ...opts, signal: controller.signal }, onToken);
+  } catch (error) {
+    if (timedOut) throw new Error("The answer took too long. Check the model and try again.");
+    throw error;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", cancel);
+  }
+}
+
+async function readChatCompletion(
+  opts: CompletionOptions,
+  onToken: (delta: string) => void,
+): Promise<ChatCompletionResponse & { truncatedBy?: string; report: RequestReport }> {
   const transport = opts.transport ?? PROXY;
   const body = buildChatRequest(opts, true);
   const serialized = JSON.stringify(body);
@@ -366,11 +400,12 @@ export async function streamChatCompletion(
   try {
     response =
       transport.kind === "proxy"
-        ? await postStream("gateway", "/v1/chat/completions", body)
+        ? await postStream("gateway", "/v1/chat/completions", body, { signal: opts.signal })
         : await directFetch(transport, "/v1/chat/completions", {
             method: "POST",
             body: serialized,
             accept: "text/event-stream",
+            signal: opts.signal,
           });
   } catch (e) {
     recordFailure(report, e);
@@ -457,6 +492,7 @@ export async function streamChatCompletion(
     // Releases the lock whether we finished, threw, or the caller
     // abandoned us -- without it a component unmounting mid-answer
     // leaves the response open.
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
     report.elapsedMs = Math.round(performance.now() - started);
     report.finishReason = finishReason;

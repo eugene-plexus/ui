@@ -335,6 +335,18 @@ describe("Home with a model routable", () => {
   beforeEach(() => {
     handlers.set("GET library/v1/models", () => ({ status: 200, body: LIBRARY_WITH_TWO }));
     handlers.set("GET gateway/v1/models", () => ({ status: 200, body: ROUTABLE }));
+    handlers.set("GET gateway/v1/admin/routing", () => ({
+      status: 200,
+      body: {
+        refreshed_at: "2026-09-20T00:00:00Z",
+        slots: [
+          {
+            model: "qwen3-14b",
+            tiers: [{ target: "qwen3-14b", backends: [{ driver: "qwen-driver", eligible: true }] }],
+          },
+        ],
+      },
+    }));
   });
 
   it("replaces the first-model card with Try it, the model already chosen", async () => {

@@ -50,6 +50,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Home loading, recovery and cancellation in Chrome
+        run: node scripts/a1-browser-acceptance.mjs out test-results/a1
+
   wheel:
     name: Build the eugene-plexus-ui wheel
     runs-on: ubuntu-latest

@@ -26,6 +26,7 @@ function sseResponse(chunks: string[]): Response {
           return { done: false, value: encoder.encode(chunks[index++]) };
         },
         releaseLock() {},
+        async cancel() {},
       };
     },
   };

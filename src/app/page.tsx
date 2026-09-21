@@ -173,14 +173,20 @@ export default function HomePage() {
   // The Inference screen's four soft reads, for the Running card.
   const loadFast = useCallback(async () => {
     const [drivers, routing, placement, runtimes] = await Promise.all([
-      api.get<DriversInfo>("gateway", "/v1/admin/drivers").catch(() => null),
-      api.get<RoutingTableView>("gateway", "/v1/admin/routing").catch(() => null),
-      api.get<ComponentPlacementList>("control", "/v1/components").catch(() => null),
-      api.get<RuntimePlacementList>("control", "/v1/runtimes").catch(() => null),
+      api.get<DriversInfo>("gateway", "/v1/admin/drivers", { timeoutMs: 5000 }).catch(() => null),
+      api
+        .get<RoutingTableView>("gateway", "/v1/admin/routing", { timeoutMs: 5000 })
+        .catch(() => null),
+      api
+        .get<ComponentPlacementList>("control", "/v1/components", { timeoutMs: 5000 })
+        .catch(() => null),
+      api
+        .get<RuntimePlacementList>("control", "/v1/runtimes", { timeoutMs: 5000 })
+        .catch(() => null),
     ]);
     const localRuntimes =
       runtimes === null
-        ? await api.get<RuntimeList>("agent", "/v1/runtimes").catch(() => null)
+        ? await api.get<RuntimeList>("agent", "/v1/runtimes", { timeoutMs: 5000 }).catch(() => null)
         : null;
     setSources({ drivers, routing, placement, runtimes, localRuntimes });
   }, []);
@@ -250,7 +256,7 @@ export default function HomePage() {
               void reloadTasks();
             }}
           />
-          {chat.length > 0 && <TryItCard models={chat} />}
+          {chat.length > 0 && <TryItCard models={chat} routing={sources?.routing ?? null} />}
           {chat.length > 0 && (
             <UseFromAppsCard
               models={chat}

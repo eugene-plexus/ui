@@ -117,6 +117,7 @@ interface RequestOptions {
    * whose upstream may hang (a chat completion waiting on a wedged
    * local engine). Unset = no client-side timeout. */
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 function proxyUrl(target: ProxyTarget, path: string): string {
@@ -165,6 +166,7 @@ export async function postStream(
   const response = await fetch(proxyUrl(target, path), {
     ...init,
     headers: proxyHeaders(init, options, "text/event-stream"),
+    signal: options.signal,
   });
   if (!response.ok) {
     const text = await response.text();
