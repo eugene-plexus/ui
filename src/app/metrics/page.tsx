@@ -38,6 +38,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ApiError, api } from "@/lib/api";
+import type { ClientUsageSummary } from "@/lib/types";
 
 interface Percentiles {
   p50: number;
@@ -105,6 +106,8 @@ interface MetricCandidate {
 }
 
 interface MetricRequest {
+  clientKeyId?: string | null;
+  clientKeyName?: string | null;
   startedAt: string;
   requestedModel: string;
   servedModel?: string | null;
@@ -145,6 +148,7 @@ function groupKey(g: MetricsGroup): string {
 export default function MetricsPage() {
   const [hours, setHours] = useState(24);
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
+  const [clientUsage, setClientUsage] = useState<ClientUsageSummary | null>(null);
   const [recent, setRecent] = useState<MetricRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [disabled, setDisabled] = useState(false);
@@ -154,11 +158,16 @@ export default function MetricsPage() {
     setError(null);
     try {
       const since = new Date(Date.now() - hours * 3600_000).toISOString();
-      const [s, r] = await Promise.all([
+      const [s, r, c] = await Promise.all([
         api.get<MetricsSummary>("gateway", `/v1/metrics?since=${encodeURIComponent(since)}`),
         api.get<{ requests: MetricRequest[] }>("gateway", "/v1/metrics/requests?limit=25"),
+        api.get<ClientUsageSummary>(
+          "gateway",
+          `/v1/metrics/clients?since=${encodeURIComponent(since)}`,
+        ),
       ]);
       setSummary(s);
+      setClientUsage(c);
       setRecent(r.requests ?? []);
       setDisabled(false);
     } catch (e) {
@@ -236,6 +245,78 @@ export default function MetricsPage() {
 
         {summary && !disabled && (
           <>
+            {clientUsage && (
+              <section className="mb-6 overflow-x-auto" aria-label="Usage by client key">
+                <h2 className="font-ui mb-2 text-sm font-semibold">Usage by client key</h2>
+                <p className="mb-2 text-xs text-[color:var(--muted)]">
+                  This gateway, within the selected window and retained request history. Tokens are
+                  reported usage only; failed attempts may consume unreported tokens. Requests with
+                  incomplete usage are counted below. This is not a billing total.
+                </p>
+                {clientUsage.truncated && (
+                  <p role="status" className="status-warn text-xs">
+                    Older per-key history has expired; these totals cover retained requests only.
+                  </p>
+                )}
+                {clientUsage.rowsDropped > 0 && (
+                  <p role="status" className="status-warn text-xs">
+                    Some measurements were dropped. Per-key totals are incomplete.
+                  </p>
+                )}
+                {clientUsage.clients?.length ? (
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr>
+                        {[
+                          "Key",
+                          "Requests",
+                          "Served",
+                          "Failed",
+                          "Attempts",
+                          "Prompt tokens",
+                          "Completion tokens",
+                          "Incomplete usage",
+                        ].map((heading) => (
+                          <th className="p-2" key={heading}>
+                            {heading}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clientUsage.clients.map((c) => (
+                        <tr key={c.clientKeyId} className="border-t border-[color:var(--border)]">
+                          <td className="p-2">
+                            {c.clientKeyName}
+                            <code className="block text-[0.625rem] text-[color:var(--muted)]">
+                              {c.clientKeyId}
+                            </code>
+                          </td>
+                          {[
+                            c.requests,
+                            c.served,
+                            c.failed,
+                            c.attempts,
+                            c.promptTokens,
+                            c.completionTokens,
+                            c.incompleteUsageRequests,
+                          ].map((n, i) => (
+                            <td key={i} className="p-2">
+                              {n.toLocaleString()}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="text-xs text-[color:var(--muted)]">
+                    No retained client-key requests in this window. Operator requests and older
+                    unattributed history are excluded.
+                  </p>
+                )}
+              </section>
+            )}
             {summary.rowsDropped > 0 && (
               <p
                 className="font-ui mb-4 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs"
@@ -417,6 +498,11 @@ export default function MetricsPage() {
                       <span className={r.outcome === "error" ? "text-status-error" : ""}>
                         {r.outcome}
                       </span>{" "}
+                      {r.clientKeyId && (
+                        <span title={r.clientKeyId} className="mr-2">
+                          {r.clientKeyName ?? r.clientKeyId}
+                        </span>
+                      )}
                       <span className="break-all">{r.requestedModel}</span>{" "}
                       <span className="text-[color:var(--muted)]">
                         {ms(r.totalMs)}

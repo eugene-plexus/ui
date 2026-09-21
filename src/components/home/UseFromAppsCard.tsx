@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import {
+  ClientKeyLimitsEditor,
+  DEFAULT_CLIENT_LIMITS,
+  cleanClientLimits,
+  describeClientLimits,
+} from "./ClientKeyLimitsEditor";
+
 import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api, describeError } from "@/lib/api";
 import {
@@ -23,6 +30,7 @@ import {
 import type {
   ClientKey,
   ClientKeyCreated,
+  ClientKeyLimits,
   ClientKeyList,
   ComponentPlacementList,
   Model,
@@ -103,6 +111,9 @@ export function UseFromAppsCard({
   const [keys, setKeys] = useState<ClientKey[] | null>(null);
   const [fresh, setFresh] = useState<ClientKeyCreated | null>(null);
   const [name, setName] = useState("");
+  const [limits, setLimits] = useState<ClientKeyLimits>(DEFAULT_CLIENT_LIMITS);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editLimits, setEditLimits] = useState<ClientKeyLimits>(DEFAULT_CLIENT_LIMITS);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [override, setOverride] = useState<string | null>(null);
@@ -231,6 +242,7 @@ export function UseFromAppsCard({
     try {
       const made = await api.post<ClientKeyCreated>(where.target, "/v1/auth/client-keys", {
         name: name.trim() || "My app",
+        limits: cleanClientLimits(limits),
       });
       setFresh(made);
       setName("");
@@ -241,6 +253,24 @@ export function UseFromAppsCard({
           ? "That machine refused the session. Sign in again, then make the key."
           : describeError(e),
       );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveLimits(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editingKey || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.put(where.target, `/v1/auth/client-keys/${encodeURIComponent(editingKey)}/limits`, {
+        limits: cleanClientLimits(editLimits),
+      });
+      setEditingKey(null);
+      await load();
+    } catch (e) {
+      setError(describeError(e));
     } finally {
       setBusy(false);
     }
@@ -452,6 +482,7 @@ export function UseFromAppsCard({
       )}
 
       <form onSubmit={mint} className="mt-3 flex flex-wrap items-center gap-2">
+        <ClientKeyLimitsEditor value={limits} onChange={setLimits} disabled={busy} />
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -469,7 +500,8 @@ export function UseFromAppsCard({
         </button>
       </form>
       <p className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]">
-        Good for a year, works only for chatting with your models, and can be turned off on its own.
+        Good for a year, works for model discovery, chat and embeddings, and can be turned off on
+        its own.
         {registry?.scope === "install"
           ? " Keys and revocations apply to every gateway in this install."
           : registry?.scope === "standalone"
@@ -494,9 +526,9 @@ export function UseFromAppsCard({
         </p>
       )}
       <p className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]">
-        Gateways normally notice a revocation within 20 seconds. If the registry is unreachable,
-        client access stops when its cached policy is 60 seconds old (up to 5 seconds clock
-        tolerance).
+        Client requests need the active key authority. If it is unreachable, clients cannot start
+        inference or list models; operator management remains available. Permission changes stop
+        active requests when their reservation next renews.
       </p>
       <button type="button" onClick={() => void load()} className="font-ui mt-1 text-xs underline">
         Refresh key status
@@ -524,6 +556,42 @@ export function UseFromAppsCard({
                 {key.migrated && <span>migrated from {key.originNode ?? "another node"}</span>}
                 <code className="font-mono">{keyLabel(key.tail)}</code>
                 <span className="text-[color:var(--muted)]">{status.text}</span>
+                <span className="basis-full">{describeClientLimits(key.limits)}</span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="underline"
+                  onClick={() => {
+                    setEditingKey(key.id);
+                    setEditLimits(key.limits ?? DEFAULT_CLIENT_LIMITS);
+                  }}
+                >
+                  {key.limits ? "Edit limits" : "Set limits"}
+                </button>
+                {editingKey === key.id && (
+                  <form onSubmit={saveLimits} className="basis-full space-y-2 py-2">
+                    <ClientKeyLimitsEditor
+                      value={editLimits}
+                      onChange={setEditLimits}
+                      disabled={busy}
+                    />
+                    <button type="submit" disabled={busy} className="mr-3 underline">
+                      Save limits
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="underline"
+                      onClick={() => setEditingKey(null)}
+                    >
+                      Cancel
+                    </button>
+                    <p>
+                      The existing key keeps working with these permissions; there is no new token
+                      to copy.
+                    </p>
+                  </form>
+                )}
                 <button
                   type="button"
                   onClick={() => void revoke(key)}

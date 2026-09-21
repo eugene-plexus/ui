@@ -4,6 +4,43 @@
  */
 
 export interface paths {
+    "/v1/auth/client-keys/admission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check or reserve shared client-key allowance (operator or gateway/agent service only).
+         * @description Durable per-install admission; 30-second renewable leases, rolling 60-second request window. Client bearers cannot call this endpoint.
+         */
+        post: operations["clientAdmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/client-keys/{keyId}/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set model permissions and shared limits without replacing a key (operator only). */
+        put: operations["setClientKeyLimits"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/status": {
         parameters: {
             query?: never;
@@ -2017,6 +2054,30 @@ export interface components {
              */
             keyringAvailable?: boolean;
         };
+        ClientKeyLimits: {
+            /** @description Null permits all. Empty permits none. Exact alias and actual target IDs must both be allowed. */
+            allowedModels?: string[] | null;
+            /** @default 2 */
+            maxConcurrentRequests: number;
+            /** @default 60 */
+            requestsPerMinute: number;
+        };
+        ClientKeyUpdateRequest: {
+            limits: components["schemas"]["ClientKeyLimits"];
+        };
+        ClientAdmissionRequest: {
+            /** @enum {string} */
+            action: "check" | "acquire" | "renew" | "release";
+            keyId: string;
+            requestId: string;
+            model?: string;
+        };
+        ClientAdmissionResult: {
+            keyId: string;
+            keyName: string;
+            limits?: components["schemas"]["ClientKeyLimits"];
+            leaseSeconds?: number;
+        };
         ClientKey: {
             id: string;
             name: string;
@@ -2033,6 +2094,8 @@ export interface components {
              */
             lastUsedAt?: string;
             originNode?: string;
+            /** @description Absent on legacy keys (all models, no per-key limits); new keys receive bounded defaults. */
+            limits?: components["schemas"]["ClientKeyLimits"];
             /** @description True for a record imported from a pre-A3 node-local registry. */
             migrated?: boolean;
         };
@@ -2050,6 +2113,7 @@ export interface components {
             name: string;
             /** @default 365 */
             ttlDays: number;
+            limits?: components["schemas"]["ClientKeyLimits"];
         };
         ClientKeyCreated: {
             key: components["schemas"]["ClientKey"];
@@ -4139,6 +4203,106 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    clientAdmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientAdmissionRequest"];
+            };
+        };
+        responses: {
+            /** @description Current key access or reservation result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientAdmissionResult"];
+                };
+            };
+            /** @description Invalid service credential or inactive client key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Model excluded by the key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Reservation expired or policy changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Shared concurrency/rate allowance exhausted. */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authority unavailable; no local fallback allowance. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setClientKeyLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientKeyUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated metadata. Revocation and token remain unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKey"];
+                };
+            };
+            /** @description No such key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     authStatus: {
         parameters: {
             query?: never;

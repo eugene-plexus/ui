@@ -538,6 +538,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/metrics/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per-key reported usage on this gateway (operator only; retained raw rows). */
+        get: operations["getClientUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/metrics": {
         parameters: {
             query?: never;
@@ -2192,6 +2209,10 @@ export interface components {
             error?: string | null;
         };
         MetricRequest: {
+            /** @description Verified key identifier; absent for operator/service requests and pre-A5 rows. */
+            clientKeyId?: string;
+            /** @description Registry name captured for this request. */
+            clientKeyName?: string;
             /** Format: date-time */
             startedAt: string;
             requestedModel: string;
@@ -2299,6 +2320,26 @@ export interface components {
             requests: components["schemas"]["MetricRequest"][];
             /** @description Absent or null on the last page. */
             nextCursor?: string | null;
+        };
+        ClientUsageGroup: {
+            clientKeyId: string;
+            clientKeyName: string;
+            requests: number;
+            served: number;
+            failed: number;
+            attempts: number;
+            promptTokens: number;
+            completionTokens: number;
+            incompleteUsageRequests: number;
+        };
+        ClientUsageSummary: {
+            /** Format: date-time */
+            windowStart: string;
+            /** Format: date-time */
+            windowEnd: string;
+            truncated: boolean;
+            rowsDropped: number;
+            clients: components["schemas"]["ClientUsageGroup"][];
         };
         /**
          * @description Which wire protocol an inference-driver instance speaks to its
@@ -3327,6 +3368,36 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RestartResult"];
                 };
+            };
+        };
+    };
+    getClientUsage: {
+        parameters: {
+            query?: {
+                since?: string;
+                until?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Totals by authenticated key; no prompts or credentials. Unknown token usage is not invented. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientUsageSummary"];
+                };
+            };
+            /** @description Metrics disabled or unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

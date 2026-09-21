@@ -142,6 +142,8 @@ export type PathMapping = AgentComponents["schemas"]["PathMapping"];
 // record only -- the token is on the wire once, in `ClientKeyCreated`,
 // and the agent forgets it. `tail` is the last few characters, because
 // every JWT this install mints shares the same prefix.
+export type ClientKeyLimits = AgentComponents["schemas"]["ClientKeyLimits"];
+export type ClientUsageSummary = GatewayComponents["schemas"]["ClientUsageSummary"];
 export type ClientKey = AgentComponents["schemas"]["ClientKey"];
 export type ClientKeyList = AgentComponents["schemas"]["ClientKeyList"];
 export type ClientKeyCreated = AgentComponents["schemas"]["ClientKeyCreated"];

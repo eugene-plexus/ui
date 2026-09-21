@@ -206,6 +206,10 @@ export function DiagnosticPanel({
             </p>
           )}
           <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
+            New client keys allow all models, two concurrent requests and 60 requests per minute.
+            Edit permissions under Home → Use it from your apps.
+          </p>
+          <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
             {keyIsSession
               ? "This is the token you were issued when you signed in. It can do everything you can " +
                 "and it expires 14 days after sign-in, so it is right for a one-off check and wrong " +

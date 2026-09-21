@@ -26,6 +26,7 @@ vi.mock("next/navigation", () => ({
 
 let summary: unknown;
 let requests: unknown;
+let clientUsage: unknown;
 let status: number;
 let urls: string[];
 
@@ -71,6 +72,13 @@ beforeEach(() => {
     ],
   };
   requests = { requests: [] };
+  clientUsage = {
+    windowStart: "2026-09-10T00:00:00Z",
+    windowEnd: "2026-09-11T00:00:00Z",
+    rowsDropped: 0,
+    truncated: false,
+    clients: [],
+  };
 
   vi.stubGlobal(
     "fetch",
@@ -83,7 +91,11 @@ beforeEach(() => {
           headers: { "content-type": "application/json" },
         });
       }
-      const body = url.includes("/metrics/requests") ? requests : summary;
+      const body = url.includes("/metrics/requests")
+        ? requests
+        : url.includes("/metrics/clients")
+          ? clientUsage
+          : summary;
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -235,4 +247,31 @@ describe("metrics page", () => {
     // inferred from a larger number.
     expect(await screen.findByText(/210 ms routing \(refreshed\)/)).toBeInTheDocument();
   });
+});
+
+it("shows per-key usage with incomplete accounting and retention limits", async () => {
+  clientUsage = {
+    rowsDropped: 1,
+    truncated: true,
+    clients: [
+      {
+        clientKeyId: "verified-id",
+        clientKeyName: "Laptop app",
+        requests: 5,
+        served: 3,
+        failed: 2,
+        attempts: 6,
+        promptTokens: 123,
+        completionTokens: 45,
+        incompleteUsageRequests: 2,
+      },
+    ],
+  };
+  render(<MetricsPage />);
+  expect(await screen.findByText("Laptop app")).toBeInTheDocument();
+  expect(screen.getByText("verified-id")).toBeInTheDocument();
+  expect(screen.getByText("123")).toBeInTheDocument();
+  expect(screen.getByText(/Older per-key history has expired/)).toBeInTheDocument();
+  expect(screen.getByText(/Per-key totals are incomplete/)).toBeInTheDocument();
+  expect(screen.getByText(/This is not a billing total/)).toBeInTheDocument();
 });

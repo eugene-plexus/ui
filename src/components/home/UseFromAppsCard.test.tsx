@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/lib/api";
@@ -13,7 +13,7 @@ function show() {
 }
 
 describe("install-wide key registry", () => {
-  it("names migrated origins and the revocation bound", async () => {
+  it("names migrated origins and the admission dependency", async () => {
     const registry: ClientKeyList = {
       keys: [
         {
@@ -34,7 +34,7 @@ describe("install-wide key registry", () => {
     show();
     expect(await screen.findByText("migrated from nas")).toBeInTheDocument();
     expect(screen.getByTestId("key-migration")).toHaveTextContent("registered install-wide");
-    expect(screen.getByText(/60 seconds old/)).toBeInTheDocument();
+    expect(screen.getByText(/Client requests need the active key authority/)).toBeInTheDocument();
     expect(get).toHaveBeenCalledWith("agent", "/v1/auth/client-keys");
   });
 
@@ -66,4 +66,63 @@ describe("install-wide key registry", () => {
     expect(screen.getByText(/Registry status has not been confirmed/)).toBeInTheDocument();
     expect(screen.queryByTestId("key-migration")).not.toBeInTheDocument();
   });
+});
+
+it("makes a scoped key with the chosen limits", async () => {
+  vi.spyOn(api, "get").mockResolvedValue({ keys: [], scope: "install" });
+  const post = vi.spyOn(api, "post").mockResolvedValue({ key: { id: "new" }, token: "shown-once" });
+  show();
+  await screen.findByText("Keys and revocations apply to every gateway in this install.", {
+    exact: false,
+  });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.change(screen.getByRole("textbox", { name: /Allowed model IDs/ }), {
+    target: { value: "alias\nactual\nactual" },
+  });
+  fireEvent.change(screen.getByLabelText("Concurrent requests"), { target: { value: "1" } });
+  fireEvent.change(screen.getByLabelText("Requests per minute"), { target: { value: "12" } });
+  fireEvent.click(screen.getByTestId("make-key"));
+  await waitFor(() =>
+    expect(post).toHaveBeenCalledWith("agent", "/v1/auth/client-keys", {
+      name: "My app",
+      limits: {
+        allowedModels: ["alias", "actual"],
+        maxConcurrentRequests: 1,
+        requestsPerMinute: 12,
+      },
+    }),
+  );
+  expect(await screen.findByTestId("fresh-key")).toHaveTextContent("shown-once");
+});
+
+it("makes legacy access explicit and edits limits without minting another token", async () => {
+  const key = {
+    id: "legacy",
+    name: "Old app",
+    tail: "sample",
+    createdAt: "2026-01-01T00:00:00Z",
+    expiresAt: "2099-01-01T00:00:00Z",
+  };
+  const get = vi.spyOn(api, "get").mockResolvedValue({ keys: [key], scope: "install" });
+  const put = vi.spyOn(api, "put").mockResolvedValue({});
+  const post = vi.spyOn(api, "post");
+  show();
+  expect(await screen.findByText(/Legacy \/ unrestricted/)).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Set limits"));
+  const row = screen.getByTestId("key-list");
+  fireEvent.click(within(row).getByRole("checkbox"));
+  get.mockResolvedValue({
+    keys: [
+      { ...key, limits: { allowedModels: [], maxConcurrentRequests: 2, requestsPerMinute: 60 } },
+    ],
+    scope: "install",
+  });
+  fireEvent.click(within(row).getByText("Save limits"));
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledWith("agent", "/v1/auth/client-keys/legacy/limits", {
+      limits: { allowedModels: [], maxConcurrentRequests: 2, requestsPerMinute: 60 },
+    }),
+  );
+  expect(await screen.findByText(/No models allowed/)).toBeInTheDocument();
+  expect(post).not.toHaveBeenCalled();
 });
