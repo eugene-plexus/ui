@@ -84,7 +84,7 @@ export function FitBadge({
     return (
       <span
         data-testid="fit-badge"
-        className={`${VERDICT_CLASS[fit.verdict]} font-ui rounded-[var(--radius)] border px-1.5 py-0.5 text-[0.625rem] tracking-wide uppercase`}
+        className={`${VERDICT_CLASS[fit.verdict]} font-ui badge rounded-[var(--radius)] border px-1.5 py-0.5 text-[0.625rem] tracking-wide uppercase`}
         title={`${VERDICT_MEANING[fit.verdict]} Needs ${formatBytes(fit.requiredBytes)} at ${fit.contextLength.toLocaleString()} tokens.`}
       >
         {label}
@@ -98,7 +98,7 @@ export function FitBadge({
         type="button"
         data-testid="fit-badge"
         onClick={() => setOpen((v) => !v)}
-        className={`${VERDICT_CLASS[fit.verdict]} font-ui inline-flex items-center gap-1.5 rounded-[var(--radius)] border px-2 py-0.5 text-[0.6875rem] tracking-wide uppercase`}
+        className={`${VERDICT_CLASS[fit.verdict]} font-ui badge gap-1.5 rounded-[var(--radius)] border px-2 py-0.5 text-[0.6875rem] tracking-wide uppercase`}
         aria-expanded={open}
       >
         {label}
@@ -123,7 +123,7 @@ export function FitBreakdown({ fit }: { fit: Fit }) {
   ];
 
   return (
-    <div className="space-y-2 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs">
+    <div className="space-y-2 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm">
       <dl className="space-y-0.5">
         {rows.map(([label, value], index) => (
           <div

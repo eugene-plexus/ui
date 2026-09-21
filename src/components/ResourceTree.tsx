@@ -36,6 +36,16 @@ import { LayerIcon } from "./LayerIcon";
 
 const OPEN_KEY = "eugene-tree-open";
 
+/* One gutter, defined once. Both arms of the toggle position render the
+   SAME box — the spacer used to be a fixed 15px against a rem-sized
+   button, which matched at the default root and drifted the moment the
+   font-size preference raised it: at Large every expandable row sat
+   ~5px right of its childless siblings, and a tree that indents by
+   anything other than depth is lying about the topology. `h-5 w-5` is
+   1.25rem, so both arms scale together with the preference. */
+const TWIST_BOX =
+  "flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--radius)] text-[0.625rem]";
+
 const EMPTY: Topology = { localNode: null, nodes: [], components: [] };
 
 /**
@@ -251,12 +261,12 @@ function Row({
             aria-expanded={expanded}
             aria-label={`${expanded ? "Collapse" : "Expand"} ${node.label}`}
             data-testid={`tree-toggle-${key}`}
-            className="font-ui shrink-0 rounded-[var(--radius)] px-1 text-[0.625rem] text-[color:var(--muted)] hover:bg-[color:var(--panel-hover)]"
+            className={`font-ui ${TWIST_BOX} text-[color:var(--muted)] hover:bg-[color:var(--panel-hover)]`}
           >
             {expanded ? "▾" : "▸"}
           </button>
         ) : (
-          <span className="w-[15px] shrink-0" aria-hidden="true" />
+          <span className={TWIST_BOX} aria-hidden="true" data-testid="tree-twist-spacer" />
         )}
 
         {target ? (
@@ -266,7 +276,7 @@ function Row({
             aria-current={active ? "page" : undefined}
             data-tree-sel={node.sel}
             data-layer={node.layer ?? "install"}
-            className={`font-ui flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius)] px-1.5 py-1 text-xs transition-colors hover:bg-[color:var(--panel-hover)] ${
+            className={`font-ui flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius)] px-1.5 py-1 text-sm transition-colors hover:bg-[color:var(--panel-hover)] ${
               active ? "bg-[color:var(--panel-hover)] font-semibold" : ""
             }`}
             style={active ? { boxShadow: `inset 2px 0 0 0 ${accentVar(accent)}` } : undefined}
@@ -284,7 +294,7 @@ function Row({
             type="button"
             onClick={() => onToggle(key)}
             data-tree-group={key}
-            className="font-ui flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius)] px-1.5 py-1 text-left text-xs text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
+            className="font-ui flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius)] px-1.5 py-1 text-left text-sm text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
           >
             <LayerIcon name={node.icon} accent={accent} size={14} />
             <span className="truncate">{node.label}</span>

@@ -315,7 +315,7 @@ export default function NodesPage() {
   return (
     <AppShell
       controls={
-        <span className="font-ui text-xs text-[color:var(--muted)]">
+        <span className="font-ui text-sm text-[color:var(--muted)]">
           Every machine in this install.
           {status?.epoch != null && <> This root is at epoch {status.epoch}.</>}
         </span>
@@ -323,21 +323,21 @@ export default function NodesPage() {
     >
       <main className="relative z-10 mx-auto max-w-4xl px-6 py-8">
         {error && (
-          <div className="status-error mb-6 rounded-[var(--radius)] border px-3 py-2 text-xs">
+          <div className="status-error mb-6 rounded-[var(--radius)] border px-3 py-2 text-sm">
             {error}
           </div>
         )}
 
         {locked && (
           <section className="mb-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4">
-            <h2 className="font-ui text-sm font-semibold">This control root is locked</h2>
-            <p className="mt-2 text-xs text-[color:var(--muted)]">
+            <h2 className="font-ui text-base font-semibold">This control root is locked</h2>
+            <p className="mt-2 text-sm text-[color:var(--muted)]">
               It is set up and its records are intact — it just holds the install&rsquo;s signing
               key sealed and has not been given the passphrase since it last started. Nothing is
               lost. Until it is unlocked the gateway cannot read this install&rsquo;s topology, so{" "}
               <span className="font-mono">/v1/models</span> is empty and nothing routes.
             </p>
-            <p className="mt-2 text-xs text-[color:var(--muted)]">
+            <p className="mt-2 text-sm text-[color:var(--muted)]">
               Signing in to this web UI unlocks it too, with the same passphrase — since 2026-09-13.
               You are seeing this form because the root was locked after you signed in (it
               restarted), or because it holds a different passphrase from the node agent&rsquo;s.
@@ -359,17 +359,17 @@ export default function NodesPage() {
               <button
                 type="submit"
                 disabled={unlocking || !passphrase}
-                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
+                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
               >
                 {unlocking ? "Unlocking…" : "Unlock"}
               </button>
             </form>
             {unlockError && (
-              <div className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+              <div className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
                 {unlockError}
               </div>
             )}
-            <p className="mt-3 text-xs text-[color:var(--muted)]">
+            <p className="mt-3 text-sm text-[color:var(--muted)]">
               This happens on every restart unless auto-unlock is on. A host can use its OS keyring;
               a container has none, so it reads the passphrase from a file you mount — see{" "}
               <span className="font-mono">securityMode</span> in the control root&rsquo;s settings.
@@ -378,7 +378,7 @@ export default function NodesPage() {
         )}
 
         <section className="mb-8">
-          <h2 className="font-ui mb-3 text-sm font-semibold">This install</h2>
+          <h2 className="font-ui mb-3 text-base font-semibold">This install</h2>
           {nodes === null ? (
             <p className="text-sm text-[color:var(--muted)]">Loading…</p>
           ) : locked ? (
@@ -394,7 +394,7 @@ export default function NodesPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="font-ui text-xs text-[color:var(--muted)]">
+                <thead className="font-ui text-sm text-[color:var(--muted)]">
                   <tr>
                     <th className="py-2 pr-4">Name</th>
                     <th className="py-2 pr-4">Role</th>
@@ -433,7 +433,7 @@ export default function NodesPage() {
                             of clock skew that read as a key problem. */}
                         {!n.reachable && n.lastError ? (
                           <div
-                            className="mt-0.5 max-w-md text-xs text-[color:var(--muted)]"
+                            className="mt-0.5 max-w-md text-sm text-[color:var(--muted)]"
                             data-testid="node-last-error"
                           >
                             {n.lastError}
@@ -443,18 +443,18 @@ export default function NodesPage() {
                         n.lastSeenEpoch != null &&
                         n.lastSeenEpoch < status.epoch ? (
                           <span
-                            className="ml-2 text-xs text-[color:var(--muted)]"
+                            className="ml-2 text-sm text-[color:var(--muted)]"
                             title="This node has not yet learned about a promotion. Bounded, self-healing, and deliberately shown rather than hidden."
                           >
                             epoch {n.lastSeenEpoch}
                           </span>
                         ) : null}
                       </td>
-                      <td className="py-2 pr-4 text-xs text-[color:var(--muted)]">
+                      <td className="py-2 pr-4 text-sm text-[color:var(--muted)]">
                         {[n.os, n.arch].filter(Boolean).join("/") || "—"}
                         {n.devices?.length ? ` · ${n.devices.length} device(s)` : ""}
                       </td>
-                      <td className="py-2 pr-4 text-xs">
+                      <td className="py-2 pr-4 text-sm">
                         {/* The question this table could not answer: a node was
                           "reachable" and nothing said what it was for. */}
                         {(served[n.name] ?? []).length === 0 ? (
@@ -491,7 +491,7 @@ export default function NodesPage() {
           is a control-root write, so the button could only produce the
           same 503 the panel above already explains. */}
         <section hidden={locked}>
-          <h2 className="font-ui mb-2 text-sm font-semibold">Add a node</h2>
+          <h2 className="font-ui mb-2 text-base font-semibold">Add a node</h2>
           <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
             Mint a token here, then run the command it produces on the other machine. The token is
             single-use, short-lived, and <strong>shown once</strong> — it is not stored in a form
@@ -499,7 +499,7 @@ export default function NodesPage() {
           </p>
 
           <div className="mb-4 flex flex-wrap items-end gap-3">
-            <label className="font-ui text-xs">
+            <label className="font-ui text-sm">
               <span className="mb-1 block text-[color:var(--muted)]">Node name (optional)</span>
               <input
                 value={newNodeName}
@@ -508,7 +508,7 @@ export default function NodesPage() {
                 className="w-56 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 text-sm"
               />
             </label>
-            <label className="font-ui text-xs">
+            <label className="font-ui text-sm">
               <span className="mb-1 block text-[color:var(--muted)]">
                 Control root URL the other machine can reach
               </span>
@@ -523,14 +523,14 @@ export default function NodesPage() {
               type="button"
               onClick={() => void mint()}
               disabled={minting}
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {minting ? "Minting…" : "Mint a join token"}
             </button>
           </div>
 
           {mintError && (
-            <div className="status-error mb-4 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            <div className="status-error mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm">
               {mintError}
             </div>
           )}
@@ -540,7 +540,7 @@ export default function NodesPage() {
               data-testid="outstanding-tokens"
               className="mb-4 rounded-[var(--radius)] border border-[color:var(--border)] p-3"
             >
-              <h3 className="font-ui mb-2 text-xs font-semibold">
+              <h3 className="font-ui mb-2 text-sm font-semibold">
                 Outstanding tokens ({outstanding.length})
               </h3>
               <ul className="space-y-1.5">
@@ -549,7 +549,7 @@ export default function NodesPage() {
                     key={t.id}
                     data-testid="token-row"
                     data-token-id={t.id}
-                    className="flex flex-wrap items-center justify-between gap-2 text-xs"
+                    className="flex flex-wrap items-center justify-between gap-2 text-sm"
                   >
                     <span>
                       <span className="font-mono">{t.id}</span>
@@ -591,7 +591,7 @@ export default function NodesPage() {
           {minted && (
             <div className="rounded-[var(--radius)] border border-[color:var(--border)] p-3">
               <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="font-ui text-xs text-[color:var(--muted)]">
+                <span className="font-ui text-sm text-[color:var(--muted)]">
                   Run this on the machine you are adding. Expires{" "}
                   {new Date(minted.expiresAt).toLocaleTimeString()}.
                 </span>
@@ -601,13 +601,13 @@ export default function NodesPage() {
                 {joinCommand}
               </pre>
               {!controlUrl && (
-                <p className="mt-2 text-xs text-[color:var(--muted)]">
+                <p className="mt-2 text-sm text-[color:var(--muted)]">
                   This root has no address other hosts can reach recorded, so the command above
                   needs its URL filled in by hand. Set <code>advertiseUrl</code> in the agent config
                   on this machine.
                 </p>
               )}
-              <p className="mt-2 text-xs text-[color:var(--muted)]">
+              <p className="mt-2 text-sm text-[color:var(--muted)]">
                 The other machine will also offer this as a question the first time it starts, if it
                 is started at a terminal.
               </p>

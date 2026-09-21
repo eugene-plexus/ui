@@ -19,7 +19,7 @@ export default function RuntimesRedirect() {
     router.replace("/inference");
   }, [router]);
   return (
-    <main className="p-4 text-xs text-[color:var(--muted)]">
+    <main className="p-4 text-sm text-[color:var(--muted)]">
       Runtimes moved to{" "}
       <a href="/inference/" className="underline">
         Inference

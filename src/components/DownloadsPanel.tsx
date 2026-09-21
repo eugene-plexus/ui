@@ -95,14 +95,14 @@ export function DownloadsPanel({
 
   if (downloads.length === 0) {
     return emptyHint ? (
-      <p className="px-1 py-2 text-xs text-[color:var(--muted)]">{emptyHint}</p>
+      <p className="px-1 py-2 text-sm text-[color:var(--muted)]">{emptyHint}</p>
     ) : null;
   }
 
   return (
     <div className="space-y-2">
       {error && (
-        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>
+        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm">{error}</p>
       )}
       {downloads.map((download) => (
         <DownloadRow
@@ -157,7 +157,7 @@ function DownloadRow({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-ui truncate text-xs font-semibold" title={download.repo}>
+          <p className="font-ui truncate text-sm font-semibold" title={download.repo}>
             {download.repo}
           </p>
           <p

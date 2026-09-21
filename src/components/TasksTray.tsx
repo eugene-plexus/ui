@@ -65,7 +65,7 @@ export function TasksTrayView({ tasks }: { tasks: Task[] }) {
         aria-expanded={open}
         aria-controls={popoverId}
         data-testid="tasks-tray"
-        className={`font-ui flex items-center gap-1.5 rounded-[var(--radius)] border px-2.5 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
+        className={`font-ui flex items-center gap-1.5 rounded-[var(--radius)] border px-2.5 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
           count > 0 ? "border-[color:var(--accent-left)]" : "border-[color:var(--border)]"
         }`}
         title="Downloads, installs, benchmarks, models loading and runs you started, wherever they were started"
@@ -90,7 +90,7 @@ export function TasksTrayView({ tasks }: { tasks: Task[] }) {
           className="absolute right-0 z-30 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-2 shadow-lg"
         >
           {count === 0 ? (
-            <p className="font-ui px-1 py-1.5 text-xs text-[color:var(--muted)]">
+            <p className="font-ui px-1 py-1.5 text-sm text-[color:var(--muted)]">
               Nothing is running in the background.
             </p>
           ) : (
@@ -125,7 +125,7 @@ function TaskRow({ task, onFollow }: { task: Task; onFollow: () => void }) {
         onClick={onFollow}
         data-task-kind={task.kind}
         data-task-tone={task.tone}
-        className="font-ui block rounded-[var(--radius)] px-2 py-1.5 text-xs transition-colors hover:bg-[color:var(--panel-hover)]"
+        className="font-ui block rounded-[var(--radius)] px-2 py-1.5 text-sm transition-colors hover:bg-[color:var(--panel-hover)]"
       >
         <span className={`block truncate ${task.dismiss ? "pr-6" : ""}`} title={task.title}>
           {task.title}

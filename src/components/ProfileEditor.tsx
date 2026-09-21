@@ -232,7 +232,7 @@ export function ProfileEditor({
         )}
       </div>
 
-      <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted)]">
+      <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted)]">
         The settings that worked, saved against the model instead of retyped. Run makes one called{" "}
         <span className="font-mono">{DEFAULT_PROFILE_NAME}</span> with a context size that fits.
         Save more profiles to compare speed, longer context, or different GPUs.
@@ -248,7 +248,7 @@ export function ProfileEditor({
       )}
 
       {error && (
-        <p className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs">
+        <p className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm">
           {error}
         </p>
       )}
@@ -259,7 +259,7 @@ export function ProfileEditor({
           describe; M6 closed it. What is still honestly said here is
           that "ready" is the engine's to reach, not the button's. */}
       {launched && (
-        <p className="status-ok mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
+        <p className="status-ok mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
           Starting <span className="font-mono">{launched}</span>
           {node && !node.local ? ` on ${node.label}` : ""} and its driver{" "}
           <span className="font-mono">{launched}-driver</span>. Watch it load on the{" "}
@@ -272,7 +272,7 @@ export function ProfileEditor({
       )}
 
       {creating && prefillContext === undefined && node && (
-        <p className="mt-3 text-xs text-[color:var(--muted)]" data-testid="context-probe">
+        <p className="mt-3 text-sm text-[color:var(--muted)]" data-testid="context-probe">
           Asking {node.label} what context fits&hellip;
         </p>
       )}
@@ -293,7 +293,7 @@ export function ProfileEditor({
 
       <div className="mt-3 flex flex-col gap-2">
         {profiles?.length === 0 && !creating && (
-          <p className="text-xs text-[color:var(--muted)] italic">
+          <p className="text-sm text-[color:var(--muted)] italic">
             None yet. Press Run above and one called{" "}
             <span className="font-mono not-italic">{DEFAULT_PROFILE_NAME}</span> is made for you at
             the context that fits this machine; make one here only to choose the flags yourself. A
@@ -385,7 +385,7 @@ function LaunchPreview({
 
   if (failure) {
     return (
-      <p className="mt-2 text-xs text-[color:var(--muted)]">
+      <p className="mt-2 text-sm text-[color:var(--muted)]">
         Could not ask {node.label} what a launch would do: {failure}
       </p>
     );
@@ -397,7 +397,7 @@ function LaunchPreview({
     preview.tone === "ok" ? "status-ok" : preview.tone === "warn" ? "status-warn" : "status-error";
   return (
     <div
-      className={`${tone} mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed`}
+      className={`${tone} mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed`}
       data-testid="launch-preview"
     >
       <p className="font-ui font-semibold">
@@ -456,12 +456,12 @@ function ProfileRow({
   const flags = Object.entries(profile.flags ?? {});
   const env = Object.entries(profile.env ?? {});
   return (
-    <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs">
+    <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="font-medium">{profile.name}</span>
           {profile.default && (
-            <span className="rounded bg-[color:var(--border)] px-1 text-[0.5625rem] tracking-wider uppercase">
+            <span className="badge rounded bg-[color:var(--border)] px-1 text-[0.5625rem] tracking-wider uppercase">
               default
             </span>
           )}
@@ -623,13 +623,13 @@ function ProfileForm({
   return (
     <div className="mt-3 rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-3">
       {error && (
-        <p className="status-error mb-2 rounded-[var(--radius)] border px-3 py-2 text-xs">
+        <p className="status-error mb-2 rounded-[var(--radius)] border px-3 py-2 text-sm">
           {error}
         </p>
       )}
 
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs">
+        <label className="flex flex-col gap-1 text-sm">
           <span className="text-[color:var(--muted)]">name</span>
           <input
             type="text"
@@ -639,7 +639,7 @@ function ProfileForm({
             className={inputClass}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs">
+        <label className="flex flex-col gap-1 text-sm">
           <span className="text-[color:var(--muted)]">engine</span>
           <select
             value={engine}
@@ -654,7 +654,7 @@ function ProfileForm({
             {engines.length === 0 && <option value="llama_cpp">llama_cpp</option>}
           </select>
         </label>
-        <label className="flex items-center gap-2 pb-2 text-xs">
+        <label className="flex items-center gap-2 pb-2 text-sm">
           <input
             type="checkbox"
             checked={isDefault}
@@ -680,7 +680,7 @@ function ProfileForm({
           ))}
           {!existing && suggestedContext != null && (
             <p
-              className="mt-1 text-xs text-[color:var(--muted)]"
+              className="mt-1 text-sm text-[color:var(--muted)]"
               data-testid="context-prefill-note"
             >
               contextSize starts at {suggestedContext.toLocaleString()}: the largest context at
@@ -696,13 +696,13 @@ function ProfileForm({
           )}
         </div>
       ) : (
-        <p className="mt-3 text-xs text-[color:var(--muted)]">
+        <p className="mt-3 text-sm text-[color:var(--muted)]">
           No flag schema available for <span className="font-mono">{engine}</span> — the agent did
           not report one. You can still set extra arguments below.
         </p>
       )}
 
-      <fieldset className="mt-3 space-y-2 text-xs">
+      <fieldset className="mt-3 space-y-2 text-sm">
         <legend className="font-medium">Generation defaults</legend>
         <p className="text-[color:var(--muted)]">
           When this is the default profile, these values fill parameters omitted by your app.
@@ -732,7 +732,7 @@ function ProfileForm({
         ))}
       </fieldset>
 
-      <label className="mt-3 flex flex-col gap-1 text-xs">
+      <label className="mt-3 flex flex-col gap-1 text-sm">
         <span className="text-[color:var(--muted)]">
           extra arguments — the escape hatch for flags the curated surface misses
         </span>
@@ -746,7 +746,7 @@ function ProfileForm({
         />
       </label>
 
-      <label className="mt-3 flex flex-col gap-1 text-xs">
+      <label className="mt-3 flex flex-col gap-1 text-sm">
         <span className="text-[color:var(--muted)]">
           environment, one <span className="font-mono">KEY=value</span> per line — where{" "}
           <span className="font-mono">CUDA_VISIBLE_DEVICES</span> goes to pin this to one GPU
@@ -760,7 +760,7 @@ function ProfileForm({
         />
       </label>
 
-      <label className="mt-3 flex flex-col gap-1 text-xs">
+      <label className="mt-3 flex flex-col gap-1 text-sm">
         <span className="text-[color:var(--muted)]">
           notes — tuning is empirical and the reasoning evaporates
         </span>
@@ -791,7 +791,7 @@ function ProfileForm({
 }
 
 const buttonClass =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
 const inputClass =
   "rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)]";

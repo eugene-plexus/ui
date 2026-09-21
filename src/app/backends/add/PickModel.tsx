@@ -42,7 +42,7 @@ export function PickModel({
           <label htmlFor="backend-model" className="font-ui block text-sm font-medium">
             Model
           </label>
-          <p className="mt-1 mb-2 text-xs leading-relaxed text-[color:var(--muted)]">
+          <p className="mt-1 mb-2 text-sm leading-relaxed text-[color:var(--muted)]">
             What Eugene sends to this app.
           </p>
           <select
@@ -67,7 +67,7 @@ export function PickModel({
           <label htmlFor="backend-model-id" className="font-ui block text-sm font-medium">
             Model id
           </label>
-          <p className="mt-1 mb-2 text-xs leading-relaxed text-[color:var(--muted)]">
+          <p className="mt-1 mb-2 text-sm leading-relaxed text-[color:var(--muted)]">
             Exactly as the app names it. Something pulled just now will not be in the list.
           </p>
           <input

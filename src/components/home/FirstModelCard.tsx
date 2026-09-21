@@ -124,7 +124,7 @@ export function FirstModelCard({
       {downloads.length > 0 && (
         <ul data-testid="home-downloads" className="mt-3 flex flex-col gap-2">
           {downloads.map((task) => (
-            <li key={task.id} className="text-xs">
+            <li key={task.id} className="text-sm">
               <Link href={task.href} className="block truncate hover:underline">
                 {task.title}
               </Link>
@@ -218,8 +218,8 @@ function SuggestedModelCard({
         Nothing is on disk yet. <strong>{shortName(model.baseModel)}</strong> is a good first one
         for this machine.
       </p>
-      {reason && <p className="mt-1 text-xs text-[color:var(--muted)]">{reason}</p>}
-      <p className="mt-1 text-xs text-[color:var(--muted)]">
+      {reason && <p className="mt-1 text-sm text-[color:var(--muted)]">{reason}</p>}
+      <p className="mt-1 text-sm text-[color:var(--muted)]">
         Download into your own folder. We’ll ask before installing llama.cpp and choose starting
         settings for this machine.
       </p>
@@ -258,7 +258,7 @@ function DownloadList({ downloads }: { downloads: Task[] }) {
   return (
     <ul data-testid="home-downloads" className="mt-3 flex flex-col gap-2">
       {downloads.map((task) => (
-        <li key={task.id} className="text-xs">
+        <li key={task.id} className="text-sm">
           <Link href={task.href} className="block truncate hover:underline">
             {task.title}
           </Link>

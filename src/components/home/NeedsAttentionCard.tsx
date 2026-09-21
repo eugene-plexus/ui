@@ -40,7 +40,7 @@ export function NeedsAttentionCard({
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-ui text-base font-semibold">Needs attention</h2>
         {blocking > 0 && (
-          <span className="font-ui text-status-error text-xs">
+          <span className="font-ui text-status-error text-sm">
             {blocking === 1
               ? "1 thing is stopping it working"
               : `${blocking} things are stopping it working`}
@@ -48,9 +48,9 @@ export function NeedsAttentionCard({
         )}
       </div>
       {!loaded ? (
-        <p className="font-ui mt-2 text-xs text-[color:var(--muted)]">Checking…</p>
+        <p className="font-ui mt-2 text-sm text-[color:var(--muted)]">Checking…</p>
       ) : issues.length === 0 ? (
-        <p className="font-ui mt-2 text-xs text-[color:var(--muted)]">
+        <p className="font-ui mt-2 text-sm text-[color:var(--muted)]">
           Nothing. Everything this install can check is working.
         </p>
       ) : (

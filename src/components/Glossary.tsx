@@ -53,7 +53,7 @@ export function Glossary() {
       <summary className="font-ui cursor-pointer text-sm font-semibold">
         Glossary · 12 terms
       </summary>
-      <dl className="mt-3 grid gap-x-6 gap-y-3 text-xs sm:grid-cols-2">
+      <dl className="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
         {GLOSSARY.map(([term, meaning]) => (
           <div key={term}>
             <dt className="font-semibold">{term}</dt>

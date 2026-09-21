@@ -133,12 +133,12 @@ export function FolderPicker({
 
         <div className="min-h-[12rem] flex-1 overflow-y-auto px-2 py-2">
           {error && (
-            <p className="status-error mx-2 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            <p className="status-error mx-2 rounded-[var(--radius)] border px-3 py-2 text-sm">
               {error}
             </p>
           )}
           {!error && listing && listing.entries.length === 0 && (
-            <p className="px-2 py-1 text-xs text-[color:var(--muted)] italic">
+            <p className="px-2 py-1 text-sm text-[color:var(--muted)] italic">
               No subdirectories here.
             </p>
           )}
@@ -148,7 +148,7 @@ export function FolderPicker({
                 key={entry.path}
                 type="button"
                 onClick={() => void open(entry.path)}
-                className="flex w-full items-center justify-between gap-3 rounded-[var(--radius)] px-2 py-1 text-left text-xs hover:bg-[color:var(--panel-hover)]"
+                className="flex w-full items-center justify-between gap-3 rounded-[var(--radius)] px-2 py-1 text-left text-sm hover:bg-[color:var(--panel-hover)]"
                 title={entry.path}
               >
                 <span className="truncate">
@@ -181,7 +181,7 @@ export function FolderPicker({
               type="button"
               onClick={() => current !== null && onPick(current)}
               disabled={current === null || loading}
-              className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
+              className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
             >
               use this folder
             </button>
@@ -201,4 +201,4 @@ function isNotImplemented(err: ApiError): boolean {
 }
 
 const buttonClass =
-  "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";

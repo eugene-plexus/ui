@@ -276,7 +276,7 @@ function DiscoverPageInner() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="search models, or paste a link to one"
-            className="font-ui min-w-[220px] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-xs outline-none focus:border-[color:var(--border-hover)]"
+            className="font-ui min-w-[220px] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--border-hover)]"
             aria-label="Search the model catalogue"
           />
           <select
@@ -344,7 +344,7 @@ function DiscoverPageInner() {
           <button
             type="button"
             onClick={() => setShowDownloads((v) => !v)}
-            className="font-ui flex w-full items-center justify-between px-4 py-2 text-xs"
+            className="font-ui flex w-full items-center justify-between px-4 py-2 text-sm"
             aria-expanded={showDownloads}
           >
             <span className="font-semibold">
@@ -396,7 +396,7 @@ function HardwareSummary({
       : "";
     return (
       <span
-        className="font-ui text-xs text-[color:var(--muted)]"
+        className="font-ui text-sm text-[color:var(--muted)]"
         title={`Scored against ${where}, the machine a launch from this browser runs on. Verdicts use free memory, not total.${measured}`}
       >
         {budget.gpu ? (
@@ -422,7 +422,7 @@ function HardwareSummary({
   const free = gpu?.vramFreeBytes ?? gpu?.vramTotalBytes;
   return (
     <span
-      className="font-ui text-xs text-[color:var(--muted)]"
+      className="font-ui text-sm text-[color:var(--muted)]"
       title={
         (hardware.warnings ?? []).join(" ") ||
         "Detected on the host the library runs on. Fit verdicts are measured against free memory, not total."
@@ -452,7 +452,7 @@ function HardwareSummary({
  */
 function ContextControl({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   return (
-    <label className="font-ui mb-3 flex items-center gap-1.5 text-xs text-[color:var(--muted)]">
+    <label className="font-ui mb-3 flex items-center gap-1.5 text-sm text-[color:var(--muted)]">
       <span>Scored for</span>
       <select
         value={value}
@@ -499,13 +499,13 @@ function ResultsList({
         </p>
       )}
       {error && (
-        <p className="status-error m-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>
+        <p className="status-error m-3 rounded-[var(--radius)] border px-3 py-2 text-sm">{error}</p>
       )}
       {results === null && !error && (
-        <p className="px-4 py-3 text-xs text-[color:var(--muted)]">searching…</p>
+        <p className="px-4 py-3 text-sm text-[color:var(--muted)]">searching…</p>
       )}
       {results?.length === 0 && !error && (
-        <p className="px-4 py-3 text-xs text-[color:var(--muted)]">
+        <p className="px-4 py-3 text-sm text-[color:var(--muted)]">
           Nothing matched. The catalogue&rsquo;s own search is what it is — a publisher name often
           works better than a description.
         </p>
@@ -520,7 +520,7 @@ function ResultsList({
                 selected === result.repo ? "bg-[color:var(--panel-soft)]" : ""
               }`}
             >
-              <p className="font-ui truncate text-xs font-semibold" title={result.repo}>
+              <p className="font-ui truncate text-sm font-semibold" title={result.repo}>
                 {result.name ?? result.repo}
               </p>
               <p className="truncate text-[0.6875rem] text-[color:var(--muted)]">
@@ -569,7 +569,7 @@ function EmptyDetail({
 }) {
   const where = budget?.node ?? "this host";
   return (
-    <div className="max-w-4xl space-y-4 text-xs text-[color:var(--muted)]">
+    <div className="max-w-4xl space-y-4 text-sm text-[color:var(--muted)]">
       <StarterSetPanel
         budget={budget}
         contextLength={contextLength}
@@ -742,10 +742,10 @@ function RepoDetail({
   }
 
   if (error) {
-    return <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>;
+    return <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm">{error}</p>;
   }
   if (!detail) {
-    return <p className="text-xs text-[color:var(--muted)]">loading {repo}…</p>;
+    return <p className="text-sm text-[color:var(--muted)]">loading {repo}…</p>;
   }
 
   const activeDestinations = new Set(
@@ -781,7 +781,7 @@ function RepoDetail({
     <div className={`max-w-4xl space-y-4 ${loading ? "opacity-60 transition-opacity" : ""}`}>
       <div>
         <h2 className="font-ui text-base font-semibold">{detail.name ?? detail.repo}</h2>
-        <p className="text-xs text-[color:var(--muted)]">
+        <p className="text-sm text-[color:var(--muted)]">
           {detail.owner}
           {detail.license && <> · {detail.license}</>}
           {detail.parameters != null && <> · {(detail.parameters / 1e9).toFixed(1)}B parameters</>}
@@ -821,7 +821,7 @@ function RepoDetail({
       </div>
 
       {warnings.map((warning) => (
-        <p key={warning} className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs">
+        <p key={warning} className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm">
           {warning}
         </p>
       ))}
@@ -829,7 +829,7 @@ function RepoDetail({
       {detail.chatTemplate === false && (
         <div
           data-testid="no-chat-template"
-          className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs"
+          className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm"
         >
           <p className="font-semibold">No chat template</p>
           <p className="mt-0.5">
@@ -847,7 +847,7 @@ function RepoDetail({
       {recommendedCandidate && detail.recommended && (
         <section
           data-testid="repo-recommended"
-          className="status-success rounded-[var(--radius)] border px-4 py-3 text-xs"
+          className="status-success rounded-[var(--radius)] border px-4 py-3 text-sm"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-ui text-sm font-semibold">
@@ -875,7 +875,7 @@ function RepoDetail({
               disabled={
                 busy !== null || !!recommendedCandidate.alreadyOwned || recommendedDownloading
               }
-              className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               data-testid="repo-recommended-download"
             >
               {recommendedCandidate.alreadyOwned
@@ -915,19 +915,19 @@ function RepoDetail({
       )}
 
       {actionError && (
-        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">
+        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm">
           {actionError}
         </p>
       )}
 
-      <h3 className="font-ui text-xs font-semibold" data-testid="all-versions">
+      <h3 className="font-ui text-sm font-semibold" data-testid="all-versions">
         All versions
       </h3>
 
       {detail.candidates.length === 0 ? (
         <p
           data-testid="no-candidates"
-          className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-xs text-[color:var(--muted)]"
+          className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--muted)]"
         >
           Nothing in this repository can be launched as a model. It may hold only documentation or
           files in a format this install does not serve — the other files are listed below.
@@ -991,7 +991,7 @@ function CandidateTable({
 
   return (
     <div className="overflow-hidden rounded-[var(--radius)] border border-[color:var(--border)]">
-      <table className="w-full text-xs">
+      <table className="w-full text-sm">
         <thead className="font-ui bg-[color:var(--panel-soft)] text-[0.6875rem] text-[color:var(--muted)]">
           <tr>
             <th className="px-3 py-1.5 text-left font-medium">version</th>
@@ -1110,7 +1110,7 @@ function VisionPairing({
   return (
     <div
       data-testid="vision-pairing"
-      className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-xs"
+      className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm"
     >
       <label className="font-ui flex items-center gap-2 font-semibold">
         <input
@@ -1160,7 +1160,7 @@ function VisionPairing({
 function OtherFiles({ files }: { files: CatalogueFile[] }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-[var(--radius)] border border-[color:var(--border)] text-xs">
+    <div className="rounded-[var(--radius)] border border-[color:var(--border)] text-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -1207,7 +1207,7 @@ const smallButton =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
 const selectClass =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 text-xs outline-none focus:border-[color:var(--border-hover)]";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 text-sm outline-none focus:border-[color:var(--border-hover)]";
 
 function compactCount(value: number): string {
   if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;

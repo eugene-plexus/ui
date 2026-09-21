@@ -79,7 +79,7 @@ export function WizardFooter({
           <button
             type="button"
             onClick={onCancel}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
             Cancel
           </button>
@@ -90,7 +90,7 @@ export function WizardFooter({
           type="button"
           onClick={onPrimary}
           disabled={working || !canProceed}
-          className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {working ? workingLabel : label}
         </button>

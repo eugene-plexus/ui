@@ -51,14 +51,14 @@ export function LayerMap({
       className="max-h-[70dvh] shrink-0 overflow-y-auto border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-4"
     >
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-ui text-xs text-[color:var(--muted)]">
+        <p className="font-ui text-sm text-[color:var(--muted)]">
           Requests flow through the layers on the left. The services on the right manage models,
           machines, and access.
         </p>
         <button
           type="button"
           onClick={onClose}
-          className="font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2.5 py-1 text-xs text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)]"
+          className="font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2.5 py-1 text-sm text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)]"
         >
           Close
         </button>
@@ -115,7 +115,7 @@ function LayerCard({
       }`}
       style={{ borderLeftColor: accentVar(layer.accent) }}
     >
-      <p className="font-ui flex items-center gap-2 text-xs font-semibold">
+      <p className="font-ui flex items-center gap-2 text-sm font-semibold">
         <LayerIcon name={layer.icon} accent={layer.accent} size={15} />
         {layer.name}
       </p>

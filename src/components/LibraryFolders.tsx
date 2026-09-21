@@ -279,7 +279,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
     >
       <header className="mb-3">
         <h2 className="font-ui text-sm font-semibold">{title}</h2>
-        <p className="mt-1 max-w-3xl text-xs text-[color:var(--muted)]">
+        <p className="mt-1 max-w-3xl text-sm text-[color:var(--muted)]">
           {gridView ? (
             <>
               A node runs a model only from one of these folders. Each folder is a directory on the
@@ -315,21 +315,21 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
       </header>
 
       {libraryError && (
-        <p className="status-warn mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+        <p className="status-warn mb-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
           The Library could not be reached ({libraryError}).{copyNote ? ` ${copyNote}.` : ""}
         </p>
       )}
       {failure && (
-        <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+        <p className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
           {failure}
         </p>
       )}
       {status && !failure && (
-        <p className="status-ok mb-3 rounded-[var(--radius)] border px-3 py-2 text-xs">{status}</p>
+        <p className="status-ok mb-3 rounded-[var(--radius)] border px-3 py-2 text-sm">{status}</p>
       )}
 
       {serverFolders === null ? (
-        <p className="text-xs text-[color:var(--muted)]">Reading the Library&rsquo;s folders…</p>
+        <p className="text-sm text-[color:var(--muted)]">Reading the Library&rsquo;s folders…</p>
       ) : gridView ? (
         <FolderGrid
           draft={draft}
@@ -391,7 +391,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
               revert
             </button>
           )}
-          {problem && <span className="status-error text-xs">{problem}</span>}
+          {problem && <span className="status-error text-sm">{problem}</span>}
         </div>
       )}
 
@@ -423,7 +423,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
           >
             grid
           </Link>
-          <Link href="/library/folders?sel=library" className="text-xs underline">
+          <Link href="/library/folders?sel=library" className="text-sm underline">
             every node
           </Link>
         </div>
@@ -477,7 +477,7 @@ function FolderGrid({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-xs" data-testid="folders-grid">
+      <table className="w-full border-collapse text-sm" data-testid="folders-grid">
         <thead>
           <tr className="text-left text-[0.6875rem] text-[color:var(--muted)]">
             <th className="border-b border-[color:var(--border)] px-2 py-1.5 font-medium">
@@ -604,7 +604,7 @@ function FolderGrid({
           <select
             value={browseTarget}
             onChange={(e) => onMountBrowseNode(e.target.value)}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 text-xs"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 text-sm"
             aria-label="Node whose disk to browse for a mount"
           >
             {nodes.map((node) => (
@@ -695,7 +695,7 @@ function NodeColumn({
 }) {
   if (!node) {
     return (
-      <p className="text-xs text-[color:var(--muted)]">
+      <p className="text-sm text-[color:var(--muted)]">
         {nodeName ? (
           <>
             <span className="font-mono">{nodeName}</span> is not in the node registry as this
@@ -709,7 +709,7 @@ function NodeColumn({
     );
   }
   return (
-    <table className="w-full border-collapse text-xs" data-testid="folders-node">
+    <table className="w-full border-collapse text-sm" data-testid="folders-node">
       <thead>
         <tr className="text-left text-[0.6875rem] text-[color:var(--muted)]">
           <th className="border-b border-[color:var(--border)] px-2 py-1.5 font-medium">
@@ -829,8 +829,8 @@ function Dot({ tone }: { tone: CellTone }) {
 const inputClass =
   "min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 font-mono text-xs outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50";
 const buttonClass =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 const smallButtonClass =
   "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 const primaryClass =
-  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30";

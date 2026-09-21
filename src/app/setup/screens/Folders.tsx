@@ -114,12 +114,12 @@ export function ScreenFolders({
         </label>
         <div className="mt-1 ml-7">
           {proposal.status === "loading" && (
-            <p className="text-xs text-[color:var(--muted)]" data-testid="proposed-folder-loading">
+            <p className="text-sm text-[color:var(--muted)]" data-testid="proposed-folder-loading">
               Looking up your home folder…
             </p>
           )}
           {proposal.status === "unavailable" && (
-            <p className="text-xs text-[color:var(--muted)]">
+            <p className="text-sm text-[color:var(--muted)]">
               Eugene could not look up your home folder, so pick or type one below.
             </p>
           )}
@@ -149,7 +149,7 @@ export function ScreenFolders({
             />
           )}
           {proposal.status !== "unavailable" && (
-            <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted)]">
+            <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted)]">
               Nothing is created until the first download lands there.
             </p>
           )}
@@ -205,7 +205,7 @@ export function ScreenFolders({
             <button type="button" onClick={addRow} className={smallButton}>
               + Add another folder
             </button>
-            <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted)]">
+            <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
               Folders are read where they are. GGUF and Hugging Face safetensors are both
               recognised.
             </p>
@@ -235,4 +235,4 @@ function choiceTone(checked: boolean, disabled: boolean): string {
 const textInput =
   "font-ui flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]";
 const smallButton =
-  "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
+  "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";

@@ -24,7 +24,7 @@ export function Field({
     <div className="mb-5">
       <label className="font-ui block text-sm font-medium">{label}</label>
       {description && (
-        <p className="mt-1 mb-2 text-xs leading-relaxed text-[color:var(--muted)]">{description}</p>
+        <p className="mt-1 mb-2 text-sm leading-relaxed text-[color:var(--muted)]">{description}</p>
       )}
       {children}
     </div>
@@ -89,7 +89,7 @@ export function Radio({
       />
       <span>
         <span className="font-ui block text-sm font-medium">{label}</span>
-        <span className="mt-1 block text-xs leading-relaxed text-[color:var(--muted)]">
+        <span className="mt-1 block text-sm leading-relaxed text-[color:var(--muted)]">
           {description}
         </span>
       </span>
@@ -128,7 +128,7 @@ export function Checkbox({
       />
       <span>
         <span className="font-ui block text-sm font-medium">{label}</span>
-        <span className="mt-1 block text-xs leading-relaxed text-[color:var(--muted)]">
+        <span className="mt-1 block text-sm leading-relaxed text-[color:var(--muted)]">
           {description}
         </span>
       </span>
@@ -162,7 +162,7 @@ export function SecretInput({
       <button
         type="button"
         onClick={() => setReveal((r) => !r)}
-        className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+        className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
       >
         {reveal ? "Hide" : "Show"}
       </button>

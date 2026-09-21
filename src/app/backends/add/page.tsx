@@ -144,7 +144,7 @@ export default function AddBackendPage() {
   if (gate === "checking") {
     return (
       <main className="relative z-10 flex h-screen items-center justify-center">
-        <p className="font-ui text-xs text-[color:var(--muted)]">Checking setup state…</p>
+        <p className="font-ui text-sm text-[color:var(--muted)]">Checking setup state…</p>
       </main>
     );
   }
@@ -206,7 +206,7 @@ export default function AddBackendPage() {
                   Choose later
                 </button>
               </div>
-              <p className="mt-3 text-xs leading-relaxed text-[color:var(--muted)]">
+              <p className="mt-3 text-sm leading-relaxed text-[color:var(--muted)]">
                 Choosing later is fine. The app will not answer anything until a model is set, under
                 Config.
               </p>
@@ -240,13 +240,13 @@ export default function AddBackendPage() {
           {working && message && (
             <p
               data-testid="backend-status"
-              className="mt-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--muted)]"
+              className="mt-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm text-[color:var(--muted)]"
             >
               {message}
             </p>
           )}
           {error && (
-            <p className="status-error mt-6 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            <p className="status-error mt-6 rounded-[var(--radius)] border px-3 py-2 text-sm">
               {phase.kind === "form" && backend.provider
                 ? `${providerLabel(backend.provider)} could not be added. ${error}`
                 : error}
@@ -259,6 +259,6 @@ export default function AddBackendPage() {
 }
 
 const primary =
-  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40";
+  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40";
 const secondary =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40";

@@ -66,7 +66,7 @@ export function RunDialogView({
         <p className="mt-2 text-sm leading-relaxed">
           I could not find {label} on {task.node.label}. Install it now?
         </p>
-        <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted)]">
+        <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted)]">
           {label} is the program that runs models like {task.model.name}. The download is a few
           hundred megabytes and lands in Eugene&rsquo;s own folder; nothing else on the machine
           changes.

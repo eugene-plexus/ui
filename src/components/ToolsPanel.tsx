@@ -57,7 +57,7 @@ export function ToolsPanel({
       aria-label="Tools"
     >
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <label className="font-ui flex items-center gap-2 text-xs font-semibold">
+        <label className="font-ui flex items-center gap-2 text-sm font-semibold">
           <input
             data-testid="tools-enabled"
             type="checkbox"

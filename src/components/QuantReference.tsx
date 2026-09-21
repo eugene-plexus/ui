@@ -48,7 +48,7 @@ export function QuantReference() {
   }, [open, tiers]);
 
   return (
-    <div className="rounded-[var(--radius)] border border-[color:var(--border)] text-xs">
+    <div className="rounded-[var(--radius)] border border-[color:var(--border)] text-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

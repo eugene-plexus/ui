@@ -53,13 +53,18 @@
   --panel: #1b1e22;
   --panel-soft: #23272c;
   --panel-hover: #2b3037;
-  --border: #31363d;
-  --border-hover: #4c535c;
+  /* Row separators that read as texture rather than as lines are their
+     own kind of illegibility (legibility handoff, 2026-09-21). */
+  --border: #3a4048;
+  --border-hover: #5c646e;
   --accent-left: #7fb0cf;
   --accent-right: #cf9a72;
   --on-accent-left: #0c1216;
   --on-accent-right: #1a1009;
-  --muted: #8f959b;
+  /* 8.45:1 on --panel (was #8f959b at 5.5:1). Muted means quieter than
+     the foreground, never a strain to read — most of this UI's copy is
+     set in it. */
+  --muted: #b3b9bf;
 
   /* The two layer roles beyond left/right. An accent is a ROLE, never a
      color — the ICON carries a layer's identity across a theme switch.
@@ -68,9 +73,12 @@
      cool grey that reads on #141619 where the site's #8a8a93 would sit
      too close to `--muted`. */
   --accent-engine: #7fb094;
-  --accent-hardware: #9aa0a6;
+  /* 8.92:1 on --panel (was #9aa0a6) — the same too-quiet grey as the
+     old --muted, for the same reason. */
+  --accent-hardware: #b8bec4;
 
-  --scrollbar-thumb: rgb(76 83 92 / 0.55);
+  /* Follows --border-hover. */
+  --scrollbar-thumb: rgb(92 100 110 / 0.55);
   --scrollbar-thumb-hover: rgb(127 176 207 / 0.6);
 
   /* Solid bubbles. The letterform sits at 0.04 behind the primary
@@ -109,7 +117,8 @@
   --accent-right: #cf3a85;
   --on-accent-left: #ffffff;
   --on-accent-right: #ffffff;
-  --muted: #6a6a73;
+  /* 7.1:1 on --panel (was #6a6a73 at 5.35:1) — legibility handoff. */
+  --muted: #5a5a63;
 
   /* ── The two layer colours the architecture page adds to the accents.
      `--accent-left` and `--accent-right` already carry four of the six
@@ -173,7 +182,9 @@
   --accent-right: #a23b29;
   --on-accent-left: #ffffff;
   --on-accent-right: #ffffff;
-  --muted: #7d7565;
+  /* 7.0:1 on --panel (was #7d7565 at 4.56:1, the quietest muted in the
+     app) — legibility handoff. */
+  --muted: #5f5749;
 
   /* **Editorial's engine role is not green**, deliberately:
      `--accent-left: #2d6240` is already a deep green here, and two
@@ -283,6 +294,30 @@
 }
 .text-status-error {
   color: var(--status-error-fg);
+}
+
+/* A badge is a label and is sized to its content wherever it lands
+   (legibility handoff §3). Without this, a badge dropped into a grid
+   row is blockified and stretches to its track: a four-character
+   verdict renders as a ~178px box with the text hanging at one end,
+   reading as an empty input field. Global rather than per-breakpoint,
+   because the collapse happens wherever a row goes single-column. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  justify-self: start;
+  align-self: center;
+}
+
+/* IBM Plex Mono is tight, and tight is what makes a small line hard to
+   RESOLVE before it makes it hard to read. Only at the small size: at
+   text-sm and up the face has room. */
+.font-mono.text-xs,
+.font-mono-ui.text-xs,
+code.text-xs,
+pre.text-xs {
+  letter-spacing: 0.015em;
 }
 
 html,

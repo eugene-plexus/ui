@@ -200,7 +200,7 @@ export default function MetricsPage() {
             value={hours}
             onChange={(e) => setHours(Number(e.target.value))}
             aria-label="Time window"
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-1 text-xs"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-1 text-sm"
           >
             {WINDOWS.map((w) => (
               <option key={w.hours} value={w.hours}>
@@ -211,7 +211,7 @@ export default function MetricsPage() {
           <button
             type="button"
             onClick={() => void load()}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
             Refresh
           </button>
@@ -219,17 +219,17 @@ export default function MetricsPage() {
       }
     >
       <main className="relative z-10 mx-auto max-w-6xl px-6 py-8">
-        <p className="mb-6 text-xs text-[color:var(--muted)]">
+        <p className="mb-6 text-sm text-[color:var(--muted)]">
           What each backend did on <em>this</em> machine. Useful for comparing your own backends
           against each other; not a benchmark of the hardware.
         </p>
 
-        {loading && <p className="font-ui text-xs text-[color:var(--muted)]">Loading…</p>}
+        {loading && <p className="font-ui text-sm text-[color:var(--muted)]">Loading…</p>}
 
         {disabled && (
           <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
-            <h2 className="font-ui mb-2 text-sm font-semibold">Not recording</h2>
-            <p className="text-xs leading-relaxed text-[color:var(--muted)]">
+            <h2 className="font-ui mb-2 text-base font-semibold">Not recording</h2>
+            <p className="text-sm leading-relaxed text-[color:var(--muted)]">
               This gateway is not retaining request metrics. Turn on{" "}
               <span className="font-mono">Retain request metrics</span> on the{" "}
               <Link href="/config" className="underline">
@@ -242,7 +242,7 @@ export default function MetricsPage() {
         )}
 
         {error && (
-          <p className="text-status-error font-ui text-xs" role="alert">
+          <p className="text-status-error font-ui text-sm" role="alert">
             {error}
           </p>
         )}
@@ -251,24 +251,24 @@ export default function MetricsPage() {
           <>
             {clientUsage && (
               <section className="mb-6 overflow-x-auto" aria-label="Usage by client key">
-                <h2 className="font-ui mb-2 text-sm font-semibold">Usage by client key</h2>
-                <p className="mb-2 text-xs text-[color:var(--muted)]">
+                <h2 className="font-ui mb-2 text-base font-semibold">Usage by client key</h2>
+                <p className="mb-2 text-sm text-[color:var(--muted)]">
                   This gateway, within the selected window and retained request history. Tokens are
                   reported usage only; failed attempts may consume unreported tokens. Requests with
                   incomplete usage are counted below. This is not a billing total.
                 </p>
                 {clientUsage.truncated && (
-                  <p role="status" className="status-warn text-xs">
+                  <p role="status" className="status-warn text-sm">
                     Older per-key history has expired; these totals cover retained requests only.
                   </p>
                 )}
                 {clientUsage.rowsDropped > 0 && (
-                  <p role="status" className="status-warn text-xs">
+                  <p role="status" className="status-warn text-sm">
                     Some measurements were dropped. Per-key totals are incomplete.
                   </p>
                 )}
                 {clientUsage.clients?.length ? (
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-sm">
                     <thead>
                       <tr>
                         {[
@@ -314,7 +314,7 @@ export default function MetricsPage() {
                     </tbody>
                   </table>
                 ) : (
-                  <p className="text-xs text-[color:var(--muted)]">
+                  <p className="text-sm text-[color:var(--muted)]">
                     No retained client-key requests in this window. Operator requests and older
                     unattributed history are excluded.
                   </p>
@@ -323,7 +323,7 @@ export default function MetricsPage() {
             )}
             {summary.rowsDropped > 0 && (
               <p
-                className="font-ui mb-4 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs"
+                className="font-ui mb-4 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm"
                 role="status"
               >
                 {summary.rowsDropped.toLocaleString()} measurement
@@ -333,13 +333,13 @@ export default function MetricsPage() {
               </p>
             )}
             {summary.truncated && (
-              <p className="font-ui mb-4 text-xs text-[color:var(--muted)]">
+              <p className="font-ui mb-4 text-sm text-[color:var(--muted)]">
                 Part of this window is older than the retention setting, so it is not included.
               </p>
             )}
 
             {summary.groups.length === 0 ? (
-              <p className="font-ui text-xs text-[color:var(--muted)]">
+              <p className="font-ui text-sm text-[color:var(--muted)]">
                 Nothing was served in this window. Send a message from the{" "}
                 <Link href="/playground" className="underline">
                   playground
@@ -347,7 +347,7 @@ export default function MetricsPage() {
                 and come back.
               </p>
             ) : (
-              <table className="w-full border-collapse text-xs">
+              <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-[color:var(--border)] text-left">
                     <th className="py-2 pr-3 font-medium">Model</th>
@@ -483,8 +483,8 @@ export default function MetricsPage() {
 
             {recent && recent.length > 0 && (
               <section className="mt-8">
-                <h2 className="font-ui mb-2 text-sm font-semibold">Recent requests</h2>
-                <p className="mb-3 text-xs text-[color:var(--muted)]">
+                <h2 className="font-ui mb-2 text-base font-semibold">Recent requests</h2>
+                <p className="mb-3 text-sm text-[color:var(--muted)]">
                   The rows behind the numbers above, newest first. A request that tried more than
                   one backend shows each attempt in the order it was tried, and one where there was
                   a choice to make shows what the balancer saw when it made it — which is the answer

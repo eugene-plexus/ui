@@ -53,7 +53,7 @@ export function ModelCard({ repo }: { repo: string }) {
   }, [open, markdown, repo]);
 
   return (
-    <div className="rounded-[var(--radius)] border border-[color:var(--border)] text-xs">
+    <div className="rounded-[var(--radius)] border border-[color:var(--border)] text-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -108,7 +108,7 @@ function Card({ children }: { children: string }) {
           <h2 className="font-ui mt-3 mb-1.5 text-sm font-semibold first:mt-0">{children}</h2>
         ),
         h3: ({ children }) => (
-          <h3 className="font-ui mt-2 mb-1 text-xs font-semibold first:mt-0">{children}</h3>
+          <h3 className="font-ui mt-2 mb-1 text-sm font-semibold first:mt-0">{children}</h3>
         ),
         a: ({ href, children }) => (
           <a

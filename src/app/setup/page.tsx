@@ -444,7 +444,7 @@ export default function WizardPage() {
   if (!hydrated || screen === null) {
     return (
       <main className="relative z-10 flex h-screen items-center justify-center">
-        <p className="font-ui text-xs text-[color:var(--muted)]">Loading setup…</p>
+        <p className="font-ui text-sm text-[color:var(--muted)]">Loading setup…</p>
       </main>
     );
   }
@@ -474,13 +474,13 @@ export default function WizardPage() {
             <p
               data-testid="wizard-status"
               title={typeof message === "string" ? undefined : message.hint}
-              className="mt-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--muted)]"
+              className="mt-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm text-[color:var(--muted)]"
             >
               {typeof message === "string" ? message : message.text}
             </p>
           )}
           {error && (
-            <p className="status-error mt-6 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            <p className="status-error mt-6 rounded-[var(--radius)] border px-3 py-2 text-sm">
               {error}
             </p>
           )}

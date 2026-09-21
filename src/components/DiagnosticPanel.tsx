@@ -85,8 +85,8 @@ export function DiagnosticPanel({
       aria-label="Path to the gateway"
     >
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-ui text-xs font-semibold">Path to the gateway</h2>
-        <div className="font-ui flex gap-1 text-xs" role="radiogroup" aria-label="Gateway mode">
+        <h2 className="font-ui text-sm font-semibold">Path to the gateway</h2>
+        <div className="font-ui flex gap-1 text-sm" role="radiogroup" aria-label="Gateway mode">
           <ModeButton
             active={mode === "proxy"}
             onClick={() => onMode("proxy")}

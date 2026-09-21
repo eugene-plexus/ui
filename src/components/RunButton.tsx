@@ -88,7 +88,7 @@ export function RunStatus({ task, onRetry }: { task: RunTask; onRetry: () => voi
           : "";
   return (
     <div
-      className={`mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed ${tone || "border-[color:var(--border)] bg-[color:var(--panel-soft)]"}`}
+      className={`mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed ${tone || "border-[color:var(--border)] bg-[color:var(--panel-soft)]"}`}
       data-testid="run-status"
       data-step={task.step}
     >

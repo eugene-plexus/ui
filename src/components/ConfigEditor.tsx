@@ -408,7 +408,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
           <p className="text-[0.6875rem] text-[color:var(--muted)]">{schema.component}</p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-[color:var(--muted)]">
+          <span className="text-sm text-[color:var(--muted)]">
             {dirtyKeys.size === 0 ? "no changes" : `${dirtyKeys.size} change(s)`}
           </span>
           <button
@@ -416,7 +416,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
             onClick={test}
             disabled={testing || saving}
             title="Test the current draft against the running services without committing it."
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
           >
             {testing ? "Testing…" : "Test"}
           </button>
@@ -424,7 +424,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
             type="button"
             onClick={save}
             disabled={dirtyKeys.size === 0 || saving}
-            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
+            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -448,7 +448,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
               {showMore ? "Show less" : "Show more"} · {groups.more.length} settings
               {hiddenChanges > 0 && ` · ${hiddenChanges} unsaved`}
             </button>
-            <p className="my-2 text-xs text-[color:var(--muted)]">
+            <p className="my-2 text-sm text-[color:var(--muted)]">
               These settings usually work with their defaults.
             </p>
             <div id={moreId} hidden={!showMore}>
@@ -477,7 +477,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
 
 function SaveStatusBanner({ status }: { status: SaveStatus }) {
   return (
-    <div className="border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-3 text-xs">
+    <div className="border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-3 text-sm">
       {status.applied.length > 0 && (
         <p className="text-status-success">
           applied: <span className="font-mono">{status.applied.join(", ")}</span>
@@ -504,7 +504,7 @@ function SaveStatusBanner({ status }: { status: SaveStatus }) {
 
 function TestStatusBanner({ status }: { status: ConfigTestResult }) {
   return (
-    <div className={`${status.ok ? "status-success" : "status-error"} border-b px-4 py-3 text-xs`}>
+    <div className={`${status.ok ? "status-success" : "status-error"} border-b px-4 py-3 text-sm`}>
       <p>
         <span className="font-mono">
           {status.ok ? "ok" : "fail"} · {status.latencyMs}ms · {status.component}
@@ -549,14 +549,14 @@ function RestartProgressModal({
     <ModalScrim>
       <h3 className={`text-sm font-semibold ${tone}`}>{heading}</h3>
       {message && (
-        <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted)]">{message}</p>
+        <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">{message}</p>
       )}
       {dismissable && (
         <div className="mt-4 flex justify-end">
           <button
             type="button"
             onClick={onDismiss}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
             Close
           </button>
@@ -741,18 +741,18 @@ function ClearModelCopies({ target }: { target: ProxyTarget }) {
           type="button"
           onClick={clear}
           disabled={busy}
-          className="font-ui w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+          className="font-ui w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {busy ? "Deleting…" : "Delete the local copies"}
         </button>
-        <p className="text-xs text-[color:var(--muted)]">
+        <p className="text-sm text-[color:var(--muted)]">
           Copies are made again the next time these models start. Turn the option off first if you
           want the space to stay free.
         </p>
       </div>
-      {error && <p className="text-status-error text-xs">{error}</p>}
+      {error && <p className="text-status-error text-sm">{error}</p>}
       {result && (
-        <div className="text-xs text-[color:var(--muted)]" data-testid="clear-model-copies-result">
+        <div className="text-sm text-[color:var(--muted)]" data-testid="clear-model-copies-result">
           <p>
             {result.deleted.length === 0
               ? "There was nothing to delete."

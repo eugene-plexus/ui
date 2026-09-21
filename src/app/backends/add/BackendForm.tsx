@@ -62,7 +62,7 @@ export function BackendForm({
             disabled={disabled}
             onChange={onChange}
           />
-          <p className="text-xs leading-relaxed text-[color:var(--muted)]">
+          <p className="text-sm leading-relaxed text-[color:var(--muted)]">
             You will pick the model next, from the list this app reports.
           </p>
         </>
@@ -138,7 +138,7 @@ export function CredentialFields({
         </Field>
       )}
       {credentials.includes("none") && (
-        <p className="-mt-2 mb-4 text-xs text-[color:var(--muted)]">
+        <p className="-mt-2 mb-4 text-sm text-[color:var(--muted)]">
           Nothing to enter: this app runs on this machine and needs no key.
         </p>
       )}
@@ -161,7 +161,7 @@ function Field({
     <div className="mb-5">
       <label className="font-ui block text-sm font-medium">{label}</label>
       {description && (
-        <p className="mt-1 mb-2 text-xs leading-relaxed text-[color:var(--muted)]">{description}</p>
+        <p className="mt-1 mb-2 text-sm leading-relaxed text-[color:var(--muted)]">{description}</p>
       )}
       {children}
     </div>

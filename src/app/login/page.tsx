@@ -68,7 +68,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <main className="relative z-10 flex h-screen items-center justify-center">
-          <p className="font-ui text-xs text-[color:var(--muted)]">Loading…</p>
+          <p className="font-ui text-sm text-[color:var(--muted)]">Loading…</p>
         </main>
       }
     >
@@ -179,7 +179,7 @@ function LoginForm() {
   if (probing || setupRequired) {
     return (
       <main className="relative z-10 flex h-screen items-center justify-center">
-        <p className="font-ui text-xs text-[color:var(--muted)]">
+        <p className="font-ui text-sm text-[color:var(--muted)]">
           {setupRequired ? "Redirecting to setup…" : "Loading…"}
         </p>
       </main>
@@ -194,7 +194,7 @@ function LoginForm() {
             eugene plexus
           </p>
           <h1 className="font-ui mt-1 text-xl font-semibold">Unlock</h1>
-          <p className="mt-3 text-xs leading-relaxed text-[color:var(--muted)]">
+          <p className="mt-3 text-sm leading-relaxed text-[color:var(--muted)]">
             Enter your install passphrase. It was set during the first-run setup wizard and is used
             to decrypt at-rest secrets like provider API keys.
           </p>
@@ -215,14 +215,14 @@ function LoginForm() {
             className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)] disabled:opacity-50"
           />
           {error && (
-            <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+            <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
               {error}
             </p>
           )}
           <button
             type="submit"
             disabled={submitting || !passphrase}
-            className="font-ui mt-4 w-full rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            className="font-ui mt-4 w-full rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting ? "Unlocking…" : "Unlock"}
           </button>

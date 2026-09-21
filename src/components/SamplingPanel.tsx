@@ -33,7 +33,7 @@ export function SamplingPanel({
       aria-label="Request settings"
     >
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-ui text-xs font-semibold">Request settings</h2>
+        <h2 className="font-ui text-sm font-semibold">Request settings</h2>
         <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
           Empty fields are not sent; the model&apos;s own settings decide.
         </p>

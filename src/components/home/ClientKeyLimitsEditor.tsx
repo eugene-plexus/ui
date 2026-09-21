@@ -26,7 +26,7 @@ export function ClientKeyLimitsEditor({
   const field =
     "rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1";
   return (
-    <fieldset disabled={disabled} className="font-ui basis-full space-y-2 text-xs">
+    <fieldset disabled={disabled} className="font-ui basis-full space-y-2 text-sm">
       <legend className="mb-2 font-semibold">Key permissions and limits</legend>
       <label className="flex items-center gap-2">
         <input

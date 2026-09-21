@@ -18,7 +18,7 @@ export function UIPreferences() {
   return (
     <div className="overflow-y-auto p-6">
       <h2 className="font-ui mb-1 text-lg font-semibold">UI</h2>
-      <p className="mb-4 text-xs text-[color:var(--muted)]">
+      <p className="mb-4 text-sm text-[color:var(--muted)]">
         Local preferences. Saved to your browser; not synced anywhere.
       </p>
 
@@ -54,12 +54,24 @@ export function UIPreferences() {
             </option>
           ))}
         </select>
+        {/* The setting applies live, but this page is not the dense
+            screen a person actually works in — a sample at the two
+            sizes the UI really uses is what says what Large buys. */}
+        <p
+          data-testid="font-size-sample"
+          className="mt-2 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm"
+        >
+          Body text looks like this.{" "}
+          <span className="font-mono-ui text-xs text-[color:var(--muted)]">
+            paths and counts look like this
+          </span>
+        </p>
       </Row>
 
       {/* Where a person goes looking for a version, which is where they
           will also accept being told the licence. */}
       <Row label="About" description="What this is and who it belongs to.">
-        <Attribution className="text-xs" />
+        <Attribution className="text-sm" />
       </Row>
     </div>
   );
@@ -78,7 +90,7 @@ function Row({
     <div className="grid grid-cols-1 items-start gap-2 border-b border-[color:var(--border)] py-3 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-4">
       <div>
         <label className="font-ui block text-sm font-medium">{label}</label>
-        <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted)]">{description}</p>
+        <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted)]">{description}</p>
       </div>
       <div>{children}</div>
     </div>

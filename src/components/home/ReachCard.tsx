@@ -88,7 +88,7 @@ export function ReachCard({
       className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-ui text-xs font-semibold">Reach it from other devices</h2>
+        <h2 className="font-ui text-sm font-semibold">Reach it from other devices</h2>
         <button
           type="button"
           data-testid="reach-switch"
@@ -96,13 +96,13 @@ export function ReachCard({
           aria-checked={on}
           disabled={busy || (state.kind === "off" && state.proposed === null)}
           onClick={() => void send({ enabled: !on, allowFirewall: !on })}
-          className="font-ui rounded-[var(--radius)] border border-[color:var(--accent-left)] px-3 py-1 text-xs font-semibold disabled:opacity-50"
+          className="font-ui rounded-[var(--radius)] border border-[color:var(--accent-left)] px-3 py-1 text-sm font-semibold disabled:opacity-50"
         >
           {busy ? "Working…" : on ? "Turn off" : "Turn on"}
         </button>
       </div>
 
-      <p data-testid="reach-headline" className="font-ui mt-1 text-xs text-[color:var(--muted)]">
+      <p data-testid="reach-headline" className="font-ui mt-1 text-sm text-[color:var(--muted)]">
         {headline(state)}
       </p>
 
@@ -114,7 +114,7 @@ export function ReachCard({
               data-testid="reach-restart"
               disabled={busy}
               onClick={() => void send({ enabled: true, restartAgent: true })}
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--accent-left)] px-3 py-1 text-xs font-semibold disabled:opacity-50"
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--accent-left)] px-3 py-1 text-sm font-semibold disabled:opacity-50"
             >
               Restart Eugene
             </button>

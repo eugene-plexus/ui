@@ -31,19 +31,19 @@ export function NodePicker({
 
   if (nodes.length <= 1) {
     return (
-      <span className="font-ui text-xs text-[color:var(--muted)]" title={title}>
+      <span className="font-ui text-sm text-[color:var(--muted)]" title={title}>
         {selected.label} · {summary}
       </span>
     );
   }
 
   return (
-    <label className="font-ui flex max-w-full min-w-0 flex-col items-start gap-1.5 text-xs text-[color:var(--muted)] sm:flex-row sm:items-center">
+    <label className="font-ui flex max-w-full min-w-0 flex-col items-start gap-1.5 text-sm text-[color:var(--muted)] sm:flex-row sm:items-center">
       <span title={title}>score &amp; launch on</span>
       <select
         value={selected.name ?? ""}
         onChange={(event) => onSelect(event.target.value === "" ? null : event.target.value)}
-        className="font-ui max-w-full min-w-0 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 text-xs outline-none focus:border-[color:var(--border-hover)]"
+        className="font-ui max-w-full min-w-0 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 text-sm outline-none focus:border-[color:var(--border-hover)]"
         aria-label="Node to score against and launch on"
       >
         {nodes.map((node) => (

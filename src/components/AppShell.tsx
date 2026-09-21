@@ -167,7 +167,7 @@ function AppShellInner({
           onClick={() => setDrawerOpen((o) => !o)}
           aria-expanded={drawerOpen}
           data-testid="tree-drawer-toggle"
-          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:bg-[color:var(--panel-hover)] lg:hidden"
+          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:bg-[color:var(--panel-hover)] lg:hidden"
           aria-label="Show the install tree"
         >
           ☰
@@ -192,7 +192,7 @@ function AppShellInner({
             aria-expanded={mapOpen}
             aria-controls={mapId}
             data-testid="layer-map-toggle"
-            className="font-ui flex items-center gap-1.5 rounded-[var(--radius)] border border-[color:var(--border)] px-2.5 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            className="font-ui flex items-center gap-1.5 rounded-[var(--radius)] border border-[color:var(--border)] px-2.5 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
             title="The five layers and the three services beside them, and which screen lives where"
           >
             <LayerIcon name="Monitor" size={14} />
@@ -202,7 +202,7 @@ function AppShellInner({
             type="button"
             onClick={() => void handleLogout()}
             data-testid="sign-out"
-            className="font-ui flex items-center gap-1.5 rounded-[var(--radius)] border border-[color:var(--border)] px-2.5 py-1 text-xs text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)]"
+            className="font-ui flex items-center gap-1.5 rounded-[var(--radius)] border border-[color:var(--border)] px-2.5 py-1 text-sm text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)]"
             title="Revoke this session and return to the sign-in screen"
           >
             <LayerIcon name="KeyRound" size={14} />
@@ -312,7 +312,7 @@ function PageMenu({
       className="flex shrink-0 flex-wrap items-center gap-1 border-b border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5"
     >
       {node && (
-        <span className="font-ui mr-1 flex items-center gap-1.5 text-xs font-semibold">
+        <span className="font-ui mr-1 flex items-center gap-1.5 text-sm font-semibold">
           <LayerIcon name={node.icon} accent={accent} size={14} />
           {node.label}
         </span>
@@ -326,7 +326,7 @@ function PageMenu({
               href={pageHref(page, sel, localNode)}
               aria-current={active ? "page" : undefined}
               data-page={page.id}
-              className={`font-ui flex items-center gap-1.5 rounded-[var(--radius)] border-b-2 px-2.5 py-1 text-xs transition-colors hover:bg-[color:var(--panel-hover)] ${
+              className={`font-ui flex items-center gap-1.5 rounded-[var(--radius)] border-b-2 px-2.5 py-1 text-sm transition-colors hover:bg-[color:var(--panel-hover)] ${
                 active ? "bg-[color:var(--panel-hover)] font-semibold" : "border-transparent"
               }`}
               style={active ? { borderBottomColor: accentVar(accent) } : undefined}

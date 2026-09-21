@@ -8,7 +8,7 @@ import { composeSpec } from "@/lib/launchSpec";
 import type { TargetNode } from "@/lib/nodeBudget";
 import type { Benchmark, BenchmarkList, LibraryModel, ModelProfile } from "@/lib/types";
 
-const button = "rounded border border-[color:var(--border)] px-2 py-1 text-xs disabled:opacity-40";
+const button = "rounded border border-[color:var(--border)] px-2 py-1 text-sm disabled:opacity-40";
 
 export function ProfileBenchmark({
   model,
@@ -146,7 +146,7 @@ export function BenchmarkPanel({
   return (
     <section
       aria-label={`Benchmark ${profile.name}`}
-      className="mt-2 space-y-3 rounded border border-[color:var(--border)] p-3 text-xs"
+      className="mt-2 space-y-3 rounded border border-[color:var(--border)] p-3 text-sm"
     >
       <p>
         Measure decode speed as context fills on{" "}

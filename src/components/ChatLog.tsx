@@ -111,7 +111,7 @@ export function ChatLog({
           />
         )}
         {pending && (
-          <p className="font-ui text-xs text-[color:var(--muted)]">Waiting on the backend…</p>
+          <p className="font-ui text-sm text-[color:var(--muted)]">Waiting on the backend…</p>
         )}
       </div>
       {!isAtBottom && <JumpToBottomButton onClick={scrollToBottom} />}
@@ -158,7 +158,7 @@ function ChatBubble({
       {isTool ? (
         <div
           data-testid="tool-result-message"
-          className="max-w-[80%] rounded-[var(--radius)] border border-dashed border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs"
+          className="max-w-[80%] rounded-[var(--radius)] border border-dashed border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm"
         >
           <p className="font-ui mb-1 text-[0.6875rem] text-[color:var(--muted)]">
             tool result{message.tool_call_id ? ` · ${message.tool_call_id}` : ""}
@@ -283,7 +283,7 @@ function ToolCallCard({ call }: { call: ToolCall }) {
   return (
     <div
       data-testid="tool-call-card"
-      className="rounded-[var(--radius)] border border-[color:var(--accent-left)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs"
+      className="rounded-[var(--radius)] border border-[color:var(--accent-left)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm"
     >
       <p className="font-ui mb-1 flex flex-wrap items-center gap-2 text-[0.6875rem] text-[color:var(--muted)]">
         <span>tool call{call.id ? ` · ${call.id}` : ""}</span>
@@ -361,7 +361,7 @@ function ToolResultsForm({
         type="submit"
         data-testid="send-tool-results"
         disabled={!complete}
-        className="font-ui self-end rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
+        className="font-ui self-end rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
       >
         Send {calls.length === 1 ? "result" : "results"}
       </button>
@@ -450,7 +450,7 @@ function Markdown({ children }: { children: string }) {
         ),
         table: ({ children }) => (
           <div className="my-2 overflow-x-auto">
-            <table className="border-collapse border border-[color:var(--border)] text-xs">
+            <table className="border-collapse border border-[color:var(--border)] text-sm">
               {children}
             </table>
           </div>

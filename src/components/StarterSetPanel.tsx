@@ -71,17 +71,17 @@ export function StarterSetPanel({
 
   if (error) {
     return (
-      <p className="text-xs text-[color:var(--muted)]">
+      <p className="text-sm text-[color:var(--muted)]">
         The suggested models could not be loaded ({error}). Search above for one by name.
       </p>
     );
   }
-  if (!set) return <p className="text-xs text-[color:var(--muted)]">loading suggestions…</p>;
+  if (!set) return <p className="text-sm text-[color:var(--muted)]">loading suggestions…</p>;
 
   const models = orderedModels(set);
   if (models.length === 0) {
     return (
-      <p className="text-xs text-[color:var(--muted)]">
+      <p className="text-sm text-[color:var(--muted)]">
         There are no suggested models on this install. Search above for one by name — a family name
         or a publisher works better than a description.
       </p>
@@ -101,7 +101,7 @@ export function StarterSetPanel({
           <p className="font-ui text-sm font-semibold">
             Suggested for this machine: {shortName(pick.baseModel)}
           </p>
-          <p className="mt-1 text-xs">{set.recommended?.reason}</p>
+          <p className="mt-1 text-sm">{set.recommended?.reason}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -122,7 +122,7 @@ export function StarterSetPanel({
           </div>
         </section>
       ) : (
-        <section className="status-warn rounded-[var(--radius)] border px-4 py-3 text-xs">
+        <section className="status-warn rounded-[var(--radius)] border px-4 py-3 text-sm">
           <p className="font-ui font-semibold">Nothing here fits this machine</p>
           <p className="mt-1">{set.recommended?.reason}</p>
         </section>
@@ -130,7 +130,7 @@ export function StarterSetPanel({
 
       <div>
         <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="font-ui text-xs font-semibold">All suggestions</h3>
+          <h3 className="font-ui text-sm font-semibold">All suggestions</h3>
           <p className="text-[0.6875rem] text-[color:var(--muted)]">
             {reviewed && <>Reviewed {reviewed}. </>}
             Ranked by how many people downloaded them in the last 30 days — the community&rsquo;s
@@ -147,7 +147,7 @@ export function StarterSetPanel({
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-ui truncate text-xs font-semibold">
+                  <p className="font-ui truncate text-sm font-semibold">
                     {shortName(model.baseModel)}
                     <span className="ml-2 font-normal text-[color:var(--muted)]">
                       {model.label} · {formatBytes(model.sizeBytes)}
@@ -186,7 +186,7 @@ export function StarterSetPanel({
       </div>
 
       {isStale(set) && (
-        <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs">
+        <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm">
           This list was last reviewed {set.reviewedDaysAgo} days ago. New models come out every
           month, so search above for anything newer.
         </p>
@@ -201,8 +201,8 @@ export function StarterSetPanel({
 }
 
 const primary =
-  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40";
+  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40";
 const secondary =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
 const smallButton =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";

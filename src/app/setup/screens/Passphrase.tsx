@@ -68,13 +68,13 @@ export function ScreenPassphrase({
         />
       </Field>
       {mismatch && (
-        <p className="text-status-error -mt-2 mb-4 text-xs">Passphrases don&rsquo;t match yet.</p>
+        <p className="text-status-error -mt-2 mb-4 text-sm">Passphrases don&rsquo;t match yet.</p>
       )}
       <hr className="my-6 border-[color:var(--border)]" />
       <h3 className="font-ui mb-3 text-sm font-semibold">After a reboot</h3>
       {noKeyring ? (
         <p
-          className="mb-4 text-xs leading-relaxed text-[color:var(--muted)]"
+          className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
           data-testid="no-keyring-note"
         >
           This machine has no password manager Eugene can use. After each restart, Eugene will ask
@@ -100,10 +100,10 @@ export function ScreenPassphrase({
         label="Unlock Eugene on its own after a restart"
         description="Eugene stores its key with the operating system and comes back ready to answer."
       />
-      <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted)]">
+      <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
         Untick to be asked for the passphrase every time Eugene starts.
       </p>
-      <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted)]">
+      <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
         Eugene itself starts when this machine does, before anyone signs in. You can change any of
         this later under Config.
       </p>

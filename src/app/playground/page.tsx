@@ -507,7 +507,7 @@ export default function PlaygroundPage() {
   if (setupGate === "checking") {
     return (
       <main className="relative z-10 flex h-screen items-center justify-center">
-        <p className="font-ui text-xs text-[color:var(--muted)]">Checking setup state…</p>
+        <p className="font-ui text-sm text-[color:var(--muted)]">Checking setup state…</p>
       </main>
     );
   }
@@ -530,7 +530,7 @@ export default function PlaygroundPage() {
             data-testid="toggle-diagnostic"
             onClick={() => setPanelsOpen((o) => !o)}
             aria-pressed={panelsOpen}
-            className={`font-ui rounded-[var(--radius)] border px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
+            className={`font-ui rounded-[var(--radius)] border px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
               panelsOpen || mode === "direct" || toolsOn || samplingCount > 0
                 ? "border-[color:var(--accent-left)]"
                 : "border-[color:var(--border)]"
@@ -548,7 +548,7 @@ export default function PlaygroundPage() {
             type="button"
             onClick={newConversation}
             disabled={messages.length === 0}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
           >
             New
           </button>
@@ -557,7 +557,7 @@ export default function PlaygroundPage() {
               text={JSON.stringify(messages, null, 2)}
               label="Copy JSON"
               title="The messages array exactly as a harness would replay it, tool calls and results included"
-              className="border border-[color:var(--border)] px-3 py-1 text-xs"
+              className="border border-[color:var(--border)] px-3 py-1 text-sm"
             />
           )}
         </>
@@ -609,7 +609,7 @@ export default function PlaygroundPage() {
         {turnInfo && <RoutingBar info={turnInfo} />}
         {report && <RequestReport report={report} page={page} apiKey={apiKey || null} />}
         {error && (
-          <div className="status-error flex items-center gap-3 border-t px-4 py-2 text-xs">
+          <div className="status-error flex items-center gap-3 border-t px-4 py-2 text-sm">
             <span className="min-w-0 flex-1">{error}</span>
             {canRetry && (
               <button
@@ -627,7 +627,7 @@ export default function PlaygroundPage() {
         {notice && (
           <div
             data-testid="turn-notice"
-            className="font-ui border-t border-[color:var(--border)] px-4 py-2 text-xs text-[color:var(--muted)]"
+            className="font-ui border-t border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--muted)]"
           >
             {notice}
           </div>
@@ -671,14 +671,14 @@ function ModelPicker({
 }) {
   if (error) {
     return (
-      <p className="font-ui truncate text-xs text-[color:var(--muted)]" title={error}>
+      <p className="font-ui truncate text-sm text-[color:var(--muted)]" title={error}>
         Gateway unreachable{mode === "direct" ? " (direct)" : ""} — {error}
       </p>
     );
   }
   if (models.length === 0) {
     return (
-      <p className="font-ui text-xs text-[color:var(--muted)]">
+      <p className="font-ui text-sm text-[color:var(--muted)]">
         No routable models.{" "}
         <Link href="/inference" className="underline">
           See what is serving
@@ -696,7 +696,7 @@ function ModelPicker({
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         aria-label="Model"
-        className="font-ui max-w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 text-xs outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50 sm:max-w-[420px]"
+        className="font-ui max-w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 text-sm outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50 sm:max-w-[420px]"
       >
         {models.map((m) => (
           <option key={m.id} value={m.id}>

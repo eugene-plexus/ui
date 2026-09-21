@@ -88,7 +88,7 @@ export function IssuesBadgeView({ issues, worst, loaded, onFixed }: IssuesBadgeV
         aria-controls={popoverId}
         data-testid="issues-badge"
         data-severity={worst ?? "none"}
-        className={`font-ui flex items-center gap-1.5 rounded-[var(--radius)] border px-2.5 py-1 text-xs transition-colors hover:bg-[color:var(--panel-hover)] ${
+        className={`font-ui flex items-center gap-1.5 rounded-[var(--radius)] border px-2.5 py-1 text-sm transition-colors hover:bg-[color:var(--panel-hover)] ${
           blocking
             ? "text-status-error border-[color:var(--status-error-border)]"
             : "text-status-warn border-[color:var(--status-warn-border)]"

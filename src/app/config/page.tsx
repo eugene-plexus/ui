@@ -95,7 +95,7 @@ function ConfigPageInner() {
       <AppShell>
         <main className="mx-auto w-full max-w-3xl overflow-y-auto px-6 py-8">
           <p className="font-ui text-sm">Nothing selected.</p>
-          <p className="mt-2 text-xs text-[color:var(--muted)]">
+          <p className="mt-2 text-sm text-[color:var(--muted)]">
             Pick a component in the tree on the left. Every path in a component&rsquo;s settings is
             a path on the machine that component runs on, so the tree asks which machine before it
             asks which setting.
@@ -163,7 +163,7 @@ function ConfigPageInner() {
     <AppShell>
       <div className="flex min-h-0 flex-1 flex-col">
         {removeError && (
-          <div className="status-error border-b px-4 py-2 text-xs">{removeError}</div>
+          <div className="status-error border-b px-4 py-2 text-sm">{removeError}</div>
         )}
 
         {/* Which machine these settings are about. Every path in a
@@ -172,7 +172,7 @@ function ConfigPageInner() {
             install that spans hosts that is frequently not the machine
             the browser is on. Said once, here, for every component. */}
         {(multiNode || selection.type === "driver") && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2 text-xs text-[color:var(--muted)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2 text-sm text-[color:var(--muted)]">
             <span>
               {node ? (
                 <>

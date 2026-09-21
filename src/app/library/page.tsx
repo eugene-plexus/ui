@@ -249,7 +249,7 @@ function LibraryPageInner() {
         <>
           <NodePicker nodes={picker.nodes} selected={picker.selected} onSelect={picker.select} />
           {lastScanAt && (
-            <span className="text-xs text-[color:var(--muted)]">
+            <span className="text-sm text-[color:var(--muted)]">
               scanned {relativeAge(lastScanAt)}
             </span>
           )}
@@ -284,7 +284,7 @@ function LibraryPageInner() {
     >
       <main className="flex min-h-0 flex-1 flex-col">
         {error && (
-          <p className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+          <p className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
             {error}
           </p>
         )}
@@ -336,17 +336,17 @@ function LibraryPageInner() {
 }
 
 const buttonClass =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
 const primaryAction =
-  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-xs font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110";
+  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110";
 
 function ScanBanner({ scan }: { scan: Scan | null }) {
   if (!scan || scan.state === "idle") return null;
 
   if (scan.state === "scanning") {
     return (
-      <div className="border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2 text-xs">
+      <div className="border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2 text-sm">
         <div className="flex items-center justify-between gap-4">
           <span>
             scanning — {scan.modelsFound ?? 0} models from {scan.filesScanned ?? 0} files
@@ -365,7 +365,7 @@ function ScanBanner({ scan }: { scan: Scan | null }) {
 
   if (scan.state === "failed") {
     return (
-      <p className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+      <p className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
         {scan.error ?? "the scan failed"}
       </p>
     );
@@ -381,7 +381,7 @@ function ScanBanner({ scan }: { scan: Scan | null }) {
   // share, a typo. `missing` and `unreadable` stay distinct because they
   // need different advice.
   return (
-    <div className="status-warn mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-xs">
+    <div className="status-warn mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
       {badRoots.map((r) => (
         <p key={r.path} className="truncate">
           <span className="font-mono">{r.path}</span> — {r.status}
@@ -410,9 +410,9 @@ function ModelList({
 }) {
   return (
     <aside className="max-h-[35dvh] shrink-0 overflow-y-auto border-b border-[color:var(--border)] sm:max-h-none sm:min-h-0 sm:border-r">
-      {models == null && <p className="px-4 py-3 text-xs text-[color:var(--muted)]">loading…</p>}
+      {models == null && <p className="px-4 py-3 text-sm text-[color:var(--muted)]">loading…</p>}
       {models?.length === 0 && (
-        <p className="px-4 py-3 text-xs leading-relaxed text-[color:var(--muted)]">
+        <p className="px-4 py-3 text-sm leading-relaxed text-[color:var(--muted)]">
           Nothing found yet. Add a directory on the Config page under Library, then scan.
         </p>
       )}
@@ -436,13 +436,13 @@ function ModelList({
                 <span
                   data-testid="model-list-running"
                   title={`Running on the machine in the picker as ${live.runtime}.`}
-                  className="status-success shrink-0 rounded px-1 text-[0.5625rem] tracking-wider uppercase"
+                  className="status-success badge shrink-0 rounded px-1 text-[0.5625rem] tracking-wider uppercase"
                 >
                   {live.live ? "running" : "starting"}
                 </span>
               )}
               {m.status !== "present" && (
-                <span className="status-warn shrink-0 rounded px-1 text-[0.5625rem] tracking-wider uppercase">
+                <span className="status-warn badge shrink-0 rounded px-1 text-[0.5625rem] tracking-wider uppercase">
                   {m.status}
                 </span>
               )}
@@ -471,7 +471,7 @@ function ModelList({
 function EmptyDetail({ models, scan }: { models: LibraryModel[] | null; scan: Scan | null }) {
   const skipped = scan?.skipped ?? [];
   return (
-    <div className="text-xs text-[color:var(--muted)]">
+    <div className="text-sm text-[color:var(--muted)]">
       {models && models.length > 0 && <p>Select a model.</p>}
       {skipped.length > 0 && <SkippedPanel scan={scan!} />}
     </div>
@@ -504,7 +504,7 @@ function SkippedPanel({ scan }: { scan: Scan }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="font-ui text-xs text-[color:var(--muted)] underline hover:text-[color:var(--foreground)]"
+        className="font-ui text-sm text-[color:var(--muted)] underline hover:text-[color:var(--foreground)]"
       >
         {open ? "hide" : "show"} {skipped?.length ?? 0} skipped{" "}
         {(skipped?.length ?? 0) === 1 ? "path" : "paths"}
@@ -588,7 +588,7 @@ function ModelDetail({
       <div>
         <h2 className="text-base font-medium [overflow-wrap:anywhere]">{model.name}</h2>
         {model.displayName && (
-          <p className="text-xs text-[color:var(--muted)]">{model.displayName}</p>
+          <p className="text-sm text-[color:var(--muted)]">{model.displayName}</p>
         )}
         <p className="mt-1 font-mono text-[0.625rem] break-all text-[color:var(--muted)]">
           {model.path}
@@ -596,7 +596,7 @@ function ModelDetail({
       </div>
 
       {model.status === "missing" && (
-        <div className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
+        <div className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
           <p>
             This file is no longer where it was
             {model.lastSeenAt ? `, last seen ${relativeAge(model.lastSeenAt)}` : ""}. The entry is
@@ -618,13 +618,13 @@ function ModelDetail({
       )}
 
       {model.status === "unreadable" && (
-        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">
+        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm">
           {model.error ?? "this model could not be read"}
         </p>
       )}
 
       {error && (
-        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-xs">{error}</p>
+        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm">{error}</p>
       )}
 
       <Facts model={model} />
@@ -635,13 +635,13 @@ function ModelDetail({
           for this format at all, or one does but no binary is installed.
           Since S3 the second is not a detour: Run asks to install it. */}
       {capable.length === 0 ? (
-        <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
+        <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
           No engine here can load a <span className="font-mono">{model.format}</span> model.
           llama.cpp reads GGUF only; safetensors needs vLLM, which is installed by hand. You can
           still keep profiles against this model — they just have nothing to launch into.
         </p>
       ) : usable.length === 0 && !capable.some((e) => e.acquisition?.installable) ? (
-        <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-xs leading-relaxed">
+        <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
           <span className="font-mono">{capable.map((e) => e.engine).join(", ")}</span> can load
           this, but it is not installed on {node?.label ?? "this machine"} and Eugene cannot install
           it there
@@ -764,7 +764,7 @@ function RunningPanel({
     <div
       data-testid="model-running"
       data-status={running.status}
-      className={`${running.live ? "status-success" : "status-warn"} rounded-[var(--radius)] border px-3 py-2 text-xs`}
+      className={`${running.live ? "status-success" : "status-warn"} rounded-[var(--radius)] border px-3 py-2 text-sm`}
     >
       <p className="font-ui text-sm font-semibold">{describeRunning(running, where)}</p>
       <p className="mt-0.5 opacity-80">
@@ -864,7 +864,7 @@ function FitPanel({
   }, [model.id, budget]);
 
   if (error) {
-    return <p className="text-xs text-[color:var(--muted)]">could not measure fit: {error}</p>;
+    return <p className="text-sm text-[color:var(--muted)]">could not measure fit: {error}</p>;
   }
   if (!fit) return null;
 
@@ -887,7 +887,7 @@ function FitPanel({
 
   return (
     <div
-      className={`${tone} rounded-[var(--radius)] border px-3 py-2 text-xs`}
+      className={`${tone} rounded-[var(--radius)] border px-3 py-2 text-sm`}
       data-testid="model-fit"
       data-resident={resident ? "true" : "false"}
     >
@@ -983,7 +983,7 @@ function Facts({ model }: { model: LibraryModel }) {
     : [];
 
   return (
-    <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-[130px_minmax(0,1fr)]">
+    <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[130px_minmax(0,1fr)]">
       <Row label="format">
         <span className="font-mono">{model.format}</span>
       </Row>

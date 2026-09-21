@@ -307,8 +307,8 @@ export function UseFromAppsCard({
       data-testid="home-use-from-apps"
       className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3"
     >
-      <h2 className="font-ui text-xs font-semibold">Use it from your apps</h2>
-      <p className="font-ui mt-1 text-xs text-[color:var(--muted)]">
+      <h2 className="font-ui text-sm font-semibold">Use it from your apps</h2>
+      <p className="font-ui mt-1 text-sm text-[color:var(--muted)]">
         One address for Claude Code and OpenAI-compatible apps such as Continue, Open WebUI and
         SillyTavern. Choose your app below for its connection settings.
       </p>
@@ -458,7 +458,7 @@ export function UseFromAppsCard({
               <CopyButton text={fresh.token} title="Copy the key" />
             </>
           ) : (
-            <span className="font-ui flex-1 text-xs text-[color:var(--muted)]">
+            <span className="font-ui flex-1 text-sm text-[color:var(--muted)]">
               {liveKeys.length === 0
                 ? "none yet"
                 : `${liveKeys.length} key${liveKeys.length === 1 ? "" : "s"} made; a key is shown once, so make a new one if you no longer have it`}
@@ -488,13 +488,13 @@ export function UseFromAppsCard({
           onChange={(e) => setName(e.target.value)}
           data-testid="key-name"
           placeholder="What is it for? e.g. Continue on the laptop"
-          className="font-ui min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 text-xs"
+          className="font-ui min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 text-sm"
         />
         <button
           type="submit"
           data-testid="make-key"
           disabled={busy}
-          className="font-ui rounded-[var(--radius)] border border-[color:var(--accent-left)] px-3 py-1 text-xs font-semibold disabled:opacity-50"
+          className="font-ui rounded-[var(--radius)] border border-[color:var(--accent-left)] px-3 py-1 text-sm font-semibold disabled:opacity-50"
         >
           {busy ? "Working…" : "Make a key"}
         </button>
@@ -515,8 +515,8 @@ export function UseFromAppsCard({
           role="status"
           className={
             registry.migration === "error" || registry.migration === "pending"
-              ? "status-warn mt-2 text-xs"
-              : "font-ui mt-2 text-xs text-[color:var(--muted)]"
+              ? "status-warn mt-2 text-sm"
+              : "font-ui mt-2 text-sm text-[color:var(--muted)]"
           }
         >
           {registry.detail ??
@@ -530,7 +530,7 @@ export function UseFromAppsCard({
         inference or list models; operator management remains available. Permission changes stop
         active requests when their reservation next renews.
       </p>
-      <button type="button" onClick={() => void load()} className="font-ui mt-1 text-xs underline">
+      <button type="button" onClick={() => void load()} className="font-ui mt-1 text-sm underline">
         Refresh key status
       </button>
 
@@ -658,7 +658,7 @@ export function UseFromAppsCard({
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <dt className="font-ui w-20 shrink-0 text-xs text-[color:var(--muted)]">{label}</dt>
+      <dt className="font-ui w-20 shrink-0 text-sm text-[color:var(--muted)]">{label}</dt>
       {children}
     </div>
   );

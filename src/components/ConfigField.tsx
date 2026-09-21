@@ -31,7 +31,7 @@ import type {
  */
 /** One button style, shared by every editor here that has a button. */
 const buttonClass =
-  "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
 export function ConfigFieldInput({
   field,
@@ -341,7 +341,7 @@ export function ConfigFieldInput({
         </label>
         <code className="font-mono text-[0.625rem] text-[color:var(--muted)]">{field.key}</code>
         {field.requiresRestart && (
-          <span className="status-warn w-fit rounded-[var(--radius)] px-1.5 py-0.5 text-[0.5625rem] tracking-wider uppercase">
+          <span className="status-warn badge rounded-[var(--radius)] px-1.5 py-0.5 text-[0.5625rem] tracking-wider uppercase">
             restart required
           </span>
         )}
@@ -349,7 +349,7 @@ export function ConfigFieldInput({
       <div className="flex flex-col gap-2">
         {renderInput()}
         {field.description && (
-          <p className="text-xs leading-relaxed text-[color:var(--muted)]">{field.description}</p>
+          <p className="text-sm leading-relaxed text-[color:var(--muted)]">{field.description}</p>
         )}
         {field.key === "advertiseUrl" && (
           // `cross-link-related-settings` (Troy, standing): the other
@@ -358,7 +358,7 @@ export function ConfigFieldInput({
           // and settles the firewall in one click. Somebody who found
           // the expert control should be told the easy one exists; a
           // half added without its link is a defect.
-          <p className="text-xs text-[color:var(--muted)]">
+          <p className="text-sm text-[color:var(--muted)]">
             The one-click version of this is{" "}
             <Link href="/" className="underline">
               Reach it from other devices
@@ -481,7 +481,7 @@ function ModelSlotsInput({
         }}
         className="w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50"
       />
-      <p className="text-xs leading-relaxed text-[color:var(--muted)]">
+      <p className="text-sm leading-relaxed text-[color:var(--muted)]">
         One entry per name a client may ask for:{" "}
         <span className="font-mono">
           {'{"model": "coder", "targets": ["qwen3-coder-30b", "claude-opus-4-7"]}'}
@@ -489,7 +489,7 @@ function ModelSlotsInput({
         . Targets are model ids — each one is every replica serving it — tried in order after the
         model&rsquo;s own drivers.
       </p>
-      {parseError && <p className="status-error text-xs">Not saved: {parseError}</p>}
+      {parseError && <p className="status-error text-sm">Not saved: {parseError}</p>}
     </div>
   );
 }
@@ -543,7 +543,7 @@ function StringListInput({
   return (
     <div className="flex flex-col gap-2">
       {rows.length === 0 && (
-        <p className="text-xs text-[color:var(--muted)] italic">{copy.empty}</p>
+        <p className="text-sm text-[color:var(--muted)] italic">{copy.empty}</p>
       )}
       {rows.map((path, index) => (
         <div key={index} className="flex items-center gap-2">
@@ -659,13 +659,13 @@ function PathMappingsInput({
   const inputClass =
     "min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50";
   const buttonClass =
-    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
   const datalistId = suggestions.length > 0 ? "cf-path-mappings-from" : undefined;
 
   return (
     <div className="flex flex-col gap-2">
       {rows.length === 0 && (
-        <p className="text-xs text-[color:var(--muted)] italic">
+        <p className="text-sm text-[color:var(--muted)] italic">
           No overrides. This machine inherits each Library folder&rsquo;s mount for its kind of
           node, set once on{" "}
           <Link
@@ -695,7 +695,7 @@ function PathMappingsInput({
             disabled={pending}
             className={inputClass}
           />
-          <span className="text-xs text-[color:var(--muted)]" aria-hidden="true">
+          <span className="text-sm text-[color:var(--muted)]" aria-hidden="true">
             →
           </span>
           <input
@@ -816,16 +816,16 @@ function LibraryFoldersInput({
   const inputClass =
     "min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50";
   const buttonClass =
-    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
   return (
     <div className="flex flex-col gap-3" data-testid="library-folders-input">
       {rows.length === 0 && (
-        <p className="text-xs text-[color:var(--muted)] italic">
+        <p className="text-sm text-[color:var(--muted)] italic">
           No folders. Add the directory where your models already are; nothing is moved or copied.
         </p>
       )}
-      <p className="text-xs text-[color:var(--muted)]">
+      <p className="text-sm text-[color:var(--muted)]">
         A folder&rsquo;s mounts cover every node of that kind. A machine that mounts a folder
         somewhere else gets an <em>override</em> of its own, under that machine on{" "}
         <Link
@@ -1019,12 +1019,12 @@ function ShareCredentialsInput({
   const inputClass =
     "min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 font-mono text-xs outline-none transition-colors hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50";
   const buttonClass =
-    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+    "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
   return (
     <div className="flex flex-col gap-2" data-testid="share-credentials">
       {rows.length === 0 && (
-        <p className="text-xs text-[color:var(--muted)] italic">
+        <p className="text-sm text-[color:var(--muted)] italic">
           No logins. Add one only if a model folder lives on a server that asks this machine to sign
           in.
         </p>
@@ -1121,7 +1121,7 @@ function ShareCredentialsInput({
       {/* `cross-link-related-settings` (Troy, standing): this says WHO
           this machine is on that server; where the folder is mounted is
           the other half, and both name each other. */}
-      <p className="text-xs text-[color:var(--muted)]">
+      <p className="text-sm text-[color:var(--muted)]">
         Where each folder is mounted is set on{" "}
         <Link href={libraryFoldersHref(null)} className="underline">
           Library &rarr; Folders

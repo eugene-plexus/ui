@@ -42,7 +42,7 @@ export function IssueRow({
       data-issue-severity={issue.severity}
       className="rounded-[var(--radius)] px-2 py-1.5"
     >
-      <p className={`font-ui text-xs font-semibold ${toneClass}`}>{issue.title}</p>
+      <p className={`font-ui text-sm font-semibold ${toneClass}`}>{issue.title}</p>
       {/* Never truncated. This is the sentence that says what to do, and
           it is read by somebody who is already unhappy. */}
       <p className="mt-0.5 text-[0.6875rem] text-[color:var(--muted)]">{issue.detail}</p>
@@ -121,13 +121,13 @@ function UnlockForm({ onFixed }: { onFixed: () => Promise<void> }) {
           autoComplete="off"
           placeholder="Passphrase"
           data-testid="issues-unlock-passphrase"
-          className="font-ui min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--background)] px-2 py-1 text-xs"
+          className="font-ui min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--background)] px-2 py-1 text-sm"
         />
         <button
           type="submit"
           disabled={busy || passphrase === ""}
           data-testid="issues-unlock-submit"
-          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-xs transition-colors hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
+          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
         >
           {busy ? "Unlocking…" : "Unlock"}
         </button>

@@ -17,8 +17,8 @@ export function MachineStrip({ strip }: { strip: Strip }) {
       data-testid="home-machine"
       className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3"
     >
-      <h2 className="font-ui text-xs font-semibold">{strip.name}</h2>
-      <p className="font-ui mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-[color:var(--muted)]">
+      <h2 className="font-ui text-sm font-semibold">{strip.name}</h2>
+      <p className="font-ui mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-[color:var(--muted)]">
         {strip.devices.map((line) => (
           <span key={line} className="tabular-nums">
             {line}

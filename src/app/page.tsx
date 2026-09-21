@@ -237,7 +237,7 @@ export default function HomePage() {
   if (gate === "checking") {
     return (
       <main className="relative z-10 flex h-screen items-center justify-center">
-        <p className="font-ui text-xs text-[color:var(--muted)]">Checking setup state…</p>
+        <p className="font-ui text-sm text-[color:var(--muted)]">Checking setup state…</p>
       </main>
     );
   }

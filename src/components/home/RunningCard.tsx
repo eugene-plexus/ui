@@ -27,12 +27,12 @@ export function RunningCard({ rows }: { rows: Row[] }) {
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-ui text-base font-semibold">Running</h2>
-        <Link href="/inference" className="font-ui text-xs underline">
+        <Link href="/inference" className="font-ui text-sm underline">
           Inference
         </Link>
       </div>
       <div className="mt-2 overflow-x-auto">
-        <table className="w-full text-left text-xs">
+        <table className="w-full text-left text-sm">
           <thead className="font-ui text-[color:var(--muted)]">
             <tr>
               <th className="py-1.5 pr-4 font-medium">Model</th>

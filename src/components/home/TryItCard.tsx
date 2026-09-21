@@ -186,7 +186,7 @@ export function TryItCard({
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-ui text-base font-semibold">Try it</h2>
-        <Link href="/playground" className="font-ui text-xs underline" data-testid="home-continue">
+        <Link href="/playground" className="font-ui text-sm underline" data-testid="home-continue">
           Continue in the Playground
         </Link>
       </div>
@@ -194,7 +194,7 @@ export function TryItCard({
         data-testid="home-model-status"
         data-state={readiness.kind}
         role="status"
-        className="mt-2 text-xs text-[color:var(--muted)]"
+        className="mt-2 text-sm text-[color:var(--muted)]"
       >
         {pending
           ? readiness.kind === "on-demand"
@@ -217,7 +217,7 @@ export function TryItCard({
           disabled={pending}
           aria-label="Model"
           data-testid="home-model"
-          className="font-ui max-w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-2 text-xs outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50 sm:max-w-[220px]"
+          className="font-ui max-w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-2 text-sm outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50 sm:max-w-[220px]"
         >
           {models.map((m) => (
             <option key={m.id} value={m.id}>
@@ -268,7 +268,7 @@ export function TryItCard({
         </p>
       )}
       {error && (
-        <p className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-xs">
+        <p className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm">
           {error}
         </p>
       )}

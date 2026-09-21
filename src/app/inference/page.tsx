@@ -297,7 +297,7 @@ export default function InferencePage() {
     <AppShell
       controls={
         <>
-          <span className="font-ui text-xs text-[color:var(--muted)]">
+          <span className="font-ui text-sm text-[color:var(--muted)]">
             {rows.length === 0
               ? "nothing serving"
               : `${rows.length} backend${rows.length === 1 ? "" : "s"} across ${nodeOrder.length} node${nodeOrder.length === 1 ? "" : "s"}`}
@@ -328,7 +328,7 @@ export default function InferencePage() {
           <div
             className={
               controlRoot.tone === "warn"
-                ? "status-warn border-b px-4 py-2 text-xs"
+                ? "status-warn border-b px-4 py-2 text-sm"
                 : "border-b border-[color:var(--border)] px-4 py-1.5 text-[0.6875rem] text-[color:var(--muted)]"
             }
             title={controlRoot.detail ?? undefined}
@@ -338,7 +338,7 @@ export default function InferencePage() {
           </div>
         )}
         {gaps.length > 0 && (
-          <div className="status-warn border-b px-4 py-2 text-xs">
+          <div className="status-warn border-b px-4 py-2 text-sm">
             <span className="font-semibold">Partial view.</span>{" "}
             {gaps.map((g, i) => (
               <span key={g}>
@@ -349,12 +349,12 @@ export default function InferencePage() {
           </div>
         )}
         {actionError && (
-          <div className="status-error border-b px-4 py-2 text-xs">{actionError}</div>
+          <div className="status-error border-b px-4 py-2 text-sm">{actionError}</div>
         )}
 
         <div className="flex-1 space-y-6 overflow-y-auto p-4">
           {sources === null ? (
-            <p className="text-xs text-[color:var(--muted)]">Loading…</p>
+            <p className="text-sm text-[color:var(--muted)]">Loading…</p>
           ) : rows.length === 0 && picker.loaded ? (
             <EmptyState />
           ) : null}
@@ -381,7 +381,7 @@ export default function InferencePage() {
 
 function EmptyState() {
   return (
-    <div className="max-w-2xl space-y-3 text-xs text-[color:var(--muted)]">
+    <div className="max-w-2xl space-y-3 text-sm text-[color:var(--muted)]">
       <p className="font-ui text-sm font-semibold text-[color:var(--foreground)]">
         Nothing is serving yet.
       </p>
@@ -434,7 +434,7 @@ function NodeSection({
         </h2>
         {node && !node.reachable && (
           <span
-            className="text-xs"
+            className="text-sm"
             style={{ color: "var(--status-error, #f85149)" }}
             title={node.lastError ?? undefined}
           >
@@ -442,7 +442,7 @@ function NodeSection({
           </span>
         )}
         {node && (
-          <span className="text-xs text-[color:var(--muted)]">{describeBudget(node.budget)}</span>
+          <span className="text-sm text-[color:var(--muted)]">{describeBudget(node.budget)}</span>
         )}
       </div>
       <EnginesLine
@@ -451,10 +451,10 @@ function NodeSection({
         onEngines={setEngines}
       />
       {rows.length === 0 ? (
-        <p className="mt-2 text-xs text-[color:var(--muted)]">Nothing serving on this node.</p>
+        <p className="mt-2 text-sm text-[color:var(--muted)]">Nothing serving on this node.</p>
       ) : (
         <div className="mt-2 overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-left text-sm">
             <thead className="font-ui text-[color:var(--muted)]">
               <tr>
                 <th className="py-1.5 pr-4">Model</th>
@@ -904,7 +904,7 @@ function dedupe(items: string[]): string[] {
 }
 
 const buttonClass =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-xs transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
 const smallButton =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 const dangerButton =
