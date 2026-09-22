@@ -9,9 +9,10 @@
  * the envelope around it.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, describeError, problemMessage } from "./api";
+import { ApiError, api, describeError, postStream, problemMessage } from "./api";
+import { getSessionToken, setSessionToken } from "./session";
 
 describe("problemMessage", () => {
   it("reads the nested Problem FastAPI actually produces", () => {
@@ -75,5 +76,86 @@ describe("describeError", () => {
 
   it("handles an error that is not an ApiError at all", () => {
     expect(describeError(new Error("Failed to fetch"))).toBe("Failed to fetch");
+  });
+});
+
+/**
+ * A refused session says so on the sign-in page.
+ *
+ * The api client already cleared the token and went to `/login` on a
+ * 401, and the login page then read exactly as it does for someone who
+ * had never signed in: nothing said the session had ended, so a person
+ * reading a page one moment and a passphrase box the next had no idea
+ * why. `reason=expired` is the one bit the login page needs, and it is
+ * only true when a session was actually sent.
+ */
+describe("a 401 on a signed-in request", () => {
+  let replace: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    replace = vi.fn();
+    vi.stubGlobal("location", {
+      pathname: "/library/",
+      search: "?sel=library",
+      replace,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ detail: "expired" }), { status: 401 })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const NEXT = encodeURIComponent("/library/?sel=library");
+
+  it("clears the session and says it ended", async () => {
+    setSessionToken("old-token");
+    await expect(api.get("agent", "/v1/config")).rejects.toBeInstanceOf(ApiError);
+    expect(getSessionToken()).toBeNull();
+    expect(replace).toHaveBeenCalledWith(`/login?next=${NEXT}&reason=expired`);
+  });
+
+  it("does not say a session ended when there was none", async () => {
+    await expect(api.get("agent", "/v1/config")).rejects.toBeInstanceOf(ApiError);
+    expect(replace).toHaveBeenCalledWith(`/login?next=${NEXT}`);
+  });
+
+  it("says so for every request that carried the session, not just the first", async () => {
+    // Home polls several things at once. The first 401 clears the token,
+    // and a check made at response time would find it gone for the rest -
+    // whose navigation, being later, is the one the browser keeps.
+    setSessionToken("old-token");
+    await Promise.allSettled([
+      api.get("agent", "/v1/config"),
+      api.get("library", "/v1/models"),
+      api.get("gateway", "/v1/models"),
+    ]);
+    expect(replace).toHaveBeenCalledTimes(3);
+    for (const [url] of replace.mock.calls) expect(url).toContain("&reason=expired");
+  });
+
+  it("the streaming path does the same, which it used to skip entirely", async () => {
+    setSessionToken("old-token");
+    await expect(
+      postStream("gateway", "/v1/chat/completions", { model: "m", messages: [] }),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(getSessionToken()).toBeNull();
+    expect(replace).toHaveBeenCalledWith(`/login?next=${NEXT}&reason=expired`);
+  });
+
+  it("a supplied bearer being refused is not the session", async () => {
+    setSessionToken("old-token");
+    await expect(
+      postStream("gateway", "/v1/chat/completions", {}, { bearer: "someone-else" }),
+    ).rejects.toBeInstanceOf(ApiError);
+    await expect(
+      api.get("control", "/v1/nodes", { bearer: "someone-else" }),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(getSessionToken()).toBe("old-token");
+    expect(replace).not.toHaveBeenCalled();
   });
 });

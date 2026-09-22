@@ -146,6 +146,42 @@ function proxyHeaders(init: RequestInit, options: RequestOptions, accept: string
 }
 
 /**
+ * The stored session this request will carry, or null when it carries
+ * none (a public call, or a caller-supplied bearer).
+ *
+ * Read BEFORE the request is sent, because that is the question a 401
+ * answers: "was the session I sent refused?". Read after, it gives the
+ * wrong answer to every request but the first when several are in
+ * flight together - the first 401 clears the token, and the rest would
+ * find it gone and report a person who was never signed in.
+ */
+function sessionCarried(options: RequestOptions): string | null {
+  if (options.skipAuth || options.bearer) return null;
+  return getSessionToken();
+}
+
+/**
+ * A 401 on a request that used the stored session: clear it and bounce
+ * to `/login`, which reads `next` to return here once signed in.
+ *
+ * `reason=expired` only when a session was actually sent, so the login
+ * page can say "your session ended" to the person it happened to and
+ * say nothing to someone arriving with no session at all. One function
+ * for both the JSON and the streaming path: the streaming path had no
+ * 401 handling at all, so a playground turn sent on an expired session
+ * failed in place and left the dead token stored for the next click.
+ */
+function sessionRefused(sent: string | null): void {
+  clearSessionToken();
+  if (typeof window === "undefined") return;
+  const next = encodeURIComponent(window.location.pathname + window.location.search);
+  // Avoid redirect loops if we're already on /login.
+  if (!window.location.pathname.startsWith("/login")) {
+    window.location.replace(`/login?next=${next}${sent !== null ? "&reason=expired" : ""}`);
+  }
+}
+
+/**
  * POST that hands back the raw `Response` so the caller can read a
  * stream off it.
  *
@@ -163,11 +199,15 @@ export async function postStream(
   options: RequestOptions = {},
 ): Promise<Response> {
   const init: RequestInit = { method: "POST", body: JSON.stringify(body) };
+  const sent = sessionCarried(options);
   const response = await fetch(proxyUrl(target, path), {
     ...init,
     headers: proxyHeaders(init, options, "text/event-stream"),
     signal: options.signal,
   });
+  if (response.status === 401 && !options.skipAuth && !options.bearer) {
+    sessionRefused(sent);
+  }
   if (!response.ok) {
     const text = await response.text();
     let parsed: unknown = text;
@@ -189,6 +229,7 @@ async function jsonRequest<T>(
 ): Promise<T> {
   const url = proxyUrl(target, path);
   const headers = proxyHeaders(init, options, "application/json");
+  const sent = sessionCarried(options);
 
   // Per-call timeout via AbortController. Without this, a hung upstream
   // component (e.g. a completion waiting on a stuck local engine)
@@ -229,16 +270,7 @@ async function jsonRequest<T>(
   }
   if (response.status === 401 && !options.skipAuth && !options.bearer) {
     // Session expired or token rejected — clear it and bounce to login.
-    // The login page reads the current URL via `next` so it can return
-    // here once authentication succeeds.
-    clearSessionToken();
-    if (typeof window !== "undefined") {
-      const next = encodeURIComponent(window.location.pathname + window.location.search);
-      // Avoid redirect loops if we're already on /login.
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.replace(`/login?next=${next}`);
-      }
-    }
+    sessionRefused(sent);
   }
   if (!response.ok) {
     throw new ApiError(response.status, response.statusText, parsed);

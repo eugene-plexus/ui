@@ -9,6 +9,9 @@
  *     or rejected because the agent rotated its signing key on its
  *     own restart — Phase 8 of the v0.2 security rollout).
  *
+ * A 401 from a request that carried the stored session arrives here with
+ * `reason=expired`, and the page says the session ended.
+ *
  * Posts the passphrase to the agent's `/v1/auth/login`. On success
  * stores the issued JWT in sessionStorage and returns to wherever the
  * user was before (via the `next` query param). On 503 "Setup required"
@@ -80,6 +83,7 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const expired = searchParams.get("reason") === "expired";
   const [passphrase, setPassphrase] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -199,6 +203,20 @@ function LoginForm() {
             to decrypt at-rest secrets like provider API keys.
           </p>
         </header>
+        {/* The api client sends `reason=expired` only when the session it
+            carried was refused, so this line reaches the person it
+            happened to and nobody arriving with no session at all.
+            Without it, a page they were reading turned into this form
+            with nothing to say why. */}
+        {expired && !error && (
+          <p
+            role="status"
+            data-testid="session-ended"
+            className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm"
+          >
+            Your session ended. Sign in again.
+          </p>
+        )}
         <form onSubmit={handleSubmit} noValidate>
           <label className="font-ui mb-1 block text-sm font-medium" htmlFor="passphrase">
             Passphrase

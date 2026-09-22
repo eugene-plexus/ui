@@ -19,9 +19,10 @@ import { ATTRIBUTION } from "@/components/Attribution";
 import LoginPage from "./page";
 
 const replace = vi.fn();
+let search = "next=%2Fnodes";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace, push: vi.fn(), refresh: vi.fn() }),
-  useSearchParams: () => new URLSearchParams("next=%2Fnodes"),
+  useSearchParams: () => new URLSearchParams(search),
 }));
 
 interface Call {
@@ -35,6 +36,7 @@ let controlStatus: number;
 let controlThrows: boolean;
 
 beforeEach(() => {
+  search = "next=%2Fnodes";
   calls = [];
   controlStatus = 200;
   controlThrows = false;
@@ -126,6 +128,22 @@ describe("sign-in unlocks the control root", () => {
     expect(controlLogins()).toHaveLength(0);
     expect(replace).not.toHaveBeenCalled();
     expect(sessionStorage.getItem("eugene-session-token")).toBeNull();
+  });
+
+  // The api client adds `reason=expired` when the session it sent was
+  // refused. Without a line saying so, the person was reading a page one
+  // moment and looking at a passphrase box the next, with no idea why.
+  it("says the session ended when it was sent here because one did", async () => {
+    search = "next=%2Fnodes&reason=expired";
+    render(<LoginPage />);
+    await screen.findByLabelText(/passphrase/i);
+    expect(screen.getByText("Your session ended. Sign in again.")).toBeInTheDocument();
+  });
+
+  it("says nothing about a session to someone arriving without one", async () => {
+    render(<LoginPage />);
+    await screen.findByLabelText(/passphrase/i);
+    expect(screen.queryByText(/session ended/i)).toBeNull();
   });
 
   // The third of the licence line's three surfaces. It is driven here
