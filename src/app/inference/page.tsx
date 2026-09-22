@@ -23,6 +23,7 @@ import {
 } from "@/lib/issues";
 import { loadKey, recallLoadSeconds, rememberLoadSeconds } from "@/lib/loadMemory";
 import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib/nodeBudget";
+import { formatSelection } from "@/lib/resourceTree";
 import { useIssues } from "@/lib/useIssues";
 import type {
   ComponentPlacementList,
@@ -350,7 +351,9 @@ export default function InferencePage() {
           </div>
         )}
         {actionError && (
-          <div className="status-error border-b px-4 py-2 text-sm">{actionError}</div>
+          <div className="status-error border-b px-4 py-2 text-sm" role="alert">
+            {actionError}
+          </div>
         )}
 
         <div className="flex-1 space-y-6 overflow-y-auto p-4">
@@ -735,15 +738,22 @@ function RowView({
             </button>
           </>
         ) : (
-          <>
-            <Link
-              href="/config"
-              className={smallButton}
-              title="An external backend is not ours to start or stop. Its driver's settings — the URL, the model id, the API key — are on the Config page."
-            >
-              config
-            </Link>
-            {row.driver && (
+          row.driver && (
+            <>
+              {/* Selects the driver itself: a bare `/config` carries no
+                  `?sel=` and opens on "Nothing selected", which is where
+                  this link used to leave the operator. The machine rides
+                  in the token when the root placed it; a bare name is
+                  what the tree resolves on a box with no name. */}
+              <Link
+                href={`/config?sel=${encodeURIComponent(
+                  formatSelection({ type: "driver", node: row.node, name: row.driver }),
+                )}`}
+                className={smallButton}
+                title="An external backend is not ours to start or stop. Its driver's settings — the URL, the model id, the API key — are on the Config page."
+              >
+                config
+              </Link>
               <button
                 type="button"
                 onClick={() => onRemove(row)}
@@ -753,8 +763,8 @@ function RowView({
               >
                 {busy === `${row.node ?? ""}/${row.driver}:remove` ? "…" : "remove"}
               </button>
-            )}
-          </>
+            </>
+          )
         )}
       </td>
     </tr>

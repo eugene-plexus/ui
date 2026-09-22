@@ -28,10 +28,12 @@ let summary: unknown;
 let requests: unknown;
 let clientUsage: unknown;
 let status: number;
+let errorBody: unknown;
 let urls: string[];
 
 beforeEach(() => {
   status = 200;
+  errorBody = { detail: { detail: "metricsEnabled is false" } };
   urls = [];
   const seen = urls;
   summary = {
@@ -91,8 +93,9 @@ beforeEach(() => {
       const url = String(input);
       seen.push(url);
       if (status !== 200) {
-        return new Response(JSON.stringify({ detail: { detail: "metricsEnabled is false" } }), {
+        return new Response(JSON.stringify(errorBody), {
           status,
+          statusText: String(status),
           headers: { "content-type": "application/json" },
         });
       }
@@ -147,6 +150,51 @@ describe("metrics page", () => {
     // change, the other is "send a request".
     expect(await screen.findByText(/Not recording/i)).toBeInTheDocument();
     expect(screen.getByText(/Retain request metrics/)).toBeInTheDocument();
+  });
+
+  it("links metrics-off to the gateway's own settings, not an empty Config page", async () => {
+    status = 503;
+    render(<MetricsPage />);
+    // A bare `/config` has no `?sel=` and renders "Nothing selected".
+    const link = await screen.findByRole("link", { name: "Config page" });
+    expect(link).toHaveAttribute("href", "/config?sel=gateway");
+  });
+
+  it("shows the gateway's own sentence when a read fails, not the status line", async () => {
+    status = 500;
+    errorBody = {
+      detail: {
+        title: "Metrics store unavailable",
+        detail: "The metrics file could not be opened because the disk is full.",
+        status: 500,
+      },
+    };
+    render(<MetricsPage />);
+    const sentence = await screen.findByText(
+      "The metrics file could not be opened because the disk is full.",
+    );
+    expect(sentence).toHaveAttribute("role", "alert");
+    expect(screen.queryByText(/HTTP 500/)).toBeNull();
+  });
+
+  it("offers to copy a request's id, which is what a log search needs", async () => {
+    requests = {
+      requests: [
+        {
+          startedAt: "2026-09-21T12:00:00Z",
+          requestedModel: "alias",
+          attempts: 1,
+          totalMs: 50,
+          requestId: "req-7f3a",
+          outcome: "served",
+          tries: [],
+        },
+      ],
+    };
+    render(<MetricsPage />);
+    const id = await screen.findByText("Request req-7f3a");
+    const row = id.closest("li") as HTMLElement;
+    expect(within(row).getByRole("button", { name: "Copy request ID" })).toBeInTheDocument();
   });
 
   it("warns that the numbers are a sample when the recorder dropped rows", async () => {

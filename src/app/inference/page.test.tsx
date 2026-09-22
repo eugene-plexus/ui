@@ -133,6 +133,61 @@ async function rowFor(model: string) {
   return cell.closest("tr") as HTMLElement;
 }
 
+describe("an external backend's config link", () => {
+  /** An Ollama the operator already ran, joined by a driver: no runtime
+   * of ours behind it, so the row offers settings rather than start/stop. */
+  function withOllama() {
+    handlers.set("GET gateway/v1/admin/drivers", () => ({
+      status: 200,
+      body: {
+        drivers: [
+          {
+            name: "ollama-local",
+            modelId: "qwen3-coder:30b",
+            reachable: true,
+            url: "http://127.0.0.1:8084/",
+          },
+        ],
+      },
+    }));
+    handlers.set("GET agent/v1/runtimes", () => ({ status: 200, body: { runtimes: [] } }));
+  }
+
+  it("opens that driver's settings, on the machine the root places it on", async () => {
+    withOllama();
+    handlers.set("GET control/v1/components", () => ({
+      status: 200,
+      body: {
+        components: [
+          {
+            node: "Amish_Station",
+            name: "ollama-local",
+            kind: "inference-driver",
+            status: "running",
+          },
+        ],
+      },
+    }));
+    const row = await rowFor("qwen3-coder:30b");
+    // A bare `/config` carries no `?sel=` and renders "Nothing selected".
+    expect(within(row).getByRole("link", { name: "config" })).toHaveAttribute(
+      "href",
+      "/config?sel=driver%3Aollama-local%40Amish_Station",
+    );
+  });
+
+  it("names the driver alone when nothing says which machine it is on", async () => {
+    // The standalone case: no control root to place it. The tree resolves
+    // a bare `driver:<name>` to the first leaf of that name.
+    withOllama();
+    const row = await rowFor("qwen3-coder:30b");
+    expect(within(row).getByRole("link", { name: "config" })).toHaveAttribute(
+      "href",
+      "/config?sel=driver%3Aollama-local",
+    );
+  });
+});
+
 describe("a model running on the processor while the machine has a card", () => {
   it("says so, and says where the claim comes from", async () => {
     handlers.set("GET agent/v1/runtimes", () => ({

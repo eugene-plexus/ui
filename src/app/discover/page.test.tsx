@@ -470,6 +470,25 @@ describe("the results list", () => {
   });
 });
 
+describe("a search the library refused", () => {
+  it("shows the library's plain-string sentence, not the status line", async () => {
+    // FastAPI's `HTTPException(detail="...")` puts a bare string in
+    // `detail`, and this page's own helper read only the nested shape.
+    handlers.set("GET library/v1/catalogue/search", () => ({
+      status: 409,
+      body: { detail: "Catalogue search is turned off in the Library's settings." },
+    }));
+    render(<DiscoverPage />);
+    const sentence = await screen.findByText(
+      "Catalogue search is turned off in the Library's settings.",
+      {},
+      { timeout: 5000 },
+    );
+    expect(sentence).toHaveAttribute("role", "alert");
+    expect(screen.queryByText(/HTTP 409/)).toBeNull();
+  });
+});
+
 describe("selection and preferences survive", () => {
   it("?repo= opens the detail without a click, and selection is mirrored to the URL", async () => {
     nav.params = new URLSearchParams(`repo=${REPO}`);

@@ -8,7 +8,7 @@ import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBadge, formatBytes, formatMemory } from "@/components/FitBadge";
 import { ModelCard } from "@/components/ModelCard";
 import { QuantReference } from "@/components/QuantReference";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, describeError } from "@/lib/api";
 import { NodePicker } from "@/components/NodePicker";
 import { StarterSetPanel } from "@/components/StarterSetPanel";
 import { contextLabel } from "@/lib/starter";
@@ -226,7 +226,7 @@ function DiscoverPageInner() {
       if (err instanceof ApiError && err.status === 401) return;
       setResults([]);
       setInterpreted("search");
-      setSearchError(errorText(err));
+      setSearchError(describeError(err));
     } finally {
       setSearching(false);
     }
@@ -248,7 +248,7 @@ function DiscoverPageInner() {
         setShowDownloads(true);
         reloadDownloads();
       } catch (err) {
-        setSearchError(errorText(err));
+        setSearchError(describeError(err));
       } finally {
         setStarterBusy(null);
       }
@@ -499,7 +499,12 @@ function ResultsList({
         </p>
       )}
       {error && (
-        <p className="status-error m-3 rounded-[var(--radius)] border px-3 py-2 text-sm">{error}</p>
+        <p
+          className="status-error m-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
+          role="alert"
+        >
+          {error}
+        </p>
       )}
       {results === null && !error && (
         <p className="px-4 py-3 text-sm text-[color:var(--muted)]">searching…</p>
@@ -687,7 +692,7 @@ function RepoDetail({
       } catch (err) {
         if (id !== requestId.current) return;
         if (err instanceof ApiError && err.status === 401) return;
-        setError(errorText(err));
+        setError(describeError(err));
         setDetail(null);
       } finally {
         if (id === requestId.current) setLoading(false);
@@ -713,7 +718,7 @@ function RepoDetail({
       );
       setPreflights((current) => ({ ...current, [candidate.label]: body }));
     } catch (err) {
-      setActionError(errorText(err));
+      setActionError(describeError(err));
     } finally {
       setBusy(null);
     }
@@ -735,14 +740,18 @@ function RepoDetail({
       });
       onDownloadStarted();
     } catch (err) {
-      setActionError(errorText(err));
+      setActionError(describeError(err));
     } finally {
       setBusy(null);
     }
   }
 
   if (error) {
-    return <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm">{error}</p>;
+    return (
+      <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm" role="alert">
+        {error}
+      </p>
+    );
   }
   if (!detail) {
     return <p className="text-sm text-[color:var(--muted)]">loading {repo}…</p>;
@@ -915,7 +924,7 @@ function RepoDetail({
       )}
 
       {actionError && (
-        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm">
+        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm" role="alert">
           {actionError}
         </p>
       )}
@@ -1213,12 +1222,4 @@ function compactCount(value: number): string {
   if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
   if (value >= 1e3) return `${(value / 1e3).toFixed(0)}k`;
   return String(value);
-}
-
-function errorText(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body as { detail?: { detail?: string; title?: string } } | undefined;
-    return body?.detail?.detail ?? body?.detail?.title ?? err.message;
-  }
-  return err instanceof Error ? err.message : String(err);
 }

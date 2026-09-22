@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { CopyButton } from "@/components/CopyButton";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBreakdown, formatMemory } from "@/components/FitBadge";
 import { ProfileEditor } from "@/components/ProfileEditor";
 import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
 import { RunButton } from "@/components/RunButton";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, describeError } from "@/lib/api";
 import { capableEngines } from "@/lib/engineCompat";
 import { type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
@@ -127,7 +129,8 @@ function LibraryPageInner() {
       setError(null);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return;
-      setError(err instanceof Error ? err.message : String(err));
+      // The library's own sentence, not `err.message`'s status line.
+      setError(describeError(err));
     }
   }, []);
 
@@ -215,7 +218,7 @@ function LibraryPageInner() {
       setScan(await api.post<Scan>("library", "/v1/scan", { full }));
       setError(null);
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError(err));
     } finally {
       setBusy(false);
     }
@@ -226,7 +229,7 @@ function LibraryPageInner() {
     try {
       setScan(await api.delete<Scan>("library", "/v1/scan"));
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError(err));
     } finally {
       setBusy(false);
     }
@@ -285,7 +288,10 @@ function LibraryPageInner() {
     >
       <main className="flex min-h-0 flex-1 flex-col">
         {error && (
-          <p className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
+          <p
+            className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
+            role="alert"
+          >
             {error}
           </p>
         )}
@@ -366,7 +372,10 @@ function ScanBanner({ scan }: { scan: Scan | null }) {
 
   if (scan.state === "failed") {
     return (
-      <p className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
+      <p
+        className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
+        role="alert"
+      >
         {scan.error ?? "the scan failed"}
       </p>
     );
@@ -393,6 +402,22 @@ function ScanBanner({ scan }: { scan: Scan | null }) {
   );
 }
 
+/**
+ * How many models a list holds before it offers a filter. A handful can be
+ * read at a glance, and a box above three rows is furniture; past that the
+ * list is scanned for a name, which is what the box is for.
+ */
+const FILTER_THRESHOLD = 5;
+
+/** Whether a model matches a lowercased filter: on the words the row
+ * shows (name, format, quantization) and on its path, because the folder
+ * is often how someone remembers where a model came from. */
+function matchesFilter(model: LibraryModel, needle: string): boolean {
+  return [model.name, model.displayName, model.path, model.format, model.gguf?.quantization].some(
+    (field) => typeof field === "string" && field.toLowerCase().includes(needle),
+  );
+}
+
 function ModelList({
   models,
   selected,
@@ -409,15 +434,82 @@ function ModelList({
    * these is up" looks first. */
   runtimes: Runtime[];
 }) {
+  const [query, setQuery] = useState("");
+  const filterRef = useRef<HTMLInputElement | null>(null);
+  const all = models ?? [];
+  const needle = query.trim().toLowerCase();
+  const shown = needle ? all.filter((m) => matchesFilter(m, needle)) : all;
+  // Kept while a filter is typed even if the list shrinks under the
+  // threshold (a model forgotten mid-filter), so the box never vanishes
+  // with text still in it and the list still narrowed.
+  const offerFilter = all.length > FILTER_THRESHOLD || query !== "";
+
+  // Clearing returns focus to the box, so the next thing typed filters
+  // again rather than landing on whatever the button left behind.
+  function clearFilter() {
+    setQuery("");
+    filterRef.current?.focus();
+  }
+
   return (
-    <aside className="max-h-[35dvh] shrink-0 overflow-y-auto border-b border-[color:var(--border)] sm:max-h-none sm:min-h-0 sm:border-r">
+    <aside
+      data-testid="model-list"
+      className="max-h-[35dvh] shrink-0 overflow-y-auto border-b border-[color:var(--border)] sm:max-h-none sm:min-h-0 sm:border-r"
+    >
+      {offerFilter && (
+        <div className="sticky top-0 z-10 border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2">
+          <input
+            ref={filterRef}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && query !== "") {
+                e.preventDefault();
+                setQuery("");
+              }
+            }}
+            placeholder="Filter by name or folder"
+            aria-label="Filter models"
+            spellCheck={false}
+            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--border-hover)]"
+          />
+          {needle && (
+            <p
+              data-testid="model-filter-count"
+              aria-live="polite"
+              className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]"
+            >
+              {shown.length} of {all.length} models
+            </p>
+          )}
+        </div>
+      )}
       {models == null && <p className="px-4 py-3 text-sm text-[color:var(--muted)]">loading…</p>}
       {models?.length === 0 && (
         <p className="px-4 py-3 text-sm leading-relaxed text-[color:var(--muted)]">
-          Nothing found yet. Add a directory on the Config page under Library, then scan.
+          Nothing found yet. Add the folder your models are in on the{" "}
+          {/* The page that holds the folders. It said "the Config page",
+              and the bare `/config` that pointed to selects nothing. */}
+          <Link href="/library/folders?sel=library" className="underline">
+            Library folders
+          </Link>{" "}
+          page, then scan.
         </p>
       )}
-      {models?.map((m) => {
+      {needle && all.length > 0 && shown.length === 0 && (
+        <div className="px-4 py-3 text-sm text-[color:var(--muted)]">
+          <p className="[overflow-wrap:anywhere]">No models match &ldquo;{query.trim()}&rdquo;.</p>
+          <button
+            type="button"
+            onClick={clearFilter}
+            className="font-ui mt-1 text-sm underline hover:text-[color:var(--foreground)]"
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
+      {shown.map((m) => {
         const unloadable = !loadableFormats.has(m.format);
         const live = runningModel(m, runtimes);
         return (
@@ -425,6 +517,9 @@ function ModelList({
             key={m.id}
             type="button"
             onClick={() => onSelect(m.id)}
+            // The tint alone says which is open only to someone who can
+            // see it; `aria-current` says it to a screen reader too.
+            aria-current={selected === m.id ? "true" : undefined}
             className={`block w-full border-b border-[color:var(--border)] px-4 py-2 text-left transition-colors hover:bg-[color:var(--panel-hover)] ${
               selected === m.id ? "bg-[color:var(--panel-soft)]" : ""
             }`}
@@ -583,7 +678,7 @@ function ModelDetail({
       await api.delete<void>("library", `/v1/models/${encodeURIComponent(model.id)}`);
       onChanged();
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError(err));
     }
   }
 
@@ -594,9 +689,20 @@ function ModelDetail({
         {model.displayName && (
           <p className="text-sm text-[color:var(--muted)]">{model.displayName}</p>
         )}
-        <p className="mt-1 font-mono text-[0.625rem] break-all text-[color:var(--muted)]">
-          {model.path}
-        </p>
+        <div className="mt-1 flex items-start gap-1">
+          <p className="min-w-0 font-mono text-[0.625rem] break-all text-[color:var(--muted)]">
+            {model.path}
+          </p>
+          {/* A path is copied far more often than it is read: into a
+              terminal, a file manager, another tool's settings. */}
+          <CopyButton
+            text={model.path}
+            label="Copy path"
+            title="Copy path"
+            iconOnly
+            className="-mt-1 shrink-0"
+          />
+        </div>
       </div>
 
       {model.status === "missing" && (
@@ -612,9 +718,18 @@ function ModelDetail({
             forget this entry. Nothing guesses that two paths are the same model, because guessing
             wrong applies one model&rsquo;s tuning to another.
           </p>
-          <button type="button" onClick={() => void forget()} className={`${buttonClass} mt-2`}>
-            forget this entry and its profiles
-          </button>
+          {/* Asked, because the profiles are the one thing here a rescan
+              cannot bring back, and the prompt says how many go. */}
+          <div className="mt-2">
+            <ConfirmButton
+              label="forget this entry and its profiles"
+              prompt={`Its ${model.profileCount ?? 0} saved profile${
+                model.profileCount === 1 ? "" : "s"
+              } will be lost.`}
+              onConfirm={forget}
+              className={buttonClass}
+            />
+          </div>
           <p className="mt-1 text-[0.625rem]">
             No file is deleted. This only drops what we stored.
           </p>
@@ -628,7 +743,9 @@ function ModelDetail({
       )}
 
       {error && (
-        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm">{error}</p>
+        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm" role="alert">
+          {error}
+        </p>
       )}
 
       <Facts model={model} />
@@ -758,7 +875,7 @@ function RunningPanel({
       );
       onChanged();
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError(err));
     } finally {
       setBusy(false);
     }
@@ -811,7 +928,9 @@ function RunningPanel({
       </details>
 
       {error && (
-        <p className="status-error mt-2 rounded-[var(--radius)] border px-2 py-1">{error}</p>
+        <p className="status-error mt-2 rounded-[var(--radius)] border px-2 py-1" role="alert">
+          {error}
+        </p>
       )}
     </div>
   );
@@ -862,7 +981,7 @@ function FitPanel({
         );
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) return;
-        setError(errorText(err));
+        setError(describeError(err));
       }
     })();
   }, [model.id, budget]);
@@ -1120,12 +1239,4 @@ function relativeAge(iso: string): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
   return `${Math.round(seconds / 86400)}d ago`;
-}
-
-function errorText(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body as { detail?: { detail?: string; title?: string } } | undefined;
-    return body?.detail?.detail ?? body?.detail?.title ?? err.message;
-  }
-  return err instanceof Error ? err.message : String(err);
 }

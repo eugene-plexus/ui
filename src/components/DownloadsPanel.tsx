@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { formatBytes } from "@/components/FitBadge";
 import { RunButton } from "@/components/RunButton";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, describeError } from "@/lib/api";
 import type { TargetNode } from "@/lib/nodeBudget";
 import type { Download, DownloadList, DownloadState, LibraryModel } from "@/lib/types";
 
@@ -73,7 +73,7 @@ export function DownloadsPanel({
       await api.post(`library`, `/v1/downloads/${id}/${verb}`, {});
       onChanged();
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError(err));
     } finally {
       setBusy(null);
     }
@@ -87,7 +87,7 @@ export function DownloadsPanel({
       setConfirmCancel(null);
       onChanged();
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError(err));
     } finally {
       setBusy(null);
     }
@@ -102,7 +102,9 @@ export function DownloadsPanel({
   return (
     <div className="space-y-2">
       {error && (
-        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm">{error}</p>
+        <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm" role="alert">
+          {error}
+        </p>
       )}
       {downloads.map((download) => (
         <DownloadRow
@@ -259,7 +261,9 @@ function DownloadRow({
             <>
               {" "}
               Accept the licence on the model&rsquo;s own page, then set a catalogue token on the{" "}
-              <Link href="/config" className="underline">
+              {/* The Library's own settings, where `hfToken` lives. A bare
+                  `/config` selects nothing and opens an empty page. */}
+              <Link href="/config?sel=library" className="underline">
                 Config
               </Link>{" "}
               page.
@@ -366,12 +370,4 @@ function formatDuration(seconds: number): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
   const hours = Math.floor(seconds / 3600);
   return `${hours}h ${Math.round((seconds % 3600) / 60)}m`;
-}
-
-function errorText(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body as { detail?: { detail?: string; title?: string } } | undefined;
-    return body?.detail?.detail ?? body?.detail?.title ?? err.message;
-  }
-  return err instanceof Error ? err.message : String(err);
 }

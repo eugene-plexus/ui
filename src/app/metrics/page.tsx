@@ -46,7 +46,8 @@ import { useCallback, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { HourChart, StatTile } from "@/components/MetricsCharts";
-import { ApiError, api } from "@/lib/api";
+import { CopyButton } from "@/components/CopyButton";
+import { ApiError, api, describeError } from "@/lib/api";
 import { compact, hourlyPoints, msLabel, tilesFrom } from "@/lib/metricsCharts";
 import type { ClientUsageSummary } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
@@ -227,7 +228,10 @@ export default function MetricsPage() {
       if (e instanceof ApiError && e.status === 503) {
         setDisabled(true);
       } else {
-        setError(e instanceof Error ? e.message : String(e));
+        // The gateway's own sentence when it wrote one. `e.message` is
+        // the status line ("HTTP 500 …"), which says a read failed and
+        // not why.
+        setError(describeError(e));
       }
     } finally {
       setLoading(false);
@@ -310,7 +314,7 @@ export default function MetricsPage() {
               <p className="text-sm leading-relaxed text-[color:var(--muted)]">
                 This gateway is not retaining request metrics. Turn on{" "}
                 <span className="font-mono">Retain request metrics</span> on the{" "}
-                <Link href="/config" className="underline">
+                <Link href="/config?sel=gateway" className="underline">
                   Config page
                 </Link>{" "}
                 and restart the gateway. Recording starts from then on — nothing reconstructs
@@ -773,9 +777,18 @@ export default function MetricsPage() {
                           {r.routingMs != null &&
                             ` · ${ms(r.routingMs)} routing${r.refreshed ? " (refreshed)" : ""}`}
                         </span>
+                        {/* The id is what a log search or a bug report
+                            needs, and it is too long to retype. */}
                         {r.requestId && (
-                          <div className="break-all text-[color:var(--muted)]">
-                            Request {r.requestId}
+                          <div className="flex items-center gap-1 break-all text-[color:var(--muted)]">
+                            <span>Request {r.requestId}</span>
+                            <CopyButton
+                              text={r.requestId}
+                              label="Copy request ID"
+                              title="Copy request ID"
+                              iconOnly
+                              className="shrink-0"
+                            />
                           </div>
                         )}
                         {r.tries.length > 0 && (

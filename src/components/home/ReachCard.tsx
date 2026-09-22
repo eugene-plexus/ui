@@ -123,7 +123,15 @@ export function ReachCard({
               Nothing starts Eugene on this machine automatically, so it cannot restart itself. Stop
               it and start it again the way you started it
               {state.command ? ": " : "."}
-              {state.command && <code className="font-mono">{state.command}</code>}
+              {state.command && (
+                <>
+                  <code className="font-mono">{state.command}</code>{" "}
+                  {/* The command is the whole of the remedy here, typed
+                      into a terminal, so it copies like the firewall
+                      command below it does. */}
+                  <CopyButton text={state.command} title="Copy the restart command" />
+                </>
+              )}
             </p>
           )}
           <span className="font-ui text-[0.6875rem] text-[color:var(--muted)]">

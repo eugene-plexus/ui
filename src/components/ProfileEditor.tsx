@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { ApiError, api, describeError } from "@/lib/api";
 import { describeAdmission } from "@/lib/launchPreview";
 import {
@@ -103,7 +104,7 @@ export function ProfileEditor({
       setError(null);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return;
-      setError(errorText(err));
+      setError(describeError(err));
     }
   }, [model.id]);
 
@@ -167,7 +168,7 @@ export function ProfileEditor({
       await load();
       onChanged();
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError(err));
     }
   }
 
@@ -181,7 +182,7 @@ export function ProfileEditor({
       await load();
       onChanged();
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError(err));
     }
   }
 
@@ -208,7 +209,7 @@ export function ProfileEditor({
         setLaunched(runtime.name);
       }
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError(err));
     }
   }
 
@@ -248,7 +249,10 @@ export function ProfileEditor({
       )}
 
       {error && (
-        <p className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm">
+        <p
+          className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
+          role="alert"
+        >
           {error}
         </p>
       )}
@@ -484,9 +488,15 @@ function ProfileRow({
           <button type="button" onClick={onEdit} className={buttonClass}>
             edit
           </button>
-          <button type="button" onClick={onDelete} className={buttonClass}>
-            delete
-          </button>
+          {/* Asked, because it sits beside edit and looks the same, and a
+              profile is the tuning someone found by trial: the library
+              keeps no other copy of it. */}
+          <ConfirmButton
+            label="delete"
+            prompt={`The ${profile.name} settings are gone for good.`}
+            onConfirm={onDelete}
+            className={buttonClass}
+          />
         </div>
       </div>
       {(flags.length > 0 || env.length > 0 || profile.extraArgs?.length) && (
@@ -614,7 +624,7 @@ function ProfileForm({
       }
       await onSaved();
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError(err));
     } finally {
       setSaving(false);
     }
@@ -623,7 +633,10 @@ function ProfileForm({
   return (
     <div className="mt-3 rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-3">
       {error && (
-        <p className="status-error mb-2 rounded-[var(--radius)] border px-3 py-2 text-sm">
+        <p
+          className="status-error mb-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
+          role="alert"
+        >
           {error}
         </p>
       )}
@@ -812,13 +825,4 @@ function parseEnv(text: string): Record<string, string> {
 
 function suggestedName(model: LibraryModel): string {
   return (model.profileCount ?? 0) === 0 ? DEFAULT_PROFILE_NAME : "";
-}
-
-function errorText(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body as { detail?: { detail?: string; title?: string } | string } | undefined;
-    if (typeof body?.detail === "string") return body.detail;
-    return body?.detail?.detail ?? body?.detail?.title ?? err.message;
-  }
-  return err instanceof Error ? err.message : String(err);
 }

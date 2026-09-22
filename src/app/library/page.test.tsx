@@ -240,6 +240,185 @@ describe("a model that is not running", () => {
   });
 });
 
+/**
+ * The pre-release polish pass, driven through the page rather than a
+ * helper: every one of these is wiring — which link a sentence carries,
+ * which sentence an error shows, whether a click acts or asks.
+ */
+function listed(name: string, path: string, over: Record<string, unknown> = {}) {
+  return { id: name, path, format: "gguf", name, status: "present", ...over };
+}
+
+/** Seven models, so the filter box is offered, and one whose only match
+ * for "archive" is its path. */
+function manyModels() {
+  return [
+    libraryModel(),
+    listed("Qwen3-8B-Q4_K_M", "Y:\\models\\Qwen3-8B-Q4_K_M.gguf"),
+    listed("qwen3-coder-30b-Q5_K_M", "Y:\\models\\qwen3-coder-30b-Q5_K_M.gguf"),
+    listed("llama-3.1-8b-instruct", "Y:\\models\\llama-3.1-8b-instruct.gguf"),
+    listed("mistral-7b-v0.3", "Y:\\models\\mistral-7b-v0.3.gguf"),
+    listed("phi-4-Q8_0", "Y:\\models\\phi-4-Q8_0.gguf"),
+    listed("big-model", "D:\\archive\\special\\big-model.gguf"),
+  ];
+}
+
+/** The list's own buttons, by the model name each carries. */
+function listedNames(): string[] {
+  const list = screen.getByTestId("model-list");
+  return within(list)
+    .queryAllByRole("button")
+    .map((b) => b.querySelector("span")?.textContent ?? "")
+    .filter((n) => n !== "");
+}
+
+describe("an empty library", () => {
+  it("links the sentence that says where folders go to the page that holds them", async () => {
+    handlers.set("GET library/v1/models", () => ok({ models: [], lastScanAt: null }));
+    render(<LibraryPage />);
+    // A bare "the Config page" opened an empty Config screen: no `?sel=`
+    // means nothing selected. Library folders are where a folder is added.
+    const link = await screen.findByRole("link", { name: "Library folders" });
+    expect(link).toHaveAttribute("href", "/library/folders?sel=library");
+  });
+});
+
+describe("a failure the library explained", () => {
+  it("shows the library's own sentence, not the status line", async () => {
+    handlers.set("GET library/v1/models", () => ({
+      status: 500,
+      body: {
+        detail: {
+          title: "Library index unreadable",
+          detail: "The model index could not be read. Scan again to rebuild it.",
+          status: 500,
+        },
+      },
+    }));
+    render(<LibraryPage />);
+    const sentence = await screen.findByText(
+      "The model index could not be read. Scan again to rebuild it.",
+    );
+    expect(sentence).toHaveAttribute("role", "alert");
+    expect(screen.queryByText(/HTTP 500/)).toBeNull();
+  });
+
+  it("reads a plain-string detail too, which the page's own helper missed", async () => {
+    handlers.set("POST library/v1/scan", () => ({
+      status: 409,
+      body: { detail: "A scan is already running." },
+    }));
+    await openTheModel();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "scan" }));
+    });
+    const sentence = await screen.findByText("A scan is already running.");
+    expect(sentence).toHaveAttribute("role", "alert");
+    expect(screen.queryByText(/HTTP 409/)).toBeNull();
+  });
+});
+
+describe("forgetting a model whose file has gone", () => {
+  beforeEach(() => {
+    handlers.set("GET library/v1/models", () =>
+      ok({ models: [{ ...libraryModel(), status: "missing" }] }),
+    );
+    handlers.set("DELETE library/v1/models/gemma", () => ({ status: 204 }));
+  });
+
+  it("asks first, and one click drops nothing", async () => {
+    render(<LibraryPage />);
+    const button = await screen.findByRole(
+      "button",
+      { name: "forget this entry and its profiles" },
+      { timeout: 5000 },
+    );
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(posted).not.toContain("DELETE library/v1/models/gemma");
+    // What is lost, said before it is lost: the profiles are the one
+    // thing here a rescan cannot bring back.
+    expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("1 saved profile");
+  });
+
+  it("forgets on the second click", async () => {
+    render(<LibraryPage />);
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: "forget this entry and its profiles" },
+        { timeout: 5000 },
+      ),
+    );
+    await act(async () => {
+      fireEvent.click(
+        within(screen.getByRole("group", { name: "Confirm" })).getByRole("button", {
+          name: "forget this entry and its profiles",
+        }),
+      );
+    });
+    await waitFor(() => expect(posted).toContain("DELETE library/v1/models/gemma"));
+  });
+});
+
+describe("the model list", () => {
+  beforeEach(() => {
+    handlers.set("GET library/v1/models", () => ok({ models: manyModels(), lastScanAt: null }));
+  });
+
+  it("filters by name or path, case-insensitively, and says how many it shows", async () => {
+    await openTheModel();
+    const filter = screen.getByLabelText("Filter models");
+    fireEvent.change(filter, { target: { value: "QWEN" } });
+    expect(listedNames()).toEqual(["Qwen3-8B-Q4_K_M", "qwen3-coder-30b-Q5_K_M"]);
+    expect(screen.getByTestId("model-filter-count")).toHaveTextContent("2 of 7");
+
+    // The path is searched too: the folder is often how someone remembers
+    // where a model came from.
+    fireEvent.change(filter, { target: { value: "archive" } });
+    expect(listedNames()).toEqual(["big-model"]);
+  });
+
+  it("says nothing matched, and clearing brings every model back", async () => {
+    await openTheModel();
+    const filter = screen.getByLabelText("Filter models");
+    fireEvent.change(filter, { target: { value: "no-such-model" } });
+    expect(screen.getByTestId("model-list")).toHaveTextContent("No models match");
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(listedNames()).toHaveLength(7);
+    // Back in the box, so the next thing typed filters again.
+    expect(filter).toHaveFocus();
+  });
+
+  it("is not offered for a handful of models", async () => {
+    handlers.set("GET library/v1/models", () => ok({ models: [libraryModel()] }));
+    await openTheModel();
+    expect(screen.queryByLabelText("Filter models")).toBeNull();
+  });
+
+  it("marks the selected model for a screen reader, not by colour alone", async () => {
+    await openTheModel();
+    // The name is also the detail pane's heading; the list's copy is the
+    // one inside a button.
+    const selected = screen
+      .getAllByText("gemma-3-27b-it-Q6_K_L")
+      .map((el) => el.closest("button"))
+      .find((b) => b !== null);
+    expect(selected).toHaveAttribute("aria-current", "true");
+    const other = screen.getByText("phi-4-Q8_0").closest("button");
+    expect(other).not.toHaveAttribute("aria-current");
+  });
+});
+
+describe("the model detail", () => {
+  it("offers to copy the model's path", async () => {
+    await openTheModel();
+    expect(screen.getByRole("button", { name: "Copy path" })).toBeInTheDocument();
+  });
+});
+
 describe("a runtime that exists but is stopped", () => {
   beforeEach(() => {
     handlers.set("GET agent/v1/runtimes", () =>
