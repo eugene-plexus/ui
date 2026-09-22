@@ -365,3 +365,48 @@ describe("stop and retry", () => {
     expect(screen.queryByTestId("retry-turn")).not.toBeInTheDocument();
   });
 });
+
+describe("New", () => {
+  // The transcript is the one thing the playground keeps across a reload,
+  // and New wiped it on a single click next to the model picker.
+  function storedMessages(): unknown[] {
+    const stored = JSON.parse(sessionStorage.getItem("eugene-playground") ?? "{}") as {
+      messages?: unknown[];
+    };
+    return stored.messages ?? [];
+  }
+
+  it("asks before clearing a conversation, and Keep leaves it", async () => {
+    handlers.set("POST gateway/v1/chat/completions", () => sse(["Hi there"], "stop"));
+    await renderReady();
+    send("hello");
+    await waitFor(() => expect(screen.getByText("Hi there")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    // Nothing is gone yet.
+    expect(screen.getByText("Hi there")).toBeInTheDocument();
+    expect(storedMessages()).toHaveLength(2);
+    expect(screen.getByText("This clears the conversation.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("new-conversation-cancel"));
+    expect(screen.getByText("Hi there")).toBeInTheDocument();
+  });
+
+  it("clears it once confirmed", async () => {
+    handlers.set("POST gateway/v1/chat/completions", () => sse(["Hi there"], "stop"));
+    await renderReady();
+    send("hello");
+    await waitFor(() => expect(screen.getByText("Hi there")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByTestId("new-conversation-confirm"));
+    await waitFor(() => expect(screen.queryByText("Hi there")).toBeNull());
+    await waitFor(() => expect(storedMessages()).toHaveLength(0));
+  });
+
+  it("has nothing to ask about when there is no conversation", async () => {
+    await renderReady();
+    // Nothing to lose, so no question: the plain button, not a confirm.
+    expect(screen.getByRole("button", { name: "New" })).toBeDisabled();
+  });
+});

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ChatInput } from "@/components/ChatInput";
 import { ChatLog, type ToolResult } from "@/components/ChatLog";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
 import { DecisionPanel } from "@/components/DecisionPanel";
 import { DiagnosticPanel, type GatewayMode } from "@/components/DiagnosticPanel";
@@ -71,6 +72,11 @@ const SAMPLING_KEY = "eugene-playground-sampling";
 // this, something is wedged and the operator wants an error rather than
 // a spinner.
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** New's look, shared by the asking button and the disabled one, so the
+ * control does not change shape when a conversation starts. */
+const NEW_BUTTON_CLASS =
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
 /** What survives a reload of the diagnostic panel. Never the key: it
  * defaults to the session token on every load, and a typed one lives
@@ -557,14 +563,30 @@ export default function PlaygroundPage() {
                 screen saying why. */}
             {samplingCount > 0 ? " · settings" : ""}
           </button>
-          <button
-            type="button"
-            onClick={newConversation}
-            disabled={messages.length === 0}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            New
-          </button>
+          {/* The transcript is the one thing this page keeps across a
+              reload, and New sat beside the model picker wiping it on one
+              click. So it asks, but only when there is a conversation to
+              lose: with none, there is nothing to ask about and the button
+              stays the plain, disabled one it always was. */}
+          {messages.length > 0 ? (
+            <ConfirmButton
+              label="New"
+              confirmLabel="Clear it"
+              prompt="This clears the conversation."
+              onConfirm={newConversation}
+              testId="new-conversation"
+              className={NEW_BUTTON_CLASS}
+            />
+          ) : (
+            <button
+              type="button"
+              data-testid="new-conversation"
+              disabled
+              className={NEW_BUTTON_CLASS}
+            >
+              New
+            </button>
+          )}
           {messages.length > 0 && (
             <CopyButton
               text={JSON.stringify(messages, null, 2)}
