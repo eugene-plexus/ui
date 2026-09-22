@@ -428,7 +428,7 @@ describe("Home with a model routable", () => {
         model: "qwen3-14b",
         messages: [
           { role: "user", content: "Reply with the single word: ok" },
-          { role: "assistant", content: "Hello" },
+          { role: "assistant", content: "Hello", generatedAt: expect.any(String) },
         ],
       });
     });

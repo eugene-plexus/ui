@@ -7,7 +7,11 @@ import { ChatLog } from "@/components/ChatLog";
 import { describeError } from "@/lib/api";
 import { PROXY, streamChatCompletion } from "@/lib/completions";
 import { homeReadiness } from "@/lib/homeReadiness";
-import { readPlaygroundTranscript, writePlaygroundTranscript } from "@/lib/playgroundTranscript";
+import {
+  type PlaygroundMessage,
+  readPlaygroundTranscript,
+  writePlaygroundTranscript,
+} from "@/lib/playgroundTranscript";
 import type { ChatCompletionMessage, Model, RoutingTableView } from "@/lib/types";
 
 // The playground's ceiling, for the same reason: past this something is
@@ -44,7 +48,7 @@ export function TryItCard({
   models: Model[];
   routing: RoutingTableView | null;
 }) {
-  const [messages, setMessages] = useState<ChatCompletionMessage[]>([]);
+  const [messages, setMessages] = useState<PlaygroundMessage[]>([]);
   const [model, setModel] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [text, setText] = useState("");
@@ -131,11 +135,13 @@ export function TryItCard({
       // reply appears as it is generated, which is what a first token
       // looks like to the person waiting for one.
       let streamed = "";
+      let generatedAt: string | undefined;
       const upsert = (message: ChatCompletionMessage) => {
         if (active.current !== request || request.controller.signal.aborted) return;
+        generatedAt ??= new Date().toISOString();
         request.delivered = true;
         setText("");
-        setMessages([...outgoing, message]);
+        setMessages([...outgoing, { ...message, generatedAt }]);
       };
       const response = await streamChatCompletion(
         {

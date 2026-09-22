@@ -34,7 +34,7 @@ const STRIPPED_IMAGE_URL = "data:,";
  * a reload that keeps the words and drops the pixels -- the request
  * that was SENT is unchanged either way, and the report holds it.
  */
-export function stripImageBytes(messages: ChatCompletionMessage[]): ChatCompletionMessage[] {
+export function stripImageBytes(messages: PlaygroundMessage[]): PlaygroundMessage[] {
   return messages.map((message) => {
     if (!Array.isArray(message.content)) return message;
     return {
@@ -50,9 +50,22 @@ export function stripImageBytes(messages: ChatCompletionMessage[]): ChatCompleti
 
 export const PLAYGROUND_STORAGE_KEY = "eugene-playground";
 
+export type PlaygroundMessage = ChatCompletionMessage & {
+  /** Browser time when the first part of this response arrived; never sent to a model. */
+  generatedAt?: string;
+};
+
+export function requestMessages(messages: PlaygroundMessage[]): ChatCompletionMessage[] {
+  return messages.map((message) => {
+    const wire = { ...message };
+    delete wire.generatedAt;
+    return wire;
+  });
+}
+
 export interface PlaygroundTranscript {
   model: string | null;
-  messages: ChatCompletionMessage[];
+  messages: PlaygroundMessage[];
 }
 
 function empty(): PlaygroundTranscript {

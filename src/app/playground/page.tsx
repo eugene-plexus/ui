@@ -27,7 +27,11 @@ import {
   normalizeBaseUrl,
   parseToolDefinitions,
 } from "@/lib/diagnostic";
-import { readPlaygroundTranscript, writePlaygroundTranscript } from "@/lib/playgroundTranscript";
+import {
+  type PlaygroundMessage,
+  readPlaygroundTranscript,
+  writePlaygroundTranscript,
+} from "@/lib/playgroundTranscript";
 import {
   EMPTY_SAMPLING,
   type SamplingDraft,
@@ -138,7 +142,7 @@ function pageLocation(): PageLocation {
 }
 
 export default function PlaygroundPage() {
-  const [messages, setMessages] = useState<ChatCompletionMessage[]>([]);
+  const [messages, setMessages] = useState<PlaygroundMessage[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [model, setModel] = useState<string | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -350,14 +354,17 @@ export default function PlaygroundPage() {
       // a long silence.
       let streamed = "";
       let appended = false;
+      let generatedAt: string | undefined;
       const upsert = (message: ChatCompletionMessage) => {
+        generatedAt ??= new Date().toISOString();
+        const recorded = { ...message, generatedAt };
         setMessages((prev) => {
           if (!appended) {
             appended = true;
-            return [...prev, message];
+            return [...prev, recorded];
           }
           const next = [...prev];
-          next[next.length - 1] = message;
+          next[next.length - 1] = recorded;
           return next;
         });
       };

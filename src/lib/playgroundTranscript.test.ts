@@ -7,6 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildChatRequest } from "./completions";
 
 import {
   PLAYGROUND_STORAGE_KEY,
@@ -22,6 +23,24 @@ beforeEach(() => {
 });
 
 describe("the stored shape", () => {
+  it("preserves response time across reloads and image stripping without sending it to models", () => {
+    const transcript = {
+      model: "m",
+      messages: [
+        { role: "assistant" as const, content: "hello", generatedAt: "2026-09-22T16:00:00.000Z" },
+      ],
+    };
+    writePlaygroundTranscript(transcript);
+    const restored = readPlaygroundTranscript();
+    expect(stripImageBytes(restored.messages)).toEqual(transcript.messages);
+    for (const stream of [true, false]) {
+      expect(
+        buildChatRequest({ model: "m", messages: restored.messages }, stream).messages,
+      ).toEqual([{ role: "assistant", content: "hello" }]);
+    }
+    expect(restored.messages[0]?.generatedAt).toBe("2026-09-22T16:00:00.000Z");
+  });
+
   it("is exactly { model, messages }, under the playground's own key", () => {
     writePlaygroundTranscript({
       model: "qwen3-14b",

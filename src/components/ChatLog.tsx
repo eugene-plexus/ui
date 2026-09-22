@@ -3,11 +3,13 @@
 import { Children, isValidElement, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Pencil, RotateCcw } from "lucide-react";
 
 import { CopyButton } from "@/components/CopyButton";
 import { JumpToBottomButton } from "@/components/JumpToBottomButton";
 import { argumentsParse, exampleResultFor } from "@/lib/diagnostic";
-import type { ChatCompletionMessage, ToolCall } from "@/lib/types";
+import type { ToolCall } from "@/lib/types";
+import type { PlaygroundMessage } from "@/lib/playgroundTranscript";
 import { useAutoScroll } from "@/lib/useAutoScroll";
 
 export interface ToolResult {
@@ -39,7 +41,7 @@ export function ChatLog({
   onEditUserMessage,
   onToolResults,
 }: {
-  messages: ChatCompletionMessage[];
+  messages: PlaygroundMessage[];
   pending: boolean;
   /** Re-run the last turn. Omitted while there is nothing to re-run. */
   onRegenerate?: () => void;
@@ -130,7 +132,7 @@ function ChatBubble({
   onRegenerate,
   onEdit,
 }: {
-  message: ChatCompletionMessage;
+  message: PlaygroundMessage;
   onRegenerate?: () => void;
   onEdit?: () => void;
 }) {
@@ -152,9 +154,25 @@ function ChatBubble({
   // a fetch. The bytes still never appear as TEXT anywhere.
   const images = parts?.filter((part) => part.type === "image_url") ?? [];
   const calls = message.role === "assistant" ? (message.tool_calls ?? []) : [];
+  const generated = typeof message.generatedAt === "string" ? new Date(message.generatedAt) : null;
+  const generationTime = generated && Number.isFinite(generated.getTime()) ? generated : null;
+  const timestamp =
+    message.role === "assistant"
+      ? generationTime
+        ? `Generated: ${generationTime.toLocaleString(undefined, { dateStyle: "long", timeStyle: "long" })}`
+        : "Generation time wasn't recorded for this response."
+      : undefined;
 
   return (
-    <div className={`group flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+    <div
+      title={timestamp}
+      className={`group flex flex-col ${isUser ? "items-end" : "items-start"}`}
+    >
+      {message.role === "assistant" && generationTime && (
+        <time dateTime={generationTime.toISOString()} className="sr-only">
+          {timestamp}
+        </time>
+      )}
       {isTool ? (
         <div
           data-testid="tool-result-message"
@@ -222,15 +240,20 @@ function ChatBubble({
       >
         {/* The raw markdown, not the rendered text: what is useful about a
             reply from a coding model is its source. */}
-        <CopyButton text={text || JSON.stringify(calls, null, 2)} title="Copy this message" />
+        <CopyButton
+          iconOnly
+          text={text || JSON.stringify(calls, null, 2)}
+          title="Copy this message"
+        />
         {onEdit && (
           <button
             type="button"
             onClick={onEdit}
             title="Edit and resend, discarding everything after it"
+            aria-label="Edit"
             className="font-ui rounded-[var(--radius)] px-2 py-1 text-[0.6875rem] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
           >
-            Edit
+            <Pencil size={16} aria-hidden="true" />
           </button>
         )}
         {onRegenerate && (
@@ -238,9 +261,10 @@ function ChatBubble({
             type="button"
             onClick={onRegenerate}
             title="Ask again for this turn"
+            aria-label="Regenerate"
             className="font-ui rounded-[var(--radius)] px-2 py-1 text-[0.6875rem] text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
           >
-            Regenerate
+            <RotateCcw size={16} aria-hidden="true" />
           </button>
         )}
       </div>

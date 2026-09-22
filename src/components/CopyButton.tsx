@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Check, Copy, TriangleAlert } from "lucide-react";
 
 import { copyText } from "@/lib/clipboard";
 
@@ -18,11 +19,13 @@ export function CopyButton({
   label = "Copy",
   className = "",
   title,
+  iconOnly = false,
 }: {
   text: string;
   label?: string;
   className?: string;
   title?: string;
+  iconOnly?: boolean;
 }) {
   const [state, setState] = useState<CopyState>("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,13 +47,29 @@ export function CopyButton({
     <button
       type="button"
       onClick={() => void handleClick()}
-      title={title ?? (state === "failed" ? "Your browser refused the clipboard" : "Copy")}
+      title={
+        state === "failed"
+          ? "Your browser refused the clipboard"
+          : state === "copied"
+            ? "Copied"
+            : (title ?? "Copy")
+      }
       aria-live="polite"
       className={`font-ui rounded-[var(--radius)] px-2 py-1 text-[0.6875rem] transition-colors hover:bg-[color:var(--panel-hover)] ${
         state === "failed" ? "status-error" : "text-[color:var(--muted)]"
       } ${className}`}
     >
-      {state === "copied" ? "Copied" : state === "failed" ? "Couldn't copy" : label}
+      {iconOnly &&
+        (state === "copied" ? (
+          <Check size={16} aria-hidden="true" />
+        ) : state === "failed" ? (
+          <TriangleAlert size={16} aria-hidden="true" />
+        ) : (
+          <Copy size={16} aria-hidden="true" />
+        ))}
+      <span className={iconOnly ? "sr-only" : undefined}>
+        {state === "copied" ? "Copied" : state === "failed" ? "Couldn't copy" : label}
+      </span>
     </button>
   );
 }

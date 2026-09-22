@@ -22,6 +22,7 @@
 
 import { ApiError, api, postStream, problemMessage } from "./api";
 import { normalizeBaseUrl } from "./diagnostic";
+import { requestMessages } from "./playgroundTranscript";
 import type {
   ChatCompletionChunk,
   ChatCompletionMessage,
@@ -169,7 +170,11 @@ export interface CompletionOptions {
  * byte-for-byte what the playground sent before any of this existed.
  */
 export function buildChatRequest(opts: CompletionOptions, stream: boolean): ChatCompletionRequest {
-  const body: ChatCompletionRequest = { model: opts.model, messages: opts.messages, stream };
+  const body: ChatCompletionRequest = {
+    model: opts.model,
+    messages: requestMessages(opts.messages),
+    stream,
+  };
   if (opts.temperature != null) body.temperature = opts.temperature;
   if (opts.maxTokens != null) body.max_tokens = opts.maxTokens;
   if (opts.topP != null) body.top_p = opts.topP;
