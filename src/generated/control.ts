@@ -1810,6 +1810,19 @@ export interface components {
          *     and without an adapter there is nothing that knows how to start
          *     it or tell when it is ready.
          *
+         *     `kev` drives upstream `python -m kev.serve` and loads Kev
+         *     decision checkpoints (`kev_checkpoint` format) — a decision
+         *     model, not a chat model: its server speaks the System One
+         *     protocol and its companion driver serves `POST /v1/decide`,
+         *     never completions. Like vLLM it loads the model *before*
+         *     binding its port (read off `kev/serve.py` at the pinned commit
+         *     and observed live 2026-09-22), so alive-and-refusing is
+         *     `loading`; unlike every other engine it handles one request at
+         *     a time, which its driver advertises as a concurrency limit.
+         *     Its bind is hardcoded to loopback upstream, which is the
+         *     posture Eugene wants: the gateway is the authenticated front
+         *     door.
+         *
          *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
          *     `vllm` drives upstream `vllm serve` and loads safetensors.
          *     `mlx` drives upstream `mlx_lm.server` and loads MLX-format
@@ -1843,7 +1856,7 @@ export interface components {
          *     are written for.
          * @enum {string}
          */
-        EngineKind: "llama_cpp" | "vllm" | "mlx";
+        EngineKind: "llama_cpp" | "vllm" | "mlx" | "kev";
         /**
          * @description Issued on successful login. The UI stores `sessionToken` as a
          *     Secure / HttpOnly / SameSite=Strict cookie or in memory; every

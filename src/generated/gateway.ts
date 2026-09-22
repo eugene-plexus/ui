@@ -397,6 +397,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/systemone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * TypeSafe-shaped typed decisions against local or hosted decision models.
+         * @description **The fourth front door: decisions, not text.** One state and a
+         *     map of named typed questions in; structured answers out — a
+         *     probability of yes (`noul`), a selection with a distribution
+         *     over named options (`choice`), a probability-weighted value over
+         *     ordered levels (`score`). The request and response vocabulary is
+         *     the **pinned TypeSafe System One protocol** verbatim
+         *     (docs.typesafe.ai/api, read 2026-09-22 —
+         *     `docs/design/decision-models.md` holds the pin and the measured
+         *     evidence), so a TypeSafe client changes its base URL and
+         *     nothing else. **The calling application owns any subsequent
+         *     action**: a decision response never executes a tool or changes
+         *     routing policy.
+         *
+         *     Like the Anthropic door it is a translation at the edge, not a
+         *     second routing engine: `model` is a public Eugene alias resolved
+         *     through the same routing table, admission and scopes as every
+         *     completion, and the substance travels to a driver's internal
+         *     `POST /v1/decide`. Only backends advertising
+         *     `capabilities.decision` are eligible; a chat request naming a
+         *     decision-only model, or a decision naming a chat-only model, is
+         *     a 400 whose message names the right door. **Hosted decision
+         *     providers are cloud-classified**: a `localOnly` key is refused
+         *     before any state leaves the machine, and a hosted provider is
+         *     never a fallback for a local one.
+         *
+         *     **Bounds are enforced before any backend work**: the body-size
+         *     limit every door shares, at least one and at most
+         *     `decisionMaxQuestions` (config, default 32) questions, `choice`
+         *     criteria of 1-255 options, `score` criteria of 2-10 ordered
+         *     levels, and fields the protocol does not define are refused
+         *     rather than dropped. Non-streaming, deliberately — initial
+         *     scope.
+         *
+         *     **A fired deadline is not permission to re-decide.** Refusals
+         *     before work cascade across eligible replicas exactly as
+         *     completions do; a timeout after possible execution answers 504
+         *     without silently sending the same decision to a different model,
+         *     and the outcome is recorded uncertain per A6b. A client
+         *     disconnect does not free the backend: known local work runs to
+         *     completion and capacity stays occupied until it does, because a
+         *     single-slot decision engine that is over-admitted holds capacity
+         *     nobody can free.
+         *
+         *     Errors use TypeSafe's own status vocabulary where one exists
+         *     (401, 422, 429) and this install's elsewhere. **SDK note carried
+         *     from the pin**: TypeSafe's SDKs retry automatically by default;
+         *     the documented client examples disable that, because a hidden
+         *     retry against a decision endpoint is a second decision nobody
+         *     asked for.
+         */
+        post: operations["createDecision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/drivers": {
         parameters: {
             query?: never;
@@ -893,7 +961,10 @@ export interface components {
              */
             context_length?: number;
             /**
-             * @description Which OpenAI surfaces this model can be sent to.
+             * @description Which surfaces this model can be sent to. `decisions` means
+             *     `POST /v1/systemone`; a decision-only model lists nothing
+             *     else, and a chat request naming it is refused with the
+             *     door's name.
              *
              *     OpenAI's own `/v1/models` does not say, which is why every
              *     RAG front-end makes you pick an embedding model from a
@@ -911,7 +982,7 @@ export interface components {
              *     surface, which is a backend that could not be reached rather
              *     than a model that does nothing.
              */
-            surfaces?: ("chat" | "embeddings")[];
+            surfaces?: ("chat" | "embeddings" | "decisions")[];
             /**
              * @description At least one backend confirms image input for its loaded model.
              *     Image requests route only to those backends, including fallback.
@@ -2015,6 +2086,83 @@ export interface components {
             };
         };
         /**
+         * @description The pinned TypeSafe System One request, verbatim — see
+         *     `POST /v1/systemone`. `model` is a public Eugene alias.
+         */
+        SystemOneRequest: {
+            /** @description Public model alias, resolved through the routing table. */
+            model: string;
+            /** @description What is being judged — text, or structured data. */
+            state: string | {
+                [key: string]: unknown;
+            } | unknown[];
+            questions: {
+                [key: string]: components["schemas"]["SystemOneQuestion"];
+            };
+        };
+        /**
+         * @description One typed question. `criteria`'s shape depends on `type` and is
+         *     validated against the pinned protocol before any backend work:
+         *     `noul` takes an optional `{true, false}` outcome map, `choice` a
+         *     required map of 1-255 option names to rubric text or null,
+         *     `score` a required array of 2-10 ordered level descriptions.
+         *     Unknown fields are refused, never dropped.
+         */
+        SystemOneQuestion: {
+            /** @enum {string} */
+            type: "noul" | "choice" | "score";
+            instructions: string | {
+                [key: string]: unknown;
+            } | unknown[];
+            /** @description Shape depends on `type`; see above. */
+            criteria?: unknown;
+        };
+        /**
+         * @description One answer, in TypeSafe's response vocabulary: `noul` carries
+         *     `noul`; `choice` carries `choice`, `probabilities` and
+         *     `confidence`; `score` carries `score`, `legend`, `probabilities`
+         *     and `confidence`. Validated at the driver before this gateway
+         *     forwards it — a malformed backend answer became a 502, not a
+         *     half-shaped object here.
+         */
+        SystemOneAnswer: {
+            /** @enum {string} */
+            type: "noul" | "choice" | "score";
+            noul?: number;
+            choice?: string;
+            score?: number;
+            legend?: {
+                [key: string]: string;
+            };
+            probabilities?: {
+                [key: string]: number;
+            };
+            confidence?: number;
+        };
+        /**
+         * @description Token accounting in TypeSafe's own field names. Reported as the
+         *     backend reported it; absent accounting stays absent.
+         */
+        SystemOneUsage: {
+            input_tokens?: number;
+            output_tokens?: number;
+        };
+        SystemOneResponse: {
+            /**
+             * @description The public alias that served the request — after a cascade
+             *     it names what answered, exactly as the chat doors do. The
+             *     backend's own model revision is preserved on the driver's
+             *     `reportedModel` for provenance and surfaced in
+             *     `x_eugene_plexus`.
+             */
+            model: string;
+            answers: {
+                [key: string]: components["schemas"]["SystemOneAnswer"];
+            };
+            usage?: components["schemas"]["SystemOneUsage"];
+            x_eugene_plexus?: components["schemas"]["CompletionRoutingInfo"];
+        };
+        /**
          * @description Error envelope for the two OpenAI-compatible operations. The
          *     rest of the gateway returns RFC 7807 `problem+json`; these two
          *     cannot, because OpenAI SDKs parse this shape to build their
@@ -2409,9 +2557,18 @@ export interface components {
          *     distinguishes them. `claude_code_cli` and `codex_cli` shell out
          *     to the respective CLIs, which is how a subscription the operator
          *     already pays for becomes just another backend.
+         *
+         *     `systemone_http` speaks the TypeSafe System One decision
+         *     protocol (`POST /v1/systemone`: a state and named typed
+         *     questions, answered with structured probabilities rather than
+         *     text) — a supervised Kev runtime, another System One-compatible
+         *     server, or TypeSafe's own hosted endpoint, distinguished by
+         *     `DriverInfo.provider` exactly as the chat protocols are. A
+         *     driver on this protocol serves decisions and not chat; see
+         *     `Capabilities.chatCapable`.
          * @enum {string}
          */
-        BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http";
+        BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http" | "systemone_http";
         TextContentPart: {
             /** @constant */
             type: "text";
@@ -3317,6 +3474,129 @@ export interface operations {
              * @description No backend answered within `requestTimeoutSeconds`. Not
              *     retried on a replica: a replica would take the same time on
              *     the same input.
+             */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    createDecision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemOneRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Every question answered and validated, in TypeSafe's
+             *     response shape: `model` (the public alias that served it),
+             *     `answers` keyed by the request's question names, and `usage`
+             *     with `input_tokens` / `output_tokens` as the backend
+             *     reported them (absent accounting stays absent rather than
+             *     being invented).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOneResponse"];
+                };
+            };
+            /**
+             * @description The named model exists and cannot decide (a chat model — the
+             *     message names `/v1/chat/completions`), or the request
+             *     violates the pinned protocol in a way no replica would
+             *     accept.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description Missing, malformed, expired or revoked credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description A valid client key that may not use this model, or a
+             *     `localOnly` key against a hosted decision provider —
+             *     refused before any state leaves the machine.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description No decision backend serves the named model. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description Request validation failure — TypeSafe's own status for a
+             *     malformed question, kept so a TypeSafe client's error
+             *     handling works unchanged.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description A client key over its rate or concurrency limit. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description Every eligible backend failed, or the backend returned
+             *     something that is not a valid decision — malformed output is
+             *     a backend error, never an invented answer.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description No answer within the deadline. Not retried on another
+             *     backend; the outcome is uncertain, not failed.
              */
             504: {
                 headers: {

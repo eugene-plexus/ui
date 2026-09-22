@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { ChatInput } from "@/components/ChatInput";
 import { ChatLog, type ToolResult } from "@/components/ChatLog";
 import { CopyButton } from "@/components/CopyButton";
+import { DecisionPanel } from "@/components/DecisionPanel";
 import { DiagnosticPanel, type GatewayMode } from "@/components/DiagnosticPanel";
 import { RequestReport } from "@/components/RequestReport";
 import { SamplingPanel } from "@/components/SamplingPanel";
@@ -144,6 +145,7 @@ function pageLocation(): PageLocation {
 export default function PlaygroundPage() {
   const [messages, setMessages] = useState<PlaygroundMessage[]>([]);
   const [models, setModels] = useState<Model[]>([]);
+  const [decisionModels, setDecisionModels] = useState<string[]>([]);
   const [model, setModel] = useState<string | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [turnInfo, setTurnInfo] = useState<TurnInfo | null>(null);
@@ -279,6 +281,13 @@ export default function PlaygroundPage() {
         return !surfaces || surfaces.includes("chat");
       });
       setModels(data);
+      // The decision surface gets its own panel below the transcript;
+      // decision-only models never appear in the chat picker.
+      setDecisionModels(
+        (list.data ?? [])
+          .filter((m) => m.x_eugene_plexus?.surfaces?.includes("decisions"))
+          .map((m) => m.id),
+      );
       setModelsError(null);
       setModel((current) => {
         if (current && data.some((m) => m.id === current)) return current;
@@ -600,6 +609,11 @@ export default function PlaygroundPage() {
             <div className="flex sm:col-span-2">
               <SamplingPanel draft={sampling} onDraft={setSampling} error={samplingError} />
             </div>
+            {decisionModels.length > 0 && (
+              <div className="sm:col-span-2">
+                <DecisionPanel models={decisionModels} />
+              </div>
+            )}
           </div>
         )}
 

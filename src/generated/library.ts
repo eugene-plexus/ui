@@ -1035,6 +1035,7 @@ export interface components {
             files?: components["schemas"]["ModelFile"][];
             gguf?: components["schemas"]["GgufDetail"];
             safetensors?: components["schemas"]["SafetensorsDetail"];
+            kev?: components["schemas"]["KevCheckpointDetail"];
             /**
              * @description How many launch profiles are saved against this model. On
              *     the list so the browser can badge a tuned model without
@@ -1113,6 +1114,14 @@ export interface components {
              *     with no template is a common and confusing failure.
              */
             chatTemplate?: boolean;
+            /**
+             * @description A decision model: it answers typed questions with structured
+             *     probabilities through `POST /v1/systemone`, and it does not
+             *     chat — `chat` is false whenever this is true, and offering
+             *     it a conversation fails clearly instead of producing prose.
+             *     True for a `kev_checkpoint`.
+             */
+            decision?: boolean;
         };
         /** @description One file belonging to a model, and what part it plays. */
         ModelFile: {
@@ -1267,6 +1276,30 @@ export interface components {
             bits?: number;
             /** @description Quantization group size (`group_size`), when declared. */
             groupSize?: number;
+        };
+        /**
+         * @description Kev-checkpoint-specific metadata. Present iff `format` is
+         *     `kev_checkpoint`. The point of recording it is
+         *     reproducibility: a checkpoint is only half a runnable model —
+         *     the loader downloads the named base separately — so an operator
+         *     restoring a node offline needs to know exactly which base
+         *     weights, at which revision, the launch will ask for. The
+         *     adapter, decision head, tokenizer and calibration/provenance
+         *     files are all in `files` with their roles; the license rides the
+         *     checkpoint's own metadata on disk.
+         */
+        KevCheckpointDetail: {
+            /**
+             * @description The base weights the adapter applies to, as
+             *     `adapter_config.json` names them (e.g.
+             *     `Qwen/Qwen3.5-0.8B-Base`). The half of the model this
+             *     directory does NOT contain.
+             */
+            baseModel?: string;
+            /** @description HuggingFace repo this came from, when the layout says so. */
+            repoId?: string;
+            /** @description Snapshot revision, when the checkpoint sits in a HF cache. */
+            revision?: string;
         };
         /**
          * @description Sampling parameters the model's author put in the file
@@ -2594,9 +2627,8 @@ export interface components {
         };
         /**
          * @description On-disk format of a model. A dimension of the data model rather
-         *     than an assumption (locked 2026-09-08): both are implemented at
-         *     v0.1, and the differences are load-bearing rather than
-         *     cosmetic.
+         *     than an assumption (locked 2026-09-08), and the differences are
+         *     load-bearing rather than cosmetic.
          *
          *     * `gguf` — a single file, quantized, carrying its own metadata
          *       and tokenizer. Large models may be **split** into
@@ -2608,6 +2640,17 @@ export interface components {
          *       weight files plus tokenizer files. Unquantized in practice,
          *       so **no quant tier** — a safetensors model is sized, not
          *       tiered, and the quant fields exist only on the GGUF side.
+         *     * `kev_checkpoint` — a directory holding a rank-limited LoRA
+         *       adapter (`adapter_config.json` + `adapter_model.safetensors`),
+         *       a pointer/decision head (`head.pt`), tokenizer files and
+         *       calibration/provenance artifacts (`provenance.json`), loaded
+         *       by Kev's own loader on top of a separately downloaded base
+         *       model named in the adapter config. Measured off the published
+         *       `jaredpalmer/kev-0.8b` checkpoint on 2026-09-22. **Not an
+         *       ordinary adapter**: a plain LoRA directory is skipped by the
+         *       scanner on purpose, and the decision head is what makes this
+         *       one a launchable model instead. Decision-only —
+         *       `ModelCapabilities.decision`, never `chat`.
          *
          *     Shared because it appears on both sides of a join: a library
          *     entry declares what a model *is*, and
@@ -2617,7 +2660,7 @@ export interface components {
          *     descriptor rather than from anything the library knows.
          * @enum {string}
          */
-        ModelFormat: "gguf" | "safetensors";
+        ModelFormat: "gguf" | "safetensors" | "kev_checkpoint";
         /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
          *     Eugene Plexus component returns this for 4xx / 5xx responses.
@@ -2665,6 +2708,19 @@ export interface components {
          *     and without an adapter there is nothing that knows how to start
          *     it or tell when it is ready.
          *
+         *     `kev` drives upstream `python -m kev.serve` and loads Kev
+         *     decision checkpoints (`kev_checkpoint` format) — a decision
+         *     model, not a chat model: its server speaks the System One
+         *     protocol and its companion driver serves `POST /v1/decide`,
+         *     never completions. Like vLLM it loads the model *before*
+         *     binding its port (read off `kev/serve.py` at the pinned commit
+         *     and observed live 2026-09-22), so alive-and-refusing is
+         *     `loading`; unlike every other engine it handles one request at
+         *     a time, which its driver advertises as a concurrency limit.
+         *     Its bind is hardcoded to loopback upstream, which is the
+         *     posture Eugene wants: the gateway is the authenticated front
+         *     door.
+         *
          *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
          *     `vllm` drives upstream `vllm serve` and loads safetensors.
          *     `mlx` drives upstream `mlx_lm.server` and loads MLX-format
@@ -2698,7 +2754,7 @@ export interface components {
          *     are written for.
          * @enum {string}
          */
-        EngineKind: "llama_cpp" | "vllm" | "mlx";
+        EngineKind: "llama_cpp" | "vllm" | "mlx" | "kev";
         /**
          * @description One directory the library catalogues, and where other machines
          *     find it (2026-09-14).

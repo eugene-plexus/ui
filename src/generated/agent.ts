@@ -3696,6 +3696,19 @@ export interface components {
          *     and without an adapter there is nothing that knows how to start
          *     it or tell when it is ready.
          *
+         *     `kev` drives upstream `python -m kev.serve` and loads Kev
+         *     decision checkpoints (`kev_checkpoint` format) — a decision
+         *     model, not a chat model: its server speaks the System One
+         *     protocol and its companion driver serves `POST /v1/decide`,
+         *     never completions. Like vLLM it loads the model *before*
+         *     binding its port (read off `kev/serve.py` at the pinned commit
+         *     and observed live 2026-09-22), so alive-and-refusing is
+         *     `loading`; unlike every other engine it handles one request at
+         *     a time, which its driver advertises as a concurrency limit.
+         *     Its bind is hardcoded to loopback upstream, which is the
+         *     posture Eugene wants: the gateway is the authenticated front
+         *     door.
+         *
          *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
          *     `vllm` drives upstream `vllm serve` and loads safetensors.
          *     `mlx` drives upstream `mlx_lm.server` and loads MLX-format
@@ -3729,12 +3742,11 @@ export interface components {
          *     are written for.
          * @enum {string}
          */
-        EngineKind: "llama_cpp" | "vllm" | "mlx";
+        EngineKind: "llama_cpp" | "vllm" | "mlx" | "kev";
         /**
          * @description On-disk format of a model. A dimension of the data model rather
-         *     than an assumption (locked 2026-09-08): both are implemented at
-         *     v0.1, and the differences are load-bearing rather than
-         *     cosmetic.
+         *     than an assumption (locked 2026-09-08), and the differences are
+         *     load-bearing rather than cosmetic.
          *
          *     * `gguf` — a single file, quantized, carrying its own metadata
          *       and tokenizer. Large models may be **split** into
@@ -3746,6 +3758,17 @@ export interface components {
          *       weight files plus tokenizer files. Unquantized in practice,
          *       so **no quant tier** — a safetensors model is sized, not
          *       tiered, and the quant fields exist only on the GGUF side.
+         *     * `kev_checkpoint` — a directory holding a rank-limited LoRA
+         *       adapter (`adapter_config.json` + `adapter_model.safetensors`),
+         *       a pointer/decision head (`head.pt`), tokenizer files and
+         *       calibration/provenance artifacts (`provenance.json`), loaded
+         *       by Kev's own loader on top of a separately downloaded base
+         *       model named in the adapter config. Measured off the published
+         *       `jaredpalmer/kev-0.8b` checkpoint on 2026-09-22. **Not an
+         *       ordinary adapter**: a plain LoRA directory is skipped by the
+         *       scanner on purpose, and the decision head is what makes this
+         *       one a launchable model instead. Decision-only —
+         *       `ModelCapabilities.decision`, never `chat`.
          *
          *     Shared because it appears on both sides of a join: a library
          *     entry declares what a model *is*, and
@@ -3755,7 +3778,7 @@ export interface components {
          *     descriptor rather than from anything the library knows.
          * @enum {string}
          */
-        ModelFormat: "gguf" | "safetensors";
+        ModelFormat: "gguf" | "safetensors" | "kev_checkpoint";
         /**
          * @description The kind of value a config field holds. The UI uses this to pick
          *     a renderer (text input, dropdown, password field, etc.).

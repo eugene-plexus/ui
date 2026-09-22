@@ -904,6 +904,7 @@ function engineWord(engine: string): string {
   if (engine === "llama_cpp") return "llama.cpp";
   if (engine === "vllm") return "vLLM";
   if (engine === "mlx") return "MLX";
+  if (engine === "kev") return "Kev";
   return engine;
 }
 
