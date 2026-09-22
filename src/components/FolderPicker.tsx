@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, api, describeError } from "@/lib/api";
 import type { DirectoryListing } from "@/lib/types";
@@ -72,6 +72,16 @@ export function FolderPicker({
     void open(initialPath ?? null);
   }, [open, initialPath]);
 
+  // A dialog that takes focus hands it back. Opened from a Browse button
+  // in the middle of a long Config form, the picker otherwise closes with
+  // focus on <body>, and a keyboard user starts again from the top.
+  const pathRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    pathRef.current?.focus();
+    return () => opener?.focus?.();
+  }, []);
+
   const current = listing?.path ?? null;
 
   return (
@@ -80,6 +90,12 @@ export function FolderPicker({
       role="dialog"
       aria-modal="true"
       aria-label="Choose a directory"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+        }
+      }}
     >
       <div className="flex max-h-[80vh] w-full max-w-xl flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] shadow-xl">
         <header className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] px-4 py-3">
@@ -109,6 +125,7 @@ export function FolderPicker({
           }}
         >
           <input
+            ref={pathRef}
             type="text"
             value={typed}
             spellCheck={false}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { FolderPicker } from "@/components/FolderPicker";
 import {
@@ -67,11 +67,25 @@ export function ConfigFieldInput({
   // here rather than in the branch that renders it, because hooks
   // cannot live inside `renderInput`.
   const [browsingPath, setBrowsingPath] = useState(false);
+  // The field's name has to reach its input, or a screen reader announces
+  // "edit text, blank" for every row of every Config page and clicking a
+  // label focuses nothing. A single control gets `<label htmlFor>`; the
+  // editors that are several controls (lists, mappings, folders) are a
+  // group named by the label, since `htmlFor` can only name one element.
+  const inputId = useId();
+  const labelId = `${inputId}-label`;
+  const descriptionId = `${inputId}-description`;
+  const compound = COMPOUND_VALUE_TYPES.has(field.valueType);
+  const controlProps = {
+    id: inputId,
+    "aria-describedby": field.description ? descriptionId : undefined,
+  };
 
   function renderInput() {
     if (field.valueType === "boolean") {
       return (
         <input
+          {...controlProps}
           type="checkbox"
           checked={Boolean(value)}
           onChange={(e) => onChange(e.target.checked)}
@@ -85,6 +99,7 @@ export function ConfigFieldInput({
       const labels = field.enumLabels ?? [];
       return (
         <select
+          {...controlProps}
           value={(value as string | undefined) ?? ""}
           onChange={(e) => onChange(e.target.value)}
           disabled={pending}
@@ -108,6 +123,7 @@ export function ConfigFieldInput({
     ) {
       return (
         <input
+          {...controlProps}
           type="number"
           value={(value as number | string | undefined) ?? ""}
           step={field.valueType === "integer" ? 1 : "any"}
@@ -131,6 +147,7 @@ export function ConfigFieldInput({
     if (field.valueType === "secret") {
       return (
         <input
+          {...controlProps}
           type="password"
           value={(value as string | undefined) ?? ""}
           placeholder={value === "<redacted>" ? "<redacted — type to overwrite>" : ""}
@@ -250,6 +267,7 @@ export function ConfigFieldInput({
         currentNorm === "" || matches.some((m) => normalizeUrl(m.url) === currentNorm);
       return (
         <select
+          {...controlProps}
           value={currentNorm}
           onChange={(e) => onChange(e.target.value)}
           disabled={pending}
@@ -290,6 +308,7 @@ export function ConfigFieldInput({
       <>
         <div className="flex gap-2">
           <input
+            {...controlProps}
             type="text"
             value={(value as string | undefined) ?? ""}
             pattern={field.pattern ?? undefined}
@@ -335,10 +354,17 @@ export function ConfigFieldInput({
   return (
     <div className="grid grid-cols-1 items-start gap-2 border-b border-[color:var(--border)] py-3 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-4">
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium">
-          {field.label}
-          {field.required && <span className="text-status-error ml-1">*</span>}
-        </label>
+        {compound ? (
+          <span id={labelId} className="text-sm font-medium">
+            {field.label}
+            {field.required && <span className="text-status-error ml-1">*</span>}
+          </span>
+        ) : (
+          <label id={labelId} htmlFor={inputId} className="text-sm font-medium">
+            {field.label}
+            {field.required && <span className="text-status-error ml-1">*</span>}
+          </label>
+        )}
         <code className="font-mono text-[0.625rem] text-[color:var(--muted)]">{field.key}</code>
         {field.requiresRestart && (
           <span className="status-warn badge rounded-[var(--radius)] px-1.5 py-0.5 text-[0.5625rem] tracking-wider uppercase">
@@ -346,10 +372,17 @@ export function ConfigFieldInput({
           </span>
         )}
       </div>
-      <div className="flex flex-col gap-2">
+      <div
+        className="flex flex-col gap-2"
+        role={compound ? "group" : undefined}
+        aria-labelledby={compound ? labelId : undefined}
+        aria-describedby={compound && field.description ? descriptionId : undefined}
+      >
         {renderInput()}
         {field.description && (
-          <p className="text-sm leading-relaxed text-[color:var(--muted)]">{field.description}</p>
+          <p id={descriptionId} className="text-sm leading-relaxed text-[color:var(--muted)]">
+            {field.description}
+          </p>
         )}
         {field.key === "advertiseUrl" && (
           // `cross-link-related-settings` (Troy, standing): the other
@@ -371,6 +404,16 @@ export function ConfigFieldInput({
     </div>
   );
 }
+
+/** Value types whose editor is several controls rather than one input. */
+const COMPOUND_VALUE_TYPES = new Set<string>([
+  "path_list",
+  "url_list",
+  "library_folders",
+  "path_mappings",
+  "share_credentials",
+  "model_slots",
+]);
 
 /**
  * Topology URLs come back with a trailing slash (pydantic's AnyUrl

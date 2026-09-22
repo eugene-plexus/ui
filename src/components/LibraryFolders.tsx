@@ -20,6 +20,7 @@ import {
 } from "@/lib/libraryReach";
 import { type TargetNode, useTargetNode } from "@/lib/nodeBudget";
 import type { LibraryFolder, LibraryFolderReach, PathMapping } from "@/lib/types";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 /**
  * The Library's folders, and how every node reaches them (2026-09-14).
@@ -211,6 +212,10 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
         .map((r) => [r.from, r.to])
         .sort(),
     );
+
+  // Both halves of the page are drafts: the Library's folders and this
+  // node's overrides. Either one unsaved is worth asking about.
+  useUnsavedChanges(dirty || overridesDirty);
 
   async function testOverrides() {
     if (!selectedNode) return;
@@ -808,6 +813,19 @@ function NodeColumn({
   );
 }
 
+/**
+ * The cell's verdict as a colour, and as a word for whoever cannot see
+ * the colour. The note beside it says what was found ("missing",
+ * "inherited · 3 models") but not always whether that is good, which is
+ * exactly what the colour was carrying alone.
+ */
+const TONE_WORD: Record<CellTone, string> = {
+  ok: "Reachable.",
+  warn: "Needs a look.",
+  error: "Problem.",
+  unknown: "Not checked yet.",
+};
+
 function Dot({ tone }: { tone: CellTone }) {
   const colour =
     tone === "ok"
@@ -818,11 +836,14 @@ function Dot({ tone }: { tone: CellTone }) {
           ? "var(--status-error, #f85149)"
           : "var(--muted)";
   return (
-    <span
-      aria-hidden="true"
-      className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
-      style={{ backgroundColor: colour }}
-    />
+    <>
+      <span
+        aria-hidden="true"
+        className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
+        style={{ backgroundColor: colour }}
+      />
+      <span className="sr-only">{TONE_WORD[tone]} </span>
+    </>
   );
 }
 

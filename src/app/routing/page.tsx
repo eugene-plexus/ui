@@ -56,6 +56,7 @@ import {
   type ModelSlot,
 } from "@/lib/modelSlots";
 import type { ConfigUpdateResult, RoutingTableView } from "@/lib/types";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 const DATALIST_ID = "routing-known-models";
 
@@ -85,8 +86,18 @@ export default function RoutingPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [newListName, setNewListName] = useState("");
+  // Set when a Refresh arrived while the draft had edits and so did not
+  // replace them; cleared by the next edit-free load.
+  const [keptDraft, setKeptDraft] = useState(false);
 
-  const load = useCallback(async () => {
+  /**
+   * Read the lists and the routing table. `keepDraft` is Refresh with
+   * unsaved edits on screen: it re-reads what the gateway has and what it
+   * resolves to, and leaves the edits alone. It used to replace the draft
+   * with the server's lists, silently — so the button for "show me the
+   * latest routing" was also a button for "throw away what I just did".
+   */
+  const load = useCallback(async (keepDraft = false) => {
     setLoadError(null);
     try {
       const doc = await api.get<Record<string, unknown>>("gateway", "/v1/config");
@@ -94,7 +105,8 @@ export default function RoutingPage() {
       setRawValue(doc.modelSlots ?? []);
       setParseError(parsed.error);
       setServerSlots(parsed.slots);
-      setDraft(parsed.slots.map((s) => ({ ...s, targets: [...s.targets] })));
+      if (!keepDraft) setDraft(parsed.slots.map((s) => ({ ...s, targets: [...s.targets] })));
+      setKeptDraft(keepDraft);
     } catch (e) {
       setLoadError(describeError(e));
     }
@@ -123,6 +135,7 @@ export default function RoutingPage() {
   const problems = useMemo(() => slotProblems(draft), [draft]);
   const warnings = useMemo(() => slotWarnings(draft), [draft]);
   const dirty = useMemo(() => !slotsEqual(draft, serverSlots), [draft, serverSlots]);
+  useUnsavedChanges(dirty);
   const known = useMemo(() => knownModelIds(routing), [routing]);
   const unconfigured = useMemo(() => unconfiguredServedModels(routing, draft), [routing, draft]);
 
@@ -153,6 +166,7 @@ export default function RoutingPage() {
     setDraft(serverSlots.map((s) => ({ ...s, targets: [...s.targets] })));
     setSaveState(null);
     setSaveError(null);
+    setKeptDraft(false);
   }, [serverSlots]);
 
   const addList = useCallback(
@@ -183,7 +197,7 @@ export default function RoutingPage() {
   return (
     <AppShell
       controls={
-        <button type="button" onClick={() => void load()} className={smallButtonClass}>
+        <button type="button" onClick={() => void load(dirty)} className={smallButtonClass}>
           Refresh
         </button>
       }
@@ -394,6 +408,11 @@ export default function RoutingPage() {
                 </button>
                 {!dirty && !saveState && !saveError && (
                   <span className="text-sm text-[color:var(--muted)]">No unsaved changes.</span>
+                )}
+                {dirty && keptDraft && (
+                  <span className="text-sm text-[color:var(--muted)]" role="status">
+                    Refreshed, and kept your unsaved changes. Revert shows the saved lists.
+                  </span>
                 )}
               </div>
 

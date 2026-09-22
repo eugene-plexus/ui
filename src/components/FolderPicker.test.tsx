@@ -71,6 +71,24 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("FolderPicker keyboard", () => {
+  it("opens with focus in the path box, closes on Escape, and hands focus back", async () => {
+    const onClose = vi.fn();
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const { unmount } = render(
+      <FolderPicker target="library" onPick={() => {}} onClose={onClose} />,
+    );
+    expect(screen.getByRole("textbox", { name: "Path" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+});
+
 describe("FolderPicker", () => {
   it("starts at the roots, names the host, descends, and hands back the listed folder", async () => {
     const onPick = vi.fn();

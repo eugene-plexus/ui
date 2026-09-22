@@ -3,10 +3,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { api, describeError } from "@/lib/api";
 import { configGroups } from "@/lib/configPresentation";
 import { parseFolders } from "@/lib/libraryReach";
 import { formatBytesShort } from "@/lib/tasks";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import type { ProxyTarget } from "@/lib/config";
 import type {
   ConfigDocument,
@@ -55,6 +57,12 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // A save that fails is NOT a load that failed. It used to be stored as
+  // one, and the load-error branch below replaces the whole editor with
+  // "Failed to load …" — so the one moment somebody has typed something
+  // worth keeping was the moment the form, and every typed value in it,
+  // disappeared behind a message about the wrong thing.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null);
   const [testStatus, setTestStatus] = useState<ConfigTestResult | null>(null);
   const [restart, setRestart] = useState<RestartState>({ phase: "idle" });
@@ -84,6 +92,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
       setLoading(true);
       setShowMore(false);
       setLoadError(null);
+      setSaveError(null);
       setSaveStatus(null);
       try {
         const [schemaResp, docResp] = await Promise.all([
@@ -158,6 +167,14 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
     return keys;
   }, [serverDoc, draft]);
 
+  useUnsavedChanges(dirtyKeys.size > 0);
+
+  const labels = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const f of schema?.fields ?? []) out[f.key] = f.label;
+    return out;
+  }, [schema]);
+
   /**
    * Field-change handler. Most fields just merge into draft. The
    * Provider field is special: its value gates which downstream fields
@@ -174,6 +191,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
     // failure. Per ops feedback, clear on every action.
     setTestStatus(null);
     setSaveStatus(null);
+    setSaveError(null);
     if (fieldKey !== "provider" || !schema) {
       setDraft((prev) => ({ ...prev, [fieldKey]: value }));
       return;
@@ -210,6 +228,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
     if (!schema || dirtyKeys.size === 0) return;
     setSaving(true);
     setSaveStatus(null);
+    setSaveError(null);
     // The test banner reflects an older draft; clearing it avoids a
     // stale "fail" sitting next to a successful save.
     setTestStatus(null);
@@ -259,10 +278,20 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         draftCacheRef.current = { [newProvider]: snapshot };
       }
     } catch (e) {
-      setLoadError(formatError(e));
+      // The draft stays exactly as typed, so Save can simply be pressed
+      // again once whatever refused it is fixed.
+      setSaveError(formatError(e));
     } finally {
       setSaving(false);
     }
+  }
+
+  function discard() {
+    if (!serverDoc) return;
+    setDraft({ ...(serverDoc as Record<string, unknown>) });
+    setSaveStatus(null);
+    setSaveError(null);
+    setTestStatus(null);
   }
 
   async function test() {
@@ -411,6 +440,17 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
           <span className="text-sm text-[color:var(--muted)]">
             {dirtyKeys.size === 0 ? "no changes" : `${dirtyKeys.size} change(s)`}
           </span>
+          {dirtyKeys.size > 0 && (
+            <ConfirmButton
+              label="Discard"
+              confirmLabel="Discard changes"
+              prompt="Put every field back as it was saved?"
+              onConfirm={discard}
+              disabled={saving}
+              testId="config-discard"
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+            />
+          )}
           <button
             type="button"
             onClick={test}
@@ -432,7 +472,16 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
       </header>
 
       {testStatus && <TestStatusBanner status={testStatus} />}
-      {saveStatus && <SaveStatusBanner status={saveStatus} />}
+      {saveError && (
+        <div
+          role="alert"
+          className="status-error border-b px-4 py-3 text-sm"
+          data-testid="config-save-error"
+        >
+          Could not save. Your changes are still here, so you can try again. {saveError}
+        </div>
+      )}
+      {saveStatus && <SaveStatusBanner status={saveStatus} labels={labels} />}
 
       <div className="flex-1 overflow-y-auto p-4">
         {renderCategories(groups.common)}
@@ -460,10 +509,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
 
       {/* v0.2.x: RestartRequiredModal removed — save() auto-triggers
           performRestart() when the patch requires it, and the progress
-          modal below renders the in-flight state. The Modal definition
-          stays in the file for the day we add a "restart later"
-          escape hatch back, but it's no longer reachable in normal
-          flow. */}
+          modal below renders the in-flight state. */}
       {restart.phase !== "idle" && (
         <RestartProgressModal
           phase={restart.phase}
@@ -475,28 +521,47 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   );
 }
 
-function SaveStatusBanner({ status }: { status: SaveStatus }) {
+/**
+ * What a save did, in the words the form uses.
+ *
+ * The server answers with keys (`modelRoots`), which is right for the
+ * wire and wrong for a person who just edited a field called "Model
+ * folders". The key stays one hover away, as a title, for whoever is
+ * matching the screen against a config file.
+ */
+function SaveStatusBanner({
+  status,
+  labels,
+}: {
+  status: SaveStatus;
+  labels: Record<string, string>;
+}) {
+  const name = (key: string) => (
+    <span key={key} title={key}>
+      {labels[key] ?? key}
+    </span>
+  );
+  const list = (keys: string[]) =>
+    keys.flatMap((k, i) => (i === 0 ? [name(k)] : [<span key={`${k}-sep`}>, </span>, name(k)]));
   return (
-    <div className="border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-3 text-sm">
+    <div
+      role="status"
+      className="border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-3 text-sm"
+    >
       {status.applied.length > 0 && (
-        <p className="text-status-success">
-          applied: <span className="font-mono">{status.applied.join(", ")}</span>
-        </p>
+        <p className="text-status-success">Saved: {list(status.applied)}</p>
       )}
       {status.rejected.length > 0 && (
         <ul className="text-status-error mt-1">
           {status.rejected.map((r) => (
             <li key={r.key}>
-              <span className="font-mono">{r.key}</span>: {r.message}
+              {name(r.key)}: {r.message}
             </li>
           ))}
         </ul>
       )}
       {status.requiresRestart && (
-        <p className="text-status-warn mt-1">
-          restart required for:{" "}
-          <span className="font-mono">{status.pendingRestart.join(", ")}</span>
-        </p>
+        <p className="text-status-warn mt-1">Restart needed for: {list(status.pendingRestart)}</p>
       )}
     </div>
   );
@@ -546,8 +611,10 @@ function RestartProgressModal({
         : "text-status-warn";
   const dismissable = phase === "back" || phase === "timeout" || phase === "error";
   return (
-    <ModalScrim>
-      <h3 className={`text-sm font-semibold ${tone}`}>{heading}</h3>
+    <ModalScrim labelledBy="restart-progress-heading">
+      <h3 id="restart-progress-heading" className={`text-sm font-semibold ${tone}`}>
+        {heading}
+      </h3>
       {message && (
         <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">{message}</p>
       )}
@@ -566,10 +633,16 @@ function RestartProgressModal({
   );
 }
 
-function ModalScrim({ children }: { children: React.ReactNode }) {
+function ModalScrim({ children, labelledBy }: { children: React.ReactNode; labelledBy: string }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[28rem] max-w-[90vw] rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={labelledBy}
+        aria-live="polite"
+        className="w-[28rem] max-w-[90vw] rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-xl"
+      >
         {children}
       </div>
     </div>

@@ -211,6 +211,27 @@ describe("reordering", () => {
     ]);
   });
 
+  it("keeps an unsaved reorder when Refresh re-reads the gateway", async () => {
+    const card = await renderPage();
+    const user = userEvent.setup();
+    await user.click(within(card).getByRole("button", { name: "Try qwen3-coder-30b later" }));
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByText(/kept your unsaved changes/)).toBeInTheDocument());
+    const rows = within(screen.getByTestId("routing-slot")).getAllByTestId("target-row");
+    expect(within(rows[0]!).getByRole("combobox")).toHaveValue("claude");
+  });
+
+  it("asks before leaving with an unsaved reorder", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const card = await renderPage();
+    const user = userEvent.setup();
+    await user.click(within(card).getByRole("button", { name: "Try qwen3-coder-30b later" }));
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    confirm.mockRestore();
+  });
+
   it("disables the edge moves", async () => {
     const card = await renderPage();
     expect(
