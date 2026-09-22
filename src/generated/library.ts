@@ -1205,10 +1205,14 @@ export interface components {
         };
         /**
          * @description Safetensors-specific metadata. Present iff `format` is
-         *     `safetensors`. **No quant fields** — a safetensors model is
-         *     sized, not tiered.
+         *     `safetensors`. **No quant tier** — a safetensors model is
+         *     sized, not tiered. The one exception to "no quant fields" is
+         *     `mlxQuantization` below, which is a conversion marker rather
+         *     than a tier: it says which loader the directory was prepared
+         *     for, not how good the weights are.
          */
         SafetensorsDetail: {
+            mlxQuantization?: components["schemas"]["MlxQuantization"];
             /**
              * @description Dominant tensor dtype as the header declares it, e.g.
              *     `"BF16"`, `"F16"`, `"F32"`. The nearest thing to a quant
@@ -1239,6 +1243,30 @@ export interface components {
             revision?: string;
             /** @description Absolute path to `config.json`, the file that made this a model. */
             configPath?: string;
+        };
+        /**
+         * @description Present when the directory's `config.json` carries an MLX-style
+         *     top-level `quantization` block — the marker `mlx_lm.convert`
+         *     writes and the one signal that distinguishes an MLX-converted
+         *     directory from a vanilla HF safetensors export (which spells
+         *     its quantization `quantization_config`, a different key).
+         *     Load-bearing for engine choice, because **safetensors alone
+         *     does not prove MLX compatibility** and an MLX-quantized
+         *     directory packs its weights as integer tensors that no other
+         *     engine here can load.
+         *
+         *     Two honest caveats, recorded rather than papered over: an
+         *     *unquantized* MLX conversion carries no such block and reads as
+         *     a plain safetensors directory — absence means unknown, not
+         *     incompatible — and `parameters` for an MLX-quantized directory
+         *     counts packed storage elements rather than model parameters, so
+         *     per-parameter arithmetic must not be built on it.
+         */
+        MlxQuantization: {
+            /** @description Bits per weight, as the block declares it (e.g. 4). */
+            bits?: number;
+            /** @description Quantization group size (`group_size`), when declared. */
+            groupSize?: number;
         };
         /**
          * @description Sampling parameters the model's author put in the file
@@ -2638,20 +2666,31 @@ export interface components {
          *     it or tell when it is ready.
          *
          *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
-         *     `vllm` drives upstream `vllm serve` and loads safetensors. MLX
-         *     is a third adapter later. We never ship an engine — every one of
-         *     them is an upstream project we wrap and track.
+         *     `vllm` drives upstream `vllm serve` and loads safetensors.
+         *     `mlx` drives upstream `mlx_lm.server` and loads MLX-format
+         *     safetensors, on Apple silicon only — experimental until a
+         *     physical Mac run is recorded. We never ship an engine — every
+         *     one of them is an upstream project we wrap and track.
          *
-         *     The two differ in far more than argv, and that is why readiness
+         *     They differ in far more than argv, and that is why readiness
          *     is per-adapter rather than one shared TCP check:
          *     `llama-server` answers `/health` while it loads and reports that
          *     it is loading, whereas vLLM binds its port *before* loading the
          *     model and refuses connections until the model is in memory — so
          *     for minutes it is indistinguishable, over the network alone,
-         *     from a process that died. They differ in acquisition too: a
-         *     llama.cpp build is fetched and verified by us, while vLLM is a
-         *     Python package the operator installs themselves. See
-         *     `EngineAcquisition.policy`.
+         *     from a process that died. `mlx_lm.server` is a third mechanism
+         *     again and the most awkward: it serves HTTP immediately, and at
+         *     the pinned release its `/health` answers a hardcoded
+         *     `{"status": "ok"}` while the model is still loading on another
+         *     thread, so **no read-only probe can tell loading from ready**.
+         *     Its adapter proves residency by asking for one token, once per
+         *     process, and only then treats the health endpoint as evidence.
+         *     (Upstream `main` has since taught `/health` to answer 503
+         *     `unavailable` while loading; the adapter reads that as loading
+         *     too, so a future pin gets the cheap probe for free.) They
+         *     differ in acquisition too: a llama.cpp build is fetched and
+         *     verified by us, while vLLM and mlx-lm are Python packages the
+         *     operator installs themselves. See `EngineAcquisition.policy`.
          *
          *     Lives here rather than on the agent because two components
          *     reference it: the agent's engines and runtimes, and a
@@ -2659,7 +2698,7 @@ export interface components {
          *     are written for.
          * @enum {string}
          */
-        EngineKind: "llama_cpp" | "vllm";
+        EngineKind: "llama_cpp" | "vllm" | "mlx";
         /**
          * @description One directory the library catalogues, and where other machines
          *     find it (2026-09-14).

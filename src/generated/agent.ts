@@ -2476,6 +2476,19 @@ export interface components {
              *     of it, and the copy would be the one that went stale.
              */
             modelFormats: components["schemas"]["ModelFormat"][];
+            /**
+             * @description True while this engine's integration has never been proved
+             *     on the hardware it targets — `mlx` until a physical Apple
+             *     silicon run is recorded. A property of the *integration*,
+             *     not of this host, and reported so the UI can badge the
+             *     option instead of hardcoding a list that goes stale the day
+             *     the evidence lands. Experimental does not mean hidden: on
+             *     appropriate hardware the engine is offered, badged; on the
+             *     wrong hardware `acquisition.manualInstall.notes` explains
+             *     why there is no install command.
+             * @default false
+             */
+            experimental: boolean;
             /** @description Absolute path to the binary the adapter would spawn. */
             binaryPath?: string;
             /**
@@ -3684,20 +3697,31 @@ export interface components {
          *     it or tell when it is ready.
          *
          *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
-         *     `vllm` drives upstream `vllm serve` and loads safetensors. MLX
-         *     is a third adapter later. We never ship an engine — every one of
-         *     them is an upstream project we wrap and track.
+         *     `vllm` drives upstream `vllm serve` and loads safetensors.
+         *     `mlx` drives upstream `mlx_lm.server` and loads MLX-format
+         *     safetensors, on Apple silicon only — experimental until a
+         *     physical Mac run is recorded. We never ship an engine — every
+         *     one of them is an upstream project we wrap and track.
          *
-         *     The two differ in far more than argv, and that is why readiness
+         *     They differ in far more than argv, and that is why readiness
          *     is per-adapter rather than one shared TCP check:
          *     `llama-server` answers `/health` while it loads and reports that
          *     it is loading, whereas vLLM binds its port *before* loading the
          *     model and refuses connections until the model is in memory — so
          *     for minutes it is indistinguishable, over the network alone,
-         *     from a process that died. They differ in acquisition too: a
-         *     llama.cpp build is fetched and verified by us, while vLLM is a
-         *     Python package the operator installs themselves. See
-         *     `EngineAcquisition.policy`.
+         *     from a process that died. `mlx_lm.server` is a third mechanism
+         *     again and the most awkward: it serves HTTP immediately, and at
+         *     the pinned release its `/health` answers a hardcoded
+         *     `{"status": "ok"}` while the model is still loading on another
+         *     thread, so **no read-only probe can tell loading from ready**.
+         *     Its adapter proves residency by asking for one token, once per
+         *     process, and only then treats the health endpoint as evidence.
+         *     (Upstream `main` has since taught `/health` to answer 503
+         *     `unavailable` while loading; the adapter reads that as loading
+         *     too, so a future pin gets the cheap probe for free.) They
+         *     differ in acquisition too: a llama.cpp build is fetched and
+         *     verified by us, while vLLM and mlx-lm are Python packages the
+         *     operator installs themselves. See `EngineAcquisition.policy`.
          *
          *     Lives here rather than on the agent because two components
          *     reference it: the agent's engines and runtimes, and a
@@ -3705,7 +3729,7 @@ export interface components {
          *     are written for.
          * @enum {string}
          */
-        EngineKind: "llama_cpp" | "vllm";
+        EngineKind: "llama_cpp" | "vllm" | "mlx";
         /**
          * @description On-disk format of a model. A dimension of the data model rather
          *     than an assumption (locked 2026-09-08): both are implemented at

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ApiError, api, describeError } from "@/lib/api";
+import { offeredOnThisNode } from "@/lib/engineCompat";
 import { describeControlRoot } from "@/lib/controlRoot";
 import {
   type NodeDetail,
@@ -843,13 +844,26 @@ function EnginesLine({
   return (
     <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] text-[color:var(--muted)]">
       <span>engines:</span>
-      {engines.map((e) => {
+      {engines.filter(offeredOnThisNode).map((e) => {
         const state = installs[e.engine];
         const busyInstall = state != null && inFlight(state.state);
         const reason = e.acquisition?.reason;
         return (
           <span key={e.engine} className="inline-flex items-center gap-1.5">
             <span className="font-mono">{e.engine}</span>
+            {e.experimental && (
+              <span
+                className="rounded-[var(--radius)] border border-[color:var(--border)] px-1 text-[0.5625rem] tracking-wide uppercase"
+                title={
+                  "This engine integration has not been proved on physical hardware yet. " +
+                  "It works against tested fixtures; real-machine results are what turns " +
+                  "this badge off. " +
+                  (e.acquisition?.manualInstall?.notes ?? "")
+                }
+              >
+                experimental
+              </span>
+            )}
             <span
               style={{
                 color: e.available ? "var(--status-ok, #3fb950)" : "var(--status-error, #f85149)",
@@ -887,7 +901,10 @@ function stoppedForWantOfEngine(row: Row, engines: EngineDescriptor[] | null): s
 }
 
 function engineWord(engine: string): string {
-  return engine === "llama_cpp" ? "llama.cpp" : engine === "vllm" ? "vLLM" : engine;
+  if (engine === "llama_cpp") return "llama.cpp";
+  if (engine === "vllm") return "vLLM";
+  if (engine === "mlx") return "MLX";
+  return engine;
 }
 
 function inFlight(state: string | undefined): boolean {

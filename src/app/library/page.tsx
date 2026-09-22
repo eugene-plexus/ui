@@ -11,6 +11,7 @@ import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
 import { RunButton } from "@/components/RunButton";
 import { ApiError, api } from "@/lib/api";
+import { capableEngines } from "@/lib/engineCompat";
 import { type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
 import { usePolling } from "@/lib/usePolling";
@@ -561,9 +562,12 @@ function ModelDetail({
 }) {
   const [error, setError] = useState<string | null>(null);
 
-  // Which engines could load this format at all, and which of those are
-  // installed here. Two different answers with two different fixes.
-  const capable = engines.filter((e) => (e.modelFormats ?? []).includes(model.format));
+  // Which engines could load this model at all, and which of those are
+  // installed here. Two different answers with two different fixes. The
+  // join lives in lib/engineCompat: format first, and an MLX-quantized
+  // directory narrows to the MLX engine (integer-packed weights nothing
+  // else loads).
+  const capable = capableEngines(model, engines);
   const usable = capable.filter((e) => e.available);
 
   const running = runningModel(model, runtimes);

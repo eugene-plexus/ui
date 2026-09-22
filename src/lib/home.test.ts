@@ -162,7 +162,9 @@ describe("firstModelState", () => {
   // first download finishes, and the card runs it in one click.
   const ONE_MODEL: LibraryModelList = { models: [TWO_MODELS.models![0]!] };
   const LLAMA: EngineList = {
-    engines: [{ engine: "llama_cpp", available: false, modelFormats: ["gguf"] }],
+    engines: [
+      { engine: "llama_cpp", available: false, experimental: false, modelFormats: ["gguf"] },
+    ],
   };
 
   it("offers to run THE model when there is exactly one this machine can load", () => {
@@ -271,8 +273,14 @@ describe("machineStrip", () => {
       node: AMISH_STATION,
       engines: {
         engines: [
-          { engine: "llama_cpp", available: true, version: "b10948", modelFormats: ["gguf"] },
-          { engine: "vllm", available: false, modelFormats: ["safetensors"] },
+          {
+            engine: "llama_cpp",
+            available: true,
+            experimental: false,
+            version: "b10948",
+            modelFormats: ["gguf"],
+          },
+          { engine: "vllm", available: false, experimental: false, modelFormats: ["safetensors"] },
         ],
       },
       library: TWO_MODELS,
@@ -296,7 +304,9 @@ describe("machineStrip", () => {
     const strip = machineStrip({
       node: { enrolled: false, devices: [] },
       engines: {
-        engines: [{ engine: "llama_cpp", available: false, modelFormats: ["gguf"] }],
+        engines: [
+          { engine: "llama_cpp", available: false, experimental: false, modelFormats: ["gguf"] },
+        ],
       },
       library: { models: [] },
       libraryFailed: false,

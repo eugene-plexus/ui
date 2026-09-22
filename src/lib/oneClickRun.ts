@@ -60,6 +60,7 @@
 import { useSyncExternalStore } from "react";
 
 import { ApiError, api, describeError } from "./api";
+import { capableEngines } from "./engineCompat";
 import {
   DEFAULT_PROFILE_NAME,
   composeSpec,
@@ -694,7 +695,7 @@ async function orchestrate(
     );
   }
   if (!live()) return;
-  const capable = engines.filter((e) => (e.modelFormats ?? []).includes(model.format));
+  const capable = capableEngines(model, engines);
   if (capable.length === 0) {
     return failNow("check", noEngineForFormat(model, node, engines));
   }
