@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 
+import { isComposing } from "@/lib/composing";
 import { type AttachmentText, checkAttachment, inlineAttachments } from "@/lib/diagnostic";
 import {
   type ImageAttachment,
@@ -17,8 +25,11 @@ import type { MessageContentPart } from "@/lib/types";
 /**
  * Bottom-anchored composer.
  *
- * Enter sends. Shift+Enter inserts a newline. Disabled while a turn is
- * in flight, and while no model is routable.
+ * Enter sends. Shift+Enter inserts a newline. An input method's Enter
+ * (confirming a Japanese, Chinese or Korean word) does neither: it
+ * belongs to the IME. Disabled while a turn is in flight, and while no
+ * model is routable. The box grows with its text to ten lines
+ * (`max-h-[calc(10lh + padding + border)]`), then scrolls.
  *
  * The composer owns its text, except that `seed` can put something in it -
  * that is how editing an earlier message works. It carries a nonce because
@@ -97,6 +108,23 @@ export function ChatInput({
     }
   }, [seed]);
 
+  // Grow with the text, up to the cap the class sets (ten lines), and
+  // scroll past it. Two rows used to be the whole box, so a pasted
+  // paragraph scrolled inside a slot two lines tall. Measured before
+  // paint so the box never shows at the wrong height, and set to `auto`
+  // first because scrollHeight never reports less than the current
+  // height: without that the box could grow but never shrink back after
+  // a send. `rows={2}` stays the floor.
+  useLayoutEffect(() => {
+    const el = textarea.current;
+    if (!el) return;
+    el.style.height = "auto";
+    // border-box sizing: the height includes the border, scrollHeight
+    // does not.
+    const border = el.offsetHeight - el.clientHeight;
+    el.style.height = `${el.scrollHeight + border}px`;
+  }, [value]);
+
   const hasContent = value.trim() !== "" || files.length > 0 || images.length > 0;
   // The request-level image limits (count, total bytes) belong to the
   // set, not to any one file, so they are checked here where the set
@@ -115,7 +143,9 @@ export function ChatInput({
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // An input method's confirming Enter is the end of a word, not of the
+    // message: let the IME have it. See `lib/composing.ts`.
+    if (e.key === "Enter" && !e.shiftKey && !isComposing(e.nativeEvent)) {
       e.preventDefault();
       submit(e);
     }
@@ -266,7 +296,7 @@ export function ChatInput({
               : "Send a message… (Enter to send, Shift+Enter for newline; attach text files or PNG/JPEG images)"
           }
           disabled={disabled}
-          className="min-w-0 basis-full resize-none rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50 sm:flex-1 sm:basis-auto"
+          className="max-h-[calc(10lh_+_1rem_+_2px)] min-w-0 basis-full resize-none overflow-y-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50 sm:flex-1 sm:basis-auto"
         />
         <input
           ref={fileInput}

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ChatLog } from "@/components/ChatLog";
 import { describeError } from "@/lib/api";
 import { PROXY, streamChatCompletion } from "@/lib/completions";
+import { isComposing } from "@/lib/composing";
 import { homeReadiness } from "@/lib/homeReadiness";
 import {
   type PlaygroundMessage,
@@ -235,6 +236,13 @@ export function TryItCard({
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter here sends by the form's implicit submission, not by a
+            // handler, so an input method's confirming Enter (the end of a
+            // Japanese, Chinese or Korean word) is stopped by preventing
+            // that default. An ordinary Enter is left alone.
+            if (e.key === "Enter" && isComposing(e.nativeEvent)) e.preventDefault();
+          }}
           disabled={disabled}
           placeholder={pending ? "Answering…" : "Say something…"}
           aria-label="Message"
