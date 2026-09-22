@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 /**
@@ -7,6 +8,12 @@ import { useEffect } from "react";
  * under this layout (chat, config, future pages) and shows a styled
  * fallback instead of a blank screen. Theme tokens still apply because
  * <html> and <body> are owned by the root layout, which keeps rendering.
+ *
+ * **It promises only what is true of the page it caught.** It used to
+ * tell every page "Your conversation is still saved", which is true of
+ * the playground alone (its transcript is written to the tab's storage
+ * on every change) and a promise about nothing anywhere else. So the
+ * sentence is said on the playground and not on the other pages.
  *
  * Errors thrown in the root layout itself need `global-error.tsx` — not
  * yet wired in v0.1 because the layout is essentially static.
@@ -18,6 +25,10 @@ export default function ErrorPage({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const pathname = usePathname() ?? "";
+  // With or without the export's trailing slash.
+  const onPlayground = pathname === "/playground" || pathname.startsWith("/playground/");
+
   useEffect(() => {
     console.error("Eugene UI render error:", error);
   }, [error]);
@@ -27,8 +38,8 @@ export default function ErrorPage({
       <div className="w-full max-w-lg rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
         <h1 className="font-ui mb-2 text-lg font-semibold">Something broke.</h1>
         <p className="mb-3 text-sm text-[color:var(--muted)]">
-          The Eugene UI hit an unhandled render error. Your conversation is still saved — refresh or
-          try again to recover.
+          This page hit an error it did not expect.
+          {onPlayground ? " Your conversation is still saved." : ""} Try again, or reload the page.
         </p>
         <pre className="text-status-error mb-4 max-h-48 overflow-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-3 font-mono text-xs leading-relaxed">
           {error.message}
