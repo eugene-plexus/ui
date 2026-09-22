@@ -2073,7 +2073,9 @@ export interface components {
         };
         /**
          * @description One dimension tuple's numbers over the window, or over one hour
-         *     of it when `bucket=hour`.
+         *     of it when `bucket=hour`. Under `groupBy=model` the backend
+         *     dimensions (`driver`, `runtime`, `node`, `backend`) are absent;
+         *     under `groupBy=total`, `model` is too.
          */
         MetricsGroup: {
             /**
@@ -2114,8 +2116,39 @@ export interface components {
              */
             swappedIn: number;
             latencyMs: components["schemas"]["Percentiles"];
-            /** @description Null when no request in this group reported token usage. */
+            /**
+             * @description Null when no request in this group reported token usage.
+             *     Whole-attempt rate: the serving attempt's elapsed time
+             *     includes prefill, so this understates decode speed on long
+             *     prompts. `decodeTokensPerSecond` beside it excludes prefill;
+             *     the two differing is the prefill cost made visible.
+             */
             tokensPerSecond?: components["schemas"]["Throughput"] | null;
+            /**
+             * @description Time to first token: milliseconds from the start of the
+             *     serving attempt to its first streamed event, over streamed
+             *     requests only. Null when nothing in the group streamed — a
+             *     non-streamed request has no first token to time, the
+             *     response arrives whole. Measured gateway-side, so it
+             *     includes the gateway→driver hop and the driver's own
+             *     dispatch: on a local engine it is dominated by prefill but
+             *     is not a pure prefill measurement, and deriving a
+             *     prompt-tokens-per-second from it would be confidently
+             *     wrong. The benchmark is the instrument for real prefill
+             *     curves.
+             */
+            ttftMs?: components["schemas"]["Percentiles"] | null;
+            /**
+             * @description Completion tokens over the serving attempt's time **after**
+             *     its first streamed event — the decode rate an enthusiast
+             *     means by "tokens per second", with prefill excluded. Only
+             *     computed for streamed requests that reported usage and ran
+             *     past a minimum window (2+ tokens and 250 ms after the first
+             *     event, the same guard the playground's badge uses), so its
+             *     `samples` can be lower than `tokensPerSecond.samples`. Null
+             *     when nothing in the group qualifies.
+             */
+            decodeTokensPerSecond?: components["schemas"]["Throughput"] | null;
             /**
              * @description Wake latency, over the `swappedIn` requests only. Null when
              *     none of them woke anything.
@@ -2193,6 +2226,16 @@ export interface components {
              *     includes the local hop to the driver.
              */
             elapsedMs: number;
+            /**
+             * @description Milliseconds from the start of this attempt to its first
+             *     streamed event — time to first token, gateway-side. Null
+             *     for non-streamed attempts (the response arrives whole, so
+             *     there is no first token to time) and for rows recorded
+             *     before this was measured. Recorded on failures too: a
+             *     stream that emitted tokens and then broke still had a
+             *     first token, and its timing is evidence about the backend.
+             */
+            firstMs?: number | null;
             /**
              * @description The **driver's** own measurement of its backend call
              *     (`GenerateResponse.latencyMs`), when it reported one.
@@ -3455,6 +3498,23 @@ export interface operations {
                  *     nothing.
                  */
                 bucket?: "none" | "hour";
+                /**
+                 * @description `backend` (default) groups by the full dimension tuple
+                 *     (model, driver, runtime, node, backend) — the comparison
+                 *     table's shape. `model` collapses the backend dimensions,
+                 *     answering "how is this model doing" across replicas and
+                 *     cascades. `total` collapses everything into one group per
+                 *     bucket — the shape an overview chart or a stat tile reads.
+                 *
+                 *     This parameter exists because percentiles cannot be
+                 *     recombined client-side: a caller holding per-backend groups
+                 *     can sum their `requests`, but the install-wide p90 is not
+                 *     computable from per-group p90s. The coarser grains are
+                 *     computed here over the bucket's raw rows, so their
+                 *     percentiles are real percentiles rather than a merge that
+                 *     flatters whichever group was busiest.
+                 */
+                groupBy?: "backend" | "model" | "total";
             };
             header?: never;
             path?: never;

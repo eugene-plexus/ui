@@ -3,25 +3,24 @@
 /**
  * What each backend actually did.
  *
- * The five questions this page exists to answer, in the order they get
+ * The questions this page exists to answer, in the order they get
  * asked:
  *
- *   1. Which of my backends is faster for this model?
- *   2. Is anything failing?
- *   3. What is idle unload costing me?
- *   4. Is a later tier quietly serving everything?
- *   5. What did last night look like?
+ *   1. How fast does it feel — first token, and decode speed?
+ *   2. Which of my backends is faster for this model?
+ *   3. Is anything failing?
+ *   4. What is idle unload costing me?
+ *   5. Is a later tier quietly serving everything?
+ *   6. What did last night look like?
  *
  * Three restraints are deliberate and should survive edits.
  *
  * **"Unreported" is not "zero".** A backend that did not report token
  * counts leaves `tokensPerSecond` null. Rendering that as `0 tok/s` says
  * "slow" where it means "unmeasured", and the operator cannot recover
- * the difference from the screen.
- *
- * Which backends those are is a per-request fact, not a property of a
- * backend kind - an earlier version of this comment asserted the CLI
- * subscription backends never report usage, and they do.
+ * the difference from the screen. The same rule covers `ttftMs` and
+ * `decodeTokensPerSecond` (null when nothing streamed) and every chart
+ * point (a missing hour breaks the line rather than drawing a zero).
  *
  * **These numbers describe this box only.** Not a benchmark, and not a
  * ranking of hardware. Same line M3 locked for quant guidance: state
@@ -31,14 +30,26 @@
  * first request against a cold backend can be twenty times a warm one,
  * so a median over two samples is nearly meaningless. The sample count
  * is shown next to every throughput figure rather than buried.
+ *
+ * Two numbers are deliberately different and both shown: `Tokens/sec`
+ * is the whole serving attempt (prefill included), `Decode` is tokens
+ * over the time after the first streamed event. The gap between them IS
+ * the prefill cost — collapsing them into one number was the defect.
+ *
+ * The overview charts read `groupBy=total`, because percentiles cannot
+ * be recombined client-side: the install-wide p50 is the server's to
+ * compute over raw rows, never a merge of per-backend p50s.
  */
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { HourChart, StatTile } from "@/components/MetricsCharts";
 import { ApiError, api } from "@/lib/api";
+import { compact, hourlyPoints, msLabel, tilesFrom } from "@/lib/metricsCharts";
 import type { ClientUsageSummary } from "@/lib/types";
+import { usePolling } from "@/lib/usePolling";
 
 interface Percentiles {
   p50: number;
@@ -66,6 +77,12 @@ interface MetricsGroup {
   swappedIn: number;
   latencyMs: Percentiles;
   tokensPerSecond?: Throughput | null;
+  /** Time to first token over streamed serving attempts; null when
+   * nothing in the group streamed. */
+  ttftMs?: Percentiles | null;
+  /** Tokens over the time AFTER the first streamed event — prefill
+   * excluded. Its samples can be fewer than tokensPerSecond's. */
+  decodeTokensPerSecond?: Throughput | null;
   waitedMs?: Percentiles | null;
   routingMs?: Percentiles | null;
   overheadMs?: Percentiles | null;
@@ -94,6 +111,9 @@ interface MetricAttempt {
    * minus this is what the control plane itself cost. Null when the
    * backend did not report one. */
   backendMs?: number | null;
+  /** Time to this attempt's first streamed event. Null for
+   * non-streamed attempts — the response arrived whole. */
+  firstMs?: number | null;
 }
 
 /** One backend the balancer considered. The inputs to the decision, not
@@ -137,6 +157,8 @@ const WINDOWS: { label: string; hours: number }[] = [
   { label: "Last 7 days", hours: 24 * 7 },
 ];
 
+const POLL_MS = 15_000;
+
 /** Milliseconds as something readable at a glance across four orders of
  * magnitude — a wake is seconds, a cached answer is milliseconds. */
 function ms(value: number): string {
@@ -149,9 +171,22 @@ function groupKey(g: MetricsGroup): string {
   return [g.bucketStart, g.model, g.driver, g.runtime, g.node].join("|");
 }
 
+/** The series colors. Marks wear these; text never does. The p90
+ * companion is the SAME hue washed toward the background — a lightness
+ * step, not a second identity — and errors live in their own chart, in
+ * the status color, because editorial's status-red against its green
+ * accent fails red-green colorblind separation inside one chart
+ * (measured), and position separates what hue cannot. */
+const SERIES = "var(--accent-left)";
+const SERIES_SOFT = "color-mix(in oklab, var(--accent-left) 45%, var(--background))";
+const SERIES_ERROR = "var(--status-error-fg)";
+
 export default function MetricsPage() {
   const [hours, setHours] = useState(24);
+  const [model, setModel] = useState<string>("");
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
+  const [totals, setTotals] = useState<MetricsSummary | null>(null);
+  const [hourly, setHourly] = useState<MetricsSummary | null>(null);
   const [clientUsage, setClientUsage] = useState<ClientUsageSummary | null>(null);
   const [recent, setRecent] = useState<MetricRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -161,16 +196,27 @@ export default function MetricsPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const since = new Date(Date.now() - hours * 3600_000).toISOString();
-      const [s, r, c] = await Promise.all([
-        api.get<MetricsSummary>("gateway", `/v1/metrics?since=${encodeURIComponent(since)}`),
-        api.get<{ requests: MetricRequest[] }>("gateway", "/v1/metrics/requests?limit=25"),
-        api.get<ClientUsageSummary>(
+      const since = encodeURIComponent(new Date(Date.now() - hours * 3600_000).toISOString());
+      const scoped = model ? `&model=${encodeURIComponent(model)}` : "";
+      const modelOnly = model ? `model=${encodeURIComponent(model)}&` : "";
+      // `since` stays the LAST query parameter on the /v1/metrics reads:
+      // the window test parses it off the URL tail.
+      const [s, t, h, r, c] = await Promise.all([
+        api.get<MetricsSummary>("gateway", `/v1/metrics?${modelOnly}since=${since}`),
+        api.get<MetricsSummary>("gateway", `/v1/metrics?groupBy=total${scoped}&since=${since}`),
+        api.get<MetricsSummary>(
           "gateway",
-          `/v1/metrics/clients?since=${encodeURIComponent(since)}`,
+          `/v1/metrics?groupBy=total&bucket=hour${scoped}&since=${since}`,
         ),
+        api.get<{ requests: MetricRequest[] }>(
+          "gateway",
+          `/v1/metrics/requests?${modelOnly}limit=25`,
+        ),
+        api.get<ClientUsageSummary>("gateway", `/v1/metrics/clients?since=${since}`),
       ]);
       setSummary(s);
+      setTotals(t);
+      setHourly(h);
       setClientUsage(c);
       setRecent(r.requests ?? []);
       setDisabled(false);
@@ -186,11 +232,25 @@ export default function MetricsPage() {
     } finally {
       setLoading(false);
     }
-  }, [hours]);
+  }, [hours, model]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // Poll rather than refresh-only, and keep the previous render while a
+  // refetch is in flight — no skeleton, no layout jump.
+  usePolling(load, POLL_MS);
+
+  const tiles = useMemo(() => (totals ? tilesFrom(totals.groups) : null), [totals]);
+  const points = useMemo(
+    () => (hourly ? hourlyPoints(hourly.groups, hourly.windowStart, hourly.windowEnd) : []),
+    [hourly],
+  );
+  const models = useMemo(() => {
+    const names = new Set<string>();
+    for (const g of summary?.groups ?? []) if (g.model) names.add(g.model);
+    if (model) names.add(model);
+    return [...names].sort();
+  }, [summary, model]);
+  const anyStreamed = points.some((p) => p.ttftP50 !== null);
+  const anyDecode = points.some((p) => p.decodeP50 !== null);
 
   return (
     <AppShell
@@ -205,6 +265,19 @@ export default function MetricsPage() {
             {WINDOWS.map((w) => (
               <option key={w.hours} value={w.hours}>
                 {w.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            aria-label="Model"
+            className="font-ui max-w-48 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-1 text-sm"
+          >
+            <option value="">All models</option>
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m}
               </option>
             ))}
           </select>
@@ -249,13 +322,343 @@ export default function MetricsPage() {
 
         {summary && !disabled && (
           <>
+            {summary.rowsDropped > 0 && (
+              <p
+                className="font-ui mb-4 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm"
+                role="status"
+              >
+                {summary.rowsDropped.toLocaleString()} measurement
+                {summary.rowsDropped === 1 ? "" : "s"} were dropped because the recorder could not
+                keep up, so these numbers are a sample rather than a complete record. Inference was
+                not affected.
+              </p>
+            )}
+            {summary.truncated && (
+              <p className="font-ui mb-4 text-sm text-[color:var(--muted)]">
+                Part of this window is older than the retention setting, so it is not included.
+              </p>
+            )}
+
+            {tiles && tiles.requests > 0 && (
+              <section
+                aria-label="Window at a glance"
+                className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6"
+              >
+                <StatTile label="Requests" value={compact(tiles.requests)} />
+                <StatTile
+                  label="Failed"
+                  value={compact(tiles.errors)}
+                  sub={
+                    tiles.requests > 0
+                      ? `${((tiles.errors / tiles.requests) * 100).toFixed(1)}% of requests`
+                      : undefined
+                  }
+                  tone="error"
+                />
+                <StatTile
+                  label="Failed over"
+                  value={compact(tiles.cascaded)}
+                  sub="tried more than one backend"
+                />
+                <StatTile
+                  label="Median latency"
+                  value={tiles.latencyP50 !== null ? ms(tiles.latencyP50) : null}
+                  sub="whole request"
+                />
+                <StatTile
+                  label="First token"
+                  value={tiles.ttftP50 !== null ? ms(tiles.ttftP50) : null}
+                  sub="median, streamed requests"
+                />
+                <StatTile
+                  label="Decode speed"
+                  value={tiles.decodeP50 !== null ? `${tiles.decodeP50.toFixed(1)} tok/s` : null}
+                  sub={
+                    tiles.decodeP50 !== null
+                      ? `median over ${tiles.decodeSamples} streamed request${
+                          tiles.decodeSamples === 1 ? "" : "s"
+                        }`
+                      : "needs streamed requests with token counts"
+                  }
+                />
+              </section>
+            )}
+
+            {points.length > 1 && tiles && tiles.requests > 0 && (
+              <section aria-label="History" className="mb-8 grid gap-x-8 gap-y-6 lg:grid-cols-2">
+                <HourChart
+                  title="Requests"
+                  points={points}
+                  kind="bars"
+                  format={(v) => compact(Math.round(v))}
+                  series={[{ name: "Requests", value: (p) => p.requests, color: SERIES }]}
+                />
+                <HourChart
+                  title="Failed"
+                  caption="requests no backend served"
+                  points={points}
+                  kind="bars"
+                  format={(v) => compact(Math.round(v))}
+                  series={[{ name: "Failed", value: (p) => p.errors, color: SERIES_ERROR }]}
+                />
+                <HourChart
+                  title="Latency"
+                  caption="whole request, per hour"
+                  points={points}
+                  kind="lines"
+                  format={(v) => msLabel(v)}
+                  series={[
+                    { name: "p50", value: (p) => p.latencyP50, color: SERIES },
+                    { name: "p90", value: (p) => p.latencyP90, color: SERIES_SOFT },
+                  ]}
+                />
+                {anyDecode ? (
+                  <HourChart
+                    title="Decode speed"
+                    caption="tokens per second after the first token"
+                    points={points}
+                    kind="lines"
+                    format={(v) => `${v.toFixed(1)} tok/s`}
+                    axisFormat={(v) => `${Math.round(v)}`}
+                    series={[{ name: "tok/s (p50)", value: (p) => p.decodeP50, color: SERIES }]}
+                  />
+                ) : anyStreamed ? (
+                  <HourChart
+                    title="First token"
+                    caption="median, streamed requests"
+                    points={points}
+                    kind="lines"
+                    format={(v) => msLabel(v)}
+                    series={[{ name: "TTFT (p50)", value: (p) => p.ttftP50, color: SERIES }]}
+                  />
+                ) : null}
+                {anyDecode && anyStreamed && (
+                  <HourChart
+                    title="First token"
+                    caption="median, streamed requests"
+                    points={points}
+                    kind="lines"
+                    format={(v) => msLabel(v)}
+                    series={[{ name: "TTFT (p50)", value: (p) => p.ttftP50, color: SERIES }]}
+                  />
+                )}
+              </section>
+            )}
+
+            {summary.groups.length === 0 ? (
+              <p className="font-ui text-sm text-[color:var(--muted)]">
+                Nothing was served in this window. Send a message from the{" "}
+                <Link href="/playground" className="underline">
+                  playground
+                </Link>{" "}
+                and come back.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-[color:var(--border)] text-left">
+                      <th className="py-2 pr-3 font-medium">Model</th>
+                      <th className="py-2 pr-3 font-medium">Backend</th>
+                      <th className="py-2 pr-3 text-right font-medium">Requests</th>
+                      <th className="py-2 pr-3 text-right font-medium">Median</th>
+                      <th className="py-2 pr-3 text-right font-medium">Slowest</th>
+                      <th
+                        className="py-2 pr-3 text-right font-medium"
+                        title="Time to the first streamed token, median. Includes the hop to the driver, so on a local engine it is mostly prompt processing."
+                      >
+                        First token
+                      </th>
+                      <th
+                        className="py-2 pr-3 text-right font-medium"
+                        title="Tokens per second AFTER the first token — prefill excluded. The number people mean by tok/s."
+                      >
+                        Decode
+                      </th>
+                      <th
+                        className="py-2 pr-3 text-right font-medium"
+                        title="Tokens per second over the whole serving attempt, prefill included. Lower than Decode on long prompts — the gap is the prefill cost."
+                      >
+                        Tokens/sec
+                      </th>
+                      <th
+                        className="py-2 pr-3 text-right font-medium"
+                        title="Time spent deciding where to send the request: resolving the model, picking a backend, and any routing-table refresh."
+                      >
+                        Routing
+                      </th>
+                      <th
+                        className="py-2 pr-3 text-right font-medium"
+                        title="What Eugene Plexus itself cost: the local hop to the driver plus the driver's own work. Measured rather than assumed."
+                      >
+                        Overhead
+                      </th>
+                      <th className="py-2 pr-3 text-right font-medium">Failed</th>
+                      <th className="py-2 pr-3 text-right font-medium">Failed over</th>
+                      <th className="py-2 text-right font-medium">Woken</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.groups.map((g) => (
+                      <tr
+                        key={groupKey(g)}
+                        className="border-b border-[color:var(--border)] align-top"
+                      >
+                        <td className="py-2 pr-3 font-mono break-all">{g.model ?? "—"}</td>
+                        <td className="py-2 pr-3">
+                          <span className="font-mono">{g.driver ?? "—"}</span>
+                          {/* By runtime NAME, so two replicas of one model stay
+                          distinguishable — the case balancing exists for.
+                          Absent for hosted and CLI backends, which have no
+                          runtime of ours. */}
+                          {g.runtime && (
+                            <span className="text-[color:var(--muted)]"> · {g.runtime}</span>
+                          )}
+                          {g.node && <span className="text-[color:var(--muted)]"> @ {g.node}</span>}
+                        </td>
+                        <td className="py-2 pr-3 text-right font-mono">{g.requests}</td>
+                        <td className="py-2 pr-3 text-right font-mono">{ms(g.latencyMs.p50)}</td>
+                        <td className="py-2 pr-3 text-right font-mono">{ms(g.latencyMs.max)}</td>
+                        <td className="py-2 pr-3 text-right font-mono">
+                          {g.ttftMs ? (
+                            ms(g.ttftMs.p50)
+                          ) : (
+                            <span
+                              className="text-[color:var(--muted)]"
+                              title="Nothing in this group streamed, so there was no first token to time."
+                            >
+                              &mdash;
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-right font-mono">
+                          {g.decodeTokensPerSecond ? (
+                            <>
+                              {g.decodeTokensPerSecond.p50.toFixed(1)}
+                              <span
+                                className="text-[color:var(--muted)]"
+                                title={`Median over ${g.decodeTokensPerSecond.samples} streamed request(s) with token counts`}
+                              >
+                                {" "}
+                                ({g.decodeTokensPerSecond.samples})
+                              </span>
+                            </>
+                          ) : (
+                            <span
+                              className="text-[color:var(--muted)]"
+                              title="Needs streamed requests that reported token counts and decoded for at least 250 ms. Not the same as zero."
+                            >
+                              &mdash;
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-right font-mono">
+                          {g.tokensPerSecond ? (
+                            <>
+                              {g.tokensPerSecond.p50.toFixed(1)}
+                              <span
+                                className="text-[color:var(--muted)]"
+                                title={`Median over ${g.tokensPerSecond.samples} request(s) that reported token counts`}
+                              >
+                                {" "}
+                                ({g.tokensPerSecond.samples})
+                              </span>
+                            </>
+                          ) : (
+                            <span
+                              className="text-[color:var(--muted)]"
+                              title="This backend did not report token counts for these requests, so the rate cannot be computed. Not the same as zero."
+                            >
+                              unreported
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-right font-mono">
+                          {g.routingMs ? (
+                            ms(g.routingMs.p50)
+                          ) : (
+                            <span className="text-[color:var(--muted)]">&mdash;</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-right font-mono">
+                          {g.overheadMs ? (
+                            ms(g.overheadMs.p50)
+                          ) : (
+                            <span
+                              className="text-[color:var(--muted)]"
+                              title="This backend does not report how long its own call took, so the split cannot be computed. Not the same as no overhead."
+                            >
+                              unreported
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-right font-mono">
+                          {g.errors > 0 ? (
+                            <span className="text-status-error">{g.errors}</span>
+                          ) : (
+                            <span className="text-[color:var(--muted)]">0</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-right font-mono">
+                          {g.cascaded > 0 ? (
+                            g.cascaded
+                          ) : (
+                            <span className="text-[color:var(--muted)]">0</span>
+                          )}
+                        </td>
+                        <td className="py-2 text-right font-mono">
+                          {g.swappedIn > 0 ? (
+                            <>
+                              {g.swappedIn}
+                              {g.waitedMs && (
+                                <span className="text-[color:var(--muted)]">
+                                  {" "}
+                                  ({ms(g.waitedMs.p50)})
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-[color:var(--muted)]">0</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <p className="mt-3 text-[0.6875rem] text-[color:var(--muted)]">
+              <strong>Decode</strong> is tokens per second after the first token — the number people
+              mean when they compare speeds — and <strong>Tokens/sec</strong> is the whole serving
+              attempt, prefill included. Both are measured from the backend that actually answered,
+              not from the whole request, so a failover does not make the backend that rescued it
+              look slow. The number in brackets is how many requests the median is over.
+            </p>
+            <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">
+              <strong>First token</strong> includes the hop to the driver, so on a local engine it
+              is mostly prompt processing — but it is not a pure prefill measurement, and no
+              prompt-tokens-per-second is derived from it on purpose. The{" "}
+              <Link href="/library" className="underline">
+                benchmark
+              </Link>{" "}
+              is the instrument for real curves.
+            </p>
+            <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">
+              <strong>Overhead</strong> is what Eugene Plexus itself costs: the gap between how long
+              the backend said it took and how long the gateway saw it take. Compare it against the
+              median to decide whether routing is worth worrying about — on a local install it
+              usually is not, and this is where you can check that rather than take our word for it.
+            </p>
+
             {clientUsage && (
-              <section className="mb-6 overflow-x-auto" aria-label="Usage by client key">
+              <section className="mt-8 overflow-x-auto" aria-label="Usage by client key">
                 <h2 className="font-ui mb-2 text-base font-semibold">Usage by client key</h2>
                 <p className="mb-2 text-sm text-[color:var(--muted)]">
-                  This gateway, within the selected window and retained request history. Tokens are
-                  reported usage only; failed attempts may consume unreported tokens. Requests with
-                  incomplete usage are counted below. This is not a billing total.
+                  This gateway, within the selected window and retained request history — all
+                  models, whatever the filter above says. Tokens are reported usage only; failed
+                  attempts may consume unreported tokens. Requests with incomplete usage are counted
+                  below. This is not a billing total.
                 </p>
                 {clientUsage.truncated && (
                   <p role="status" className="status-warn text-sm">
@@ -321,165 +724,6 @@ export default function MetricsPage() {
                 )}
               </section>
             )}
-            {summary.rowsDropped > 0 && (
-              <p
-                className="font-ui mb-4 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm"
-                role="status"
-              >
-                {summary.rowsDropped.toLocaleString()} measurement
-                {summary.rowsDropped === 1 ? "" : "s"} were dropped because the recorder could not
-                keep up, so these numbers are a sample rather than a complete record. Inference was
-                not affected.
-              </p>
-            )}
-            {summary.truncated && (
-              <p className="font-ui mb-4 text-sm text-[color:var(--muted)]">
-                Part of this window is older than the retention setting, so it is not included.
-              </p>
-            )}
-
-            {summary.groups.length === 0 ? (
-              <p className="font-ui text-sm text-[color:var(--muted)]">
-                Nothing was served in this window. Send a message from the{" "}
-                <Link href="/playground" className="underline">
-                  playground
-                </Link>{" "}
-                and come back.
-              </p>
-            ) : (
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-[color:var(--border)] text-left">
-                    <th className="py-2 pr-3 font-medium">Model</th>
-                    <th className="py-2 pr-3 font-medium">Backend</th>
-                    <th className="py-2 pr-3 text-right font-medium">Requests</th>
-                    <th className="py-2 pr-3 text-right font-medium">Median</th>
-                    <th className="py-2 pr-3 text-right font-medium">Slowest</th>
-                    <th className="py-2 pr-3 text-right font-medium">Tokens/sec</th>
-                    <th
-                      className="py-2 pr-3 text-right font-medium"
-                      title="Time spent deciding where to send the request: resolving the model, picking a backend, and any routing-table refresh."
-                    >
-                      Routing
-                    </th>
-                    <th
-                      className="py-2 pr-3 text-right font-medium"
-                      title="What Eugene Plexus itself cost: the local hop to the driver plus the driver's own work. Measured rather than assumed."
-                    >
-                      Overhead
-                    </th>
-                    <th className="py-2 pr-3 text-right font-medium">Failed</th>
-                    <th className="py-2 pr-3 text-right font-medium">Failed over</th>
-                    <th className="py-2 text-right font-medium">Woken</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary.groups.map((g) => (
-                    <tr
-                      key={groupKey(g)}
-                      className="border-b border-[color:var(--border)] align-top"
-                    >
-                      <td className="py-2 pr-3 font-mono break-all">{g.model ?? "—"}</td>
-                      <td className="py-2 pr-3">
-                        <span className="font-mono">{g.driver ?? "—"}</span>
-                        {/* By runtime NAME, so two replicas of one model stay
-                          distinguishable — the case balancing exists for.
-                          Absent for hosted and CLI backends, which have no
-                          runtime of ours. */}
-                        {g.runtime && (
-                          <span className="text-[color:var(--muted)]"> · {g.runtime}</span>
-                        )}
-                        {g.node && <span className="text-[color:var(--muted)]"> @ {g.node}</span>}
-                      </td>
-                      <td className="py-2 pr-3 text-right font-mono">{g.requests}</td>
-                      <td className="py-2 pr-3 text-right font-mono">{ms(g.latencyMs.p50)}</td>
-                      <td className="py-2 pr-3 text-right font-mono">{ms(g.latencyMs.max)}</td>
-                      <td className="py-2 pr-3 text-right font-mono">
-                        {g.tokensPerSecond ? (
-                          <>
-                            {g.tokensPerSecond.p50.toFixed(1)}
-                            <span
-                              className="text-[color:var(--muted)]"
-                              title={`Median over ${g.tokensPerSecond.samples} request(s) that reported token counts`}
-                            >
-                              {" "}
-                              ({g.tokensPerSecond.samples})
-                            </span>
-                          </>
-                        ) : (
-                          <span
-                            className="text-[color:var(--muted)]"
-                            title="This backend did not report token counts for these requests, so the rate cannot be computed. Not the same as zero."
-                          >
-                            unreported
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3 text-right font-mono">
-                        {g.routingMs ? (
-                          ms(g.routingMs.p50)
-                        ) : (
-                          <span className="text-[color:var(--muted)]">&mdash;</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3 text-right font-mono">
-                        {g.overheadMs ? (
-                          ms(g.overheadMs.p50)
-                        ) : (
-                          <span
-                            className="text-[color:var(--muted)]"
-                            title="This backend does not report how long its own call took, so the split cannot be computed. Not the same as no overhead."
-                          >
-                            unreported
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3 text-right font-mono">
-                        {g.errors > 0 ? (
-                          <span className="text-status-error">{g.errors}</span>
-                        ) : (
-                          <span className="text-[color:var(--muted)]">0</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3 text-right font-mono">
-                        {g.cascaded > 0 ? (
-                          g.cascaded
-                        ) : (
-                          <span className="text-[color:var(--muted)]">0</span>
-                        )}
-                      </td>
-                      <td className="py-2 text-right font-mono">
-                        {g.swappedIn > 0 ? (
-                          <>
-                            {g.swappedIn}
-                            {g.waitedMs && (
-                              <span className="text-[color:var(--muted)]">
-                                {" "}
-                                ({ms(g.waitedMs.p50)})
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <span className="text-[color:var(--muted)]">0</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            <p className="mt-3 text-[0.6875rem] text-[color:var(--muted)]">
-              Tokens/sec is measured from the backend that actually answered, not from the whole
-              request — so a failover does not make the backend that rescued it look slow. The
-              number in brackets is how many requests the median is over.
-            </p>
-            <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">
-              <strong>Overhead</strong> is what Eugene Plexus itself costs: the gap between how long
-              the backend said it took and how long the gateway saw it take. Compare it against the
-              median to decide whether routing is worth worrying about — on a local install it
-              usually is not, and this is where you can check that rather than take our word for it.
-            </p>
 
             {recent && recent.length > 0 && (
               <section className="mt-8">
@@ -530,6 +774,7 @@ export default function MetricsPage() {
                           {r.tries.map((t, j) => (
                             <div key={j}>
                               {t.served ? "✓" : "✗"} {t.driver} {ms(t.elapsedMs)}
+                              {t.firstMs != null && ` · first token ${ms(t.firstMs)}`}
                               {t.backendMs != null &&
                                 ` (${ms(t.backendMs)} backend, ${ms(
                                   Math.max(0, t.elapsedMs - t.backendMs),

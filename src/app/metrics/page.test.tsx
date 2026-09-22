@@ -8,7 +8,7 @@
  * computed over.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,6 +50,11 @@ beforeEach(() => {
         swappedIn: 0,
         latencyMs: { p50: 760, p90: 1200, max: 17914 },
         tokensPerSecond: { p50: 116.8, samples: 4 },
+        // Streamed requests: a first-token time and a decode rate whose
+        // sample count is deliberately DIFFERENT from tokensPerSecond's
+        // (the decode window guard can exclude requests usage kept).
+        ttftMs: { p50: 180, p90: 300, max: 900 },
+        decodeTokensPerSecond: { p50: 128.4, samples: 3 },
         routingMs: { p50: 3, p90: 8, max: 41 },
         overheadMs: { p50: 6, p90: 12, max: 30 },
       },
@@ -184,9 +189,45 @@ describe("metrics page", () => {
     await screen.findByText("116.8");
     // A backend that does not report its own latency leaves the split
     // uncomputable. Rendering it as 0 would assert the hop is free,
-    // which is the claim the measurement exists to check.
-    const unreported = screen.getAllByText("unreported");
+    // which is the claim the measurement exists to check. Scoped to the
+    // row because the stat tiles now say "unreported" too, for their
+    // own nulls — the page-wide count stopped identifying this cell.
+    const row = screen.getByText("claude-cli").closest("tr");
+    expect(row).not.toBeNull();
+    const unreported = within(row as HTMLElement).getAllByText("unreported");
     expect(unreported.length).toBe(2);
+  });
+
+  it("shows first token and decode speed beside the whole-attempt rate", async () => {
+    render(<MetricsPage />);
+    // The decode median with ITS OWN sample count — three streamed
+    // requests qualified where four reported usage, and pretending the
+    // two numbers rest on the same evidence would overstate one of them.
+    expect(await screen.findByText("128.4")).toBeInTheDocument();
+    expect(screen.getByText("(3)")).toBeInTheDocument();
+    // The model name is also an option in the model filter, so take the
+    // occurrence that sits in a table row.
+    const dolphin = screen
+      .getAllByText("dolphin3-8b")
+      .map((el) => el.closest("tr"))
+      .find((tr) => tr !== null);
+    expect(dolphin).toBeTruthy();
+    expect(dolphin).toHaveTextContent("180 ms");
+    // A backend where nothing streamed has no first token to time and
+    // no decode window: an em dash, never a zero.
+    const claude = screen.getByText("claude-cli").closest("tr");
+    expect(claude).not.toBeNull();
+    expect(within(claude as HTMLElement).queryByText("0.0")).toBeNull();
+  });
+
+  it("leads with the window's headline tiles, nulls as unreported", async () => {
+    render(<MetricsPage />);
+    // Tiles read the groupBy=total answer; the mock serves the same
+    // summary, whose first group carries streamed numbers. The tile is
+    // found by its caption because "First token" is also a column head.
+    expect(await screen.findByText("median, streamed requests")).toBeInTheDocument();
+    expect(screen.getByText("Decode speed")).toBeInTheDocument();
+    expect(screen.getByText("128.4 tok/s")).toBeInTheDocument();
   });
 
   it("shows what the balancer considered, including why one was skipped", async () => {
