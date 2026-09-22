@@ -119,6 +119,7 @@ export function ToolsPanel({
 
       <textarea
         data-testid="tools-json"
+        aria-label="Tool definitions (JSON)"
         value={definitions}
         onChange={(e) => onDefinitions(e.target.value)}
         disabled={!enabled}

@@ -9,8 +9,38 @@
  * render.
  */
 
-import { useRef, useState } from "react";
+import { createContext, useContext, useId, useRef, useState } from "react";
 
+/** The ids a control inside a `Field` takes, so the label names it and
+ * the line under the label describes it. */
+interface FieldControlIds {
+  id: string;
+  describedBy?: string;
+}
+
+const FieldControl = createContext<FieldControlIds | null>(null);
+
+/**
+ * The ids for the control inside the nearest `Field`, or null outside
+ * one. A control rendered as a Field's child spreads these onto its
+ * input; `SecretInput` and `FieldInput` below already do.
+ */
+export function useFieldControl(): FieldControlIds | null {
+  return useContext(FieldControl);
+}
+
+/**
+ * A label, an optional line of description, and the control.
+ *
+ * **The label is tied to the control by id.** It used to be a bare
+ * `<label>` naming nothing, so the passphrase screen was two password
+ * boxes with no accessible names, told apart only by position, and
+ * clicking a label did not focus its box. The Field makes the id with
+ * `useId` and hands it down by context rather than asking every caller
+ * for one: the control is usually a component of its own (a
+ * `SecretInput`), and an id prop threaded through each caller is the
+ * thing that gets forgotten.
+ */
 export function Field({
   label,
   description,
@@ -20,15 +50,32 @@ export function Field({
   description?: string;
   children: React.ReactNode;
 }) {
+  const id = useId();
+  const descriptionId = description ? `${id}-description` : undefined;
   return (
-    <div className="mb-5">
-      <label className="font-ui block text-sm font-medium">{label}</label>
-      {description && (
-        <p className="mt-1 mb-2 text-sm leading-relaxed text-[color:var(--muted)]">{description}</p>
-      )}
-      {children}
-    </div>
+    <FieldControl.Provider value={{ id, describedBy: descriptionId }}>
+      <div className="mb-5">
+        <label htmlFor={id} className="font-ui block text-sm font-medium">
+          {label}
+        </label>
+        {description && (
+          <p
+            id={descriptionId}
+            className="mt-1 mb-2 text-sm leading-relaxed text-[color:var(--muted)]"
+          >
+            {description}
+          </p>
+        )}
+        {children}
+      </div>
+    </FieldControl.Provider>
   );
+}
+
+/** A plain input that takes its ids from the `Field` it sits in. */
+export function FieldInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  const control = useFieldControl();
+  return <input id={control?.id} aria-describedby={control?.describedBy} {...props} />;
 }
 
 export function HostPortRow({
@@ -43,7 +90,7 @@ export function HostPortRow({
   return (
     <div className="mb-5 grid grid-cols-[2fr_1fr] gap-3">
       <Field label="Host">
-        <input
+        <FieldInput
           type="text"
           value={host}
           onChange={(e) => onChange(e.target.value, port)}
@@ -51,7 +98,7 @@ export function HostPortRow({
         />
       </Field>
       <Field label="Port">
-        <input
+        <FieldInput
           type="number"
           value={port}
           onChange={(e) => onChange(host, parseInt(e.target.value, 10) || 0)}
@@ -147,10 +194,13 @@ export function SecretInput({
 }) {
   const [reveal, setReveal] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const control = useFieldControl();
   return (
     <div className="flex items-stretch gap-2">
       <input
         ref={inputRef}
+        id={control?.id}
+        aria-describedby={control?.describedBy}
         type={reveal ? "text" : "password"}
         value={value}
         onChange={(e) => onChange(e.target.value)}

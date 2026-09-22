@@ -62,6 +62,29 @@ describe("the passphrase screen", () => {
     expect(screen.getByRole("heading", { name: "Choose a passphrase" })).toBeInTheDocument();
     expect(screen.getByText(/Eugene cannot reset it/)).toBeInTheDocument();
   });
+
+  it("names each box by its label, so a screen reader says which is which", () => {
+    // The labels were bare <label>s tied to nothing: two password boxes
+    // with no names, told apart only by position.
+    render(
+      <ScreenPassphrase
+        passphrase=""
+        passphraseConfirm=""
+        securityMode="prompt_on_startup"
+        keyringAvailable={true}
+        onPassphrase={vi.fn()}
+        onPassphraseConfirm={vi.fn()}
+        onSecurityMode={vi.fn()}
+      />,
+    );
+    const first = screen.getByLabelText("Passphrase");
+    const second = screen.getByLabelText("Confirm passphrase");
+    expect(first).toHaveAttribute("type", "password");
+    expect(second).toHaveAttribute("type", "password");
+    expect(first).not.toBe(second);
+    // And the line under each label is read as its description.
+    expect(second).toHaveAccessibleDescription("Same again, to guard against typos.");
+  });
 });
 
 describe("the folders screen", () => {
