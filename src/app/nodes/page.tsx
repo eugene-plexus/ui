@@ -37,6 +37,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api } from "@/lib/api";
 import { isLockedError } from "@/lib/controlUnlock";
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
+import { timeUntil } from "@/lib/relativeTime";
 import { usePolling } from "@/lib/usePolling";
 
 /**
@@ -563,8 +564,14 @@ export default function NodesPage() {
                       )}
                       <span className="text-[color:var(--muted)]">
                         {" "}
-                        · {t.used ? "already used" : "expires"}{" "}
-                        {t.used ? "" : new Date(t.expiresAt).toLocaleTimeString()}
+                        ·{" "}
+                        {t.used ? (
+                          "already used"
+                        ) : (
+                          <span title={new Date(t.expiresAt).toLocaleString()}>
+                            expires {timeUntil(t.expiresAt) ?? "at an unknown time"}
+                          </span>
+                        )}
                       </span>
                     </span>
                     <button
@@ -592,8 +599,11 @@ export default function NodesPage() {
             <div className="rounded-[var(--radius)] border border-[color:var(--border)] p-3">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <span className="font-ui text-sm text-[color:var(--muted)]">
-                  Run this on the machine you are adding. Expires{" "}
-                  {new Date(minted.expiresAt).toLocaleTimeString()}.
+                  Run this on the machine you are adding. It expires{" "}
+                  <span title={new Date(minted.expiresAt).toLocaleString()}>
+                    {timeUntil(minted.expiresAt) ?? "soon"}
+                  </span>
+                  .
                 </span>
                 <CopyButton text={joinCommand} label="Copy" />
               </div>

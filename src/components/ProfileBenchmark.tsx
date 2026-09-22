@@ -5,6 +5,8 @@ import { useEffect, useId, useState } from "react";
 
 import { api, describeError } from "@/lib/api";
 import { composeSpec } from "@/lib/launchSpec";
+import { formatTimestamp } from "@/lib/relativeTime";
+import { formatBytesShort } from "@/lib/tasks";
 import type { TargetNode } from "@/lib/nodeBudget";
 import type { Benchmark, BenchmarkList, LibraryModel, ModelProfile } from "@/lib/types";
 
@@ -264,8 +266,18 @@ export function BenchmarkPanel({
               generated tokens · {job.request.repetitions ?? 3} repetitions
             </p>
             <p className="break-all">
-              Model: {job.localPath} · {job.modelSizeBytes?.toLocaleString()} bytes · modified{" "}
-              {job.modelModifiedAt ?? "unknown"}
+              Model: {job.localPath} ·{" "}
+              {job.modelSizeBytes != null ? (
+                <span title={`${job.modelSizeBytes.toLocaleString()} bytes`}>
+                  {formatBytesShort(job.modelSizeBytes)}
+                </span>
+              ) : (
+                "size unknown"
+              )}{" "}
+              · modified{" "}
+              <span title={job.modelModifiedAt ?? undefined}>
+                {formatTimestamp(job.modelModifiedAt) ?? "unknown"}
+              </span>
             </p>
             <pre className="mt-2 overflow-x-auto text-[0.625rem] break-all whitespace-pre-wrap">
               {JSON.stringify(

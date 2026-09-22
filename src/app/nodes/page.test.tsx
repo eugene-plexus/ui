@@ -319,6 +319,20 @@ describe("join tokens can be withdrawn", () => {
     expect(row).toHaveTextContent("attic");
   });
 
+  it("says how long a token has left, not only the clock time it ends", async () => {
+    tokenRows = [
+      {
+        id: "a1b2c3d4e5f60718",
+        expiresAt: new Date(Date.now() + 12 * 60_000 + 20_000).toISOString(),
+        nodeName: "attic",
+        used: false,
+      },
+    ];
+    render(<NodesPage />);
+    const row = await screen.findByTestId("token-row");
+    expect(row).toHaveTextContent("expires in 12 min");
+  });
+
   it("revokes by id, against the control root", async () => {
     // The id is a handle, not the token — so this is the one thing the
     // page can do to a credential it was shown exactly once.

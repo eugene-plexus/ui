@@ -1,3 +1,5 @@
+import { formatDuration } from "./tasks";
+
 /**
  * "updated 3 days ago" for catalogue rows.
  *
@@ -22,4 +24,52 @@ export function relativeAge(
   if (months < 12) return months === 1 ? "a month ago" : `${months} months ago`;
   const years = Math.floor(days / 365);
   return years <= 1 ? "a year ago" : `${years} years ago`;
+}
+
+/**
+ * "in 12 min" for something that runs out: a join token, a lock, a key.
+ *
+ * A clock time alone ("expires 14:03") makes the reader do the
+ * subtraction, and gets it wrong for anyone whose browser and machine
+ * disagree about the time zone. Past instants say so rather than
+ * counting up, because "in -3 min" is not a sentence.
+ */
+export function timeUntil(iso: string | null | undefined, now: number = Date.now()): string | null {
+  if (!iso) return null;
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return null;
+  const seconds = (then - now) / 1000;
+  if (seconds <= 0) return "already passed";
+  if (seconds >= 2 * 86_400) return `in ${Math.round(seconds / 86_400)} days`;
+  return `in ${formatDuration(seconds)}`;
+}
+
+/**
+ * A timestamp a person can place: the time alone when it was today, the
+ * date as well when it was not.
+ *
+ * A list covering seven days that shows `14:03` on every row cannot say
+ * which Tuesday; a list covering one afternoon that repeats the date on
+ * every row is noise. The locale is the browser's, as everywhere else.
+ */
+export function formatTimestamp(
+  iso: string | null | undefined,
+  now: number = Date.now(),
+): string | null {
+  if (!iso) return null;
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return null;
+  const today = new Date(now);
+  const sameDay =
+    then.getFullYear() === today.getFullYear() &&
+    then.getMonth() === today.getMonth() &&
+    then.getDate() === today.getDate();
+  if (sameDay) return then.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return then.toLocaleString(undefined, {
+    year: then.getFullYear() === today.getFullYear() ? undefined : "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

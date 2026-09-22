@@ -184,3 +184,20 @@ it("discovers another console's remote work, deduplicates local records and tole
     }),
   ]);
 });
+
+it("records the model's size and date in plain units", async () => {
+  const done: Benchmark = {
+    ...job,
+    state: "completed",
+    localPath: "/models/m.gguf",
+    modelSizeBytes: 4_920_000_000,
+    modelModifiedAt: "2026-09-01T10:00:00Z",
+  };
+  vi.spyOn(api, "get").mockImplementation(async () => ({ benchmarks: [done] }));
+  render(<ProfileBenchmark model={model} profile={profile} node={node} />);
+  fireEvent.click(screen.getByRole("button", { name: "Benchmark" }));
+  const line = await screen.findByText(/Model: \/models\/m\.gguf/);
+  expect(line).toHaveTextContent("4.9 GB");
+  expect(line).not.toHaveTextContent("4,920,000,000 bytes");
+  expect(line).not.toHaveTextContent("2026-09-01T10:00:00Z");
+});
