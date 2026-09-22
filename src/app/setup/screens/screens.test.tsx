@@ -18,7 +18,14 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { blankDraft, canContinue, chosenFolders, restoreDraft } from "../draft";
+import {
+  MIN_PASSPHRASE_LENGTH,
+  blankDraft,
+  canContinue,
+  chosenFolders,
+  passphraseLength,
+  restoreDraft,
+} from "../draft";
 import { ScreenFolders } from "./Folders";
 import { ScreenPassphrase } from "./Passphrase";
 
@@ -61,6 +68,29 @@ describe("the passphrase screen", () => {
     );
     expect(screen.getByRole("heading", { name: "Choose a passphrase" })).toBeInTheDocument();
     expect(screen.getByText(/Eugene cannot reset it/)).toBeInTheDocument();
+  });
+
+  it("says a passphrase is too short while it is being typed, not after Continue", () => {
+    const props = {
+      passphraseConfirm: "",
+      securityMode: "prompt_on_startup" as const,
+      keyringAvailable: true,
+      onPassphrase: vi.fn(),
+      onPassphraseConfirm: vi.fn(),
+      onSecurityMode: vi.fn(),
+    };
+    const { rerender } = render(<ScreenPassphrase {...props} passphrase="" />);
+    // The rule is stated up front, and nothing is flagged before typing.
+    expect(screen.getByText(/at least 12 characters/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("passphrase-too-short")).toBeNull();
+
+    rerender(<ScreenPassphrase {...props} passphrase="hunter2" />);
+    expect(screen.getByTestId("passphrase-too-short")).toHaveTextContent(
+      "Use at least 12 characters. This one has 7.",
+    );
+
+    rerender(<ScreenPassphrase {...props} passphrase="correct horse battery" />);
+    expect(screen.queryByTestId("passphrase-too-short")).toBeNull();
   });
 
   it("names each box by its label, so a screen reader says which is which", () => {
@@ -133,11 +163,26 @@ describe("the folders screen", () => {
 });
 
 describe("the draft's rules", () => {
-  it("gates screen 1 on a matching passphrase, and nothing else", () => {
+  it("gates screen 1 on a matching passphrase of at least the minimum length", () => {
     const draft = blankDraft();
-    expect(canContinue(1, draft, "hunter2", "hunter3")).toBe(false);
+    const twelve = "correct hors"; // exactly MIN_PASSPHRASE_LENGTH
+    expect(twelve).toHaveLength(MIN_PASSPHRASE_LENGTH);
+    expect(canContinue(1, draft, twelve, "correct horz")).toBe(false);
     expect(canContinue(1, draft, "", "")).toBe(false);
-    expect(canContinue(1, draft, "hunter2", "hunter2")).toBe(true);
+    expect(canContinue(1, draft, twelve, twelve)).toBe(true);
+    // One short of it is refused here, before initialize does the same.
+    expect(canContinue(1, draft, "hunter2", "hunter2")).toBe(false);
+    expect(canContinue(1, draft, twelve.slice(1), twelve.slice(1))).toBe(false);
+  });
+
+  it("counts characters as a person sees them, not UTF-16 halves", () => {
+    // Six emoji are twelve UTF-16 units and six characters to the agent,
+    // which counts code points; counting `.length` here would let the
+    // wizard's Continue through and initialize refuse it.
+    const six = "🔑".repeat(6);
+    expect(six.length).toBe(12);
+    expect(canContinue(1, blankDraft(), six, six)).toBe(false);
+    expect(passphraseLength("🔑".repeat(12))).toBe(12);
   });
 
   it("gates screen 2 on one folder, from whichever radio is chosen", () => {

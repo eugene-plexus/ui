@@ -19,7 +19,7 @@
  * says what will happen instead of offering a choice that cannot work.
  */
 
-import type { SecurityMode } from "../draft";
+import { MIN_PASSPHRASE_LENGTH, type SecurityMode, passphraseLength } from "../draft";
 import { Checkbox, Field, SecretInput } from "../fields";
 
 export function ScreenPassphrase({
@@ -42,6 +42,11 @@ export function ScreenPassphrase({
   onSecurityMode: (v: SecurityMode) => void;
 }) {
   const mismatch = passphraseConfirm.length > 0 && passphrase !== passphraseConfirm;
+  // Said while typing, not after Continue: Continue stays off until the
+  // passphrase is long enough, and a disabled button with no reason on
+  // screen is a puzzle. Nothing is flagged before the first character.
+  const typed = passphraseLength(passphrase);
+  const tooShort = typed > 0 && typed < MIN_PASSPHRASE_LENGTH;
   const noKeyring = keyringAvailable === false;
   return (
     <section>
@@ -52,7 +57,7 @@ export function ScreenPassphrase({
       </p>
       <Field
         label="Passphrase"
-        description="Anything non-empty works; a longer phrase is stronger."
+        description={`At least ${MIN_PASSPHRASE_LENGTH} characters. A short sentence works well.`}
       >
         <SecretInput
           value={passphrase}
@@ -60,6 +65,11 @@ export function ScreenPassphrase({
           placeholder="A line of poetry, a sentence, a long phrase…"
         />
       </Field>
+      {tooShort && (
+        <p data-testid="passphrase-too-short" className="text-status-error -mt-2 mb-4 text-sm">
+          Use at least {MIN_PASSPHRASE_LENGTH} characters. This one has {typed}.
+        </p>
+      )}
       <Field label="Confirm passphrase" description="Same again, to guard against typos.">
         <SecretInput
           value={passphraseConfirm}

@@ -387,6 +387,20 @@ describe("screen 1: what Continue commits", () => {
     expect(box).not.toBeChecked();
   });
 
+  it("keeps Continue off for a matching passphrase that is too short", async () => {
+    // The agent and the control root refuse under 12 characters at
+    // initialize. Letting Continue through would spend the click on a
+    // refusal from the server instead of a sentence on this screen.
+    const user = newUser();
+    render(<WizardPage />);
+    await screen.findByRole("heading", { name: /^Choose a passphrase$/ });
+    await user.type(screen.getByPlaceholderText(/a line of poetry/i), "hunter2");
+    await user.type(screen.getByPlaceholderText(/repeat the passphrase/i), "hunter2");
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    expect(screen.getByTestId("passphrase-too-short")).toBeInTheDocument();
+    expect(routesFrom(["POST agent/v1/auth/initialize"])).toEqual([]);
+  });
+
   it("never writes the passphrase to storage", async () => {
     const user = newUser();
     render(<WizardPage />);

@@ -173,6 +173,32 @@ export function chosenFolders(draft: WizardDraft, proposedFolder: string | null)
   return draft.modelRoots.map((r) => r.trim()).filter(Boolean);
 }
 
+/**
+ * The shortest passphrase a new install takes.
+ *
+ * The same number the agent and the control root enforce at
+ * `POST /v1/auth/initialize`, which refuse anything shorter. It guards
+ * everything the install seals (provider keys, the install's signing
+ * key) against an offline guess, and a passphrase is typed rarely enough
+ * that a longer one costs little. Checked here as well so the refusal is
+ * a sentence on this screen, before Continue, rather than an error after
+ * it. **Not applied at sign-in:** installs made before the minimum may
+ * hold a shorter passphrase, and must still be able to open.
+ */
+export const MIN_PASSPHRASE_LENGTH = 12;
+
+/**
+ * A passphrase's length in characters as a person counts them.
+ *
+ * Code points, not `.length`: an emoji is one character to the person
+ * typing it and to the agent (Python's `len` counts code points), but two
+ * UTF-16 units to JavaScript, so `.length` would let Continue through for
+ * a passphrase the server then refuses.
+ */
+export function passphraseLength(passphrase: string): number {
+  return Array.from(passphrase).length;
+}
+
 export function canContinue(
   screen: number,
   draft: WizardDraft,
@@ -180,11 +206,13 @@ export function canContinue(
   passphraseConfirm: string,
   proposedFolder: string | null = null,
 ): boolean {
-  // Screen 1 is the passphrase — non-empty AND the confirmation matches.
-  // Length validation lives server-side (Argon2 will accept anything
-  // non-empty); we only block the obvious typo.
+  // Screen 1 is the passphrase: long enough, AND the confirmation
+  // matches. Initialize refuses a short one too; this only moves the
+  // refusal to before the click.
   if (screen === 1) {
-    return passphrase.length > 0 && passphrase === passphraseConfirm;
+    return (
+      passphraseLength(passphrase) >= MIN_PASSPHRASE_LENGTH && passphrase === passphraseConfirm
+    );
   }
   // Screen 2 needs one folder. The old Models screen let none through
   // because "directories can be added later from Config"; the design's
