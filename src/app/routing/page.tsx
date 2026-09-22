@@ -188,244 +188,249 @@ export default function RoutingPage() {
         </button>
       }
     >
-      <main className="relative z-10 mx-auto max-w-4xl px-6 py-8">
-        <p className="mb-2 text-sm text-[color:var(--muted)]">
-          A priority list gives one model name an ordered set of fallbacks: a request for the name
-          is served by its own backends first, then by each target in order when everything before
-          it failed. Targets are model ids — each one means every backend serving that id.
-        </p>
-        <p className="mb-6 text-sm text-[color:var(--muted)]">
-          These lists are the gateway&rsquo;s <span className="font-mono">modelSlots</span> setting
-          — the rest of its settings are on{" "}
-          <Link href="/config?tab=gateway&sel=gateway" className="underline">
-            the gateway&rsquo;s Config page
-          </Link>
-          . What is actually running is on{" "}
-          <Link href="/inference" className="underline">
-            Inference
-          </Link>
-          ; which tier served each request is on{" "}
-          <Link href="/metrics?sel=gateway" className="underline">
-            Metrics
-          </Link>
-          .
-        </p>
-
-        {loading && <p className="font-ui text-sm text-[color:var(--muted)]">Loading…</p>}
-
-        {loadError && (
-          <p className="status-error mb-4 text-sm" data-testid="routing-load-error">
-            {loadError}
+      {/* The shell is h-dvh with overflow hidden, so the page owns its
+          scroll — the same defect the metrics page shipped with, fixed
+          in the same commit. */}
+      <main data-testid="routing-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl px-6 py-8">
+          <p className="mb-2 text-sm text-[color:var(--muted)]">
+            A priority list gives one model name an ordered set of fallbacks: a request for the name
+            is served by its own backends first, then by each target in order when everything before
+            it failed. Targets are model ids — each one means every backend serving that id.
           </p>
-        )}
+          <p className="mb-6 text-sm text-[color:var(--muted)]">
+            These lists are the gateway&rsquo;s <span className="font-mono">modelSlots</span>{" "}
+            setting — the rest of its settings are on{" "}
+            <Link href="/config?tab=gateway&sel=gateway" className="underline">
+              the gateway&rsquo;s Config page
+            </Link>
+            . What is actually running is on{" "}
+            <Link href="/inference" className="underline">
+              Inference
+            </Link>
+            ; which tier served each request is on{" "}
+            <Link href="/metrics?sel=gateway" className="underline">
+              Metrics
+            </Link>
+            .
+          </p>
 
-        {!loading && !loadError && (
-          <>
-            {routingError && (
-              <p
-                className="mb-4 text-sm text-[color:var(--muted)]"
-                data-testid="routing-soft-error"
-              >
-                {routingError}
-              </p>
-            )}
+          {loading && <p className="font-ui text-sm text-[color:var(--muted)]">Loading…</p>}
 
-            <datalist id={DATALIST_ID}>
-              {known.map((id) => (
-                <option key={id} value={id} />
-              ))}
-            </datalist>
+          {loadError && (
+            <p className="status-error mb-4 text-sm" data-testid="routing-load-error">
+              {loadError}
+            </p>
+          )}
 
-            {parseError ? (
-              <section className="mb-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
-                <p className="status-error mb-2 text-sm" data-testid="slots-parse-error">
-                  The stored value does not parse into lists: {parseError}. Fix it as JSON below —
-                  the structured editor would have to guess which entries to keep.
+          {!loading && !loadError && (
+            <>
+              {routingError && (
+                <p
+                  className="mb-4 text-sm text-[color:var(--muted)]"
+                  data-testid="routing-soft-error"
+                >
+                  {routingError}
                 </p>
-                <JsonEditor slots={draft} onApply={setDraft} disabled={saving} raw={rawValue} />
-              </section>
-            ) : (
-              <>
-                {draft.length > 5 && (
-                  <div className="mb-4">
-                    <input
-                      type="search"
-                      value={filter}
-                      onChange={(e) => setFilter(e.target.value)}
-                      placeholder="Filter lists by model or target"
-                      aria-label="Filter lists by model or target"
-                      className={`${inputClass} w-full max-w-sm`}
-                    />
-                  </div>
-                )}
+              )}
 
-                {draft.length === 0 && (
-                  <p className="mb-4 text-sm text-[color:var(--muted)]" data-testid="no-slots">
-                    No priority lists yet. Without one, a request is served only by the backends
-                    serving the exact model it asked for — add a list to give a model fallbacks.
+              <datalist id={DATALIST_ID}>
+                {known.map((id) => (
+                  <option key={id} value={id} />
+                ))}
+              </datalist>
+
+              {parseError ? (
+                <section className="mb-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
+                  <p className="status-error mb-2 text-sm" data-testid="slots-parse-error">
+                    The stored value does not parse into lists: {parseError}. Fix it as JSON below —
+                    the structured editor would have to guess which entries to keep.
                   </p>
-                )}
-
-                <div className="space-y-4">
-                  {visible.map(({ slot, index }) => (
-                    <SlotCard
-                      key={index}
-                      slot={slot}
-                      routing={routing}
-                      disabled={saving}
-                      onRename={(name) => setDraft((d) => renameSlot(d, index, name))}
-                      onRemove={() => setDraft((d) => removeSlot(d, index))}
-                      onSetTarget={(j, id) => setDraft((d) => setTarget(d, index, j, id))}
-                      onMoveTarget={(j, delta) => setDraft((d) => moveTarget(d, index, j, delta))}
-                      onRemoveTarget={(j) => setDraft((d) => removeTarget(d, index, j))}
-                      onAddTarget={(id) => setDraft((d) => addTarget(d, index, id))}
-                    />
-                  ))}
-                </div>
-
-                {filter.trim() && visible.length === 0 && draft.length > 0 && (
-                  <p className="text-sm text-[color:var(--muted)]">
-                    Nothing matches &ldquo;{filter.trim()}&rdquo;.
-                  </p>
-                )}
-
-                <section className="mt-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
-                  <h2 className="font-ui mb-2 text-base font-semibold">Add a priority list</h2>
-                  <form
-                    className="flex flex-wrap items-center gap-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      addList(newListName);
-                    }}
-                  >
-                    <input
-                      value={newListName}
-                      onChange={(e) => setNewListName(e.target.value)}
-                      list={DATALIST_ID}
-                      placeholder="model name clients ask for"
-                      aria-label="Model name for the new list"
-                      disabled={saving}
-                      className={`${inputClass} w-64 max-w-full`}
-                    />
-                    <button
-                      type="submit"
-                      disabled={
-                        saving ||
-                        !newListName.trim() ||
-                        draft.some((s) => s.model.trim() === newListName.trim())
-                      }
-                      className={smallButtonClass}
-                    >
-                      Add list
-                    </button>
-                    {draft.some((s) => s.model.trim() === newListName.trim()) &&
-                      newListName.trim() && (
-                        <span className="text-sm text-[color:var(--muted)]">
-                          &ldquo;{newListName.trim()}&rdquo; already has a list.
-                        </span>
-                      )}
-                  </form>
-                  {unconfigured.length > 0 && (
-                    <div className="mt-3">
-                      <p className="mb-1 text-sm text-[color:var(--muted)]">
-                        Running now with no fallbacks configured:
-                      </p>
-                      <ul className="flex flex-wrap gap-2">
-                        {unconfigured.map((model) => (
-                          <li key={model}>
-                            <button
-                              type="button"
-                              onClick={() => addList(model)}
-                              disabled={saving}
-                              className={`${smallButtonClass} font-mono`}
-                              title={`Add a priority list for ${model}`}
-                            >
-                              {model} +
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+                  <JsonEditor slots={draft} onApply={setDraft} disabled={saving} raw={rawValue} />
+                </section>
+              ) : (
+                <>
+                  {draft.length > 5 && (
+                    <div className="mb-4">
+                      <input
+                        type="search"
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value)}
+                        placeholder="Filter lists by model or target"
+                        aria-label="Filter lists by model or target"
+                        className={`${inputClass} w-full max-w-sm`}
+                      />
                     </div>
                   )}
-                </section>
-              </>
-            )}
 
-            {warnings.length > 0 && (
-              <ul className="mt-4 space-y-1" data-testid="slot-warnings">
-                {warnings.map((w) => (
-                  <li key={w} className="text-sm text-[color:var(--status-warn-fg)]">
-                    ⚠ {w}
-                  </li>
-                ))}
-              </ul>
-            )}
+                  {draft.length === 0 && (
+                    <p className="mb-4 text-sm text-[color:var(--muted)]" data-testid="no-slots">
+                      No priority lists yet. Without one, a request is served only by the backends
+                      serving the exact model it asked for — add a list to give a model fallbacks.
+                    </p>
+                  )}
 
-            {problems.length > 0 && (
-              <ul className="mt-4 space-y-1" data-testid="slot-problems">
-                {problems.map((p) => (
-                  <li key={p} className="status-error text-sm">
-                    {p}
-                  </li>
-                ))}
-              </ul>
-            )}
+                  <div className="space-y-4">
+                    {visible.map(({ slot, index }) => (
+                      <SlotCard
+                        key={index}
+                        slot={slot}
+                        routing={routing}
+                        disabled={saving}
+                        onRename={(name) => setDraft((d) => renameSlot(d, index, name))}
+                        onRemove={() => setDraft((d) => removeSlot(d, index))}
+                        onSetTarget={(j, id) => setDraft((d) => setTarget(d, index, j, id))}
+                        onMoveTarget={(j, delta) => setDraft((d) => moveTarget(d, index, j, delta))}
+                        onRemoveTarget={(j) => setDraft((d) => removeTarget(d, index, j))}
+                        onAddTarget={(id) => setDraft((d) => addTarget(d, index, id))}
+                      />
+                    ))}
+                  </div>
 
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={saving || !dirty || problems.length > 0}
-                className="font-ui rounded-[var(--radius)] border border-[color:var(--accent-left)] px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {saving ? "Saving…" : "Save"}
-              </button>
-              <button
-                type="button"
-                onClick={revert}
-                disabled={saving || !dirty}
-                className={smallButtonClass}
-              >
-                Revert
-              </button>
-              {!dirty && !saveState && !saveError && (
-                <span className="text-sm text-[color:var(--muted)]">No unsaved changes.</span>
+                  {filter.trim() && visible.length === 0 && draft.length > 0 && (
+                    <p className="text-sm text-[color:var(--muted)]">
+                      Nothing matches &ldquo;{filter.trim()}&rdquo;.
+                    </p>
+                  )}
+
+                  <section className="mt-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
+                    <h2 className="font-ui mb-2 text-base font-semibold">Add a priority list</h2>
+                    <form
+                      className="flex flex-wrap items-center gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        addList(newListName);
+                      }}
+                    >
+                      <input
+                        value={newListName}
+                        onChange={(e) => setNewListName(e.target.value)}
+                        list={DATALIST_ID}
+                        placeholder="model name clients ask for"
+                        aria-label="Model name for the new list"
+                        disabled={saving}
+                        className={`${inputClass} w-64 max-w-full`}
+                      />
+                      <button
+                        type="submit"
+                        disabled={
+                          saving ||
+                          !newListName.trim() ||
+                          draft.some((s) => s.model.trim() === newListName.trim())
+                        }
+                        className={smallButtonClass}
+                      >
+                        Add list
+                      </button>
+                      {draft.some((s) => s.model.trim() === newListName.trim()) &&
+                        newListName.trim() && (
+                          <span className="text-sm text-[color:var(--muted)]">
+                            &ldquo;{newListName.trim()}&rdquo; already has a list.
+                          </span>
+                        )}
+                    </form>
+                    {unconfigured.length > 0 && (
+                      <div className="mt-3">
+                        <p className="mb-1 text-sm text-[color:var(--muted)]">
+                          Running now with no fallbacks configured:
+                        </p>
+                        <ul className="flex flex-wrap gap-2">
+                          {unconfigured.map((model) => (
+                            <li key={model}>
+                              <button
+                                type="button"
+                                onClick={() => addList(model)}
+                                disabled={saving}
+                                className={`${smallButtonClass} font-mono`}
+                                title={`Add a priority list for ${model}`}
+                              >
+                                {model} +
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </section>
+                </>
               )}
-            </div>
 
-            {saveError && (
-              <p className="status-error mt-3 text-sm" data-testid="save-error">
-                Not saved: {saveError}
-              </p>
-            )}
-            {saveState && saveState.rejected.length > 0 && (
-              <ul className="mt-3 space-y-1" data-testid="save-rejected">
-                {saveState.rejected.map((r, i) => (
-                  <li key={i} className="status-error text-sm">
-                    Not saved: {r.message ?? "rejected"}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {saveState && saveState.rejected.length === 0 && (
-              <p className="mt-3 text-sm text-[color:var(--muted)]" data-testid="save-applied">
-                Saved. The gateway reads the lists on its next routing refresh
-                {saveState.requiresRestart ? " — and reports a restart is required" : ""}.
-              </p>
-            )}
+              {warnings.length > 0 && (
+                <ul className="mt-4 space-y-1" data-testid="slot-warnings">
+                  {warnings.map((w) => (
+                    <li key={w} className="text-sm text-[color:var(--status-warn-fg)]">
+                      ⚠ {w}
+                    </li>
+                  ))}
+                </ul>
+              )}
 
-            {!parseError && (
-              <details className="mt-8">
-                <summary className="font-ui cursor-pointer text-sm text-[color:var(--muted)]">
-                  Edit as JSON
-                </summary>
-                <div className="mt-2">
-                  <JsonEditor slots={draft} onApply={setDraft} disabled={saving} raw={null} />
-                </div>
-              </details>
-            )}
-          </>
-        )}
+              {problems.length > 0 && (
+                <ul className="mt-4 space-y-1" data-testid="slot-problems">
+                  {problems.map((p) => (
+                    <li key={p} className="status-error text-sm">
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void save()}
+                  disabled={saving || !dirty || problems.length > 0}
+                  className="font-ui rounded-[var(--radius)] border border-[color:var(--accent-left)] px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={revert}
+                  disabled={saving || !dirty}
+                  className={smallButtonClass}
+                >
+                  Revert
+                </button>
+                {!dirty && !saveState && !saveError && (
+                  <span className="text-sm text-[color:var(--muted)]">No unsaved changes.</span>
+                )}
+              </div>
+
+              {saveError && (
+                <p className="status-error mt-3 text-sm" data-testid="save-error">
+                  Not saved: {saveError}
+                </p>
+              )}
+              {saveState && saveState.rejected.length > 0 && (
+                <ul className="mt-3 space-y-1" data-testid="save-rejected">
+                  {saveState.rejected.map((r, i) => (
+                    <li key={i} className="status-error text-sm">
+                      Not saved: {r.message ?? "rejected"}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {saveState && saveState.rejected.length === 0 && (
+                <p className="mt-3 text-sm text-[color:var(--muted)]" data-testid="save-applied">
+                  Saved. The gateway reads the lists on its next routing refresh
+                  {saveState.requiresRestart ? " — and reports a restart is required" : ""}.
+                </p>
+              )}
+
+              {!parseError && (
+                <details className="mt-8">
+                  <summary className="font-ui cursor-pointer text-sm text-[color:var(--muted)]">
+                    Edit as JSON
+                  </summary>
+                  <div className="mt-2">
+                    <JsonEditor slots={draft} onApply={setDraft} disabled={saving} raw={null} />
+                  </div>
+                </details>
+              )}
+            </>
+          )}
+        </div>
       </main>
     </AppShell>
   );

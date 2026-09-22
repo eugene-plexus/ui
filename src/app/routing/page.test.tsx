@@ -140,6 +140,15 @@ async function renderPage() {
 }
 
 describe("the lists come from config, decorated by the routing table", () => {
+  it("owns its scroll, because the shell clips at the viewport", async () => {
+    await renderPage();
+    // Same defect the metrics page shipped with: the AppShell is h-dvh
+    // with overflow hidden, so a page without its own overflow-y-auto
+    // renders everything below the fold unreachable. jsdom applies no
+    // CSS, so the class IS the assertion.
+    expect(screen.getByTestId("routing-scroll").className).toContain("overflow-y-auto");
+  });
+
   it("renders the configured list with its self tier and per-target resolution", async () => {
     const card = await renderPage();
     const self = within(card).getByTestId("self-tier");

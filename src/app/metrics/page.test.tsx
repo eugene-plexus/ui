@@ -220,6 +220,18 @@ describe("metrics page", () => {
     expect(within(claude as HTMLElement).queryByText("0.0")).toBeNull();
   });
 
+  it("owns its scroll, because the shell clips at the viewport", async () => {
+    render(<MetricsPage />);
+    await screen.findByText("116.8");
+    // The AppShell is h-dvh with overflow hidden; a page without its own
+    // overflow-y-auto renders everything below the fold unreachable.
+    // Shipped that way once: the comparison table was visible only to
+    // copy/paste. jsdom applies no CSS, so the class IS the assertion.
+    const scroller = screen.getByTestId("metrics-scroll");
+    expect(scroller.className).toContain("overflow-y-auto");
+    expect(scroller).toContainElement(screen.getByText("claude-cli"));
+  });
+
   it("leads with the window's headline tiles, nulls as unreported", async () => {
     render(<MetricsPage />);
     // Tiles read the groupBy=total answer; the mock serves the same
