@@ -36,6 +36,7 @@ import type {
   RuntimePlacementList,
   RuntimeStatus,
 } from "@/lib/types";
+import { formatDuration } from "@/lib/tasks";
 
 /**
  * Inference — everything the gateway can route to, wherever it runs and
@@ -697,7 +698,7 @@ function RowView({
       <td className="py-1.5 pr-4 text-[color:var(--muted)]">
         {row.inFlight !== null ? `${row.inFlight} in flight` : "—"}
         {row.idleSeconds !== null && row.inFlight === 0 && (
-          <span className="ml-1">· idle {Math.round(row.idleSeconds)}s</span>
+          <span className="ml-1">· idle {formatDuration(row.idleSeconds)}</span>
         )}
       </td>
       <td className="py-1.5 pr-4 text-right whitespace-nowrap">

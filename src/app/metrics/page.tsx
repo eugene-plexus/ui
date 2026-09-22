@@ -51,6 +51,7 @@ import { ApiError, api, describeError } from "@/lib/api";
 import { compact, hourlyPoints, msLabel, tilesFrom } from "@/lib/metricsCharts";
 import type { ClientUsageSummary } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
+import { formatTimestamp } from "@/lib/relativeTime";
 
 interface Percentiles {
   p50: number;
@@ -754,7 +755,9 @@ export default function MetricsPage() {
                         className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 font-mono text-[0.6875rem]"
                       >
                         <span className="text-[color:var(--muted)]">
-                          {new Date(r.startedAt).toLocaleTimeString()}
+                          <span title={new Date(r.startedAt).toLocaleString()}>
+                            {formatTimestamp(r.startedAt)}
+                          </span>
                         </span>{" "}
                         <span className={r.outcome === "error" ? "text-status-error" : ""}>
                           {r.outcome}

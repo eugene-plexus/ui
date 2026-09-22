@@ -197,6 +197,27 @@ describe("metrics page", () => {
     expect(within(row).getByRole("button", { name: "Copy request ID" })).toBeInTheDocument();
   });
 
+  it("dates a request from another day, since the window spans a week", async () => {
+    const lastWeek = new Date(Date.now() - 5 * 86_400_000).toISOString();
+    requests = {
+      requests: [
+        {
+          startedAt: lastWeek,
+          requestedModel: "alias",
+          attempts: 1,
+          totalMs: 50,
+          requestId: "req-old",
+          outcome: "served",
+          tries: [],
+        },
+      ],
+    };
+    render(<MetricsPage />);
+    const row = (await screen.findByText("Request req-old")).closest("li") as HTMLElement;
+    const day = new Date(lastWeek).toLocaleString(undefined, { month: "short", day: "numeric" });
+    expect(row).toHaveTextContent(day);
+  });
+
   it("warns that the numbers are a sample when the recorder dropped rows", async () => {
     (summary as { rowsDropped: number }).rowsDropped = 1234;
     render(<MetricsPage />);

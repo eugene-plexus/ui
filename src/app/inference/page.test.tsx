@@ -14,7 +14,7 @@
  * took off the live worker.
  */
 
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -489,5 +489,37 @@ describe("elapsed counts up", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("how long a model has sat idle", () => {
+  it("says it in minutes and hours, not a count of seconds", async () => {
+    handlers.set("GET gateway/v1/admin/routing", () => ({
+      status: 200,
+      body: {
+        unreachable_drivers: [],
+        slots: [
+          {
+            model: "gemma-3-27b",
+            tiers: [
+              {
+                target: "gemma-3-27b",
+                backends: [
+                  {
+                    driver: "gemma-a-driver",
+                    eligible: true,
+                    in_flight: 0,
+                    idle_seconds: 5423,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    await waitFor(() => expect(row).toHaveTextContent("idle 1 h 30 min"));
+    expect(row).not.toHaveTextContent("5423s");
   });
 });
