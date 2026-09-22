@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/lib/api";
-import type { ClientKeyList } from "@/lib/types";
+import type { ClientKeyList, Model } from "@/lib/types";
 
 import { UseFromAppsCard } from "./UseFromAppsCard";
 
@@ -140,4 +140,70 @@ it("makes legacy access explicit and edits limits without minting another token"
   );
   expect(await screen.findByText(/No models allowed/)).toBeInTheDocument();
   expect(post).not.toHaveBeenCalled();
+});
+
+describe("turning a key off", () => {
+  // It cannot be taken back: every app holding that key stops working,
+  // and the key drops out of the list. One click used to do it.
+  const key = {
+    id: "laptop",
+    name: "Laptop",
+    tail: "sample",
+    createdAt: "2026-09-01T00:00:00Z",
+    expiresAt: "2099-09-01T00:00:00Z",
+  };
+
+  it("asks first, and one click does not turn it off", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [key], scope: "install" });
+    const del = vi.spyOn(api, "delete").mockResolvedValue(undefined);
+    show();
+    const row = within(await screen.findByTestId("key-list"));
+    fireEvent.click(row.getByRole("button", { name: "Turn off" }));
+    expect(del).not.toHaveBeenCalled();
+    expect(row.getByText("Apps using this key will stop working.")).toBeInTheDocument();
+    // The way out leaves it alone.
+    fireEvent.click(row.getByRole("button", { name: "Keep" }));
+    expect(del).not.toHaveBeenCalled();
+    expect(row.getByText("Laptop")).toBeInTheDocument();
+  });
+
+  it("turns it off once confirmed", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [key], scope: "install" });
+    const del = vi.spyOn(api, "delete").mockResolvedValue(undefined);
+    show();
+    const row = within(await screen.findByTestId("key-list"));
+    fireEvent.click(row.getByRole("button", { name: "Turn off" }));
+    fireEvent.click(row.getByRole("button", { name: "Turn off" }));
+    await waitFor(() => expect(del).toHaveBeenCalledWith("agent", "/v1/auth/client-keys/laptop"));
+  });
+});
+
+describe("the card's controls have names", () => {
+  // A placeholder is not a label: it disappears as soon as anyone types,
+  // and a screen reader may not read it at all.
+  const models = [
+    { id: "qwen", object: "model", created: 0, owned_by: "eugene-plexus" },
+    { id: "gemma", object: "model", created: 0, owned_by: "eugene-plexus" },
+  ] as Model[];
+
+  it("labels the key name, the model and the address", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [], scope: "install" });
+    render(
+      <UseFromAppsCard models={models} gatewayPortUrl={null} placement={null} localNode="worker" />,
+    );
+    await screen.findByText(/Registry status|every gateway/);
+    expect(screen.getByLabelText("What the key is for")).toBe(screen.getByTestId("key-name"));
+    expect(screen.getByLabelText("Model")).toBe(screen.getByTestId("app-model"));
+    fireEvent.click(screen.getByRole("button", { name: "Not right?" }));
+    expect(screen.getByLabelText("Address")).toBe(screen.getByTestId("base-url-input"));
+  });
+
+  it("pairs every term in the list with its description", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [], scope: "install" });
+    show();
+    await screen.findByText(/Registry status|every gateway/);
+    const terms = document.querySelectorAll("[data-testid='home-use-from-apps'] dt");
+    expect(terms.length).toBeGreaterThan(0);
+    for (const term of terms) expect(term.nextElementSibling?.tagName).toBe("DD");
+  });
 });

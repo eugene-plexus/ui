@@ -122,11 +122,12 @@ test.describe("client keys", () => {
     expect(await asHarness(page, keeper)).toBe(200);
     expect(await asHarness(page, doomed)).toBe(200);
 
-    await card
-      .getByTestId("key-list")
-      .locator("li", { hasText: "Doomed" })
-      .getByRole("button", { name: /Turn off/i })
-      .click();
+    // Asked twice: the first click swaps the button for a prompt, the
+    // action (named the same) and Keep.
+    const doomedRow = card.getByTestId("key-list").locator("li", { hasText: "Doomed" });
+    await doomedRow.getByRole("button", { name: /Turn off/i }).click();
+    await expect(doomedRow).toContainText("Apps using this key will stop working.");
+    await doomedRow.getByRole("button", { name: /Turn off/i }).click();
     await expect(card.getByTestId("key-list")).not.toContainText("Doomed", { timeout: 30_000 });
 
     // The gateway caches the revoked list for a refresh interval, so this

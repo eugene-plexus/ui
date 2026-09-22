@@ -9,6 +9,7 @@ import {
   describeClientLimits,
 } from "./ClientKeyLimitsEditor";
 
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api, describeError } from "@/lib/api";
 import {
@@ -328,6 +329,7 @@ export function UseFromAppsCard({
               <input
                 name="base"
                 defaultValue={baseUrl}
+                aria-label="Address"
                 data-testid="base-url-input"
                 placeholder="http://192.168.1.20:8080"
                 className="min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs"
@@ -431,6 +433,7 @@ export function UseFromAppsCard({
           {models.length > 1 ? (
             <select
               data-testid="app-model"
+              aria-label="Model"
               value={model ?? ""}
               onChange={(e) => setModel(e.target.value)}
               className="min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs"
@@ -486,6 +489,7 @@ export function UseFromAppsCard({
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
+          aria-label="What the key is for"
           data-testid="key-name"
           placeholder="What is it for? e.g. Continue on the laptop"
           className="font-ui min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 text-sm"
@@ -592,14 +596,19 @@ export function UseFromAppsCard({
                     </p>
                   </form>
                 )}
-                <button
-                  type="button"
-                  onClick={() => void revoke(key)}
-                  disabled={busy}
-                  className="ml-auto text-[color:var(--muted)] underline disabled:opacity-50"
-                >
-                  Turn off
-                </button>
+                {/* Asked twice: every app holding this key stops working
+                    and the key leaves the list, and neither can be taken
+                    back. The cost of asking is one click on a key
+                    somebody really meant to turn off. */}
+                <span className="ml-auto">
+                  <ConfirmButton
+                    label="Turn off"
+                    prompt="Apps using this key will stop working."
+                    onConfirm={() => revoke(key)}
+                    disabled={busy}
+                    className="text-[color:var(--muted)] underline disabled:opacity-50"
+                  />
+                </span>
               </li>
             );
           })}
@@ -655,11 +664,17 @@ export function UseFromAppsCard({
   );
 }
 
+/**
+ * One term and its value. The value is a `<dd>`: a `<dt>` followed by
+ * bare elements is a description list with every description missing,
+ * which is how a screen reader announces it. The `<dd>` is the flex row
+ * the children used to sit in directly, so their `flex-1` still applies.
+ */
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <dt className="font-ui w-20 shrink-0 text-sm text-[color:var(--muted)]">{label}</dt>
-      {children}
+      <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-2">{children}</dd>
     </div>
   );
 }
