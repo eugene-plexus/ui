@@ -11,6 +11,7 @@ import { DecisionPanel } from "@/components/DecisionPanel";
 import { DiagnosticPanel, type GatewayMode } from "@/components/DiagnosticPanel";
 import { RequestReport } from "@/components/RequestReport";
 import { SamplingPanel } from "@/components/SamplingPanel";
+import { SetupGateScreen } from "@/components/SetupGateScreen";
 import { EXAMPLE_TOOLS_TEXT, type ResponseFormatChoice, ToolsPanel } from "@/components/ToolsPanel";
 import { ApiError, api } from "@/lib/api";
 import {
@@ -157,7 +158,7 @@ export default function PlaygroundPage() {
   const [hydrated, setHydrated] = useState(false);
   // First-run and sign-in, shared with Home so the two pages of the
   // install root cannot bounce differently.
-  const setupGate = useSetupGate();
+  const { state: setupGate, retry: retrySetupGate } = useSetupGate();
   const [seed, setSeed] = useState<{ text: string; nonce: number } | undefined>(undefined);
 
   // The diagnostic: which path to the gateway, and what a harness would
@@ -520,12 +521,8 @@ export default function PlaygroundPage() {
     setNotice(null);
   }
 
-  if (setupGate === "checking") {
-    return (
-      <main className="relative z-10 flex h-screen items-center justify-center">
-        <p className="font-ui text-sm text-[color:var(--muted)]">Checking setup state…</p>
-      </main>
-    );
+  if (setupGate !== "ready") {
+    return <SetupGateScreen state={setupGate} onRetry={retrySetupGate} />;
   }
 
   const selected = models.find((m) => m.id === model);

@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { SetupGateScreen } from "@/components/SetupGateScreen";
 import { FirstModelCard } from "@/components/home/FirstModelCard";
 import { MachineStrip } from "@/components/home/MachineStrip";
 import { NeedsAttentionCard } from "@/components/home/NeedsAttentionCard";
@@ -102,7 +103,7 @@ const FAST_POLL_MS = 5000;
 const STARTER_CONTEXT = 16384;
 
 export default function HomePage() {
-  const gate = useSetupGate();
+  const { state: gate, retry: retryGate } = useSetupGate();
   const ready = gate === "ready";
 
   const [node, setNode] = useState<NodeIdentity | null>(null);
@@ -234,12 +235,8 @@ export default function HomePage() {
     [components],
   );
 
-  if (gate === "checking") {
-    return (
-      <main className="relative z-10 flex h-screen items-center justify-center">
-        <p className="font-ui text-sm text-[color:var(--muted)]">Checking setup state…</p>
-      </main>
-    );
+  if (gate !== "ready") {
+    return <SetupGateScreen state={gate} onRetry={retryGate} />;
   }
 
   return (

@@ -30,6 +30,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { SetupGateScreen } from "@/components/SetupGateScreen";
 import { api } from "@/lib/api";
 import { providerLabel } from "@/lib/agent";
 import type { ComponentList } from "@/lib/types";
@@ -141,12 +142,8 @@ export default function AddBackendPage() {
     setMessage(null);
   }
 
-  if (gate === "checking") {
-    return (
-      <main className="relative z-10 flex h-screen items-center justify-center">
-        <p className="font-ui text-sm text-[color:var(--muted)]">Checking setup state…</p>
-      </main>
-    );
+  if (gate.state !== "ready") {
+    return <SetupGateScreen state={gate.state} onRetry={gate.retry} />;
   }
 
   return (

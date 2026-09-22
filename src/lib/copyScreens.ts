@@ -1,6 +1,6 @@
 /** The golden path and the shared components that carry its visible copy. */
 export const COPY_SCREENS: Record<string, string[]> = {
-  home: ["app/page.tsx", "components/home"],
+  home: ["app/page.tsx", "components/home", "components/SetupGateScreen.tsx"],
   wizard: ["app/setup"],
   discover: [
     "app/discover",
