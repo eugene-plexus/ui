@@ -20,6 +20,7 @@ import {
   isImageMime,
   toDataUrl,
 } from "@/lib/imageAttachments";
+import { formatBytesShort } from "@/lib/tasks";
 import type { MessageContentPart } from "@/lib/types";
 
 /**
@@ -248,7 +249,9 @@ export function ChatInput({
               className="flex items-center gap-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-0.5 text-[color:var(--muted)]"
             >
               <span className="font-mono text-[color:var(--foreground)]">{f.name}</span>
-              <span>{f.size.toLocaleString("en-US")} bytes</span>
+              <span title={`${f.size.toLocaleString("en-US")} bytes`}>
+                {formatBytesShort(f.size)}
+              </span>
               <button
                 type="button"
                 onClick={() => setFiles((current) => current.filter((_, j) => j !== i))}

@@ -721,7 +721,7 @@ function ProfileForm({
           When this is the default profile, these values fill parameters omitted by your app.
           Changes apply within the gateway&rsquo;s profile refresh interval without restarting the
           model. Leave blank to use{" "}
-          <Link href="/config/?tab=gateway" className="underline">
+          <Link href="/config/?sel=gateway" className="underline">
             gateway defaults
           </Link>
           ; blank Top-p leaves that parameter unspecified.

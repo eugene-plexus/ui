@@ -123,6 +123,22 @@ function expectPlainWords() {
   }
 }
 
+describe("/backends/add labels", () => {
+  it("names each box by the label above it", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<AddBackendPage />);
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Which app" }),
+      "openai_compat_custom",
+    );
+    expect(screen.getByLabelText("Address")).toHaveAttribute("type", "url");
+    expect(screen.getByLabelText("API key")).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText("API key")).toHaveAccessibleDescription(
+      "The key this provider gave you.",
+    );
+  });
+});
+
 describe("/backends/add", () => {
   it("creates the driver before configuring it, and lands on the model picker", async () => {
     const user = userEvent.setup({ delay: null });

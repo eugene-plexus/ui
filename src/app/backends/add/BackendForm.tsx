@@ -16,6 +16,8 @@
  * these do not, so the page that owns this form CREATES one.
  */
 
+import { cloneElement, isValidElement, useId } from "react";
+
 import { WIZARD_PROVIDERS, type WizardCredential } from "@/lib/agent";
 import type { BackendDraft } from "@/app/setup/draft";
 
@@ -157,13 +159,29 @@ function Field({
   description?: string;
   children: React.ReactNode;
 }) {
+  // The label names its box and the line under it describes it. Every
+  // Field here wraps exactly one control, so the ids go onto that child
+  // directly -- the wizard's copy of this component hands them down by
+  // context because its controls are components of their own.
+  const id = useId();
+  const descriptionId = description ? `${id}-description` : undefined;
+  const control = isValidElement<{ id?: string; "aria-describedby"?: string }>(children)
+    ? cloneElement(children, { id, "aria-describedby": descriptionId })
+    : children;
   return (
     <div className="mb-5">
-      <label className="font-ui block text-sm font-medium">{label}</label>
+      <label htmlFor={id} className="font-ui block text-sm font-medium">
+        {label}
+      </label>
       {description && (
-        <p className="mt-1 mb-2 text-sm leading-relaxed text-[color:var(--muted)]">{description}</p>
+        <p
+          id={descriptionId}
+          className="mt-1 mb-2 text-sm leading-relaxed text-[color:var(--muted)]"
+        >
+          {description}
+        </p>
       )}
-      {children}
+      {control}
     </div>
   );
 }
@@ -173,14 +191,20 @@ function SecretInput({
   disabled,
   onChange,
   placeholder,
+  id,
+  "aria-describedby": describedBy,
 }: {
   value: string;
   disabled: boolean;
   onChange: (v: string) => void;
   placeholder?: string;
+  id?: string;
+  "aria-describedby"?: string;
 }) {
   return (
     <input
+      id={id}
+      aria-describedby={describedBy}
       type="password"
       value={value}
       disabled={disabled}

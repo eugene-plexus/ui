@@ -13,7 +13,7 @@
  * and scrolls past it.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ChatInput } from "./ChatInput";
@@ -72,5 +72,17 @@ describe("the composer's height", () => {
     // The cap and the scrolling are CSS, so they hold whatever the text is.
     expect(box.className).toMatch(/max-h-/);
     expect(box.className).toMatch(/overflow-y-auto/);
+  });
+});
+
+describe("an attached file's size", () => {
+  it("is said in KB or MB, with the exact count on hover", async () => {
+    render(<ChatInput onSend={vi.fn()} disabled={false} />);
+    const file = new File(["x".repeat(12_345)], "notes.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByTestId("attach-input"), { target: { files: [file] } });
+    const chip = await screen.findByTestId("attachment-chip");
+    await waitFor(() => expect(chip).toHaveTextContent("12 KB"));
+    expect(chip).not.toHaveTextContent("12,345 bytes");
+    expect(screen.getByTitle("12,345 bytes")).toBeInTheDocument();
   });
 });

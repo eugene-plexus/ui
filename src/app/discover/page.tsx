@@ -521,6 +521,7 @@ function ResultsList({
             <button
               type="button"
               onClick={() => onSelect(result.repo)}
+              aria-current={selected === result.repo ? "true" : undefined}
               className={`w-full border-b border-[color:var(--border)] px-4 py-2.5 text-left transition-colors hover:bg-[color:var(--panel-hover)] ${
                 selected === result.repo ? "bg-[color:var(--panel-soft)]" : ""
               }`}

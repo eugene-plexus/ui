@@ -497,6 +497,14 @@ describe("selection and preferences survive", () => {
     expect(asked("library/v1/catalogue/model")).toBeGreaterThan(0);
   });
 
+  it("marks the open repo for a screen reader, not only with a tint", async () => {
+    await openTheRepo();
+    expect(screen.getByRole("button", { name: /Qwen3\.8 27B/ })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+  });
+
   it("clicking a repo writes ?repo= into the URL", async () => {
     await openTheRepo();
     await waitFor(() =>
