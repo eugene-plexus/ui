@@ -237,7 +237,13 @@ describe("a model running on the processor while the machine has a card", () => 
 });
 
 describe("a model that is loading", () => {
-  const started = new Date(Date.now() - 95_000).toISOString();
+  // Measured from each test's own start: computed once for the block, a
+  // slow full-suite run put the third test a second later and "2 min
+  // 25 s left" read "2 min 24 s".
+  let started = "";
+  beforeEach(() => {
+    started = new Date(Date.now() - 95_000).toISOString();
+  });
 
   it("reports elapsed, which is the only exact thing there is", async () => {
     handlers.set("GET agent/v1/runtimes", () => ({
