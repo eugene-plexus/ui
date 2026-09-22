@@ -95,7 +95,10 @@ export function curlLine(baseUrl: string, request: SystemOneRequest): string {
 export function sdkSnippet(baseUrl: string, model: string): string {
   const url = baseUrl.replace(/\/+$/, "");
   return [
-    "# pip install typesafe==1.13.*   (pin the major.minor you tested)",
+    "# Install TypeSafe's own Python SDK per docs.typesafe.ai and PIN the",
+    "# version you tested. Measured 2026-09-22: PyPI's `typesafe` is an",
+    "# UNRELATED package (caps at 0.9.1) — `pip install typesafe` gets you",
+    "# someone else's library, not this client.",
     "from typesafe import TypeSafe",
     "",
     "client = TypeSafe(",

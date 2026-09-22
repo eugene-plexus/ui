@@ -47,7 +47,10 @@ describe("the curl line", () => {
 describe("the SDK snippet", () => {
   it("pins the client and turns its automatic retries off", () => {
     const snippet = sdkSnippet("http://h:8080", "tickets");
-    expect(snippet).toContain("typesafe==1.13.*");
+    // Measured: PyPI's `typesafe` is an unrelated package, so the
+    // snippet must warn rather than ship an install line that fetches
+    // someone else's library.
+    expect(snippet).toContain("UNRELATED package");
     // A retried decision is a second decision: the pinned docs say the
     // SDKs retry by default, so the example must disable it visibly.
     expect(snippet).toContain("max_retries=0");
