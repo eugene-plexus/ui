@@ -369,6 +369,96 @@ describe("a sealed control root", () => {
   });
 });
 
+describe("after an unlock", () => {
+  /**
+   * The container update Troy reported on 2026-09-23: the root comes back
+   * sealed, the badge says so, the unlock succeeds -- and the badge keeps
+   * saying so until F5. Three things were stale at once, and this drives
+   * all three through the hook in the order they meet the re-read.
+   */
+  function sealedThenOpened(): () => void {
+    let open = false;
+    handlers.set("GET gateway/v1/admin/routing", () => ({
+      status: 200,
+      // The gateway's view stays `Locked` throughout: it is a routing
+      // refresh old, and the re-read lands inside that refresh.
+      body: {
+        slots: [],
+        unreachable_drivers: [],
+        control_root: {
+          source: "agent",
+          url: "http://192.168.16.252:8283/",
+          reachable: false,
+          error: "503 Locked",
+          nodes: 2,
+        },
+      },
+    }));
+    handlers.set("GET control/v1/nodes", () =>
+      open
+        ? {
+            status: 200,
+            // Not probed yet: a sealed root cannot poll, and its first
+            // pass after the unlock is about a second away.
+            body: {
+              nodes: [
+                { name: "eugene-plexus", reachable: false },
+                { name: "Amish_Station", reachable: false },
+              ],
+            },
+          }
+        : {
+            status: 503,
+            body: { detail: { type: "https://x/control#locked", title: "Locked", status: 503 } },
+          },
+    );
+    return () => {
+      open = true;
+    };
+  }
+
+  it("clears as soon as the root answers, not when the gateway next refreshes", async () => {
+    const unlock = sealedThenOpened();
+    const result = await poll();
+    expect(result.current.issues.map((i) => i.kind)).toEqual(["control-sealed"]);
+
+    unlock();
+    await result.current.reload();
+    await waitFor(() => expect(result.current.issues).toEqual([]));
+  });
+
+  it("refreshes every list on the page, not only the one the unlock came from", async () => {
+    // The badge in the header and Home's card are two `useIssues` calls.
+    // An unlock from the card used to refresh only the card.
+    const unlock = sealedThenOpened();
+    const badge = renderHook(() => useIssues()).result;
+    const card = renderHook(() => useIssues()).result;
+    await waitFor(() => expect(badge.current.issues.length).toBe(1));
+    await waitFor(() => expect(card.current.issues.length).toBe(1));
+
+    unlock();
+    await card.current.reload();
+    await waitFor(() => expect(badge.current.issues).toEqual([]));
+    expect(card.current.issues).toEqual([]);
+  });
+
+  it("forgets a list that has left the page", async () => {
+    // Leave Home and its card unmounts. Were it still registered, every
+    // later unlock would re-run its five reads per node for a list nobody
+    // can see -- found by a sabotage that dropped the cleanup and escaped.
+    const badge = renderHook(() => useIssues());
+    const card = renderHook(() => useIssues());
+    await waitFor(() => expect(badge.result.current.loaded).toBe(true));
+    await waitFor(() => expect(card.result.current.loaded).toBe(true));
+    const onePoll = routes().length / 2;
+
+    card.unmount();
+    calls = [];
+    await badge.result.current.reload();
+    expect(routes()).toHaveLength(onePoll);
+  });
+});
+
 describe("the poll is not the thing that ends a session", () => {
   it("keeps the session when the control root refuses this token", async () => {
     handlers.set("GET control/v1/nodes", () => ({

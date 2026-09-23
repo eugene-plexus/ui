@@ -49,6 +49,7 @@ import type {
   Runtime,
   RuntimeList,
 } from "./types";
+import { nodeLiveness } from "./nodeLiveness";
 
 export type IssueKind =
   | "control-sealed"
@@ -132,6 +133,9 @@ export interface ControlNodeRow {
   name: string;
   reachable?: boolean | null;
   lastError?: string | null;
+  /** Absent with no `lastError` means the root has not probed this node
+   * since it started -- see `nodeLiveness`. */
+  lastSeenAt?: string | null;
   devices?: ComputeDevice[] | null;
 }
 
@@ -214,9 +218,19 @@ export function worstSeverity(issues: Issue[]): IssueSeverity | null {
  * 503 from the root is current and survives a gateway that is down; the
  * gateway's `control_root` view survives a root this browser cannot
  * reach at all. One issue either way.
+ *
+ * **The root's own answer wins whenever there is one** (2026-09-23). The
+ * gateway's view is a routing refresh old -- up to fifteen seconds -- and
+ * these used to be OR'd, so the re-read an unlock pulls forward found the
+ * root open, found the gateway still saying `Locked`, and left the issue
+ * on screen for the rest of the poll interval. Reported from the live
+ * install as "it rarely updates without an F5". A root that answered this
+ * browser's roster read is not sealed, whatever the gateway last heard.
  */
 function sealedRootIssue(sources: IssueSources): Issue[] {
+  const rootAnswered = sources.nodes !== null;
   const fromGateway =
+    !rootAnswered &&
     sources.controlRoot?.reachable === false &&
     typeof sources.controlRoot.error === "string" &&
     /locked/i.test(sources.controlRoot.error);
@@ -245,9 +259,23 @@ function sealedRootIssue(sources: IssueSources): Issue[] {
  * half a second of clock drift. `lastError` carries the refusing agent's
  * own words now; this prints them rather than a category.
  */
+/**
+ * **A node the root has not probed yet is not down** (2026-09-23). A
+ * sealed root cannot poll, so for about a second after an unlock every
+ * node reads `reachable: false` with no reason and no `lastSeenAt` -- and
+ * that is exactly when the unlock's own re-read lands. The Nodes page has
+ * rendered that state as "checking…" since 2026-09-17 (`nodeLiveness`);
+ * this list reported it as every machine in the install going down at
+ * the moment it came back.
+ */
 function nodeDownIssues(nodes: ControlNodeRow[] | null): Issue[] {
   return (nodes ?? [])
-    .filter((n) => n.reachable === false)
+    .filter(
+      (n) =>
+        n.reachable === false &&
+        nodeLiveness({ reachable: false, lastError: n.lastError, lastSeenAt: n.lastSeenAt }) ===
+          "down",
+    )
     .map((n) => ({
       id: `node-down:${n.name}`,
       kind: "node-down" as const,

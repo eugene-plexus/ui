@@ -23,7 +23,7 @@
  * ticks while the tab is hidden.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "./api";
 import { isLockedError } from "./controlUnlock";
@@ -211,6 +211,17 @@ export interface IssuesState {
   reload: () => Promise<void>;
 }
 
+/**
+ * Every mounted list's loader, so a fix made from one refreshes them all.
+ *
+ * The header badge and Home's card are two `useIssues` calls with two
+ * polls, and Inference is a third. Until 2026-09-23 an unlock from Home's
+ * card pulled only the card's list forward, and the badge in the header
+ * -- the one on screen everywhere -- kept saying the root was locked for
+ * the rest of its thirty seconds.
+ */
+const mounted = new Set<() => Promise<void>>();
+
 export function useIssues(): IssuesState {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [facts, setFacts] = useState<NodeFacts[]>([]);
@@ -273,6 +284,17 @@ export function useIssues(): IssuesState {
 
   usePolling(load, POLL_MS);
 
+  useEffect(() => {
+    mounted.add(load);
+    return () => {
+      mounted.delete(load);
+    };
+  }, [load]);
+
+  const reload = useCallback(async () => {
+    await Promise.all([...mounted].map((each) => each()));
+  }, []);
+
   const worst = useMemo(() => worstSeverity(issues), [issues]);
-  return { issues, facts, worst, loaded, reload: load };
+  return { issues, facts, worst, loaded, reload };
 }

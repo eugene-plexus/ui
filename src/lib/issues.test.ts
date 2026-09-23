@@ -239,6 +239,27 @@ describe("a sealed control root", () => {
     expect(issues).toHaveLength(1);
   });
 
+  it("is not raised from the gateway's view once the root itself answers", () => {
+    // THE REPORT (2026-09-23): unlock from the list, and the issue stays
+    // until F5. The re-read the unlock pulls forward finds the root open
+    // -- its roster answered -- while the gateway's view, a routing
+    // refresh old, still says `Locked`. The two used to be OR'd.
+    const issues = issuesFrom({
+      ...NOTHING,
+      controlRoot: ROOT_LOCKED,
+      controlLocked: false,
+      nodes: body<ControlNodeRow[]>('[{"name":"eugene-plexus","reachable":true}]'),
+    });
+    expect(issues).toEqual([]);
+  });
+
+  it("still comes from the gateway when this browser cannot reach the root", () => {
+    // The other half, which must survive the fix: no roster answer at all
+    // (`nodes: null`) leaves the gateway as the only witness.
+    const issues = issuesFrom({ ...NOTHING, controlRoot: ROOT_LOCKED, nodes: null });
+    expect(kinds(issues)).toEqual(["control-sealed"]);
+  });
+
   it("is not raised for a root that simply did not answer", () => {
     // "Unreachable" and "sealed" have different remedies, and the root
     // separates them on purpose: flattening them is how a page came to
@@ -278,10 +299,27 @@ describe("a node that is not answering", () => {
   });
 
   it("says so plainly when no reason was recorded", () => {
-    const nodes = body<ControlNodeRow[]>('[{"name":"Amish_Station","reachable":false}]');
+    // Seen before and not now, with no reason: the root HAS looked. With
+    // neither field it has not, which is the next case.
+    const nodes = body<ControlNodeRow[]>(
+      '[{"name":"Amish_Station","reachable":false,"lastSeenAt":"2026-09-23T10:00:00Z"}]',
+    );
     const [issue] = issuesFrom({ ...NOTHING, nodes });
     expect(issue!.detail).toContain("no reason was recorded");
     expect(issue!.detail).toContain("Check that the machine");
+  });
+
+  it("is not reported before the root has looked at all", () => {
+    // A sealed root cannot poll, so for about a second after an unlock
+    // every node reads `reachable: false` with no reason and no
+    // `lastSeenAt` -- and that is when the unlock's own re-read lands.
+    // Reported as down, the badge swapped "locked" for "every machine is
+    // down" at the moment the install came back (2026-09-23). The Nodes
+    // page calls this "checking…".
+    const nodes = body<ControlNodeRow[]>(
+      '[{"name":"eugene-plexus","reachable":false},{"name":"Amish_Station","reachable":false}]',
+    );
+    expect(issuesFrom({ ...NOTHING, nodes })).toEqual([]);
   });
 
   it("leaves a reachable node alone, and a root that reports neither way", () => {
@@ -834,7 +872,9 @@ describe("the order of the list", () => {
     const sources: IssueSources = {
       controlRoot: ROOT_LOCKED,
       controlLocked: true,
-      nodes: body<ControlNodeRow[]>('[{"name":"Amish_Station","reachable":false}]'),
+      nodes: body<ControlNodeRow[]>(
+        '[{"name":"Amish_Station","reachable":false,"lastError":"connection refused"}]',
+      ),
       perNode: [
         facts({
           name: "Amish_Station",
@@ -860,10 +900,16 @@ describe("the order of the list", () => {
   });
 
   it("gives every issue somewhere to go and something to do", () => {
+    // Sealed and down both, as the root itself reports them. This used to
+    // pair a root that ANSWERED the roster with a gateway saying `Locked`,
+    // and a node the root had never probed -- the two stale states that
+    // left the badge wrong after an unlock (2026-09-23).
     const issues = issuesFrom({
       controlRoot: ROOT_LOCKED,
-      controlLocked: false,
-      nodes: body<ControlNodeRow[]>('[{"name":"Amish_Station","reachable":false}]'),
+      controlLocked: true,
+      nodes: body<ControlNodeRow[]>(
+        '[{"name":"Amish_Station","reachable":false,"lastError":"connection refused"}]',
+      ),
       perNode: [
         facts({
           name: "Amish_Station",
