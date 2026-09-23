@@ -418,34 +418,11 @@ function HardwareSummary({
   budget: NodeBudget | null;
   hardware: HostHardware | null;
 }) {
-  // The node's own reading wins, and the line names the node: "no GPU
-  // detected" with no machine attached is how a worker with an RTX 5090
-  // was told it had none -- the library had measured the NAS it runs on.
-  if (budget) {
-    const where = budget.node ?? "this host";
-    const measured = hardware
-      ? ` The library itself runs on ${hardware.hostname} and measures that host; that reading is not used here.`
-      : "";
-    return (
-      <span
-        className="font-ui text-sm text-[color:var(--muted)]"
-        title={`Scored against ${where}, the machine a launch from this browser runs on. Verdicts use free memory, not total.${measured}`}
-      >
-        {budget.gpu ? (
-          <>
-            {budget.gpu.name} · {formatMemory(budget.gpu.freeBytes)} free
-            {budget.gpu.totalBytes != null && <> of {formatMemory(budget.gpu.totalBytes)}</>}
-          </>
-        ) : (
-          <>
-            no GPU · {budget.ramBytes != null ? formatMemory(budget.ramBytes) : "unknown"} host
-            memory free
-          </>
-        )}
-        {budget.gpuCount > 1 && <> · {budget.gpuCount} GPUs, largest card counts</>}
-      </span>
-    );
-  }
+  // The node's own reading wins, and the picker beside this already says
+  // it, in `describeBudget`'s words: a second line here once read the
+  // same card as "30 GiB free" and "29.6 GiB free of 31.8 GiB". Only
+  // when the node reported no devices is there something left to say.
+  if (budget) return null;
 
   // No device list from this node's agent: fall back to what the library
   // measured, and say whose machine that is.

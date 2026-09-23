@@ -36,6 +36,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { formatMemory } from "@/components/FitBadge";
+
 import { ApiError, api } from "./api";
 import type { ComputeDevice, NodeIdentity } from "./types";
 
@@ -133,12 +135,22 @@ export function fitQuery(budget: NodeBudget | null): Record<string, string> {
   return query;
 }
 
-/** One line about a node's hardware, for pickers and headers. */
+/** One line about a node's hardware, for pickers and headers.
+ *
+ * The only place a node's memory is put into words, and rounded the way
+ * every fit verdict rounds it (`formatMemory`): Discover once printed
+ * "30 GiB free" in the picker beside "29.6 GiB free of 31.8 GiB" under
+ * it, the same card read twice, two ways. */
 export function describeBudget(budget: NodeBudget | null): string {
   if (!budget) return "hardware unknown";
-  if (!budget.gpu) return "no GPU";
-  const gib = (budget.gpu.freeBytes / 1024 ** 3).toFixed(0);
-  return `${budget.gpu.name} · ${gib} GiB free${budget.gpuCount > 1 ? ` · ${budget.gpuCount} GPUs` : ""}`;
+  if (!budget.gpu) {
+    return budget.ramBytes != null
+      ? `no GPU · ${formatMemory(budget.ramBytes)} host memory free`
+      : "no GPU";
+  }
+  const total = budget.gpu.totalBytes != null ? ` of ${formatMemory(budget.gpu.totalBytes)}` : "";
+  const count = budget.gpuCount > 1 ? ` · ${budget.gpuCount} GPUs, largest card counts` : "";
+  return `${budget.gpu.name} · ${formatMemory(budget.gpu.freeBytes)} free${total}${count}`;
 }
 
 /**

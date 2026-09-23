@@ -131,8 +131,23 @@ describe("targetFor", () => {
 describe("describeBudget", () => {
   it("is one line an operator can read in a dropdown", () => {
     expect(describeBudget(budgetFromNode(AMISH_STATION))).toBe(
-      "NVIDIA GeForce RTX 5090 · 30 GiB free",
+      "NVIDIA GeForce RTX 5090 · 30.2 GiB free of 31.8 GiB",
     );
     expect(describeBudget(null)).toBe("hardware unknown");
+  });
+
+  it("says what a machine with no card has to offer", () => {
+    const cpuOnly = budgetFromNode({
+      devices: [
+        {
+          kind: "cpu",
+          name: "cpu",
+          index: 0,
+          memoryTotalBytes: 64e9,
+          memoryFreeBytes: 16 * 1024 ** 3,
+        },
+      ],
+    });
+    expect(describeBudget(cpuOnly)).toBe("no GPU · 16.0 GiB host memory free");
   });
 });

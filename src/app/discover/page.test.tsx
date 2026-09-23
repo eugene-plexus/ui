@@ -664,3 +664,30 @@ describe("the starter set's Download", () => {
     );
   });
 });
+
+describe("the machine line", () => {
+  it("says the node's card once, rounded one way", async () => {
+    // The picker said "30 GiB free" and a second line beside it said
+    // "29.6 GiB free of 31.8 GiB": one card, two readings, two roundings.
+    handlers.set("GET agent/v1/node", () =>
+      ok({
+        enrolled: false,
+        devices: [
+          {
+            kind: "cuda",
+            name: "NVIDIA GeForce RTX 5090",
+            index: 0,
+            memoryTotalBytes: 34190917632,
+            memoryFreeBytes: 31_800_000_000,
+          },
+        ],
+      }),
+    );
+    render(<DiscoverPage />);
+    const shell = await screen.findByTestId("shell");
+    await waitFor(() => expect(shell.textContent ?? "").toMatch(/GiB free/), { timeout: 5000 });
+    const text = shell.textContent ?? "";
+    expect(text.match(/GiB free/g)).toHaveLength(1);
+    expect(text).toContain("NVIDIA GeForce RTX 5090 · 29.6 GiB free of 31.8 GiB");
+  });
+});
