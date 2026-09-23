@@ -38,7 +38,7 @@ import type {
   RuntimePlacementList,
   RuntimeStatus,
 } from "@/lib/types";
-import { formatDuration } from "@/lib/tasks";
+import { formatBytesShort, formatDuration } from "@/lib/tasks";
 
 /**
  * Inference — everything the gateway can route to, wherever it runs and
@@ -793,6 +793,11 @@ function EnginesLine({
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
   const [installs, setInstalls] = useState<Record<string, EngineInstall | null>>({});
   const [error, setError] = useState<string | null>(null);
+  // A refused install, beside the engine it was for. It used to replace
+  // the whole line with "engines: <error>" until the page was reloaded.
+  const [installErrors, setInstallErrors] = useState<Record<string, string>>({});
+  const [posting, setPosting] = useState<string | null>(null);
+  const seeded = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -800,6 +805,25 @@ function EnginesLine({
       setEngines(list.engines ?? []);
       onEngines?.(list.engines ?? []);
       setError(null);
+      // **Ask what is already under way, once.** Installs started this
+      // record only from this line's own button, so one begun from Home,
+      // the tasks tray or another browser never showed here, although the
+      // tray's own link sends people to this screen to watch it.
+      if (!seeded.current) {
+        seeded.current = true;
+        const offered = (list.engines ?? []).filter(
+          (e) => offeredOnThisNode(e) && e.acquisition?.installable,
+        );
+        const found = await Promise.all(
+          offered.map((e) =>
+            api
+              .get<EngineInstall>(target, `/v1/engines/${encodeURIComponent(e.engine)}/install`)
+              .then((record) => [e.engine, record] as const)
+              .catch(() => [e.engine, null] as const),
+          ),
+        );
+        setInstalls((prev) => ({ ...Object.fromEntries(found), ...prev }));
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return;
       setError(describeError(err));
@@ -830,6 +854,8 @@ function EnginesLine({
   }, [installing, Object.keys(installs).sort().join(","), load, target]);
 
   async function install(engine: string) {
+    setPosting(engine);
+    setInstallErrors((prev) => ({ ...prev, [engine]: "" }));
     try {
       const started = await api.post<EngineInstall>(
         target,
@@ -841,7 +867,9 @@ function EnginesLine({
       // 422 is the honest "nothing installable for this host" answer,
       // already rendered from the descriptor.
       if (err instanceof ApiError && err.status === 422) return;
-      setError(describeError(err));
+      setInstallErrors((prev) => ({ ...prev, [engine]: describeError(err) }));
+    } finally {
+      setPosting(null);
     }
   }
 
@@ -857,6 +885,10 @@ function EnginesLine({
       {engines.filter(offeredOnThisNode).map((e) => {
         const state = installs[e.engine];
         const busyInstall = state != null && inFlight(state.state);
+        // A failed install fell back to "not installed" plus the same
+        // button, with the reason -- on the record all along -- nowhere.
+        const failed = state?.state === "failed";
+        const refused = installErrors[e.engine];
         const reason = e.acquisition?.reason;
         return (
           <span key={e.engine} className="inline-flex items-center gap-1.5">
@@ -882,14 +914,39 @@ function EnginesLine({
               {e.available ? `build ${e.version ?? "?"}` : "not installed"}
             </span>
             {busyInstall ? (
-              <span>{state.state}…</span>
+              <span data-testid="engine-install-progress" className="tabular-nums">
+                {installProgress(state)}
+              </span>
             ) : e.acquisition?.installable ? (
-              <button type="button" onClick={() => void install(e.engine)} className={tinyButton}>
-                {e.managed ? "update" : "install"}
-              </button>
+              <>
+                {failed && (
+                  <span data-testid="engine-install-failed" className="text-status-error">
+                    install failed{state.error ? `: ${state.error}` : ""}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void install(e.engine)}
+                  disabled={posting !== null}
+                  className={tinyButton}
+                >
+                  {posting === e.engine
+                    ? "starting…"
+                    : failed
+                      ? "try again"
+                      : e.managed
+                        ? "update"
+                        : "install"}
+                </button>
+              </>
             ) : !e.available && reason ? (
               <span title={reason}>(not installable here)</span>
             ) : null}
+            {refused && (
+              <span role="alert" className="text-status-error">
+                {refused}
+              </span>
+            )}
           </span>
         );
       })}
@@ -916,6 +973,18 @@ function engineWord(engine: string): string {
   if (engine === "mlx") return "MLX";
   if (engine === "kev") return "Kev";
   return engine;
+}
+
+/** "downloading 42% of 1.2 GB" while there are bytes to count; the state
+ * word alone otherwise. The record carries both numbers, and "downloading…"
+ * for minutes said nothing about whether it was moving. */
+function installProgress(state: EngineInstall): string {
+  const total = state.bytesTotal ?? 0;
+  if (state.state === "downloading" && total > 0) {
+    const percent = Math.min(100, Math.round(((state.bytesDownloaded ?? 0) / total) * 100));
+    return `downloading ${percent}% of ${formatBytesShort(total)}`;
+  }
+  return `${state.state}…`;
 }
 
 function inFlight(state: string | undefined): boolean {

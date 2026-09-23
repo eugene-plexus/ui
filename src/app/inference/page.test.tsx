@@ -575,3 +575,51 @@ describe("a hidden tab", () => {
     }
   });
 });
+
+describe("an engine install", () => {
+  beforeEach(() => {
+    handlers.set("GET agent/v1/engines", () => ({
+      status: 200,
+      body: {
+        engines: [
+          {
+            engine: "llama_cpp",
+            available: false,
+            modelFormats: ["gguf"],
+            acquisition: { installable: true },
+          },
+        ],
+      },
+    }));
+  });
+
+  it("that failed says why, and offers to try again", async () => {
+    handlers.set("GET agent/v1/engines/llama_cpp/install", () => ({
+      status: 200,
+      body: { engine: "llama_cpp", state: "failed", error: "checksum mismatch" },
+    }));
+    render(<InferencePage />);
+    // It fell back to "not installed" and the same button, the reason
+    // on the record and nowhere on screen.
+    expect(
+      await screen.findByTestId("engine-install-failed", {}, { timeout: 5000 }),
+    ).toHaveTextContent("install failed: checksum mismatch");
+    expect(screen.getByRole("button", { name: "try again" })).toBeInTheDocument();
+  });
+
+  it("started somewhere else shows here, with how far it has got", async () => {
+    handlers.set("GET agent/v1/engines/llama_cpp/install", () => ({
+      status: 200,
+      body: {
+        engine: "llama_cpp",
+        state: "downloading",
+        bytesDownloaded: 500_000_000,
+        bytesTotal: 1_000_000_000,
+      },
+    }));
+    render(<InferencePage />);
+    expect(
+      await screen.findByTestId("engine-install-progress", {}, { timeout: 5000 }),
+    ).toHaveTextContent("downloading 50% of 1.0 GB");
+  });
+});
