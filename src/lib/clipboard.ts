@@ -26,6 +26,11 @@ export async function copyText(text: string): Promise<boolean> {
     }
   }
 
+  // The fallback has to focus a hidden textarea to select it, and
+  // removing that element leaves focus on <body>: every Copy on a
+  // plain-HTTP install -- the tailnet case this fallback exists for --
+  // threw a keyboard user back to the top of the page. Put it back.
+  const focused = document.activeElement;
   try {
     const staging = document.createElement("textarea");
     staging.value = text;
@@ -47,6 +52,9 @@ export async function copyText(text: string): Promise<boolean> {
     const copied = document.execCommand("copy");
 
     document.body.removeChild(staging);
+    if (focused instanceof HTMLElement && focused !== document.body && focused.isConnected) {
+      focused.focus({ preventScroll: true });
+    }
     // Put the operator's own selection back; copying a reply should not
     // clear the sentence they had highlighted.
     if (previous) {
