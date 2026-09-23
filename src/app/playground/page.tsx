@@ -361,6 +361,10 @@ export default function PlaygroundPage() {
     setPending(true);
     const controller = new AbortController();
     abortRef.current = controller;
+    // Outside the try, so a Stop can tell "kept what arrived" from "nothing
+    // arrived at all" -- two different things to say, and only the second
+    // leaves a turn to try again.
+    let appended = false;
 
     try {
       // The assistant message is appended empty and then grown in place.
@@ -369,7 +373,6 @@ export default function PlaygroundPage() {
       // appears as it is generated instead of arriving all at once after
       // a long silence.
       let streamed = "";
-      let appended = false;
       let generatedAt: string | undefined;
       const upsert = (message: ChatCompletionMessage) => {
         generatedAt ??= new Date().toISOString();
@@ -449,8 +452,14 @@ export default function PlaygroundPage() {
       if (controller.signal.aborted) {
         // The operator pressed Stop. Whatever streamed is already in
         // the transcript; the only thing to say is that the end of the
-        // answer is missing on purpose.
-        setNotice("Stopped. Whatever had already arrived is kept above.");
+        // answer is missing on purpose -- or, when Stop came before the
+        // first token, that there is no answer, and the question is still
+        // there to send again (below).
+        setNotice(
+          appended
+            ? "Stopped. Whatever had already arrived is kept above."
+            : "Stopped before any reply arrived.",
+        );
         return;
       }
       const detail =
@@ -667,9 +676,24 @@ export default function PlaygroundPage() {
         {notice && (
           <div
             data-testid="turn-notice"
-            className="font-ui border-t border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--muted)]"
+            role="status"
+            className="font-ui flex items-center gap-3 border-t border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--muted)]"
           >
-            {notice}
+            <span className="min-w-0 flex-1">{notice}</span>
+            {/* A Stop before the first token leaves the question as the
+                last message, with the composer cleared: the next Send
+                would put two questions in a row. */}
+            {canRetry && (
+              <button
+                type="button"
+                data-testid="retry-turn"
+                onClick={handleRetry}
+                title="Send the same history again; nothing needs re-typing"
+                className="font-ui shrink-0 rounded-[var(--radius)] border border-current px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
+              >
+                Try again
+              </button>
+            )}
           </div>
         )}
 

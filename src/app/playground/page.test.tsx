@@ -102,11 +102,13 @@ function hangingSse(delta: string): Handler {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: delta } }] })}\n\n`,
-          ),
-        );
+        if (delta !== "") {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: delta } }] })}\n\n`,
+            ),
+          );
+        }
         const signal = init?.signal;
         const abort = () => controller.error(new DOMException("Aborted", "AbortError"));
         if (signal?.aborted) abort();
@@ -343,6 +345,23 @@ describe("stop and retry", () => {
     expect(screen.queryByTestId("retry-turn")).not.toBeInTheDocument();
     // Ready for the next turn: Send is back and enabled once typed.
     await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument());
+  });
+
+  it("Stop before the first token says nothing arrived, and offers the turn again", async () => {
+    handlers.set("POST gateway/v1/chat/completions", hangingSse(""));
+    await renderReady();
+    send("hello");
+    await waitFor(() => expect(screen.getByTestId("stop-turn")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("stop-turn"));
+
+    const notice = await screen.findByTestId("turn-notice");
+    // "Whatever had already arrived is kept above" was untrue: nothing had.
+    expect(notice).toHaveTextContent("Stopped before any reply arrived.");
+    handlers.set("POST gateway/v1/chat/completions", () => sse(["Answered"], "stop"));
+    fireEvent.click(screen.getByTestId("retry-turn"));
+    await waitFor(() => expect(screen.getByText("Answered")).toBeInTheDocument());
+    // The same question once, not twice in a row.
+    expect(chatCalls()[1]!.body!.messages).toEqual(chatCalls()[0]!.body!.messages);
   });
 
   it("a failed turn offers Try again, which resends the same history", async () => {
