@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConfigEditor } from "./ConfigEditor";
 
@@ -189,4 +190,57 @@ it("does not make a disclosure when fewer than three applicable settings qualify
   expect(await screen.findByDisplayValue("hub")).toBeVisible();
   expect(screen.queryByRole("button", { name: /Show more/ })).not.toBeInTheDocument();
   expect(screen.queryByDisplayValue("scan")).not.toBeInTheDocument();
+});
+
+describe("a stored secret", () => {
+  beforeEach(() => {
+    fields.push({ key: "apiKey", label: "API key", category: "library", valueType: "secret" });
+    doc.apiKey = "<redacted>";
+  });
+
+  it("shows an empty box that says a key is saved, not the word that says so", async () => {
+    render(<ConfigEditor target="library" label="Library" />);
+    const box = await screen.findByLabelText("API key");
+    expect(box).toHaveValue("");
+    expect(box).toHaveAttribute("placeholder", "Saved and hidden. Type a new key to replace it.");
+  });
+
+  it("saves what was typed, and only that", async () => {
+    render(<ConfigEditor target="library" label="Library" />);
+    // Typing into the old box landed beside the hidden "<redacted>" and
+    // saved "<redacted>sk-new" as the key. Keystrokes, not a value swap:
+    // only keystrokes reproduce it.
+    await userEvent.type(await screen.findByLabelText("API key"), "sk-new");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patches).toEqual([{ apiKey: "sk-new" }]));
+  });
+
+  it("keeps the stored key when what was typed is cleared again", async () => {
+    render(<ConfigEditor target="library" label="Library" />);
+    const box = await screen.findByLabelText("API key");
+    fireEvent.change(box, { target: { value: "sk-new" } });
+    fireEvent.change(box, { target: { value: "" } });
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("removes it only when asked, by sending null", async () => {
+    render(<ConfigEditor target="library" label="Library" />);
+    await screen.findByLabelText("API key");
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(screen.getByLabelText("API key")).toHaveAttribute(
+      "placeholder",
+      "Removed when you save.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patches).toEqual([{ apiKey: null }]));
+  });
+
+  it("shows a newly typed key on request", async () => {
+    render(<ConfigEditor target="library" label="Library" />);
+    const box = await screen.findByLabelText("API key");
+    expect(box).toHaveAttribute("type", "password");
+    fireEvent.change(box, { target: { value: "sk-new" } });
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    expect(box).toHaveAttribute("type", "text");
+  });
 });

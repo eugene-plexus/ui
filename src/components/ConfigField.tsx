@@ -29,6 +29,86 @@ import type {
  * form follows the schema. Adding a knob to a component is a
  * server-side change only.
  */
+/** What a component answers for a secret it holds (`ConfigDocument`). */
+const REDACTED = "<redacted>";
+
+/**
+ * A stored secret, which this page never sees -- only the word that
+ * says one exists.
+ *
+ * The box used to hold that word itself: ten dots that were the text
+ * `<redacted>`, so a click and a paste produced `<redacted>sk-new...`,
+ * which the component accepts (it refuses only the exact string) and
+ * every request then failed to authenticate. The placeholder meant to
+ * warn about it could never show, because the box was never empty.
+ *
+ * So the box is empty while the stored key stands, and emptying it again
+ * after typing means "keep the stored one", not "save nothing". Removing
+ * a stored key is its own button, which sends `null` -- the contract's
+ * revert-to-default.
+ */
+function SecretInput({
+  controlProps,
+  value,
+  saved,
+  pending,
+  onChange,
+  className,
+}: {
+  controlProps: { id: string; "aria-describedby": string | undefined };
+  value: unknown;
+  /** A key is stored on the component. */
+  saved: boolean;
+  pending: boolean;
+  onChange: (value: unknown) => void;
+  className: string;
+}) {
+  const [shown, setShown] = useState(false);
+  const typed = typeof value === "string" && value !== REDACTED ? value : "";
+  const removing = saved && value === null;
+  const placeholder = removing
+    ? "Removed when you save."
+    : saved
+      ? "Saved and hidden. Type a new key to replace it."
+      : "Not set.";
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        {...controlProps}
+        type={shown ? "text" : "password"}
+        autoComplete="new-password"
+        spellCheck={false}
+        value={typed}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value === "" && saved ? REDACTED : e.target.value)}
+        disabled={pending}
+        className={className}
+      />
+      {typed !== "" && (
+        <button
+          type="button"
+          onClick={() => setShown((v) => !v)}
+          aria-pressed={shown}
+          disabled={pending}
+          className={buttonClass}
+        >
+          {shown ? "Hide" : "Show"}
+        </button>
+      )}
+      {saved && typed === "" && (
+        <button
+          type="button"
+          onClick={() => onChange(removing ? REDACTED : null)}
+          disabled={pending}
+          className={buttonClass}
+        >
+          {removing ? "Keep it" : "Remove"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** One button style, shared by every editor here that has a button. */
 const buttonClass =
   "font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
@@ -40,11 +120,16 @@ export function ConfigFieldInput({
   topology,
   browseTarget,
   pathSuggestions,
+  savedValue,
   onChange,
 }: {
   field: ConfigFieldDef;
   value: unknown;
   pending: boolean;
+  /** What the component last reported for this field, before any edit.
+   * A secret needs it: the only sign a key is stored is the component
+   * answering `<redacted>`, and an edit replaces the value that said so. */
+  savedValue?: unknown;
   /** Current agent topology snapshot — used to render
    * `componentKindHint`-bearing fields as dropdowns. Null while
    * loading or when the parent decided not to fetch (e.g. the schema
@@ -146,13 +231,12 @@ export function ConfigFieldInput({
 
     if (field.valueType === "secret") {
       return (
-        <input
-          {...controlProps}
-          type="password"
-          value={(value as string | undefined) ?? ""}
-          placeholder={value === "<redacted>" ? "<redacted — type to overwrite>" : ""}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={pending}
+        <SecretInput
+          controlProps={controlProps}
+          value={value}
+          saved={savedValue === REDACTED || value === REDACTED}
+          pending={pending}
+          onChange={onChange}
           className={baseInputClass}
         />
       );

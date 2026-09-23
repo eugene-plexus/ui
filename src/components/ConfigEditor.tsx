@@ -417,6 +417,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
             key={f.key}
             field={fieldForRender(f, draft, serverDoc!)}
             value={draft[f.key]}
+            savedValue={(serverDoc as Record<string, unknown>)[f.key]}
             pending={saving}
             topology={topology}
             browseTarget={target}
