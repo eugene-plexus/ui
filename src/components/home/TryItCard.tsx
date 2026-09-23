@@ -186,8 +186,28 @@ export function TryItCard({
   }
 
   const disabled = pending || model === null;
+
+  // The box is disabled while an answer is pending, and a disabled field
+  // drops focus -- as does Cancel, which unmounts when the turn ends. So
+  // every follow-up needed a click back into the box. The playground's
+  // composer puts the caret back; this one does now, unless the person
+  // has since moved somewhere else on the page.
+  const input = useRef<HTMLInputElement | null>(null);
+  const card = useRef<HTMLElement | null>(null);
+  const wasPending = useRef(false);
+  useEffect(() => {
+    const ended = wasPending.current && !pending;
+    wasPending.current = pending;
+    if (!ended || disabled) return;
+    const focused = document.activeElement;
+    if (focused === null || focused === document.body || card.current?.contains(focused)) {
+      input.current?.focus();
+    }
+  }, [pending, disabled]);
+
   return (
     <section
+      ref={card}
       data-testid="home-try-it"
       className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4"
     >
@@ -233,6 +253,7 @@ export function TryItCard({
           ))}
         </select>
         <input
+          ref={input}
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -282,7 +303,10 @@ export function TryItCard({
         </p>
       )}
       {error && (
-        <p className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm">
+        <p
+          role="alert"
+          className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
+        >
           {error}
         </p>
       )}

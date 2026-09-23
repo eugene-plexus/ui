@@ -9,12 +9,18 @@
  * must keep its default, or Home stops sending at all.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Model } from "@/lib/types";
+import type { Model, RoutingTableView } from "@/lib/types";
 
 import { TryItCard } from "./TryItCard";
+
+const stream = vi.fn();
+vi.mock("@/lib/completions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/completions")>()),
+  streamChatCompletion: (...args: unknown[]) => stream(...args),
+}));
 
 vi.mock("@/lib/useAutoScroll", () => ({
   useAutoScroll: () => ({
@@ -45,5 +51,50 @@ describe("Enter in Home's composer", () => {
 
   it("leaves an ordinary Enter alone, so it still sends", () => {
     expect(fireEvent.keyDown(box(), { key: "Enter" })).toBe(true);
+  });
+});
+
+describe("after an answer", () => {
+  const READY = {
+    slots: [{ model: "qwen", tiers: [{ tier: 1, backends: [{ driver: "d", eligible: true }] }] }],
+    unreachable_drivers: [],
+  } as unknown as RoutingTableView;
+
+  function deferred() {
+    let resolve!: (value: unknown) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it("puts the caret back in the box, even from the Cancel button", async () => {
+    const turn = deferred();
+    stream.mockReturnValueOnce(turn.promise);
+    render(<TryItCard models={MODELS} routing={READY} />);
+    const input = screen.getByTestId("home-composer");
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.submit(input.closest("form")!);
+    // The person moves to Cancel while it answers; Cancel then unmounts.
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    cancel.focus();
+    await act(async () => {
+      turn.resolve({
+        choices: [{ message: { role: "assistant", content: "hi" } }],
+        report: { elapsedMs: 10 },
+      });
+    });
+    await waitFor(() => expect(screen.getByTestId("home-composer")).toHaveFocus());
+  });
+
+  it("announces a failed send", async () => {
+    stream.mockRejectedValueOnce(new Error("The backend fell over."));
+    render(<TryItCard models={MODELS} routing={READY} />);
+    const input = screen.getByTestId("home-composer");
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The backend fell over.");
   });
 });
