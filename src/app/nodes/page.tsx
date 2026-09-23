@@ -36,6 +36,7 @@ import { AppShell } from "@/components/AppShell";
 import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api } from "@/lib/api";
 import { isLockedError } from "@/lib/controlUnlock";
+import { isLoopbackUrl, joinTokenState, rootControlUrl } from "@/lib/joinCommand";
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
 import { timeUntil } from "@/lib/relativeTime";
 import { usePolling } from "@/lib/usePolling";
@@ -315,6 +316,14 @@ export default function NodesPage() {
     }
   }
 
+  // The token on screen, as the root's own list now reads it: a token
+  // that has enrolled a machine, or run out, offers no command to copy.
+  const mintedState = minted
+    ? joinTokenState({
+        expiresAt: minted.expiresAt,
+        used: outstanding.find((t) => t.id === minted.id)?.used ?? false,
+      })
+    : null;
   const joinCommand = minted
     ? [
         "eugene-plexus-agent join",
@@ -578,6 +587,8 @@ export default function NodesPage() {
                         ·{" "}
                         {t.used ? (
                           "already used"
+                        ) : joinTokenState(t) === "expired" ? (
+                          <span title={new Date(t.expiresAt).toLocaleString()}>expired</span>
                         ) : (
                           <span title={new Date(t.expiresAt).toLocaleString()}>
                             expires {timeUntil(t.expiresAt) ?? "at an unknown time"}
@@ -606,7 +617,19 @@ export default function NodesPage() {
             </div>
           )}
 
-          {minted && (
+          {minted && mintedState !== "usable" && (
+            <p
+              data-testid="minted-spent"
+              role="status"
+              className="rounded-[var(--radius)] border border-[color:var(--border)] p-3 text-sm text-[color:var(--muted)]"
+            >
+              {mintedState === "used"
+                ? "This token was used. The machine it added is in the list above."
+                : "This token has expired. Make a new one above."}
+            </p>
+          )}
+
+          {minted && mintedState === "usable" && (
             <div className="rounded-[var(--radius)] border border-[color:var(--border)] p-3">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <span className="font-ui text-sm text-[color:var(--muted)]">
@@ -622,10 +645,30 @@ export default function NodesPage() {
                 {joinCommand}
               </pre>
               {!controlUrl && (
-                <p className="mt-2 text-sm text-[color:var(--muted)]">
-                  This root has no address other hosts can reach recorded, so the command above
-                  needs its URL filled in by hand. Set <code>advertiseUrl</code> in the agent config
-                  on this machine.
+                <p
+                  className="mt-2 text-sm text-[color:var(--muted)]"
+                  title="The address comes from the agent's advertiseUrl setting on this machine."
+                >
+                  This root has not said where other machines can reach it. Type that address in the
+                  box above before copying the command.
+                </p>
+              )}
+              {/* The guess is the root's own recorded address, which on a
+                  single box is loopback until Reach is switched on -- and
+                  the old hint only fired when there was NO address, so a
+                  command naming 127.0.0.1 was copied with nothing said. */}
+              {controlUrl && isLoopbackUrl(controlUrl) && (
+                <p
+                  data-testid="join-loopback"
+                  role="alert"
+                  className="status-warn mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
+                >
+                  {new URL(controlUrl).hostname} only works on this machine, so this command will
+                  fail on the other one. Turn on{" "}
+                  <Link href="/" className="underline">
+                    Reach it from other devices
+                  </Link>{" "}
+                  on Home, or type an address the other machine can reach in the box above.
                 </p>
               )}
               <p className="mt-2 text-sm text-[color:var(--muted)]">
@@ -656,25 +699,6 @@ function LivenessCell({ node }: { node: NodeRow }) {
       {label}
     </span>
   );
-}
-
-/**
- * Turn a node's agent address into the control root's.
- *
- * `Node.url` is where the *agent* listens (8079 by default); the control
- * root is a component on that same host, on its own port. Swapping the
- * port is a guess and is presented as an editable field for exactly that
- * reason — an operator on a non-default port fixes it in one place
- * rather than discovering it on the other machine.
- */
-function rootControlUrl(agentUrl: string): string {
-  try {
-    const parsed = new URL(agentUrl);
-    parsed.port = "8083";
-    return parsed.toString().replace(/\/+$/, "");
-  } catch {
-    return agentUrl;
-  }
 }
 
 /** The RFC7807 body, when the response carried one. */

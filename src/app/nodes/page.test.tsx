@@ -65,11 +65,21 @@ let sealed: boolean;
 let calls: { url: string; method: string }[];
 /** Outstanding join tokens, as the root lists them: never the token. */
 let tokenRows: { id: string; expiresAt: string; nodeName?: string | null; used: boolean }[];
+/** What minting a join token answers. */
+let mintBody: { id: string; token: string; expiresAt: string; nodeName?: string | null };
+/** A node list to use instead of `NODES`, when set. */
+let nodesBody: typeof NODES | null;
 
 beforeEach(() => {
   sealed = true;
   calls = [];
   tokenRows = [];
+  nodesBody = null;
+  mintBody = {
+    id: "jt-1",
+    token: "eyJ.join.token",
+    expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+  };
   const seen = calls;
   vi.stubGlobal(
     "fetch",
@@ -91,7 +101,9 @@ beforeEach(() => {
       // Before `/v1/nodes` — it is a prefix of this one, and answering
       // the node list here is the same collision the control root's own
       // router had.
+      if (url.includes("/v1/nodes/join-token") && method === "POST") return json(mintBody);
       if (url.includes("/v1/nodes/join-tokens")) return json({ tokens: tokenRows });
+      if (url.includes("/v1/nodes") && nodesBody) return json(nodesBody);
       if (url.includes("/v1/nodes")) return json(NODES);
       if (url.includes("/v1/control/status")) return json({ role: "control", epoch: 1 });
       return json({});
@@ -354,5 +366,70 @@ describe("join tokens can be withdrawn", () => {
     render(<NodesPage />);
     await screen.findByRole("table");
     expect(screen.queryByTestId("outstanding-tokens")).toBeNull();
+  });
+});
+
+describe("the join command", () => {
+  beforeEach(() => {
+    sealed = false;
+  });
+
+  async function mint() {
+    const user = userEvent.setup({ delay: null });
+    render(<NodesPage />);
+    await screen.findAllByText("Amish_Station");
+    await user.click(screen.getByRole("button", { name: "Mint a join token" }));
+  }
+
+  it("names the control root on the port its own agent's offset implies", async () => {
+    nodesBody = {
+      nodes: [
+        { name: "unraid", role: "control", reachable: true, url: "http://192.168.16.252:8279" },
+        {
+          name: "Amish_Station",
+          role: "worker",
+          reachable: true,
+          url: "http://192.168.16.75:8079",
+        },
+      ],
+    };
+    await mint();
+    expect(await screen.findByText(/eugene-plexus-agent join/)).toHaveTextContent(
+      "--control http://192.168.16.252:8283",
+    );
+    expect(screen.queryByTestId("join-loopback")).toBeNull();
+  });
+
+  it("warns that a loopback address will fail on the other machine", async () => {
+    nodesBody = {
+      nodes: [
+        { name: "box", role: "control", reachable: true, url: "http://127.0.0.1:8079" },
+        {
+          name: "Amish_Station",
+          role: "worker",
+          reachable: true,
+          url: "http://192.168.16.75:8079",
+        },
+      ],
+    };
+    await mint();
+    expect(await screen.findByTestId("join-loopback")).toHaveTextContent(
+      "127.0.0.1 only works on this machine",
+    );
+  });
+
+  it("stops offering the command once the token has run out", async () => {
+    mintBody = { ...mintBody, expiresAt: new Date(Date.now() - 1000).toISOString() };
+    await mint();
+    expect(await screen.findByTestId("minted-spent")).toHaveTextContent("has expired");
+    expect(screen.queryByText(/eugene-plexus-agent join/)).toBeNull();
+    expect(screen.queryByText(/expires already passed/)).toBeNull();
+  });
+
+  it("says a token was used, once the root lists it as used", async () => {
+    tokenRows = [{ id: "jt-1", expiresAt: mintBody.expiresAt, used: true }];
+    await mint();
+    expect(await screen.findByTestId("minted-spent")).toHaveTextContent("This token was used");
+    expect(screen.queryByText(/eugene-plexus-agent join/)).toBeNull();
   });
 });
