@@ -25,6 +25,13 @@ vi.mock("next/navigation", () => ({
 // The shell's own fetches would only add noise to the recorder; its
 // selection of the install root for this route is asserted in
 // `navigation.test.ts`.
+// One try per step: the real helper waits a second between ten attempts,
+// and no test here depends on a retry succeeding.
+vi.mock("@/app/setup/start", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/app/setup/start")>()),
+  withRetry: <T,>(call: () => Promise<T>) => call(),
+}));
+
 vi.mock("@/components/AppShell", () => ({
   AppShell: ({ children }: { children: ReactNode }) => <div data-testid="shell">{children}</div>,
 }));
@@ -240,6 +247,36 @@ describe("/backends/add", () => {
     expect(shown).not.toMatch(/agent\.yaml/);
     expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
     expect(calls.map(key)).not.toContain("PATCH ollama/v1/config");
+  });
+});
+
+describe("pressing Add again after a later step failed", () => {
+  it("finishes the driver it already made, rather than making a second", async () => {
+    let failSettings = true;
+    handlers.set("PATCH ollama/v1/config", () =>
+      failSettings
+        ? { status: 503, body: { detail: "The driver is not answering yet." } }
+        : { status: 200, body: {} },
+    );
+    const user = userEvent.setup({ delay: null });
+    render(<AddBackendPage />);
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Which app" }),
+      "ollama_local",
+    );
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(document.querySelector(".status-error")).toHaveTextContent(
+        "was added but did not finish setting up",
+      ),
+    );
+
+    failSettings = false;
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await screen.findByRole("heading", { name: "Which model?" });
+    // One driver: the second press used to find "ollama" taken and make
+    // "ollama-2" on the next port beside the half-configured first.
+    expect(calls.filter((c) => key(c) === "POST agent/v1/components")).toHaveLength(1);
   });
 });
 

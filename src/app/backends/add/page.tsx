@@ -61,6 +61,11 @@ export default function AddBackendPage() {
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The driver this page already created, when a later step failed.
+  // Pressing Add again used to read the list, find that driver's name
+  // taken, and create a SECOND one (ollama-2 on the next port) beside a
+  // half-configured first that kept restarting.
+  const [created, setCreated] = useState<{ name: string; provider: string } | null>(null);
 
   function patch(p: Partial<BackendDraft>) {
     setBackend((prev) => ({ ...prev, ...p }));
@@ -71,22 +76,37 @@ export default function AddBackendPage() {
     setWorking(true);
     setError(null);
     try {
-      // The live list, for a free name and a free port. Read now rather
-      // than on mount so a driver added in another tab meanwhile is seen.
-      const live = await api.get<ComponentList>("agent", "/v1/components");
-      const components = live.components ?? [];
-      const name = driverNameFor(backend.provider, components);
-      const port = freeDriverPort(components);
+      let name: string;
+      if (created && created.provider === backend.provider) {
+        // Carry on where the last attempt stopped: it exists already.
+        name = created.name;
+      } else {
+        // A different app than the half-added one: that one is ours to
+        // take back, not a second thing to leave running.
+        if (created) {
+          await api
+            .delete<void>("agent", `/v1/components/${encodeURIComponent(created.name)}`)
+            .catch(() => undefined);
+          setCreated(null);
+        }
+        // The live list, for a free name and a free port. Read now rather
+        // than on mount so a driver added in another tab meanwhile is seen.
+        const live = await api.get<ComponentList>("agent", "/v1/components");
+        const components = live.components ?? [];
+        name = driverNameFor(backend.provider, components);
+        const port = freeDriverPort(components);
 
-      // CREATE, not configure: nothing declares a driver for an app the
-      // agent does not supervise, so a PATCH alone has nothing to patch.
-      setMessage("Adding the app…");
-      await api.post("agent", "/v1/components", {
-        name,
-        kind: "inference-driver",
-        url: `http://127.0.0.1:${port}`,
-        spawn: { configFile: `${name}.yaml` },
-      });
+        // CREATE, not configure: nothing declares a driver for an app the
+        // agent does not supervise, so a PATCH alone has nothing to patch.
+        setMessage("Adding the app…");
+        await api.post("agent", "/v1/components", {
+          name,
+          kind: "inference-driver",
+          url: `http://127.0.0.1:${port}`,
+          spawn: { configFile: `${name}.yaml` },
+        });
+        setCreated({ name, provider: backend.provider });
+      }
       // Its config is its own file, written once it is up. Retried because
       // a just-created component answers nothing for its first second.
       setMessage("Saving its settings…");
@@ -104,6 +124,7 @@ export default function AddBackendPage() {
       setMessage("Asking it which models it has…");
       const models = await withRetry(() => fetchBackendModels(name));
       setPhase({ kind: "pick", name, models });
+      setCreated(null);
       setMessage(null);
     } catch (e) {
       setError(formatStartError(e));
@@ -136,6 +157,7 @@ export default function AddBackendPage() {
   }
 
   function reset() {
+    setCreated(null);
     setBackend(blankBackend());
     setPhase({ kind: "form" });
     setError(null);
@@ -245,7 +267,9 @@ export default function AddBackendPage() {
           {error && (
             <p className="status-error mt-6 rounded-[var(--radius)] border px-3 py-2 text-sm">
               {phase.kind === "form" && backend.provider
-                ? `${providerLabel(backend.provider)} could not be added. ${error}`
+                ? created && created.provider === backend.provider
+                  ? `${providerLabel(backend.provider)} was added but did not finish setting up. Press Add to finish. ${error}`
+                  : `${providerLabel(backend.provider)} could not be added. ${error}`
                 : error}
             </p>
           )}
