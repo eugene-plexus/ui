@@ -58,11 +58,13 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { SetupGateScreen } from "@/components/SetupGateScreen";
 import { ApiError, api } from "@/lib/api";
 import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
 import { homeFrom, proposedModelsFolder } from "@/lib/proposedModelsFolder";
 import { hasSessionToken, setSessionToken } from "@/lib/session";
 import type { ComponentList, DirectoryListing } from "@/lib/types";
+import { SETUP_GATE_TIMEOUT_MS, isNoAnswer } from "@/lib/useSetupGate";
 import { expertHint } from "@/lib/vocabulary";
 
 import { WizardFooter, WizardHeader } from "./chrome";
@@ -97,6 +99,11 @@ export default function WizardPage() {
   // on. Rendering screen 1 first and then jumping would flash a passphrase
   // form at a person whose passphrase is already set.
   const [screen, setScreen] = useState<1 | 2 | null>(null);
+  // The probe below had no deadline, so a hung agent left "Loading
+  // setup…" on screen forever. No answer is its own screen now, with
+  // Try again, as the setup gate's is.
+  const [unreachable, setUnreachable] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [draft, setDraft] = useState<WizardDraft>(blankDraft());
   const [hydrated, setHydrated] = useState(false);
   const [working, setWorking] = useState(false);
@@ -176,10 +183,18 @@ export default function WizardPage() {
     async function probe() {
       let status: AuthStatusView | null = null;
       try {
-        status = await api.get<AuthStatusView>("agent", "/v1/auth/status", { skipAuth: true });
-      } catch {
-        // Agent unreachable or an older build: open on screen 1 and let
-        // Continue surface the real error.
+        status = await api.get<AuthStatusView>("agent", "/v1/auth/status", {
+          skipAuth: true,
+          timeoutMs: SETUP_GATE_TIMEOUT_MS,
+        });
+      } catch (e) {
+        if (cancelled) return;
+        if (isNoAnswer(e)) {
+          setUnreachable(true);
+          return;
+        }
+        // An older build that answered without the endpoint: open on
+        // screen 1 and let Continue surface the real error.
       }
       if (cancelled) return;
 
@@ -205,7 +220,9 @@ export default function WizardPage() {
       // A finished install has nothing for this page to do, and Finish
       // here would overwrite the folders it already has with the proposal.
       try {
-        const doc = await api.get<{ firstRunComplete?: boolean }>("agent", "/v1/config");
+        const doc = await api.get<{ firstRunComplete?: boolean }>("agent", "/v1/config", {
+          timeoutMs: SETUP_GATE_TIMEOUT_MS,
+        });
         if (cancelled) return;
         if (doc.firstRunComplete === true) {
           routerRef.current.replace("/");
@@ -217,6 +234,10 @@ export default function WizardPage() {
         // is bouncing to /login; anything else is the agent mid-restart,
         // and Finish will say so if it persists.
         if (e instanceof ApiError && e.status === 401) return;
+        if (isNoAnswer(e)) {
+          setUnreachable(true);
+          return;
+        }
       }
       setScreen(2);
     }
@@ -224,7 +245,7 @@ export default function WizardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   // Screen 2 asks the library for its host's home and proposes a folder
   // under it. Retried, because screen 1's Continue restarted every child
@@ -441,6 +462,18 @@ export default function WizardPage() {
   // Don't render screen content until hydration finishes and the probe has
   // said which screen this is, otherwise the first paint shows a form the
   // person may not need and overwrites whatever they typed before refresh.
+  if (unreachable) {
+    return (
+      <SetupGateScreen
+        state="unreachable"
+        onRetry={() => {
+          setUnreachable(false);
+          setAttempt((n) => n + 1);
+        }}
+      />
+    );
+  }
+
   if (!hydrated || screen === null) {
     return (
       <main className="relative z-10 flex h-screen items-center justify-center">

@@ -26,10 +26,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Attribution } from "@/components/Attribution";
+import { SetupGateScreen } from "@/components/SetupGateScreen";
 import { ApiError, api } from "@/lib/api";
 import { unlockControlRoot } from "@/lib/controlUnlock";
 import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
 import { setSessionToken } from "@/lib/session";
+import { SETUP_GATE_TIMEOUT_MS, isNoAnswer } from "@/lib/useSetupGate";
 
 interface LoginResponse {
   sessionToken: string;
@@ -94,6 +96,12 @@ function LoginForm() {
   // we've confirmed the install IS initialized.
   const [probing, setProbing] = useState(true);
   const [setupRequired, setSetupRequired] = useState(false);
+  // No answer at all within the gate's deadline. The probe used to wait
+  // as long as the browser would, so a hung agent left "Loading…" on
+  // screen forever with nothing to press.
+  const [unreachable, setUnreachable] = useState(false);
+  // Bumped by Try again; the probe re-runs on each new value.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +109,7 @@ function LoginForm() {
       try {
         const status = await api.get<{ initialized: boolean }>("agent", "/v1/auth/status", {
           skipAuth: true,
+          timeoutMs: SETUP_GATE_TIMEOUT_MS,
         });
         if (cancelled) return;
         if (!status.initialized) {
@@ -108,18 +117,21 @@ function LoginForm() {
           return;
         }
         setProbing(false);
-      } catch {
-        // If the probe fails (older agent without the endpoint, or
-        // agent down) fall through to showing the form. The submit
-        // path's existing 503 handling still covers the pre-init case.
-        if (!cancelled) setProbing(false);
+      } catch (e) {
+        if (cancelled) return;
+        // No answer is its own screen, with Try again. An agent that
+        // answered with an error (an older build without the endpoint)
+        // still gets the form; the submit path's 503 handling covers the
+        // pre-init case.
+        if (isNoAnswer(e)) setUnreachable(true);
+        else setProbing(false);
       }
     }
     void probe();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     if (setupRequired) {
@@ -190,6 +202,18 @@ function LoginForm() {
   // the install is initialized. Otherwise a fresh install shows
   // "enter your install passphrase" misleadingly before the probe's
   // redirect to /setup fires.
+  if (unreachable) {
+    return (
+      <SetupGateScreen
+        state="unreachable"
+        onRetry={() => {
+          setUnreachable(false);
+          setAttempt((n) => n + 1);
+        }}
+      />
+    );
+  }
+
   if (probing || setupRequired) {
     return (
       <main className="relative z-10 flex h-screen items-center justify-center">

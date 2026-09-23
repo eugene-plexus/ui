@@ -27,7 +27,7 @@ export const SETUP_GATE_TIMEOUT_MS = 10_000;
  * a server. An `ApiError` with a real status means the agent DID answer,
  * which is a different problem and one the page's own reads will name.
  */
-function isNoAnswer(e: unknown): boolean {
+export function isNoAnswer(e: unknown): boolean {
   if (e instanceof ApiError) return e.status === 0;
   return true;
 }

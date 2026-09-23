@@ -20,8 +20,10 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import AddBackendPage from "@/app/backends/add/page";
+import LoginPage from "@/app/login/page";
 import HomePage from "@/app/page";
 import PlaygroundPage from "@/app/playground/page";
+import WizardPage from "@/app/setup/page";
 
 vi.mock("next/navigation", () => {
   // One router for the life of the test, as Next gives: the gate's effect
@@ -115,6 +117,32 @@ describe("the setup gate when the agent never answers", () => {
     // The page body is not rendered behind it.
     expect(screen.queryByTestId("shell")).toBeNull();
   });
+
+  it.each([
+    ["sign-in", LoginPage],
+    ["the wizard", WizardPage],
+  ])(
+    "%s stops loading, says it cannot reach Eugene, and Try again asks again",
+    async (_n, Page) => {
+      // Their own startup checks had no deadline: against an agent that
+      // took the connection and never replied, "Loading…" stayed forever.
+      render(<Page />);
+      await waitOutTheGate();
+      expect(screen.getByText(UNREACHABLE)).toBeInTheDocument();
+
+      answering = true;
+      const asked = vi.mocked(fetch).mock.calls.length;
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(asked);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.queryByText(UNREACHABLE)).toBeNull();
+    },
+  );
 
   it("a refused connection is no answer too, and says so at once", async () => {
     vi.stubGlobal(
