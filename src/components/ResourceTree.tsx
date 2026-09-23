@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { accentVar, layerOf } from "@/lib/navigation";
@@ -15,6 +15,8 @@ import {
   type TreeNode,
 } from "@/lib/resourceTree";
 import type { ComponentList, NodeIdentity } from "@/lib/types";
+import { useRefreshWithIssues } from "@/lib/useIssues";
+import { usePolling } from "@/lib/usePolling";
 
 import { LayerIcon } from "./LayerIcon";
 
@@ -49,6 +51,15 @@ const TWIST_BOX =
 const EMPTY: Topology = { localNode: null, nodes: [], components: [] };
 
 /**
+ * How often the tree asks again. It used to ask once, when the shell
+ * mounted: a machine that joined, a model launched from Home, or a
+ * control root that restarted just after sign-in stayed out of the tree
+ * (or "unreachable" in it) until the page was left. Slow, because the
+ * tree changes when the install does, and paused in a hidden tab.
+ */
+const TOPOLOGY_POLL_MS = 30_000;
+
+/**
  * The four soft reads the tree is built from, as one hook.
  *
  * **Hoisted out of the tree on purpose.** The first build had the tree
@@ -61,60 +72,67 @@ const EMPTY: Topology = { localNode: null, nodes: [], components: [] };
 export function useTopology(): { topology: Topology; ready: boolean } {
   const [topology, setTopology] = useState<Topology>(EMPTY);
   const [ready, setReady] = useState(false);
-
+  const live = useRef(true);
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const [local, node, placement, nodeNames] = await Promise.all([
-        api.get<ComponentList>("agent", "/v1/components").catch(() => null),
-        api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),
-        api
-          .get<{ components?: Partial<ComponentPlacement>[] }>("control", "/v1/components")
-          .catch(() => null),
-        api.get<{ nodes?: { name?: unknown }[] }>("control", "/v1/nodes").catch(() => null),
-      ]);
-      if (cancelled) return;
-
-      const merged = new Map<string, ComponentPlacement>();
-      for (const c of local?.components ?? []) {
-        if (!c?.name || !c?.kind) continue;
-        merged.set(`${c.name}@${node?.name ?? ""}`, {
-          name: c.name,
-          kind: c.kind,
-          node: node?.name ?? null,
-        });
-      }
-      for (const c of placement?.components ?? []) {
-        if (typeof c?.name !== "string" || typeof c?.kind !== "string") continue;
-        const on = typeof c.node === "string" ? c.node : null;
-        merged.set(`${c.name}@${on ?? ""}`, { name: c.name, kind: c.kind, node: on });
-      }
-
-      setTopology({
-        localNode: node?.name ?? null,
-        nodes: (nodeNames?.nodes ?? [])
-          .map((n) => n.name)
-          .filter((n): n is string => typeof n === "string" && n.length > 0),
-        components: [...merged.values()],
-        // **An install has no name in the contract.** Nothing on
-        // control's surface identifies one, so the root is labelled with
-        // the product name. The model takes an `installName` because
-        // naming an install is an obvious contract addition and the
-        // fallback is already tested; inventing a field to read would be
-        // worse than saying so.
-        //
-        // Both control reads failing is what a sealed or absent root
-        // looks like. A standalone install is the same shape and says
-        // the same thing, which is honest: there is no root answering
-        // either way.
-        rootUnreachable: placement === null && nodeNames === null,
-      });
-      setReady(true);
-    })();
+    live.current = true;
     return () => {
-      cancelled = true;
+      live.current = false;
     };
   }, []);
+
+  const load = useCallback(async () => {
+    const [local, node, placement, nodeNames] = await Promise.all([
+      api.get<ComponentList>("agent", "/v1/components").catch(() => null),
+      api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),
+      api
+        .get<{ components?: Partial<ComponentPlacement>[] }>("control", "/v1/components")
+        .catch(() => null),
+      api.get<{ nodes?: { name?: unknown }[] }>("control", "/v1/nodes").catch(() => null),
+    ]);
+    if (!live.current) return;
+
+    const merged = new Map<string, ComponentPlacement>();
+    for (const c of local?.components ?? []) {
+      if (!c?.name || !c?.kind) continue;
+      merged.set(`${c.name}@${node?.name ?? ""}`, {
+        name: c.name,
+        kind: c.kind,
+        node: node?.name ?? null,
+      });
+    }
+    for (const c of placement?.components ?? []) {
+      if (typeof c?.name !== "string" || typeof c?.kind !== "string") continue;
+      const on = typeof c.node === "string" ? c.node : null;
+      merged.set(`${c.name}@${on ?? ""}`, { name: c.name, kind: c.kind, node: on });
+    }
+
+    const next: Topology = {
+      localNode: node?.name ?? null,
+      nodes: (nodeNames?.nodes ?? [])
+        .map((n) => n.name)
+        .filter((n): n is string => typeof n === "string" && n.length > 0),
+      components: [...merged.values()],
+      // **An install has no name in the contract.** Nothing on
+      // control's surface identifies one, so the root is labelled with
+      // the product name. The model takes an `installName` because
+      // naming an install is an obvious contract addition and the
+      // fallback is already tested; inventing a field to read would be
+      // worse than saying so.
+      //
+      // Both control reads failing is what a sealed or absent root
+      // looks like. A standalone install is the same shape and says
+      // the same thing, which is honest: there is no root answering
+      // either way.
+      rootUnreachable: placement === null && nodeNames === null,
+    };
+    // The same install keeps the same object, so a poll that found
+    // nothing new does not rebuild the tree and the menu under the pointer.
+    setTopology((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+    setReady(true);
+  }, []);
+
+  usePolling(load, TOPOLOGY_POLL_MS);
+  useRefreshWithIssues(load);
 
   return { topology, ready };
 }

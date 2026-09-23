@@ -222,6 +222,22 @@ export interface IssuesState {
  */
 const mounted = new Set<() => Promise<void>>();
 
+/**
+ * Refresh something else whenever the Issues lists are pulled forward.
+ * A fix made from the list -- an unlock, above all -- changes more than
+ * the list: the resource tree said "control root unreachable" and lacked
+ * every other machine until the page was left, beside a badge that had
+ * already cleared.
+ */
+export function useRefreshWithIssues(load: () => Promise<void>): void {
+  useEffect(() => {
+    mounted.add(load);
+    return () => {
+      mounted.delete(load);
+    };
+  }, [load]);
+}
+
 export function useIssues(): IssuesState {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [facts, setFacts] = useState<NodeFacts[]>([]);
