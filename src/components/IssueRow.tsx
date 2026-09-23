@@ -28,11 +28,20 @@ export function IssueRow({
   issue,
   onFollow,
   onFixed,
+  focusUnlock = false,
 }: {
   issue: Issue;
   /** Close whatever disclosure this row sits in, if it sits in one. */
   onFollow?: () => void;
   onFixed: () => Promise<void>;
+  /**
+   * Put the cursor in the passphrase box when this row appears. True in
+   * the header's list, which a person opens to act on, so the click that
+   * opened it is the only one needed before typing. False on Home, where
+   * the card is there on page load and taking focus would pull it out of
+   * the box a person came to type a message in.
+   */
+  focusUnlock?: boolean;
 }) {
   const toneClass = issue.severity === "blocking" ? "text-status-error" : "text-status-warn";
   return (
@@ -47,7 +56,7 @@ export function IssueRow({
           it is read by somebody who is already unhappy. */}
       <p className="mt-0.5 text-[0.6875rem] text-[color:var(--muted)]">{issue.detail}</p>
       {issue.action === "unlock-control-root" ? (
-        <UnlockForm onFixed={onFixed} />
+        <UnlockForm onFixed={onFixed} autoFocus={focusUnlock} />
       ) : (
         <Link
           href={issue.href}
@@ -70,7 +79,7 @@ export function IssueRow({
  * is a real and confusing state (a re-initialized side) and is named as
  * such rather than as "wrong password".
  */
-function UnlockForm({ onFixed }: { onFixed: () => Promise<void> }) {
+function UnlockForm({ onFixed, autoFocus }: { onFixed: () => Promise<void>; autoFocus: boolean }) {
   const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -119,6 +128,7 @@ function UnlockForm({ onFixed }: { onFixed: () => Promise<void> }) {
           value={passphrase}
           onChange={(e) => setPassphrase(e.target.value)}
           autoComplete="off"
+          autoFocus={autoFocus}
           placeholder="Passphrase"
           data-testid="issues-unlock-passphrase"
           className="font-ui min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--background)] px-2 py-1 text-sm"

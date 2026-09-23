@@ -125,6 +125,7 @@ export function IssuesBadgeView({ issues, worst, loaded, onFixed }: IssuesBadgeV
               <li key={issue.id}>
                 <IssueRow
                   issue={issue}
+                  focusUnlock
                   onFollow={() => setOpen(false)}
                   onFixed={async () => {
                     await onFixed?.();

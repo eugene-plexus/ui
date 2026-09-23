@@ -106,6 +106,15 @@ describe("when something is wrong", () => {
     await waitFor(() => expect(onFixed).toHaveBeenCalledTimes(1));
   });
 
+  it("does not take the cursor on its own", () => {
+    // The header's list focuses the passphrase because a person opened
+    // it to act. This card is on Home when the page loads, and focusing
+    // it would pull the cursor out of the box a person came to type in.
+    render(<NeedsAttentionCard issues={[SEALED]} loaded={true} />);
+    expect(screen.getByTestId("issues-unlock-passphrase")).toBeInTheDocument();
+    expect(document.activeElement).toBe(document.body);
+  });
+
   it("sends an ordinary issue to the screen that owns its fix", () => {
     render(<NeedsAttentionCard issues={[ON_CPU]} loaded={true} />);
     expect(screen.getByRole("link", { name: "Go and fix it" })).toHaveAttribute(

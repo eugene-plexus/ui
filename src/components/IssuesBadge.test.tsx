@@ -134,6 +134,21 @@ describe("the sealed root is fixed from inside the list", () => {
     onFixed = vi.fn(async () => {});
   });
 
+  it("puts the cursor in the passphrase box when the list is opened", () => {
+    // Troy, 2026-09-23: the click that opens the list is a click to act,
+    // so it should be the only one before typing. Opened from the
+    // keyboard it is the same handler, so Enter on the badge and then
+    // the passphrase is the whole unlock.
+    openTheForm();
+    expect(document.activeElement).toBe(screen.getByTestId("issues-unlock-passphrase"));
+  });
+
+  it("still hands focus back to the badge on Escape", () => {
+    openTheForm();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.activeElement).toBe(screen.getByTestId("issues-badge"));
+  });
+
   it("takes the passphrase and posts it to the control root", async () => {
     unlockControlRoot.mockResolvedValue("unlocked");
     openTheForm();
