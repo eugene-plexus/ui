@@ -330,7 +330,9 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
         </p>
       )}
       {status && !failure && (
-        <p className="status-ok mb-3 rounded-[var(--radius)] border px-3 py-2 text-sm">{status}</p>
+        <p className="status-success mb-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
+          {status}
+        </p>
       )}
 
       {serverFolders === null ? (
@@ -664,7 +666,7 @@ function MountCell({
         data-testid={testId}
         aria-label={shape === "posix" ? "Mount on Linux and macOS nodes" : "Mount on Windows nodes"}
         onChange={(e) => onChange(e.target.value)}
-        className={`${inputClass} ${wrongShape ? "border-[color:var(--status-error,#f85149)]" : ""}`}
+        className={`${inputClass} ${wrongShape ? "border-[color:var(--status-error-border)]" : ""}`}
         title={
           wrongShape
             ? `${value} is ${shapeOf(value)}-shaped; this box is for ${shape} nodes`
@@ -829,11 +831,11 @@ const TONE_WORD: Record<CellTone, string> = {
 function Dot({ tone }: { tone: CellTone }) {
   const colour =
     tone === "ok"
-      ? "var(--status-ok, #3fb950)"
+      ? "var(--status-success-fg)"
       : tone === "warn"
-        ? "var(--status-warn, #d29922)"
+        ? "var(--status-warn-fg)"
         : tone === "error"
-          ? "var(--status-error, #f85149)"
+          ? "var(--status-error-fg)"
           : "var(--muted)";
   return (
     <>

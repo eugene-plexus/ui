@@ -33,7 +33,7 @@ const panelClass =
 const buttonClass =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 const textareaClass =
-  "w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] p-2 font-mono text-xs";
+  "w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-2 font-mono text-xs";
 
 export function DecisionPanel({ models }: { models: string[] }) {
   const [model, setModel] = useState(models[0] ?? "");
@@ -101,7 +101,7 @@ export function DecisionPanel({ models }: { models: string[] }) {
           id="decision-model"
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 text-xs"
+          className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 text-xs"
         >
           {models.map((m) => (
             <option key={m} value={m}>
@@ -119,9 +119,7 @@ export function DecisionPanel({ models }: { models: string[] }) {
           {busy ? "Deciding…" : "Decide"}
         </button>
         {request === null && (
-          <span className="text-xs text-[color:var(--status-error,#f85149)]">
-            The questions are not valid JSON.
-          </span>
+          <span className="text-status-error text-xs">The questions are not valid JSON.</span>
         )}
       </div>
 
@@ -196,7 +194,7 @@ export function DecisionPanel({ models }: { models: string[] }) {
               <input
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                className="min-w-64 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs"
+                className="min-w-64 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 font-mono text-xs"
               />
             </label>
             <details>

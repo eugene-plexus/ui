@@ -692,8 +692,15 @@ function LivenessCell({ node }: { node: NodeRow }) {
       data-testid="node-liveness"
       data-liveness={liveness}
       title={title}
+      // `--ok` was never defined, so "reachable" was not green and "down"
+      // was the same muted grey as "checking…": the failure read quieter
+      // than the healthy state.
       className={
-        liveness === "reachable" ? "text-[color:var(--ok,inherit)]" : "text-[color:var(--muted)]"
+        liveness === "reachable"
+          ? "text-status-success"
+          : liveness === "down"
+            ? "text-status-error"
+            : "text-[color:var(--muted)]"
       }
     >
       {label}

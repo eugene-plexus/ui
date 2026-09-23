@@ -148,7 +148,7 @@ export function ReachCard({
           <div className="mt-1 flex items-start gap-2">
             <pre
               data-testid="reach-remedy"
-              className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] p-2 font-mono text-[0.6875rem]"
+              className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-2 font-mono text-[0.6875rem]"
             >
               {remedy}
             </pre>
@@ -160,7 +160,7 @@ export function ReachCard({
       {proof && (
         <p
           data-testid="reach-evidence"
-          className="font-ui status-ok mt-2 rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]"
+          className="font-ui status-success mt-2 rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]"
         >
           {proof}
         </p>

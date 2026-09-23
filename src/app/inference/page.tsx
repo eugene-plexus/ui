@@ -89,13 +89,13 @@ const POLL_MS = 3000;
 const INSTALL_POLL_MS = 1000;
 
 const STATUS_TONE: Record<RuntimeStatus, string> = {
-  ready: "var(--status-ok, #3fb950)",
-  copying: "var(--status-warn, #d29922)",
-  loading: "var(--status-warn, #d29922)",
-  starting: "var(--status-warn, #d29922)",
-  exited: "var(--status-warn, #d29922)",
+  ready: "var(--status-success-fg)",
+  copying: "var(--status-warn-fg)",
+  loading: "var(--status-warn-fg)",
+  starting: "var(--status-warn-fg)",
+  exited: "var(--status-warn-fg)",
   stopped: "var(--muted)",
-  crashed: "var(--status-error, #f85149)",
+  crashed: "var(--status-error-fg)",
 };
 
 const STATUS_HELP: Record<RuntimeStatus, string> = {
@@ -440,7 +440,7 @@ function NodeSection({
         {node && !node.reachable && (
           <span
             className="text-sm"
-            style={{ color: "var(--status-error, #f85149)" }}
+            style={{ color: "var(--status-error-fg)" }}
             title={node.lastError ?? undefined}
           >
             down{node.lastError ? ` — ${node.lastError}` : ""}
@@ -603,9 +603,9 @@ function RowView({
             unknown to gateway
           </span>
         ) : row.reachable ? (
-          <span style={{ color: "var(--status-ok, #3fb950)" }}>reachable</span>
+          <span style={{ color: "var(--status-success-fg)" }}>reachable</span>
         ) : (
-          <span style={{ color: "var(--status-error, #f85149)" }} title={row.error ?? undefined}>
+          <span style={{ color: "var(--status-error-fg)" }} title={row.error ?? undefined}>
             unreachable
           </span>
         )}
@@ -690,7 +690,7 @@ function RowView({
           </div>
         )}
         {row.error && row.reachable !== false && (
-          <div className="text-[0.6875rem]" style={{ color: "var(--status-error, #f85149)" }}>
+          <div className="text-[0.6875rem]" style={{ color: "var(--status-error-fg)" }}>
             {row.error}
           </div>
         )}
@@ -877,7 +877,7 @@ function EnginesLine({
             )}
             <span
               style={{
-                color: e.available ? "var(--status-ok, #3fb950)" : "var(--status-error, #f85149)",
+                color: e.available ? "var(--status-success-fg)" : "var(--status-error-fg)",
               }}
             >
               {e.available ? `build ${e.version ?? "?"}` : "not installed"}
@@ -937,6 +937,6 @@ const buttonClass =
 const smallButton =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 const dangerButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error,#f85149)] hover:text-[color:var(--status-error,#f85149)] disabled:cursor-not-allowed disabled:opacity-30";
+  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error-border)] hover:text-[color:var(--status-error-fg)] disabled:cursor-not-allowed disabled:opacity-30";
 const tinyButton =
   "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-1.5 py-0 text-[0.625rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";

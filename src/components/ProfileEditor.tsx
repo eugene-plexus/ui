@@ -263,7 +263,7 @@ export function ProfileEditor({
           describe; M6 closed it. What is still honestly said here is
           that "ready" is the engine's to reach, not the button's. */}
       {launched && (
-        <p className="status-ok mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
+        <p className="status-success mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
           Starting <span className="font-mono">{launched}</span>
           {node && !node.local ? ` on ${node.label}` : ""} and its driver{" "}
           <span className="font-mono">{launched}-driver</span>. Watch it load on the{" "}
@@ -398,7 +398,11 @@ function LaunchPreview({
 
   const preview = describeAdmission(admission, node.label, node.target);
   const tone =
-    preview.tone === "ok" ? "status-ok" : preview.tone === "warn" ? "status-warn" : "status-error";
+    preview.tone === "ok"
+      ? "status-success"
+      : preview.tone === "warn"
+        ? "status-warn"
+        : "status-error";
   return (
     <div
       className={`${tone} mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed`}

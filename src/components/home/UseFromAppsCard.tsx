@@ -342,7 +342,7 @@ export function UseFromAppsCard({
                 aria-label="Address"
                 data-testid="base-url-input"
                 placeholder="http://192.168.1.20:8080"
-                className="min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs"
+                className="min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 font-mono text-xs"
               />
               <button type="submit" className="font-ui text-[0.6875rem] underline">
                 Save
@@ -446,7 +446,7 @@ export function UseFromAppsCard({
               aria-label="Model"
               value={model ?? ""}
               onChange={(e) => setModel(e.target.value)}
-              className="min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs"
+              className="min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 font-mono text-xs"
             >
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -502,7 +502,7 @@ export function UseFromAppsCard({
           aria-label="What the key is for"
           data-testid="key-name"
           placeholder="What is it for? e.g. Continue on the laptop"
-          className="font-ui min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 text-sm"
+          className="font-ui min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 text-sm"
         />
         <button
           type="submit"
@@ -651,7 +651,7 @@ export function UseFromAppsCard({
             <div key={recipe.name} className="mt-2" data-testid="recipe">
               <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">{recipe.where}</p>
               <div className="mt-1 flex items-start gap-2">
-                <pre className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] p-2 font-mono text-[0.6875rem]">
+                <pre className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-2 font-mono text-[0.6875rem]">
                   {recipe.snippet}
                 </pre>
                 <CopyButton text={recipe.snippet} title={`Copy the ${recipe.name} snippet`} />

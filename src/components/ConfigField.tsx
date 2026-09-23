@@ -977,7 +977,7 @@ function LibraryFoldersInput({
               disabled={pending}
               className={`${inputClass} ${
                 mountFor(folder, "posix") && shapeOf(mountFor(folder, "posix") ?? "") !== "posix"
-                  ? "border-[color:var(--status-error,#f85149)]"
+                  ? "border-[color:var(--status-error-border)]"
                   : ""
               }`}
             />

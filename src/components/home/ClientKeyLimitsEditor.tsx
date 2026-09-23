@@ -24,7 +24,7 @@ export function ClientKeyLimitsEditor({
   const id = useId();
   const selected = value.allowedModels != null;
   const field =
-    "rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1";
+    "rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1";
   return (
     <fieldset disabled={disabled} className="font-ui basis-full space-y-2 text-sm">
       <legend className="mb-2 font-semibold">Key permissions and limits</legend>
