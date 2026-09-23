@@ -40,6 +40,7 @@ import { isLoopbackUrl, joinTokenState, rootControlUrl } from "@/lib/joinCommand
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
 import { timeAgo, timeUntil } from "@/lib/relativeTime";
 import { usePolling } from "@/lib/usePolling";
+import { expertHint } from "@/lib/vocabulary";
 
 /**
  * Troy's number, and the reason for it: unlock the root and it is
@@ -336,9 +337,11 @@ export default function NodesPage() {
   return (
     <AppShell
       controls={
-        <span className="font-ui text-sm text-[color:var(--muted)]">
+        <span
+          className="font-ui text-sm text-[color:var(--muted)]"
+          title={status?.epoch != null ? epochHint(status.epoch) : undefined}
+        >
           Every machine in this install.
-          {status?.epoch != null && <> This root is at epoch {status.epoch}.</>}
         </span>
       }
     >
@@ -353,16 +356,14 @@ export default function NodesPage() {
           <section className="mb-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4">
             <h2 className="font-ui text-base font-semibold">This control root is locked</h2>
             <p className="mt-2 text-sm text-[color:var(--muted)]">
-              It is set up and its records are intact — it just holds the install&rsquo;s signing
-              key sealed and has not been given the passphrase since it last started. Nothing is
-              lost. Until it is unlocked the gateway cannot read this install&rsquo;s topology, so{" "}
-              <span className="font-mono">/v1/models</span> is empty and nothing routes.
+              It is set up and nothing is lost. It keeps this install&rsquo;s signing key sealed
+              until it is given the passphrase after a restart. Until then no models are listed and
+              nothing is served.
             </p>
             <p className="mt-2 text-sm text-[color:var(--muted)]">
-              Signing in to this web UI unlocks it too, with the same passphrase — since 2026-09-13.
-              You are seeing this form because the root was locked after you signed in (it
-              restarted), or because it holds a different passphrase from the node agent&rsquo;s.
-              This form talks to the control root itself.
+              Signing in to this web UI unlocks it too, with the same passphrase. You see this form
+              because the root restarted after you signed in, or holds a different passphrase. This
+              form talks to the control root itself.
             </p>
             <form onSubmit={unlock} className="mt-3 flex flex-wrap items-center gap-2">
               <label htmlFor="unlock-passphrase" className="sr-only">
@@ -480,9 +481,10 @@ export default function NodesPage() {
                         n.lastSeenEpoch < status.epoch ? (
                           <span
                             className="ml-2 text-sm text-[color:var(--muted)]"
-                            title="This node has not yet learned about a promotion. Bounded, self-healing, and deliberately shown rather than hidden."
+                            data-testid="node-behind"
+                            title={behindHint(n.lastSeenEpoch, status.epoch)}
                           >
-                            epoch {n.lastSeenEpoch}
+                            catching up
                           </span>
                         ) : null}
                       </td>
@@ -502,9 +504,13 @@ export default function NodesPage() {
                                 {s.model ?? s.driver}
                                 <span className="ml-1 font-sans text-[color:var(--muted)]">
                                   via {s.driver}
-                                  {s.runtime
-                                    ? ` (runtime ${s.runtime}${s.status ? `, ${s.status}` : ""})`
-                                    : ""}
+                                  {s.runtime ? (
+                                    <span title={"runtime " + s.runtime}>
+                                      {` (${s.runtime}${s.status ? `, ${s.status}` : ""})`}
+                                    </span>
+                                  ) : (
+                                    ""
+                                  )}
                                   {s.reachable === false ? " · unreachable" : ""}
                                 </span>
                               </li>
@@ -529,9 +535,9 @@ export default function NodesPage() {
         <section hidden={locked}>
           <h2 className="font-ui mb-2 text-base font-semibold">Add a node</h2>
           <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
-            Mint a token here, then run the command it produces on the other machine. The token is
-            single-use, short-lived, and <strong>shown once</strong> — it is not stored in a form
-            anything can read back, so a lost one is re-minted rather than looked up.
+            Make a token here, then run the command it gives you on the other machine. The token
+            works once, for a short time, and is <strong>shown once</strong>. A lost one is replaced
+            rather than looked up.
           </p>
 
           <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -561,7 +567,7 @@ export default function NodesPage() {
               disabled={minting}
               className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {minting ? "Minting…" : "Mint a join token"}
+              {minting ? "Making…" : "Make a join token"}
             </button>
           </div>
 
@@ -624,17 +630,16 @@ export default function NodesPage() {
                 ))}
               </ul>
               <p className="mt-2 text-[0.6875rem] text-[color:var(--muted)]">
-                The id is a handle, not the token — the token itself was shown once and is not
-                stored in a form anything can read back. Revoking one stops it working immediately;
-                a token that has already enrolled a node can be cleared here and the node is
-                untouched.
+                The id is a handle, not the token. The token was shown once and is not kept anywhere
+                it could be read back. Revoking one stops it working immediately; a token that has
+                already enrolled a node can be cleared here and the node is untouched.
               </p>
             </div>
           )}
 
           {minted && mintedState !== "usable" && (
             <p
-              data-testid="minted-spent"
+              data-testid="join-token-spent"
               role="status"
               className="rounded-[var(--radius)] border border-[color:var(--border)] p-3 text-sm text-[color:var(--muted)]"
             >
@@ -698,6 +703,24 @@ export default function NodesPage() {
   );
 }
 
+/**
+ * Hover text for the epoch numbers: an expert reading a promotion needs
+ * them, and nobody else does, so the page itself never says the word.
+ */
+function epochHint(root: number): string {
+  return expertHint("The control root is at epoch ") + root + ".";
+}
+
+function behindHint(seen: number, root: number): string {
+  return (
+    expertHint("This node has not yet learned about a promotion. It last saw epoch ") +
+    seen +
+    expertHint(", and the root is at ") +
+    root +
+    expertHint(". Bounded, self-healing, and deliberately shown rather than hidden.")
+  );
+}
+
 /** The liveness word for one node, with the reason behind it. */
 function LivenessCell({ node }: { node: NodeRow }) {
   const liveness = nodeLiveness(node);
@@ -740,8 +763,8 @@ function describe(e: unknown): string {
     if (p?.detail || p?.title) return p.detail || p.title || "";
     if (e.status === 503) {
       return (
-        "The control root is not reachable, or has not been set up yet. An uninitialized " +
-        "trust root answers 503 across its whole surface by design — it does not fall open."
+        "The control root is not reachable, or has not been set up yet. Until it is set " +
+        "up it refuses every request, by design."
       );
     }
     return `${e.status} ${e.statusText}`;

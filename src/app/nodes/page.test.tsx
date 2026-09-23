@@ -168,7 +168,42 @@ describe("nodes page, sealed control root", () => {
   it("hides the join-token form while locked, because minting would only 503", async () => {
     render(<NodesPage />);
     await screen.findByText(/this control root is locked/i);
-    expect(screen.queryByRole("button", { name: /mint/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /join token/i })).toBeNull();
+  });
+});
+
+describe("the page's words", () => {
+  /** The architecture's nouns, which a `title` may carry and the page may not. */
+  function expectPlain() {
+    const text = (document.body.textContent ?? "").toLowerCase();
+    for (const word of ["epoch", "mint", "topology", "trust root", "advertiseurl", "runtime"]) {
+      expect(text, `the page says "${word}"`).not.toContain(word);
+    }
+    expect(text).not.toMatch(/since 20\d\d-/);
+  }
+
+  it("uses none of them while the root is locked", async () => {
+    render(<NodesPage />);
+    await screen.findByText(/this control root is locked/i);
+    expectPlain();
+  });
+
+  it("uses none of them with the root open and a machine catching up", async () => {
+    sealed = false;
+    nodesBody = {
+      nodes: [
+        ...NODES.nodes,
+        { name: "old-box", role: "worker", reachable: true, url: "http://10.0.0.9:8079" },
+      ],
+    };
+    (nodesBody.nodes[2] as Record<string, unknown>).lastSeenEpoch = 0;
+    render(<NodesPage />);
+    expect(await screen.findByTestId("node-behind")).toHaveAttribute(
+      "title",
+      expect.stringContaining("epoch 0"),
+    );
+    expect(screen.getByRole("button", { name: "Make a join token" })).toBeInTheDocument();
+    expectPlain();
   });
 });
 
@@ -393,7 +428,7 @@ describe("the join command", () => {
     const user = userEvent.setup({ delay: null });
     render(<NodesPage />);
     await screen.findAllByText("Amish_Station");
-    await user.click(screen.getByRole("button", { name: "Mint a join token" }));
+    await user.click(screen.getByRole("button", { name: "Make a join token" }));
   }
 
   it("names the control root on the port its own agent's offset implies", async () => {
@@ -436,7 +471,7 @@ describe("the join command", () => {
   it("stops offering the command once the token has run out", async () => {
     mintBody = { ...mintBody, expiresAt: new Date(Date.now() - 1000).toISOString() };
     await mint();
-    expect(await screen.findByTestId("minted-spent")).toHaveTextContent("has expired");
+    expect(await screen.findByTestId("join-token-spent")).toHaveTextContent("has expired");
     expect(screen.queryByText(/eugene-plexus-agent join/)).toBeNull();
     expect(screen.queryByText(/expires already passed/)).toBeNull();
   });
@@ -444,7 +479,7 @@ describe("the join command", () => {
   it("says a token was used, once the root lists it as used", async () => {
     tokenRows = [{ id: "jt-1", expiresAt: mintBody.expiresAt, used: true }];
     await mint();
-    expect(await screen.findByTestId("minted-spent")).toHaveTextContent("This token was used");
+    expect(await screen.findByTestId("join-token-spent")).toHaveTextContent("This token was used");
     expect(screen.queryByText(/eugene-plexus-agent join/)).toBeNull();
   });
 });
