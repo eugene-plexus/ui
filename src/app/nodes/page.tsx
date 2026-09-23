@@ -38,7 +38,7 @@ import { ApiError, api } from "@/lib/api";
 import { isLockedError } from "@/lib/controlUnlock";
 import { isLoopbackUrl, joinTokenState, rootControlUrl } from "@/lib/joinCommand";
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
-import { timeUntil } from "@/lib/relativeTime";
+import { timeAgo, timeUntil } from "@/lib/relativeTime";
 import { usePolling } from "@/lib/usePolling";
 
 /**
@@ -448,6 +448,21 @@ export default function NodesPage() {
                             always the second -- which read as every node being
                             down for a poll interval. See `nodeLiveness.ts`. */}
                         <LivenessCell node={n} />
+                        {/* When the root last heard from it. Always on the
+                            wire and never shown, so a node that was down read
+                            the same whether it left a minute or a week ago. */}
+                        {timeAgo(n.lastSeenAt) && (
+                          <span
+                            className="ml-2 text-sm text-[color:var(--muted)]"
+                            data-testid="node-last-seen"
+                            title={
+                              n.lastSeenAt ? new Date(n.lastSeenAt).toLocaleString() : undefined
+                            }
+                          >
+                            {n.reachable ? "" : "last seen "}
+                            {timeAgo(n.lastSeenAt)}
+                          </span>
+                        )}
                         {/* The root's own words for why. Until 2026-09-15 this
                             column said only "down" while the probe client held
                             "HTTP 401: ... not yet valid (iat)" -- half a second

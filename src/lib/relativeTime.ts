@@ -45,6 +45,21 @@ export function timeUntil(iso: string | null | undefined, now: number = Date.now
 }
 
 /**
+ * "3 h ago" for something observed in the past, such as when a node last
+ * answered. A future instant (clock skew between two machines) is "just
+ * now" rather than a negative count.
+ */
+export function timeAgo(iso: string | null | undefined, now: number = Date.now()): string | null {
+  if (!iso) return null;
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return null;
+  const seconds = (now - then) / 1000;
+  if (seconds < 5) return "just now";
+  if (seconds >= 2 * 86_400) return `${Math.round(seconds / 86_400)} days ago`;
+  return `${formatDuration(seconds)} ago`;
+}
+
+/**
  * A timestamp a person can place: the time alone when it was today, the
  * date as well when it was not.
  *

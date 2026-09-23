@@ -255,6 +255,21 @@ describe("a root that has not polled yet", () => {
     expect(await screen.findByTestId("node-last-error")).toHaveTextContent("connection refused");
   });
 
+  it("says when a down node was last seen", async () => {
+    withNodes([
+      {
+        name: "Amish_Station",
+        role: "worker",
+        reachable: false,
+        url: "http://a:8079",
+        lastError: "connection refused",
+        lastSeenAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+      },
+    ]);
+    render(<NodesPage />);
+    expect(await screen.findByTestId("node-last-seen")).toHaveTextContent("last seen 3 h ago");
+  });
+
   it("keeps asking, so the operator does not have to refresh", async () => {
     // Troy's ask, and the reason for it: the data he is waiting for
     // arrives seconds after he unlocks, from the root's own poller.
