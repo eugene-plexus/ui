@@ -206,18 +206,27 @@ function DownloadRow({
         </div>
       </div>
 
+      {/* Named, and indeterminate while the size is not known yet: it
+          used to be an unnamed bar that said 0% for a transfer that had
+          no total to be a percentage of. */}
       {(active || download.state === "paused") && (
         <div
           className="h-1 overflow-hidden rounded-full bg-[color:var(--panel-hover)]"
           role="progressbar"
-          aria-valuenow={Math.round(percent)}
+          aria-label={`Downloading ${download.repo}`}
+          aria-valuenow={total > 0 ? Math.round(percent) : undefined}
+          aria-valuetext={total > 0 ? undefined : `${formatBytes(got)} so far, size not known yet`}
           aria-valuemin={0}
           aria-valuemax={100}
         >
-          <div
-            className="h-full rounded-full bg-[color:var(--accent-left)] transition-[width] duration-300"
-            style={{ width: `${percent}%` }}
-          />
+          {total > 0 ? (
+            <div
+              className="h-full rounded-full bg-[color:var(--accent-left)] transition-[width] duration-300"
+              style={{ width: `${percent}%` }}
+            />
+          ) : (
+            <div className="h-full w-full animate-pulse rounded-full bg-[color:var(--accent-left)] opacity-40" />
+          )}
         </div>
       )}
 

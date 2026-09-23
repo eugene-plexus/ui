@@ -91,6 +91,28 @@ describe("an action the library refused", () => {
   });
 });
 
+describe("a row's progress bar", () => {
+  it("is named after the download and reports its percentage", () => {
+    render(<DownloadsPanel downloads={[download()]} onChanged={() => {}} />);
+    const bar = screen.getByRole("progressbar", {
+      name: "Downloading google/gemma-3-27b-it-GGUF",
+    });
+    expect(bar).toHaveAttribute("aria-valuenow", "40");
+  });
+
+  it("is indeterminate, not 0%, while the size is not known", () => {
+    render(
+      <DownloadsPanel
+        downloads={[download({ bytesTotal: undefined, bytesDownloaded: 5_000_000 })]}
+        onChanged={() => {}}
+      />,
+    );
+    const bar = screen.getByRole("progressbar");
+    expect(bar).not.toHaveAttribute("aria-valuenow");
+    expect(bar).toHaveAttribute("aria-valuetext", expect.stringContaining("size not known"));
+  });
+});
+
 describe("a row's speed and time left", () => {
   it("are shown while bytes are moving, in the tray's units", () => {
     render(
