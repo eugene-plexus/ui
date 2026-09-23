@@ -19,8 +19,11 @@ export function MachineStrip({ strip }: { strip: Strip }) {
     >
       <h2 className="font-ui text-sm font-semibold">{strip.name}</h2>
       <p className="font-ui mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-[color:var(--muted)]">
-        {strip.devices.map((line) => (
-          <span key={line} className="tabular-nums">
+        {/* Keyed by position as well as text: two identical cards in one
+            box print two identical lines, and a key on the text alone
+            gave React two children it could not tell apart. */}
+        {strip.devices.map((line, index) => (
+          <span key={`${index}:${line}`} className="tabular-nums">
             {line}
           </span>
         ))}
