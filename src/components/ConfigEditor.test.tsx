@@ -10,6 +10,8 @@ let fields: {
   category: string;
   valueType: string;
   showWhen?: { key: string; equals: unknown };
+  default?: unknown;
+  sensitive?: boolean;
 }[];
 let doc: Record<string, unknown>;
 let reject = false;
@@ -244,6 +246,26 @@ it("moves focus into the restart dialog, keeps it there, and closes on Escape", 
   expect(dialog).toContainElement(document.activeElement as HTMLElement);
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("shows a setting's default and resets to it by sending null", async () => {
+  fields[4]!.default = "old";
+  render(<ConfigEditor target="library" label="Library" />);
+  const line = await screen.findByTestId("default-futureSetting");
+  expect(line).toHaveTextContent("Default: old");
+  fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+  expect(screen.getByTestId("default-futureSetting")).toHaveTextContent(
+    "Goes back to the default when you save.",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(patches).toEqual([{ futureSetting: null }]));
+});
+
+it("offers no reset for a setting already at its default", async () => {
+  fields[4]!.default = "new";
+  render(<ConfigEditor target="library" label="Library" />);
+  expect(await screen.findByTestId("default-futureSetting")).toHaveTextContent("Default: new");
+  expect(screen.queryByRole("button", { name: "Reset to default" })).toBeNull();
 });
 
 it("does not make a disclosure when fewer than three applicable settings qualify", async () => {

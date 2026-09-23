@@ -179,6 +179,13 @@ export function ConfigFieldInput({
     "aria-describedby": describedBy,
     ...(error ? { "aria-invalid": true as const } : {}),
   };
+  // A secret's default is not shown (it has Remove), and the routing
+  // summary is edited on its own page.
+  const hasDefault =
+    field.default !== undefined && !field.sensitive && field.valueType !== "model_slots";
+  // `null` in the draft is the contract's "revert to the default".
+  const resetting = hasDefault && value === null && savedValue != null;
+  const canReset = hasDefault && value !== null && !sameValue(value, field.default);
 
   function renderInput() {
     if (field.valueType === "boolean") {
@@ -491,6 +498,30 @@ export function ConfigFieldInput({
             {field.description}
           </p>
         )}
+        {hasDefault && (
+          // The schema has always carried the default and PATCH has always
+          // taken `null` to go back to it; nothing on the page said either.
+          <p className="text-sm text-[color:var(--muted)]" data-testid={`default-${field.key}`}>
+            Default: <span className="font-mono">{formatDefault(field)}</span>
+            {resetting ? (
+              <span> · Goes back to the default when you save.</span>
+            ) : (
+              canReset && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={() => onChange(null)}
+                    disabled={pending}
+                    className={`${buttonClass} ml-1`}
+                  >
+                    Reset to default
+                  </button>
+                </>
+              )
+            )}
+          </p>
+        )}
         {field.key === "advertiseUrl" && (
           // `cross-link-related-settings` (Troy, standing): the other
           // half of this setting is Home's "Reach it from other
@@ -510,6 +541,29 @@ export function ConfigFieldInput({
       </div>
     </div>
   );
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** A field's default in the words its editor uses. */
+function formatDefault(field: ConfigFieldDef): string {
+  const d = field.default;
+  if (d === null) return "not set";
+  if (typeof d === "boolean") return d ? "on" : "off";
+  if (field.valueType === "enum" && typeof d === "string") {
+    const i = field.enumValues?.indexOf(d) ?? -1;
+    const label = i >= 0 ? field.enumLabels?.[i] : undefined;
+    return label ?? (d === "" ? "(use adapter default)" : d);
+  }
+  if (Array.isArray(d)) {
+    if (d.length === 0) return "none";
+    return d.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(", ");
+  }
+  if (typeof d === "object") return JSON.stringify(d);
+  if (d === "") return "empty";
+  return String(d);
 }
 
 /** Value types whose editor is several controls rather than one input. */
