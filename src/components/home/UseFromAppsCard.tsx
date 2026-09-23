@@ -120,6 +120,19 @@ export function UseFromAppsCard({
   const [error, setError] = useState<string | null>(null);
   const [override, setOverride] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  // The "Not right?" button, which Save and Cancel hand focus back to:
+  // both used to remove the box that held it and drop focus to <body>.
+  const editToggle = useRef<HTMLButtonElement | null>(null);
+  const returnFocus = useRef(false);
+  useEffect(() => {
+    if (editing || !returnFocus.current) return;
+    returnFocus.current = false;
+    editToggle.current?.focus();
+  }, [editing]);
+  function stopEditing() {
+    returnFocus.current = true;
+    setEditing(false);
+  }
   const [model, setModel] = useState<string | null>(null);
   const [openRecipe, setOpenRecipe] = useState<string | null>(null);
 
@@ -310,7 +323,7 @@ export function UseFromAppsCard({
     } catch {
       // Remembered for this page only. The value still works now.
     }
-    setEditing(false);
+    stopEditing();
   }
 
   return (
@@ -340,6 +353,14 @@ export function UseFromAppsCard({
                 name="base"
                 defaultValue={baseUrl}
                 aria-label="Address"
+                // Opened by a click on "Not right?", so the typing goes here.
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    stopEditing();
+                  }
+                }}
                 data-testid="base-url-input"
                 placeholder="http://192.168.1.20:8080"
                 className="min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 font-mono text-xs"
@@ -349,7 +370,7 @@ export function UseFromAppsCard({
               </button>
               <button
                 type="button"
-                onClick={() => setEditing(false)}
+                onClick={stopEditing}
                 className="font-ui text-[0.6875rem] text-[color:var(--muted)] underline"
               >
                 Cancel
@@ -362,6 +383,7 @@ export function UseFromAppsCard({
               </code>
               {display && <CopyButton text={display} title="Copy the address" />}
               <button
+                ref={editToggle}
                 type="button"
                 onClick={() => setEditing(true)}
                 className="font-ui text-[0.6875rem] text-[color:var(--muted)] underline"

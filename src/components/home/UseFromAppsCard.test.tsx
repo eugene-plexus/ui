@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/lib/api";
@@ -205,6 +206,31 @@ describe("the card's controls have names", () => {
     const terms = document.querySelectorAll("[data-testid='home-use-from-apps'] dt");
     expect(terms.length).toBeGreaterThan(0);
     for (const term of terms) expect(term.nextElementSibling?.tagName).toBe("DD");
+  });
+});
+
+describe("the address editor", () => {
+  it("takes focus on open, cancels on Escape, and hands focus back", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [], scope: "install" });
+    const user = userEvent.setup();
+    show();
+    await screen.findByText(/Registry status|every gateway/);
+    await user.click(screen.getByRole("button", { name: "Not right?" }));
+    const box = screen.getByTestId("base-url-input");
+    expect(box).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("base-url-input")).toBeNull();
+    expect(screen.getByRole("button", { name: "Not right?" })).toHaveFocus();
+  });
+
+  it("hands focus back after Save too", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [], scope: "install" });
+    const user = userEvent.setup();
+    show();
+    await screen.findByText(/Registry status|every gateway/);
+    await user.click(screen.getByRole("button", { name: "Not right?" }));
+    await user.type(screen.getByTestId("base-url-input"), "http://10.0.0.5:8280{Enter}");
+    expect(screen.getByRole("button", { name: "Change" })).toHaveFocus();
   });
 });
 
