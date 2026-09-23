@@ -23,7 +23,7 @@
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Attribution } from "@/components/Attribution";
 import { ApiError, api } from "@/lib/api";
@@ -127,6 +127,16 @@ function LoginForm() {
     }
   }, [setupRequired, router]);
 
+  // Back in the box after a refusal, with what was typed selected, so a
+  // retype is just typing. The box used to be `disabled` while the
+  // request was out, which drops focus to <body>; it is read-only now.
+  const field = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!error) return;
+    field.current?.focus();
+    field.current?.select();
+  }, [error]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!passphrase) return;
@@ -222,18 +232,27 @@ function LoginForm() {
             Passphrase
           </label>
           <input
+            ref={field}
             id="passphrase"
             type="password"
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
-            disabled={submitting}
+            readOnly={submitting}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "passphrase-error" : undefined}
             autoFocus
             autoComplete="current-password"
             spellCheck={false}
-            className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)] disabled:opacity-50"
+            className={`font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)] ${
+              submitting ? "opacity-50" : ""
+            }`}
           />
           {error && (
-            <p className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
+            <p
+              id="passphrase-error"
+              role="alert"
+              className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
+            >
               {error}
             </p>
           )}

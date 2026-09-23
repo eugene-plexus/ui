@@ -122,6 +122,18 @@ describe("sign-in unlocks the control root", () => {
     expect(sessionStorage.getItem("eugene-session-token")).toBe("agent-jwt");
   });
 
+  it("puts the cursor back in the box and ties the refusal to it", async () => {
+    await signIn("wrong");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/did not match/i);
+    const field = screen.getByLabelText(/passphrase/i);
+    // It was disabled while the request was out, which dropped focus to
+    // the page: a retype needed a click first.
+    expect(field).toHaveFocus();
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field).toHaveAccessibleDescription(/did not match/i);
+  });
+
   it("never asks the root when the agent refused the passphrase", async () => {
     await signIn("wrong");
     await screen.findByText(/did not match/i);
