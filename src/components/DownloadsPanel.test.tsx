@@ -90,3 +90,30 @@ describe("an action the library refused", () => {
     expect(screen.queryByText(/HTTP 409/)).toBeNull();
   });
 });
+
+describe("a row's speed and time left", () => {
+  it("are shown while bytes are moving, in the tray's units", () => {
+    render(
+      <DownloadsPanel
+        downloads={[download({ bytesPerSecond: 38_120_000, etaSeconds: 240 })]}
+        onChanged={() => {}}
+      />,
+    );
+    expect(screen.getByText("38 MB/s")).toBeInTheDocument();
+    expect(screen.getByText("4 min left")).toBeInTheDocument();
+  });
+
+  it.each(["paused", "failed", "done", "verifying"] as const)(
+    "are not shown on a %s row, although the record keeps the last rate",
+    (state) => {
+      render(
+        <DownloadsPanel
+          downloads={[download({ state, bytesPerSecond: 97_000_000, etaSeconds: 30 })]}
+          onChanged={() => {}}
+        />,
+      );
+      expect(screen.queryByText(/\/s$/)).toBeNull();
+      expect(screen.queryByText(/left$/)).toBeNull();
+    },
+  );
+});

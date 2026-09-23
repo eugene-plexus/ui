@@ -7,6 +7,7 @@ import { formatBytes } from "@/components/FitBadge";
 import { RunButton } from "@/components/RunButton";
 import { ApiError, api, describeError } from "@/lib/api";
 import type { TargetNode } from "@/lib/nodeBudget";
+import { formatBytesShort, formatDuration } from "@/lib/tasks";
 import type { Download, DownloadList, DownloadState, LibraryModel } from "@/lib/types";
 
 /**
@@ -230,12 +231,18 @@ function DownloadRow({
             {percent > 0 && percent < 100 && <> ({percent.toFixed(0)}%)</>}
           </span>
         )}
-        {download.bytesPerSecond ? (
-          <span className="tabular-nums">{formatBytes(download.bytesPerSecond)}/s</span>
+        {/* Speed and time left only while bytes are moving. The library
+            keeps the last rate on the record, so a finished or paused row
+            read "97 MB/s" as though it were still running -- and the
+            tray, which reads the same record, already said nothing. */}
+        {download.state === "downloading" && download.bytesPerSecond ? (
+          <span className="tabular-nums">{formatBytesShort(download.bytesPerSecond)}/s</span>
         ) : null}
-        {download.etaSeconds != null && active && download.etaSeconds > 0 && (
-          <span className="tabular-nums">{formatDuration(download.etaSeconds)} left</span>
-        )}
+        {download.state === "downloading" &&
+          download.etaSeconds != null &&
+          download.etaSeconds > 0 && (
+            <span className="tabular-nums">{formatDuration(download.etaSeconds)} left</span>
+          )}
         {(download.attempts ?? 0) > 1 && (
           <span title="Each attempt re-resolves upstream and continues from the bytes already on disk.">
             attempt {download.attempts}
@@ -363,11 +370,4 @@ export function useDownloads(): { downloads: Download[]; reload: () => void; act
   }, [active, reload]);
 
   return { downloads, reload: () => void reload(), active };
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  const hours = Math.floor(seconds / 3600);
-  return `${hours}h ${Math.round((seconds % 3600) / 60)}m`;
 }

@@ -377,11 +377,16 @@ export function formatBytesShort(count: number): string {
   return `${value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
 }
 
-/** `45 s`, `4 min`, `1 h 20 min`: what a person wants from an estimate. */
+/** `45 s`, `4 min`, `1 h 20 min`: what a person wants from an estimate.
+ *
+ * Rounded to whole minutes BEFORE the hours are split off: rounding the
+ * remainder afterwards turned 7,170 s into "1 h 60 min" and 3,570 s into
+ * "60 min", and the seconds branch turned 59.6 s into "60 s". */
 export function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.round((seconds % 3600) / 60);
+  if (seconds < 59.5) return `${Math.max(1, Math.round(seconds))} s`;
+  const total = Math.round(seconds / 60);
+  if (total < 60) return `${total} min`;
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
   return minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`;
 }

@@ -381,6 +381,15 @@ describe("formatting", () => {
     expect(formatDuration(4800)).toBe("1 h 20 min");
     expect(formatDuration(7200)).toBe("2 h");
   });
+
+  it("rounds to whole minutes before splitting off the hours", () => {
+    // Rounding the remainder afterwards printed "1 h 60 min", "60 min"
+    // and "60 s" for these three.
+    expect(formatDuration(7170)).toBe("2 h");
+    expect(formatDuration(3570)).toBe("1 h");
+    expect(formatDuration(59.6)).toBe("1 min");
+    expect(formatDuration(59.4)).toBe("59 s");
+  });
 });
 
 describe("mergeTasks", () => {
