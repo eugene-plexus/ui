@@ -228,6 +228,25 @@ describe("the sealed root is fixed from inside the list", () => {
  * do not appear in what a person reads. This is the text somebody reads
  * when they are already unhappy, so it is held to it hardest.
  */
+describe("an emptied list", () => {
+  it("does not come back open, or take the caret, when the next issue appears", () => {
+    const { rerender } = render(<IssuesBadgeView issues={[SEALED]} worst="blocking" loaded />);
+    fireEvent.click(screen.getByTestId("issues-badge"));
+    expect(screen.getByTestId("issues-popover")).toBeInTheDocument();
+    // Fixed from inside the list: nothing left to say.
+    rerender(<IssuesBadgeView issues={[]} worst={null} loaded />);
+    // And later the root seals again.
+    const typing = document.createElement("input");
+    document.body.appendChild(typing);
+    typing.focus();
+    rerender(<IssuesBadgeView issues={[SEALED]} worst="blocking" loaded />);
+    expect(screen.queryByTestId("issues-popover")).toBeNull();
+    expect(screen.getByTestId("issues-badge")).toHaveAttribute("aria-expanded", "false");
+    expect(typing).toHaveFocus();
+    typing.remove();
+  });
+});
+
 describe("the words", () => {
   it("uses none of the banned ones", () => {
     render(<IssuesBadgeView issues={[SEALED, STALE_BUILD]} worst="blocking" loaded={true} />);

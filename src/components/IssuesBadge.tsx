@@ -71,6 +71,22 @@ export function IssuesBadgeView({ issues, worst, loaded, onFixed }: IssuesBadgeV
     };
   }, [open]);
 
+  // **An emptied list closes.** The early return below unmounts the
+  // popover without touching `open`, so after the last issue was fixed
+  // from inside it -- an unlock, typically -- the next issue to appear
+  // arrived with the list already open over the page, unasked, and a
+  // sealed root's passphrase box took the caret from whatever the person
+  // was typing. Focus that was inside the list goes to the page's main
+  // content rather than to <body>.
+  const empty = loaded && issues.length === 0;
+  useEffect(() => {
+    if (!empty) return;
+    setOpen(false);
+    if (document.activeElement === document.body) {
+      document.getElementById("main-content")?.focus({ preventScroll: true });
+    }
+  }, [empty]);
+
   // Nothing to say, and nothing said. The header is not the place to
   // announce that an install is fine; the tree and every screen on it
   // already show what is running.
