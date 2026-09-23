@@ -92,7 +92,12 @@ export function RunStatus({ task, onRetry }: { task: RunTask; onRetry: () => voi
       data-testid="run-status"
       data-step={task.step}
     >
-      <p className="tabular-nums">{detail}</p>
+      {/* The line changes on its own as the run moves, so it is a live
+          region: a screen reader heard nothing of Run's progress, and
+          nothing of its failure. */}
+      <p className="tabular-nums" role={task.step === "failed" ? "alert" : "status"}>
+        {detail}
+      </p>
       {progress !== undefined && (
         <span
           className="mt-1 block h-1 overflow-hidden rounded-full bg-[color:var(--panel-hover)]"
