@@ -22,7 +22,7 @@
  */
 
 import { WIZARD_PROVIDERS } from "@/lib/agent";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, describeError } from "@/lib/api";
 import type { Component } from "@/lib/types";
 
 import type { BackendDraft } from "./draft";
@@ -254,28 +254,18 @@ export function freeDriverPort(existing: Component[]): number {
 
 /**
  * Turn anything thrown during Start into one sentence an operator can act
- * on. Lifted out of the component unchanged, 409 special case included:
- * "already initialized" is the one failure whose fix is a different page.
+ * on: the component's own, which is `describeError`.
+ *
+ * **It used to replace every 409 with "remove the auth block from
+ * agent.yaml by hand"** -- the instruction the agent's own 409s were
+ * rewritten to stop giving (review §6.1 #7), because it is the most
+ * destructive thing this product can tell someone and a browser cannot
+ * carry it out. Worse, 409 is not only "already set up": adding an app
+ * whose name is taken, and an install whose passphrase is missing from
+ * its file, both answer 409, and each has its own sentence that says
+ * what to do. The one for the missing passphrase says the exact opposite
+ * of the old advice.
  */
 export function formatStartError(e: unknown): string {
-  if (e instanceof ApiError) {
-    if (e.status === 409) {
-      return (
-        "This install already has a passphrase set. Use the login page " +
-        "to sign in, or reset the install by removing the auth block " +
-        "from agent.yaml by hand."
-      );
-    }
-    if (
-      typeof e.body === "object" &&
-      e.body !== null &&
-      "detail" in e.body &&
-      typeof (e.body as { detail?: unknown }).detail === "object"
-    ) {
-      const detail = (e.body as { detail: { title?: string; detail?: string } }).detail;
-      return detail.detail || detail.title || `${e.status} ${e.statusText}`;
-    }
-    return `${e.status} ${e.statusText}`;
-  }
-  return e instanceof Error ? e.message : String(e);
+  return describeError(e);
 }
