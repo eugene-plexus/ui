@@ -19,6 +19,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { forgetLoadsForTests, loadKey, rememberLoadSeconds } from "@/lib/loadMemory";
+import { checkVisibleCopy } from "@/lib/vocabulary";
 
 import InferencePage from "./page";
 
@@ -544,6 +545,29 @@ describe("removing a row", () => {
     });
     await waitFor(() => expect(deleted).toBe(1));
     confirm.mockRestore();
+  });
+});
+
+describe("an install with nothing serving", () => {
+  it("points each way in at the page that does it, in short sentences", async () => {
+    handlers.set("GET gateway/v1/admin/drivers", () => ({ status: 200, body: { drivers: [] } }));
+    handlers.set("GET agent/v1/runtimes", () => ({ status: 200, body: { runtimes: [] } }));
+    render(<InferencePage />);
+    // Found by its words, not its test id, so the old screen fails on
+    // what it said rather than on a missing attribute.
+    const heading = await screen.findByText("Nothing is serving yet.", {}, { timeout: 5000 });
+    const empty = heading.parentElement as HTMLElement;
+    expect(within(empty).getByRole("link", { name: "Add an external backend" })).toHaveAttribute(
+      "href",
+      "/backends/add",
+    );
+    expect(within(empty).getByRole("link", { name: "Launch a model" })).toHaveAttribute(
+      "href",
+      "/library",
+    );
+    expect(empty).not.toHaveTextContent("Config page");
+    const blocks = Array.from(empty.querySelectorAll("p, li"), (e) => e.textContent ?? "");
+    expect(checkVisibleCopy(blocks)).toEqual([]);
   });
 });
 

@@ -399,18 +399,31 @@ export default function InferencePage() {
 
 function EmptyState() {
   return (
-    <div className="max-w-2xl space-y-3 text-sm text-[color:var(--muted)]">
+    <div
+      data-testid="inference-empty"
+      className="max-w-2xl space-y-3 text-sm text-[color:var(--muted)]"
+    >
       <p className="font-ui text-sm font-semibold text-[color:var(--foreground)]">
         Nothing is serving yet.
       </p>
-      <p>
-        Two ways in. <strong>Launch a model</strong> you own from the Library — pick the node, and
-        the agent there runs the engine, declares a driver for it, and the gateway routes to it once
-        it is ready. Or <strong>add an external backend</strong>: something you already run, such as
-        an Ollama, an OpenAI-compatible server or a cloud CLI, joins as an inference-driver pointed
-        at it, on the Config page.
-      </p>
-      <p>Either way it appears here, on the node it runs on, with the same controls.</p>
+      {/* The directions say where the buttons go. This used to send an
+          external backend to "the Config page" beside a button that opens
+          /backends/add. */}
+      <ul className="list-disc space-y-1 pl-5">
+        <li>
+          <Link href="/library" className="underline">
+            Launch a model
+          </Link>{" "}
+          you own from the Library. Pick the machine, and it serves once it is ready.
+        </li>
+        <li>
+          <Link href="/backends/add" className="underline">
+            Add an external backend
+          </Link>{" "}
+          you already run, such as Ollama, an OpenAI-compatible server or a cloud CLI.
+        </li>
+      </ul>
+      <p>Either way it appears here, on the machine it runs on, with the same controls.</p>
     </div>
   );
 }
