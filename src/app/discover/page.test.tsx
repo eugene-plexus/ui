@@ -20,7 +20,7 @@
  * `FitBadge` would have been green throughout.
  */
 
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -504,6 +504,25 @@ describe("the results list", () => {
     await screen.findByTestId("result-age", {}, { timeout: 5000 });
     expect(screen.getByTestId("result-age").textContent).toBe("updated 10 days ago");
     expect(screen.getByText("gguf")).toBeInTheDocument();
+  });
+});
+
+describe("a search that matched nothing", () => {
+  it("names the format filter, and one click searches every format", async () => {
+    const formats: (string | null)[] = [];
+    handlers.set("GET library/v1/catalogue/search", (params) => {
+      formats.push(params.get("format"));
+      return ok({ results: [] });
+    });
+    render(<DiscoverPage />);
+    const line = await screen.findByText(/Nothing matched/, {}, { timeout: 5000 });
+    const empty = line.parentElement as HTMLElement;
+    expect(empty).toHaveTextContent("Nothing matched in GGUF files.");
+    await act(async () => {
+      within(empty).getByRole("button", { name: "Search every format" }).click();
+    });
+    await waitFor(() => expect(formats.at(-1)).toBeNull());
+    expect(screen.getByLabelText("Model format")).toHaveValue("");
   });
 });
 

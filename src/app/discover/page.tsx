@@ -339,6 +339,8 @@ function DiscoverPageInner() {
             interpreted={interpreted}
             selected={selectedRepo}
             onSelect={setSelectedRepo}
+            format={format}
+            onAnyFormat={() => setFormat("")}
           />
 
           <div className="min-h-0 overflow-y-auto px-5 py-4">
@@ -510,6 +512,8 @@ function ResultsList({
   interpreted,
   selected,
   onSelect,
+  format,
+  onAnyFormat,
 }: {
   results: CatalogueSearchResult[] | null;
   searching: boolean;
@@ -517,6 +521,9 @@ function ResultsList({
   interpreted: "search" | "repo";
   selected: string | null;
   onSelect: (repo: string) => void;
+  /** The format filter in effect; "" is any format. */
+  format: ModelFormat | "";
+  onAnyFormat: () => void;
 }) {
   return (
     <div className="min-h-0 overflow-y-auto border-r border-[color:var(--border)]">
@@ -540,10 +547,21 @@ function ResultsList({
         <p className="px-4 py-3 text-sm text-[color:var(--muted)]">searching…</p>
       )}
       {results?.length === 0 && !error && (
-        <p className="px-4 py-3 text-sm text-[color:var(--muted)]">
-          Nothing matched. The catalogue&rsquo;s own search is what it is — a publisher name often
-          works better than a description.
-        </p>
+        <div className="px-4 py-3 text-sm text-[color:var(--muted)]" data-testid="no-results">
+          {/* The format filter is on by default and is often the reason:
+              a model published only as safetensors matches nothing here. */}
+          {format ? (
+            <p>
+              Nothing matched in {format === "gguf" ? "GGUF" : format} files.{" "}
+              <button type="button" onClick={onAnyFormat} className="underline">
+                Search every format
+              </button>
+            </p>
+          ) : (
+            <p>Nothing matched.</p>
+          )}
+          <p className="mt-1">A publisher name often works better than a description.</p>
+        </div>
       )}
       <ul className={searching ? "opacity-60 transition-opacity" : undefined}>
         {(results ?? []).map((result) => (
