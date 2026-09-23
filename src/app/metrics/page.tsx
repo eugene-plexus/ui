@@ -51,7 +51,7 @@ import { ApiError, api, describeError } from "@/lib/api";
 import { compact, hourlyPoints, msLabel, tilesFrom } from "@/lib/metricsCharts";
 import type { ClientUsageSummary } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
-import { formatTimestamp } from "@/lib/relativeTime";
+import { clockTime, formatTimestamp } from "@/lib/relativeTime";
 
 interface Percentiles {
   p50: number;
@@ -213,6 +213,10 @@ export default function MetricsPage() {
   const selection = `${hours}|${model}`;
   const [shownFor, setShownFor] = useState<string | null>(null);
   const readSeq = useRef(0);
+  // When the numbers on screen were read, and whether a Refresh press is
+  // still waiting. The button used to give no sign it had done anything.
+  const [readAt, setReadAt] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     const seq = ++readSeq.current;
@@ -264,6 +268,7 @@ export default function MetricsPage() {
       }
       setDisabled(false);
       setShownFor(`${hours}|${model}`);
+      setReadAt(Date.now());
     } catch (e) {
       if (!current()) return;
       // 503 is the gateway saying metrics are switched off, which is a
@@ -331,11 +336,24 @@ export default function MetricsPage() {
           </select>
           <button
             type="button"
-            onClick={() => void load()}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                await load();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            disabled={refreshing}
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
           >
-            Refresh
+            {refreshing ? "Refreshing…" : "Refresh"}
           </button>
+          {readAt !== null && (
+            <span data-testid="metrics-as-of" className="font-ui text-sm text-[color:var(--muted)]">
+              as of {clockTime(readAt)}
+            </span>
+          )}
           {/* The previous numbers stay while the new ones load (no
               skeleton, no jump), so say they are the previous ones. */}
           {shownFor !== null && shownFor !== selection && (

@@ -60,6 +60,22 @@ export function timeAgo(iso: string | null | undefined, now: number = Date.now()
 }
 
 /**
+ * The time of day to the second, for "as of" beside a Refresh button: two
+ * refreshes a few seconds apart must read differently, or the second
+ * looks as though it did nothing.
+ */
+export function clockTime(when: string | number | null | undefined): string | null {
+  if (when === null || when === undefined || when === "") return null;
+  const then = new Date(when);
+  if (Number.isNaN(then.getTime())) return null;
+  return then.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+/**
  * A timestamp a person can place: the time alone when it was today, the
  * date as well when it was not.
  *

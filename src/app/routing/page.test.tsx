@@ -35,6 +35,8 @@ vi.mock("@/components/AppShell", () => ({
 type Handler = (body?: unknown) => { status: number; body?: unknown };
 let handlers: Map<string, Handler>;
 let patched: unknown[];
+/** When set, the routing-table read waits for it. */
+let routingGate: Promise<void> | null;
 
 function install(): Map<string, Handler> {
   return new Map<string, Handler>([
@@ -107,6 +109,7 @@ function install(): Map<string, Handler> {
 beforeEach(() => {
   handlers = install();
   patched = [];
+  routingGate = null;
   sessionStorage.clear();
   localStorage.clear();
   sessionStorage.setItem("eugene-session-token", "test-token");
@@ -117,6 +120,7 @@ beforeEach(() => {
       const key = `${init?.method ?? "GET"} ${route}`;
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       if (key === "PATCH gateway/v1/config") patched.push(body);
+      if (routingGate && key === "GET gateway/v1/admin/routing") await routingGate;
       const handler = handlers.get(key);
       const result = handler
         ? handler(body)
@@ -219,6 +223,26 @@ describe("reordering", () => {
     await waitFor(() => expect(screen.getByText(/kept your unsaved changes/)).toBeInTheDocument());
     const rows = within(screen.getByTestId("routing-slot")).getAllByTestId("target-row");
     expect(within(rows[0]!).getByRole("combobox")).toHaveValue("claude");
+  });
+
+  it("says Refresh is working, and the time of the table it shows", async () => {
+    await renderPage();
+    const user = userEvent.setup();
+    expect(screen.getByTestId("routing-as-of")).toHaveTextContent(
+      `as of ${new Date("2026-09-21T12:00:00Z").toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })}`,
+    );
+    let release = () => {};
+    routingGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(screen.getByRole("button", { name: "Refreshing…" })).toBeDisabled();
+    release();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
   });
 
   it("asks before leaving with an unsaved reorder", async () => {

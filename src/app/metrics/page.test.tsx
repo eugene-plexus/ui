@@ -204,6 +204,18 @@ describe("metrics page", () => {
     expect(screen.queryByText(/HTTP 500/)).toBeNull();
   });
 
+  it("says Refresh is working, and when the numbers were read", async () => {
+    render(<MetricsPage />);
+    await screen.findByText("116.8");
+    expect(screen.getByTestId("metrics-as-of")).toHaveTextContent(/^as of \S/);
+    const user = userEvent.setup();
+    holdOlderThan = Date.now() + 3600_000;
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(screen.getByRole("button", { name: "Refreshing…" })).toBeDisabled();
+    releaseHeld();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+  });
+
   it("keeps the dashboard when a side read fails, and says which one", async () => {
     // An older gateway has neither endpoint. One refused side read used to
     // reject the whole read and leave only an error on the page.

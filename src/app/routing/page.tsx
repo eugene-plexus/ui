@@ -56,6 +56,7 @@ import {
   type ModelSlot,
 } from "@/lib/modelSlots";
 import type { ConfigUpdateResult, RoutingTableView } from "@/lib/types";
+import { clockTime } from "@/lib/relativeTime";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 const DATALIST_ID = "routing-known-models";
@@ -99,6 +100,9 @@ export default function RoutingPage() {
   // Set when a Refresh arrived while the draft had edits and so did not
   // replace them; cleared by the next edit-free load.
   const [keptDraft, setKeptDraft] = useState(false);
+  // Refresh said nothing: no pending state and no time, so a press that
+  // changed nothing looked the same as one that had not happened.
+  const [refreshing, setRefreshing] = useState(false);
 
   /**
    * Read the lists and the routing table. `keepDraft` is Refresh with
@@ -207,9 +211,32 @@ export default function RoutingPage() {
   return (
     <AppShell
       controls={
-        <button type="button" onClick={() => void load(dirty)} className={smallButtonClass}>
-          Refresh
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                await load(dirty);
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            disabled={refreshing}
+            className={smallButtonClass}
+          >
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+          {routing?.refreshed_at && (
+            <span
+              data-testid="routing-as-of"
+              className="font-ui text-sm text-[color:var(--muted)]"
+              title="When the gateway last rebuilt what each name resolves to."
+            >
+              as of {clockTime(routing.refreshed_at)}
+            </span>
+          )}
+        </>
       }
     >
       {/* The shell is h-dvh with overflow hidden, so the page owns its
