@@ -30,8 +30,19 @@ let clientUsage: unknown;
 let status: number;
 let errorBody: unknown;
 let urls: string[];
+/** When set, a read whose window starts before this is held until released. */
+let holdOlderThan: number | null;
+let releaseHeld: () => void;
+let held: Promise<void>;
+/** A different summary for reads whose window starts before `holdOlderThan`. */
+let olderSummary: unknown;
 
 beforeEach(() => {
+  holdOlderThan = null;
+  olderSummary = null;
+  held = new Promise((resolve) => {
+    releaseHeld = resolve;
+  });
   status = 200;
   errorBody = { detail: { detail: "metricsEnabled is false" } };
   urls = [];
@@ -92,6 +103,10 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       seen.push(url);
+      const sinceParam = url.split("since=")[1];
+      const since = sinceParam ? Date.parse(decodeURIComponent(sinceParam)) : NaN;
+      const older = holdOlderThan !== null && since < holdOlderThan;
+      if (older) await held;
       if (status !== 200) {
         return new Response(JSON.stringify(errorBody), {
           status,
@@ -103,7 +118,9 @@ beforeEach(() => {
         ? requests
         : url.includes("/metrics/clients")
           ? clientUsage
-          : summary;
+          : older && olderSummary !== null
+            ? olderSummary
+            : summary;
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -241,6 +258,32 @@ describe("metrics page", () => {
       // Within a minute of an hour ago, not a day ago.
       expect(Date.now() - since.getTime()).toBeLessThan(3700_000);
     });
+  });
+
+  it("never shows an older selection's numbers under a newer one", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<MetricsPage />);
+    await screen.findByText("116.8");
+    // The week's reads are slow and say something different.
+    holdOlderThan = Date.now() - 2 * 86_400_000;
+    olderSummary = {
+      ...(summary as object),
+      groups: [
+        {
+          ...(summary as { groups: object[] }).groups[0],
+          tokensPerSecond: { p50: 777.7, samples: 9 },
+        },
+      ],
+    };
+    await user.selectOptions(screen.getByLabelText("Time window"), "168");
+    expect(await screen.findByTestId("metrics-updating")).toHaveTextContent("Updating");
+    await user.selectOptions(screen.getByLabelText("Time window"), "1");
+    await waitFor(() => expect(screen.queryByTestId("metrics-updating")).toBeNull());
+    // The week's reads land last.
+    releaseHeld();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByText("777.7")).toBeNull();
+    expect(screen.getAllByText("116.8").length).toBeGreaterThan(0);
   });
 
   it("shows the routing phase and the control plane's own overhead", async () => {

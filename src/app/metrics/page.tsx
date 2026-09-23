@@ -42,7 +42,7 @@
  */
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { HourChart, StatTile } from "@/components/MetricsCharts";
@@ -194,8 +194,17 @@ export default function MetricsPage() {
   const [error, setError] = useState<string | null>(null);
   const [disabled, setDisabled] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Which selection the numbers on screen are for. Changing the window
+  // or the model starts a new read, and nothing used to discard an older
+  // one still in flight: the last week's read, slower than the hour's,
+  // could land after it and put a week of numbers under "Last hour".
+  const selection = `${hours}|${model}`;
+  const [shownFor, setShownFor] = useState<string | null>(null);
+  const readSeq = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++readSeq.current;
+    const current = () => seq === readSeq.current;
     setError(null);
     try {
       const since = encodeURIComponent(new Date(Date.now() - hours * 3600_000).toISOString());
@@ -216,13 +225,16 @@ export default function MetricsPage() {
         ),
         api.get<ClientUsageSummary>("gateway", `/v1/metrics/clients?since=${since}`),
       ]);
+      if (!current()) return;
       setSummary(s);
       setTotals(t);
       setHourly(h);
       setClientUsage(c);
       setRecent(r.requests ?? []);
       setDisabled(false);
+      setShownFor(`${hours}|${model}`);
     } catch (e) {
+      if (!current()) return;
       // 503 is the gateway saying metrics are switched off, which is a
       // different thing from an error and gets a different screen: one
       // has a fix on the Config page, the other does not.
@@ -235,7 +247,7 @@ export default function MetricsPage() {
         setError(describeError(e));
       }
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
   }, [hours, model]);
 
@@ -293,6 +305,17 @@ export default function MetricsPage() {
           >
             Refresh
           </button>
+          {/* The previous numbers stay while the new ones load (no
+              skeleton, no jump), so say they are the previous ones. */}
+          {shownFor !== null && shownFor !== selection && (
+            <span
+              data-testid="metrics-updating"
+              role="status"
+              className="font-ui text-sm text-[color:var(--muted)]"
+            >
+              Updating…
+            </span>
+          )}
         </>
       }
     >
