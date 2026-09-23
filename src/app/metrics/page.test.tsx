@@ -36,10 +36,13 @@ let releaseHeld: () => void;
 let held: Promise<void>;
 /** A different summary for reads whose window starts before `holdOlderThan`. */
 let olderSummary: unknown;
+/** URL fragments whose reads answer 404, as an older gateway's would. */
+let failPaths: string[];
 
 beforeEach(() => {
   holdOlderThan = null;
   olderSummary = null;
+  failPaths = [];
   held = new Promise((resolve) => {
     releaseHeld = resolve;
   });
@@ -107,6 +110,13 @@ beforeEach(() => {
       const since = sinceParam ? Date.parse(decodeURIComponent(sinceParam)) : NaN;
       const older = holdOlderThan !== null && since < holdOlderThan;
       if (older) await held;
+      if (failPaths.some((p) => url.includes(p))) {
+        return new Response(JSON.stringify({ detail: "Not Found" }), {
+          status: 404,
+          statusText: "Not Found",
+          headers: { "content-type": "application/json" },
+        });
+      }
       if (status !== 200) {
         return new Response(JSON.stringify(errorBody), {
           status,
@@ -192,6 +202,17 @@ describe("metrics page", () => {
     );
     expect(sentence).toHaveAttribute("role", "alert");
     expect(screen.queryByText(/HTTP 500/)).toBeNull();
+  });
+
+  it("keeps the dashboard when a side read fails, and says which one", async () => {
+    // An older gateway has neither endpoint. One refused side read used to
+    // reject the whole read and leave only an error on the page.
+    failPaths = ["/metrics/clients", "/metrics/requests"];
+    render(<MetricsPage />);
+    expect(await screen.findByText("116.8")).toBeInTheDocument();
+    expect(screen.getByText(/Could not read usage by client key/)).toBeInTheDocument();
+    expect(screen.getByText(/Could not read recent requests/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("offers to copy a request's id, which is what a log search needs", async () => {

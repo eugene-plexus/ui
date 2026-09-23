@@ -183,6 +183,16 @@ const SERIES = "var(--accent-left)";
 const SERIES_SOFT = "color-mix(in oklab, var(--accent-left) 45%, var(--background))";
 const SERIES_ERROR = "var(--status-error-fg)";
 
+type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+/** A read that answers with its failure instead of rejecting. */
+function settle<T>(p: Promise<T>): Promise<Settled<T>> {
+  return p.then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+}
+
 export default function MetricsPage() {
   const [hours, setHours] = useState(24);
   const [model, setModel] = useState<string>("");
@@ -191,6 +201,8 @@ export default function MetricsPage() {
   const [hourly, setHourly] = useState<MetricsSummary | null>(null);
   const [clientUsage, setClientUsage] = useState<ClientUsageSummary | null>(null);
   const [recent, setRecent] = useState<MetricRequest[] | null>(null);
+  const [clientError, setClientError] = useState<string | null>(null);
+  const [recentError, setRecentError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [disabled, setDisabled] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -212,25 +224,44 @@ export default function MetricsPage() {
       const modelOnly = model ? `model=${encodeURIComponent(model)}&` : "";
       // `since` stays the LAST query parameter on the /v1/metrics reads:
       // the window test parses it off the URL tail.
-      const [s, t, h, r, c] = await Promise.all([
-        api.get<MetricsSummary>("gateway", `/v1/metrics?${modelOnly}since=${since}`),
-        api.get<MetricsSummary>("gateway", `/v1/metrics?groupBy=total${scoped}&since=${since}`),
-        api.get<MetricsSummary>(
-          "gateway",
-          `/v1/metrics?groupBy=total&bucket=hour${scoped}&since=${since}`,
+      // The two side reads fail on their own. An older gateway has no
+      // `/v1/metrics/clients`, and one refused read used to reject the
+      // whole `Promise.all` and leave the page showing only an error.
+      const [[s, t, h], r, c] = await Promise.all([
+        Promise.all([
+          api.get<MetricsSummary>("gateway", `/v1/metrics?${modelOnly}since=${since}`),
+          api.get<MetricsSummary>("gateway", `/v1/metrics?groupBy=total${scoped}&since=${since}`),
+          api.get<MetricsSummary>(
+            "gateway",
+            `/v1/metrics?groupBy=total&bucket=hour${scoped}&since=${since}`,
+          ),
+        ]),
+        settle(
+          api.get<{ requests: MetricRequest[] }>(
+            "gateway",
+            `/v1/metrics/requests?${modelOnly}limit=25`,
+          ),
         ),
-        api.get<{ requests: MetricRequest[] }>(
-          "gateway",
-          `/v1/metrics/requests?${modelOnly}limit=25`,
-        ),
-        api.get<ClientUsageSummary>("gateway", `/v1/metrics/clients?since=${since}`),
+        settle(api.get<ClientUsageSummary>("gateway", `/v1/metrics/clients?since=${since}`)),
       ]);
       if (!current()) return;
       setSummary(s);
       setTotals(t);
       setHourly(h);
-      setClientUsage(c);
-      setRecent(r.requests ?? []);
+      if (c.ok) {
+        setClientUsage(c.value);
+        setClientError(null);
+      } else {
+        setClientUsage(null);
+        setClientError(describeError(c.error));
+      }
+      if (r.ok) {
+        setRecent(r.value.requests ?? []);
+        setRecentError(null);
+      } else {
+        setRecent(null);
+        setRecentError(describeError(r.error));
+      }
       setDisabled(false);
       setShownFor(`${hours}|${model}`);
     } catch (e) {
@@ -688,6 +719,15 @@ export default function MetricsPage() {
                 word for it.
               </p>
 
+              {clientError && (
+                <section className="mt-8" aria-label="Usage by client key">
+                  <h2 className="font-ui mb-2 text-base font-semibold">Usage by client key</h2>
+                  <p className="text-status-error text-sm" role="status">
+                    Could not read usage by client key: {clientError}
+                  </p>
+                </section>
+              )}
+
               {clientUsage && (
                 <section className="mt-8 overflow-x-auto" aria-label="Usage by client key">
                   <h2 className="font-ui mb-2 text-base font-semibold">Usage by client key</h2>
@@ -759,6 +799,15 @@ export default function MetricsPage() {
                       unattributed history are excluded.
                     </p>
                   )}
+                </section>
+              )}
+
+              {recentError && (
+                <section className="mt-8" aria-label="Recent requests">
+                  <h2 className="font-ui mb-2 text-base font-semibold">Recent requests</h2>
+                  <p className="text-status-error text-sm" role="status">
+                    Could not read recent requests: {recentError}
+                  </p>
                 </section>
               )}
 
