@@ -254,6 +254,14 @@ export default function InferencePage() {
    */
   // Asked inline by the row's own button (`ConfirmButton`), the way every
   // other irreversible action here asks -- this was the browser's modal.
+  // An action's failure names the action, the thing and the machine.
+  // A bare reason at the top of the page said something failed and not
+  // which of a dozen rows it was about.
+  function failed(verb: string, name: string, node: string | null, err: unknown) {
+    const where = node ?? localName ?? "this machine";
+    setActionError(`Could not ${verb} ${name} on ${where}: ${describeError(err)}`);
+  }
+
   async function remove(row: Row) {
     const key = `${row.node ?? ""}/${row.runtime ?? row.driver ?? ""}:remove`;
     setBusy(key);
@@ -267,7 +275,7 @@ export default function InferencePage() {
       }
       await load();
     } catch (err) {
-      setActionError(describeError(err));
+      failed("remove", row.runtime ?? row.driver ?? "this backend", row.node, err);
     } finally {
       setBusy(null);
     }
@@ -285,7 +293,7 @@ export default function InferencePage() {
       );
       await load();
     } catch (err) {
-      setActionError(describeError(err));
+      failed(action, runtime, node, err);
     } finally {
       setBusy(null);
     }
@@ -347,8 +355,18 @@ export default function InferencePage() {
           </div>
         )}
         {actionError && (
-          <div className="status-error border-b px-4 py-2 text-sm" role="alert">
-            {actionError}
+          <div
+            className="status-error flex items-start gap-3 border-b px-4 py-2 text-sm"
+            role="alert"
+          >
+            <span className="flex-1">{actionError}</span>
+            <button
+              type="button"
+              onClick={() => setActionError(null)}
+              className="font-ui shrink-0 underline"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 

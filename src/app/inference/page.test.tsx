@@ -547,6 +547,27 @@ describe("removing a row", () => {
   });
 });
 
+describe("an action that fails", () => {
+  it("names the action, the model and the machine, and can be dismissed", async () => {
+    handlers.set("POST agent/v1/runtimes/gemma-a/restart", () => ({
+      status: 409,
+      body: { detail: { title: "Conflict", detail: "The engine is still loading.", status: 409 } },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    await act(async () => {
+      within(row).getByRole("button", { name: "restart" }).click();
+    });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Could not restart gemma-a on Amish_Station: The engine is still loading.",
+    );
+    await act(async () => {
+      within(alert).getByRole("button", { name: "Dismiss" }).click();
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
 describe("a hidden tab", () => {
   it("stops asking, and asks once when it is shown again", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
