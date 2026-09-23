@@ -16,6 +16,8 @@ let reject = false;
 let failPatch = false;
 /** The component refuses `catalogueBaseUrl`, applies the rest, and needs a restart. */
 let partialWithRestart = false;
+/** The restart endpoint itself fails, which leaves the dialog up with Close. */
+let failRestart = false;
 let patches: Record<string, unknown>[];
 beforeEach(() => {
   fields = [
@@ -41,12 +43,18 @@ beforeEach(() => {
   reject = false;
   failPatch = false;
   partialWithRestart = false;
+  failRestart = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       let body: unknown;
       if (url.endsWith("/v1/config/schema")) body = { component: "library", fields };
+      else if (url.endsWith("/v1/admin/restart") && failRestart)
+        return new Response(JSON.stringify({ title: "No supervisor", status: 500 }), {
+          status: 500,
+          headers: { "content-type": "application/problem+json" },
+        });
       else if (url.endsWith("/v1/admin/restart")) body = { delayMs: 10 };
       else if (url.endsWith("/healthz")) body = { status: "ok" };
       else if (init?.method === "PATCH" && partialWithRestart) {
@@ -215,6 +223,27 @@ it("marks a refused setting at the field, and moves focus there", async () => {
   await waitFor(() => expect(box).toHaveFocus());
   // The field that was not refused is not marked.
   expect(screen.getByLabelText("futureSetting")).not.toHaveAttribute("aria-invalid");
+});
+
+it("moves focus into the restart dialog, keeps it there, and closes on Escape", async () => {
+  partialWithRestart = true;
+  failRestart = true;
+  const user = userEvent.setup();
+  render(<ConfigEditor target="library" label="Library" />);
+  const box = await screen.findByDisplayValue("new");
+  await user.clear(box);
+  await user.type(box, "newer");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  const dialog = await screen.findByRole("dialog");
+  await screen.findByRole("button", { name: "Close" });
+  expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  // Tab from the only button comes back round to it, not to the form.
+  await user.tab();
+  expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  await user.tab();
+  expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 it("does not make a disclosure when fewer than three applicable settings qualify", async () => {

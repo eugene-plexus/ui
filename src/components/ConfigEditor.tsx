@@ -643,7 +643,10 @@ function RestartProgressModal({
         : "text-status-warn";
   const dismissable = phase === "back" || phase === "timeout" || phase === "error";
   return (
-    <ModalScrim labelledBy="restart-progress-heading">
+    <ModalScrim
+      labelledBy="restart-progress-heading"
+      onEscape={dismissable ? onDismiss : undefined}
+    >
       <h3 id="restart-progress-heading" className={`text-sm font-semibold ${tone}`}>
         {heading}
       </h3>
@@ -665,10 +668,66 @@ function RestartProgressModal({
   );
 }
 
-function ModalScrim({ children, labelledBy }: { children: React.ReactNode; labelledBy: string }) {
+/**
+ * A modal that behaves like one: focus moves in when it opens, Tab stays
+ * inside, Escape closes it when there is something to close, and focus
+ * goes back to where it was. It used to be a box drawn over the page with
+ * focus left behind it, so a keyboard user tabbed through a form they
+ * could not see.
+ */
+function ModalScrim({
+  children,
+  labelledBy,
+  onEscape,
+}: {
+  children: React.ReactNode;
+  labelledBy: string;
+  /** Absent while the dialog cannot be closed (a restart in flight). */
+  onEscape?: () => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    ref.current?.focus();
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
+  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Escape") {
+      if (onEscape) {
+        e.preventDefault();
+        onEscape();
+      }
+      return;
+    }
+    if (e.key !== "Tab" || !ref.current) return;
+    const items = Array.from(
+      ref.current.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
+      ),
+    );
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (!first || !last) {
+      e.preventDefault();
+      return;
+    }
+    const at = document.activeElement;
+    if (e.shiftKey && (at === first || at === ref.current)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && at === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div
+        ref={ref}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
