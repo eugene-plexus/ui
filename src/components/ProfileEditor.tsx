@@ -88,6 +88,7 @@ export function ProfileEditor({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [launched, setLaunched] = useState<string | null>(null);
+  const [launching, setLaunching] = useState<string | null>(null);
   // What a NEW profile should start its contextSize at, asked of the
   // target node before the form renders: undefined while asking, null
   // when the model's own context fits (or nobody could say), else the
@@ -187,6 +188,12 @@ export function ProfileEditor({
   }
 
   async function launch(profile: ModelProfile) {
+    // One launch at a time. The runtime's name is derived from the model
+    // and the profile, so a second click posted the SAME name while the
+    // first was still out: the first answered "Starting X" and the second
+    // a 409, and both stayed on screen, one green and one red.
+    if (launching !== null) return;
+    setLaunching(profile.id);
     setError(null);
     setLaunched(null);
     const spec = composeSpec(model, profile);
@@ -210,6 +217,8 @@ export function ProfileEditor({
       }
     } catch (err) {
       setError(describeError(err));
+    } finally {
+      setLaunching(null);
     }
   }
 
@@ -329,6 +338,7 @@ export function ProfileEditor({
               model={model}
               node={node}
               canLaunch={canLaunch}
+              launching={launching}
               onEdit={() => setEditing(p.id)}
               onDelete={() => void remove(p)}
               onLaunch={() => void launch(p)}
@@ -449,6 +459,7 @@ function ProfileRow({
   model,
   node,
   canLaunch,
+  launching,
   onEdit,
   onDelete,
   onLaunch,
@@ -457,6 +468,8 @@ function ProfileRow({
   model: LibraryModel;
   node: TargetNode | null;
   canLaunch: boolean;
+  /** The profile whose launch is in flight, if any. */
+  launching: string | null;
   onEdit: () => void;
   onDelete: () => void;
   onLaunch: () => void;
@@ -479,7 +492,7 @@ function ProfileRow({
           <button
             type="button"
             onClick={onLaunch}
-            disabled={!canLaunch}
+            disabled={!canLaunch || launching !== null}
             className={buttonClass}
             title={
               canLaunch
@@ -487,7 +500,7 @@ function ProfileRow({
                 : "No installed engine can load this model."
             }
           >
-            launch
+            {launching === profile.id ? "launching…" : "launch"}
           </button>
           <button type="button" onClick={onEdit} className={buttonClass}>
             edit

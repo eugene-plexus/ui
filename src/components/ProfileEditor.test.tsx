@@ -150,3 +150,46 @@ it("refuses invalid generation values before writing", async () => {
   expect(await screen.findByText(/must be a whole number/)).toBeInTheDocument();
   expect(writes).toHaveLength(0);
 });
+
+it("launches once, however fast the button is pressed twice", async () => {
+  const profile: ModelProfile = {
+    id: "p",
+    name: "Tuned",
+    engine: "llama_cpp",
+    default: true,
+    flags: { contextSize: 4096 },
+  };
+  let finish!: () => void;
+  const posted: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST" && url.endsWith("/agent/v1/runtimes")) {
+        posted.push(url);
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        return Response.json({ name: "model-tuned", status: "starting" }, { status: 201 });
+      }
+      return Response.json({ profiles: [profile] });
+    }),
+  );
+  render(
+    <ProfileEditor
+      model={model}
+      engines={[{ engine: "llama_cpp", available: true, modelFormats: ["gguf"] }] as never}
+      node={null}
+      onChanged={() => {}}
+    />,
+  );
+  const button = await screen.findByRole("button", { name: "launch" });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  await waitFor(() => expect(posted).toHaveLength(1));
+  // The same derived name twice: one green "Starting", one red 409.
+  expect(screen.getByRole("button", { name: "launching…" })).toBeDisabled();
+  finish();
+  await screen.findByText(/Starting/);
+  expect(posted).toHaveLength(1);
+});
