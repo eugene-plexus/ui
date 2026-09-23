@@ -207,3 +207,39 @@ describe("the card's controls have names", () => {
     for (const term of terms) expect(term.nextElementSibling?.tagName).toBe("DD");
   });
 });
+
+describe("the address check", () => {
+  it("does not start again when Home's poll hands down the same reading", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [], scope: "install" });
+    const probes: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        probes.push(String(input));
+        return new Response(JSON.stringify({ object: "list", data: [{ id: "qwen" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    const props = {
+      models: [] as Model[],
+      gatewayPortUrl: "http://127.0.0.1:8080",
+      placement: null,
+      localNode: "worker",
+    };
+    const { rerender } = render(
+      <UseFromAppsCard {...props} boundAddresses={[{ process: "agent", port: 8079 }]} />,
+    );
+    const verdict = await screen.findByTestId("base-url-verdict");
+    await waitFor(() => expect(verdict).toHaveAttribute("data-verdict", "confirmed"));
+    const before = probes.length;
+    // Every 15 s: an equal reading, in a new array.
+    rerender(<UseFromAppsCard {...props} boundAddresses={[{ process: "agent", port: 8079 }]} />);
+    rerender(<UseFromAppsCard {...props} boundAddresses={[{ process: "agent", port: 8079 }]} />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByTestId("base-url-verdict")).toHaveAttribute("data-verdict", "confirmed");
+    expect(probes.length).toBe(before);
+    vi.unstubAllGlobals();
+  });
+});

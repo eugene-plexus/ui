@@ -114,6 +114,20 @@ export function portRemapEvidence(
     : { kind: "remapped", pagePort: seen, agentPort: agent.port };
 }
 
+/**
+ * Whether two readings of the same evidence say the same thing. Home
+ * re-reads the node every 15 s and each read is a new array, so without
+ * this the address check reset to "Checking..." and probed again on every
+ * poll with nothing changed.
+ */
+export function sameEvidence(a: RemapEvidence, b: RemapEvidence): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "remapped" && b.kind === "remapped") {
+    return a.pagePort === b.pagePort && a.agentPort === b.agentPort;
+  }
+  return true;
+}
+
 export type Verdict =
   /** The gateway answered. `authenticated` false means it answered 401. */
   | { kind: "confirmed"; models: string[]; authenticated: boolean }

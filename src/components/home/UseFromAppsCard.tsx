@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ClientKeyLimitsEditor,
@@ -25,6 +25,7 @@ import {
   describeRemap,
   describeVerdict,
   portRemapEvidence,
+  sameEvidence,
   sameOffsetCandidate,
   verifyGatewayAddress,
 } from "@/lib/gatewayAddress";
@@ -182,15 +183,23 @@ export function UseFromAppsCard({
   // does. Same reason the override above is read in an effect.
   const [evidence, setEvidence] = useState<RemapEvidence>({ kind: "none" });
   useEffect(() => {
-    setEvidence(portRemapEvidence(window.location, boundAddresses));
+    const next = portRemapEvidence(window.location, boundAddresses);
+    // The same reading keeps the same object, so the check below does not
+    // start again every time Home's slow poll hands down a new array.
+    setEvidence((prev) => (sameEvidence(prev, next) ? prev : next));
   }, [boundAddresses]);
   const remap = describeRemap(evidence);
 
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [candidate, setCandidate] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  // Only the newest check may speak: a slow probe of an address someone
+  // has since corrected must not land over the answer about the new one.
+  const checkSeq = useRef(0);
   const check = useCallback(async () => {
     if (!baseUrl) return;
+    const seq = ++checkSeq.current;
+    const current = () => seq === checkSeq.current;
     setChecking(true);
     setCandidate(null);
     try {
@@ -199,6 +208,7 @@ export function UseFromAppsCard({
       // other half of the same class of bug: a client configured with a
       // model id that names nothing.
       const found = await verifyGatewayAddress(baseUrl, { key: keyString });
+      if (!current()) return;
       setVerdict(found);
       // A failed address on a machine that publishes ports differently
       // has one cheap hypothesis worth testing: the same shift applied
@@ -210,11 +220,11 @@ export function UseFromAppsCard({
         const guess = sameOffsetCandidate(baseUrl, evidence);
         if (guess) {
           const probe = await verifyGatewayAddress(guess);
-          if (probe.kind === "confirmed") setCandidate(guess);
+          if (current() && probe.kind === "confirmed") setCandidate(guess);
         }
       }
     } finally {
-      setChecking(false);
+      if (current()) setChecking(false);
     }
   }, [baseUrl, keyString, evidence]);
 
