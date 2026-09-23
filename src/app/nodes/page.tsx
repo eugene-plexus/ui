@@ -111,13 +111,14 @@ async function servedByNode(): Promise<Record<string, Served[]>> {
   const [placement, drivers, runtimes] = await Promise.all([
     api
       .get<{
-        components?: { node: string; name: string; kind: string }[];
+        components?: { node: string; name: string; kind: string; url?: string | null }[];
       }>("control", "/v1/components")
       .catch(() => null),
     api
       .get<{
         drivers?: {
           name: string;
+          url?: string | null;
           reachable: boolean;
           modelId?: string | null;
           runtime?: string | null;
@@ -130,14 +131,24 @@ async function servedByNode(): Promise<Record<string, Served[]>> {
       }>("control", "/v1/runtimes")
       .catch(() => null),
   ]);
-  const live = new Map((drivers?.drivers ?? []).map((d) => [d.name, d]));
+  // Two machines each running one model hold two drivers of one name,
+  // so a driver is matched on its address as well; a bare name is used
+  // only when exactly one driver carries it. A map by name let the last
+  // one answer for both machines.
+  const liveDrivers = drivers?.drivers ?? [];
+  const liveFor = (name: string, url: string | null | undefined) => {
+    const named = liveDrivers.filter((d) => d.name === name);
+    return (
+      named.find((d) => url != null && d.url === url) ?? (named.length === 1 ? named[0] : undefined)
+    );
+  };
   const runtimeStatus = new Map(
     (runtimes?.runtimes ?? []).map((r) => [`${r.node}/${r.name}`, r.status ?? null]),
   );
   const out: Record<string, Served[]> = {};
   for (const c of placement?.components ?? []) {
     if (c.kind !== "inference-driver") continue;
-    const d = live.get(c.name);
+    const d = liveFor(c.name, c.url);
     (out[c.node] ??= []).push({
       driver: c.name,
       model: d?.modelId ?? null,

@@ -262,3 +262,104 @@ describe("runtimeOf", () => {
     expect(runtimeOf({ node: null, runtime: "r1" }, details)).toBeNull();
   });
 });
+
+describe("one model on two machines", () => {
+  // What the Library produces: the runtime is named after the model and
+  // its driver after the runtime, on BOTH machines. The gateway keys them
+  // by (node, name) since R1.6; this join used to key them by name alone.
+  const TWO: Sources = {
+    drivers: {
+      drivers: [
+        {
+          name: "qwen-driver",
+          url: "http://10.0.0.1:8084/",
+          reachable: true,
+          modelId: "qwen",
+          runtime: "qwen",
+        },
+        {
+          name: "qwen-driver",
+          url: "http://10.0.0.2:8084/",
+          reachable: true,
+          modelId: "qwen",
+          runtime: "qwen",
+        },
+      ],
+    },
+    routing: {
+      slots: [
+        {
+          model: "qwen",
+          tiers: [
+            {
+              tier: 1,
+              backends: [
+                {
+                  driver: "qwen-driver",
+                  url: "http://10.0.0.1:8084/",
+                  node: "node-a",
+                  runtime: "qwen",
+                  eligible: false,
+                  in_flight: 0,
+                },
+                {
+                  driver: "qwen-driver",
+                  url: "http://10.0.0.2:8084/",
+                  node: "node-b",
+                  runtime: "qwen",
+                  eligible: true,
+                  in_flight: 2,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    } as never,
+    placement: {
+      components: [
+        {
+          node: "node-a",
+          name: "qwen-driver",
+          kind: "inference-driver",
+          url: "http://10.0.0.1:8084/",
+        },
+        {
+          node: "node-b",
+          name: "qwen-driver",
+          kind: "inference-driver",
+          url: "http://10.0.0.2:8084/",
+        },
+      ],
+    } as never,
+    runtimes: {
+      runtimes: [
+        {
+          node: "node-a",
+          name: "qwen",
+          modelAlias: "qwen",
+          status: "stopped",
+          engine: "llama_cpp",
+        },
+        { node: "node-b", name: "qwen", modelAlias: "qwen", status: "ready", engine: "llama_cpp" },
+      ],
+    } as never,
+    localRuntimes: null,
+  };
+
+  it("is two rows, each on its own machine with its own state", () => {
+    const rows = buildRows(TWO, "node-a");
+    expect(rows).toHaveLength(2);
+    const a = rows.find((r) => r.node === "node-a");
+    const b = rows.find((r) => r.node === "node-b");
+    expect(a?.runtimeStatus).toBe("stopped");
+    expect(a?.eligible).toBe(false);
+    expect(b?.runtimeStatus).toBe("ready");
+    expect(b?.inFlight).toBe(2);
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2);
+  });
+
+  it("adds no third row for either machine's runtime", () => {
+    expect(buildRows(TWO, "node-a").filter((r) => r.driver === null)).toHaveLength(0);
+  });
+});

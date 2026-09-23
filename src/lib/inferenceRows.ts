@@ -55,24 +55,48 @@ export type Sources = {
  * from the control root, which is the only party that knows.
  */
 export function buildRows(sources: Sources, localName: string | null): Row[] {
-  const nodeOfDriver = new Map<string, string>();
-  for (const c of sources.placement?.components ?? []) {
-    if (c.kind === "inference-driver") nodeOfDriver.set(c.name, c.node);
-  }
+  // **A driver's NAME is unique per machine, not per install** (R1.6).
+  // The Library names a runtime after its model and the agent adds
+  // "-driver", so one model launched on two machines is two `qwen-driver`s.
+  // Keyed by bare name, the second overwrote the first: both rows landed
+  // under one machine with one state, the other machine said it served
+  // nothing, and Stop on what looked like machine A's copy stopped B's.
+  // So every map here is keyed by (node, name) or by (name, url), and a
+  // bare name is trusted only when exactly one thing carries it.
+  const placedDrivers = (sources.placement?.components ?? []).filter(
+    (c) => c.kind === "inference-driver",
+  );
 
-  const routingByDriver = new Map<
-    string,
-    NonNullable<RoutingTableView["slots"]>[number]["tiers"][number]["backends"][number]
-  >();
+  type Backend = NonNullable<
+    RoutingTableView["slots"]
+  >[number]["tiers"][number]["backends"][number];
+  const routingByDriverUrl = new Map<string, Backend>();
+  const routingByName = new Map<string, Backend[]>();
   for (const slot of sources.routing?.slots ?? []) {
     for (const tier of slot.tiers ?? []) {
       for (const backend of tier.backends ?? []) {
-        if (backend.driver && !routingByDriver.has(backend.driver)) {
-          routingByDriver.set(backend.driver, backend);
+        if (!backend.driver) continue;
+        const byUrl = `${backend.driver}@${backend.url ?? ""}`;
+        if (!routingByDriverUrl.has(byUrl)) routingByDriverUrl.set(byUrl, backend);
+        const named = routingByName.get(backend.driver) ?? [];
+        if (!named.some((b) => b.node === backend.node && b.url === backend.url)) {
+          named.push(backend);
         }
+        routingByName.set(backend.driver, named);
       }
     }
   }
+  const routingFor = (name: string, url: string | undefined): Backend | undefined => {
+    const exact = routingByDriverUrl.get(`${name}@${url ?? ""}`);
+    if (exact) return exact;
+    const named = routingByName.get(name) ?? [];
+    return named.length === 1 ? named[0] : undefined;
+  };
+  const placedNodeFor = (name: string, url: string | undefined): string | null => {
+    const named = placedDrivers.filter((c) => c.name === name);
+    if (named.length === 1) return named[0]!.node;
+    return named.find((c) => url !== undefined && c.url === url)?.node ?? null;
+  };
 
   type RuntimeInfo = {
     node: string | null;
@@ -96,19 +120,30 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
         engine: r.engine ?? null,
         model: r.modelAlias ?? null,
       }));
-  const runtimeByName = new Map(runtimes.map((r) => [r.name, r]));
+  const onNode = (node: string | null, name: string) => `${node ?? ""}/${name}`;
+  const runtimeByNode = new Map(runtimes.map((r) => [onNode(r.node, r.name), r]));
+  const runtimeFor = (node: string | null, name: string): (typeof runtimes)[number] | null => {
+    const exact = runtimeByNode.get(onNode(node, name));
+    if (exact) return exact;
+    const named = runtimes.filter((r) => r.name === name);
+    return named.length === 1 ? named[0]! : null;
+  };
 
   const rows: Row[] = [];
   const seenRuntimes = new Set<string>();
 
   for (const d of sources.drivers?.drivers ?? []) {
-    const routing = routingByDriver.get(d.name);
+    const routing = routingFor(d.name, d.url);
     const runtimeName = d.runtime ?? routing?.runtime ?? null;
-    const runtime = runtimeName ? (runtimeByName.get(runtimeName) ?? null) : null;
-    if (runtimeName) seenRuntimes.add(runtimeName);
+    // Which machine: the gateway's own view of this backend first (it
+    // is keyed by node since R1.6), then the control root's placement.
+    const placedNode = routing?.node ?? placedNodeFor(d.name, d.url);
+    const runtime = runtimeName ? runtimeFor(placedNode, runtimeName) : null;
+    const node = placedNode ?? runtime?.node ?? null;
+    if (runtimeName) seenRuntimes.add(onNode(runtime?.node ?? node, runtimeName));
     rows.push({
-      key: `driver:${d.name}`,
-      node: nodeOfDriver.get(d.name) ?? runtime?.node ?? routing?.node ?? null,
+      key: `driver:${onNode(node, d.name)}@${d.url ?? ""}`,
+      node,
       driver: d.name,
       model: d.modelId ?? runtime?.model ?? null,
       backend: d.backend ?? null,
@@ -130,9 +165,8 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
   // declared, and the gateway either cannot see the node or has not
   // refreshed. Shown, because "declared and not routable" is the row
   // an operator is looking for when a model is missing from the list.
-  for (const c of sources.placement?.components ?? []) {
-    if (c.kind !== "inference-driver") continue;
-    if (rows.some((r) => r.driver === c.name)) continue;
+  for (const c of placedDrivers) {
+    if (rows.some((r) => r.driver === c.name && r.node === c.node)) continue;
     rows.push({
       key: `placed:${c.node}/${c.name}`,
       node: c.node,
@@ -154,7 +188,7 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
   }
 
   for (const r of runtimes) {
-    if (seenRuntimes.has(r.name)) continue;
+    if (seenRuntimes.has(onNode(r.node, r.name))) continue;
     rows.push({
       key: `runtime:${r.node ?? ""}/${r.name}`,
       node: r.node,
