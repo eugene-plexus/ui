@@ -16,6 +16,7 @@
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -159,6 +160,22 @@ describe("the passphrase screen's warnings", () => {
 
 describe("the folders screen", () => {
   const ready = { status: "ready", path: "/home/sam/Eugene Models", home: "/home/sam" } as const;
+
+  it("puts focus in the box that replaces change", async () => {
+    function Harness() {
+      const [draft, setDraft] = useState(blankDraft());
+      return (
+        <ScreenFolders
+          draft={draft}
+          proposal={ready}
+          onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+        />
+      );
+    }
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "change" }));
+    expect(screen.getByLabelText("Folder to make")).toHaveFocus();
+  });
 
   it("shows the proposal checked, with the path and a way to change it", async () => {
     const onChange = vi.fn();

@@ -28,7 +28,7 @@
  * row is being browsed for is nobody else's business.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { FolderPicker } from "@/components/FolderPicker";
 
@@ -64,6 +64,17 @@ export function ScreenFolders({
   const making = draft.folderChoice === "make" && !makeDisabled;
   const homePath = proposal.status === "ready" ? proposal.home : null;
   const editing = draft.customFolder !== null;
+  // "change" removes itself and puts a box in its place. Focus went with
+  // the button, to <body>, so the typing it was pressed for landed
+  // nowhere. The box takes it -- only after a press, not on a restored
+  // draft that happens to be editing already.
+  const editBox = useRef<HTMLInputElement | null>(null);
+  const focusEditBox = useRef(false);
+  useEffect(() => {
+    if (!editing || !focusEditBox.current) return;
+    focusEditBox.current = false;
+    editBox.current?.focus();
+  }, [editing]);
 
   // The rows under "I already have models": at least one, so there is
   // always a box to type into or a Browse… to press.
@@ -130,7 +141,10 @@ export function ScreenFolders({
               </code>
               <button
                 type="button"
-                onClick={() => onChange({ folderChoice: "make", customFolder: proposal.path })}
+                onClick={() => {
+                  focusEditBox.current = true;
+                  onChange({ folderChoice: "make", customFolder: proposal.path });
+                }}
                 className={smallButton}
               >
                 change
@@ -139,6 +153,7 @@ export function ScreenFolders({
           )}
           {proposal.status === "ready" && editing && (
             <input
+              ref={editBox}
               type="text"
               value={draft.customFolder ?? ""}
               onChange={(e) => onChange({ folderChoice: "make", customFolder: e.target.value })}
