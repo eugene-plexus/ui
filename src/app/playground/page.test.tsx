@@ -429,3 +429,27 @@ describe("New", () => {
     expect(screen.getByRole("button", { name: "New" })).toBeDisabled();
   });
 });
+
+describe("Copy JSON", () => {
+  it("copies the messages as the request carried them", async () => {
+    localStorage.setItem("eugene-playground-sampling", JSON.stringify({ system: "Be brief." }));
+    handlers.set("POST gateway/v1/chat/completions", () => sse(["Hi"], "stop"));
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal("isSecureContext", true);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    await renderReady();
+    send("hello");
+    await waitFor(() => expect(screen.getByText("Hi")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy JSON" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const copied = JSON.parse(String((writeText.mock.calls[0] as unknown[])[0])) as Array<
+      Record<string, unknown>
+    >;
+    // The browser-only timestamp is not part of any request, and the
+    // system prompt that rode this one is.
+    expect(copied.some((m) => "generatedAt" in m)).toBe(false);
+    expect(copied[0]).toEqual({ role: "system", content: "Be brief." });
+    expect(copied.map((m) => m.role)).toEqual(["system", "user", "assistant"]);
+  });
+});

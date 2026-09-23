@@ -33,6 +33,7 @@ import {
 import {
   type PlaygroundMessage,
   readPlaygroundTranscript,
+  requestMessages,
   writePlaygroundTranscript,
 } from "@/lib/playgroundTranscript";
 import {
@@ -598,7 +599,19 @@ export default function PlaygroundPage() {
           )}
           {messages.length > 0 && (
             <CopyButton
-              text={JSON.stringify(messages, null, 2)}
+              // What rode the wire, not what the page keeps: without the
+              // browser-only `generatedAt` on every reply, and with the
+              // system prompt the request carried in front. A house field
+              // in a "compatible" payload is how compatible stops being true.
+              text={JSON.stringify(
+                withSystemPrompt(
+                  requestMessages(messages),
+                  "values" in parsedSampling ? parsedSampling.values.system : undefined,
+                  (content) => ({ role: "system" as const, content }),
+                ),
+                null,
+                2,
+              )}
               label="Copy JSON"
               title="The messages array exactly as a harness would replay it, tool calls and results included"
               className="border border-[color:var(--border)] px-3 py-1 text-sm"
