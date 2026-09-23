@@ -663,6 +663,37 @@ describe("Reach it from other devices", () => {
     expect(sent?.body).toEqual({ enabled: true, allowFirewall: true });
   });
 
+  it("stays on screen while its own restart takes the agent away", async () => {
+    // The card says "This page will reconnect on its own." One missed
+    // `/v1/node` read during that restart used to blank the reading and
+    // remove the whole card, sentence and all.
+    withReach({
+      ...LOOPBACK_ONLY,
+      enabled: true,
+      restartRequired: true,
+      advertiseUrl: "http://192.168.1.20:8079/",
+    });
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-reach");
+    handlers.set("POST agent/v1/node/reach", () => {
+      // The agent goes away the moment it is asked to restart.
+      handlers.set("GET agent/v1/node", () => ({ status: 503, body: { detail: "restarting" } }));
+      handlers.set("GET agent/v1/engines", () => ({ status: 503, body: { detail: "restarting" } }));
+      return { status: 200, body: { reach: LOOPBACK_ONLY, steps: [], restarted: true } };
+    });
+    fireEvent.click(within(card).getByTestId("reach-restart"));
+    await waitFor(() =>
+      expect(calls.filter((c) => key(c) === "GET agent/v1/node").length).toBeGreaterThan(1),
+    );
+    await waitFor(() =>
+      expect(
+        calls.filter((c) => key(c).startsWith("GET library/v1/catalogue/starter")).length,
+      ).toBeGreaterThan(1),
+    );
+    expect(screen.getByTestId("home-reach")).toBeInTheDocument();
+    expect(screen.getByTestId("home-machine")).toHaveTextContent("llama.cpp b10948");
+  });
+
   it("says the change is half done rather than reporting success", async () => {
     // The state that would otherwise be a silent failure: the setting
     // moved, the agent's socket did not, and every surface looks healthy

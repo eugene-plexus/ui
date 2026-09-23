@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { SetupGateScreen } from "@/components/SetupGateScreen";
@@ -124,6 +124,8 @@ export default function HomePage() {
   const { tasks, reload: reloadTasks } = useTasks();
   // The same poll the header badge runs; one hook, two renderings.
   const { issues, loaded: issuesLoaded, reload: reloadIssues } = useIssues();
+  // The last answer `/v1/node` gave, for the reads that depend on it.
+  const lastNode = useRef<NodeIdentity | null>(null);
 
   const loadSlow = useCallback(async () => {
     const [nodeResult, enginesResult, libraryResult, modelsResult, componentsResult] =
@@ -134,8 +136,14 @@ export default function HomePage() {
         listModels(PROXY).catch(() => null),
         api.get<ComponentList>("agent", "/v1/components").catch(() => null),
       ]);
-    setNode(nodeResult);
-    setEngines(enginesResult);
+    // One missed poll keeps the last good reading, as the library read
+    // below does. The Reach card's own "Restart Eugene" is exactly when
+    // the agent misses one, and blanking `node` there removed the card
+    // right under "This page will reconnect on its own."
+    if (nodeResult !== null) lastNode.current = nodeResult;
+    const known = lastNode.current;
+    if (nodeResult !== null) setNode(nodeResult);
+    if (enginesResult !== null) setEngines(enginesResult);
     // The starter set, scored against THIS machine's devices — the one a
     // Run from Home would use. On the poll rather than once, because
     // free memory moves and the recommendation moves with it, and
@@ -145,7 +153,7 @@ export default function HomePage() {
         .get<StarterSet>(
           "library",
           `/v1/catalogue/starter?contextLength=${STARTER_CONTEXT}&${new URLSearchParams(
-            fitQuery(nodeResult ? budgetFromNode(nodeResult) : null),
+            fitQuery(known ? budgetFromNode(known) : null),
           )}`,
         )
         .catch(() => null),
@@ -160,7 +168,7 @@ export default function HomePage() {
     // because Home is where the browser lands.
     const list = await api.get<DownloadList>("library", "/v1/downloads").catch(() => null);
     if (list) {
-      await resumeClaimedRuns(list.downloads ?? [], getRuns(), localTargetNode(nodeResult));
+      await resumeClaimedRuns(list.downloads ?? [], getRuns(), localTargetNode(known));
     }
     // The last good answer is kept and the failure is flagged beside it,
     // so the card can say "did not answer" without the count flickering
