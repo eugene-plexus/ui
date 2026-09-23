@@ -252,7 +252,13 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
       // progress modal still surfaces so the operator sees what's
       // happening, and on success it auto-dismisses (see performRestart).
       if (result.requiresRestart) {
-        void performRestart();
+        // What was refused has to outlive the restart: the reload after it
+        // replaced the draft with the server's values and cleared the
+        // banner, so a partly-applied save lost the refused value AND the
+        // sentence saying why, behind a "back online" that closed itself.
+        const refused: Record<string, unknown> = {};
+        for (const r of result.rejected) refused[r.key] = patch[r.key];
+        void performRestart(refused);
       }
       // Refresh from server so the editor reflects any server-side coercions.
       const fresh = await api.get<ConfigDocument>(target, "/v1/config");
@@ -333,7 +339,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
    * in `waiting` until the timeout — at which point the modal tells
    * the operator to relaunch by hand.
    */
-  async function performRestart() {
+  async function performRestart(refused: Record<string, unknown> = {}) {
     setRestart({ phase: "scheduled", message: "Asking the process to exit…" });
     try {
       const result = await api.post<RestartResult>(target, "/v1/admin/restart", {});
@@ -359,8 +365,13 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
           ]);
           setSchema(schemaResp);
           setServerDoc(docResp);
-          setDraft({ ...(docResp as Record<string, unknown>) });
-          setSaveStatus(null);
+          setDraft({ ...(docResp as Record<string, unknown>), ...refused });
+          // The restart line is done with; a refusal is not.
+          setSaveStatus((current) =>
+            current && current.rejected.length > 0
+              ? { ...current, requiresRestart: false, pendingRestart: [] }
+              : null,
+          );
           // Any test result that was visible before the restart described
           // the OLD running process. Clearing avoids the post-restart UI
           // showing a stale "fail" right next to a successful restart.

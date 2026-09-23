@@ -14,6 +14,8 @@ let fields: {
 let doc: Record<string, unknown>;
 let reject = false;
 let failPatch = false;
+/** The component refuses `catalogueBaseUrl`, applies the rest, and needs a restart. */
+let partialWithRestart = false;
 let patches: Record<string, unknown>[];
 beforeEach(() => {
   fields = [
@@ -38,13 +40,29 @@ beforeEach(() => {
   patches = [];
   reject = false;
   failPatch = false;
+  partialWithRestart = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       let body: unknown;
       if (url.endsWith("/v1/config/schema")) body = { component: "library", fields };
-      else if (init?.method === "PATCH" && failPatch) {
+      else if (url.endsWith("/v1/admin/restart")) body = { delayMs: 10 };
+      else if (url.endsWith("/healthz")) body = { status: "ok" };
+      else if (init?.method === "PATCH" && partialWithRestart) {
+        const patch = JSON.parse(String(init.body)) as Record<string, unknown>;
+        patches.push(patch);
+        const { catalogueBaseUrl, ...applied } = patch;
+        doc = { ...doc, ...applied };
+        body = {
+          applied: Object.keys(applied),
+          rejected:
+            catalogueBaseUrl !== undefined
+              ? [{ key: "catalogueBaseUrl", message: "Invalid address" }]
+              : [],
+          requiresRestart: true,
+        };
+      } else if (init?.method === "PATCH" && failPatch) {
         return new Response(
           JSON.stringify({
             type: "about:blank",
@@ -243,4 +261,19 @@ describe("a stored secret", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show" }));
     expect(box).toHaveAttribute("type", "text");
   });
+});
+
+it("keeps a refusal and its typed value through the restart the rest of the save needed", async () => {
+  partialWithRestart = true;
+  render(<ConfigEditor target="library" label="Library" />);
+  fireEvent.change(await screen.findByDisplayValue("hub"), { target: { value: "not a url" } });
+  fireEvent.change(screen.getByDisplayValue("new"), { target: { value: "newer" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  // The restart runs, comes back, and reloads the form from the server.
+  await screen.findByText("Library is back online.", {}, { timeout: 4000 });
+  await waitFor(() => expect(screen.getByDisplayValue("newer")).toBeInTheDocument());
+  // Before: the reload replaced the draft and cleared the banner, so both
+  // the refused value and the sentence saying why were gone.
+  expect(screen.getByDisplayValue("not a url")).toBeInTheDocument();
+  expect(screen.getByText(/Invalid address/)).toBeInTheDocument();
 });
