@@ -132,16 +132,25 @@ function AppShellInner({
     mapToggleRef.current?.focus();
   }, []);
 
+  // The drawer hands focus back to ☰ the way the map does. Escape and the
+  // backdrop used to close it with focus left on an element that was
+  // gone, so the next Tab started again from the top of the page.
+  const drawerToggleRef = useRef<HTMLButtonElement | null>(null);
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    drawerToggleRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     if (!mapOpen && !drawerOpen) return;
     function onKey(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       if (mapOpen) closeMap();
-      else setDrawerOpen(false);
+      else closeDrawer();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mapOpen, drawerOpen, closeMap]);
+  }, [mapOpen, drawerOpen, closeMap, closeDrawer]);
 
   async function handleLogout() {
     try {
@@ -164,6 +173,7 @@ function AppShellInner({
       <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5">
         <button
           type="button"
+          ref={drawerToggleRef}
           onClick={() => setDrawerOpen((o) => !o)}
           aria-expanded={drawerOpen}
           data-testid="tree-drawer-toggle"
@@ -228,7 +238,7 @@ function AppShellInner({
           <button
             type="button"
             aria-label="Close the install tree"
-            onClick={() => setDrawerOpen(false)}
+            onClick={closeDrawer}
             className="absolute inset-0 z-10 bg-black/30 lg:hidden"
           />
         )}

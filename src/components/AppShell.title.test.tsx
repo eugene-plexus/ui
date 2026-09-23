@@ -132,6 +132,23 @@ describe("one machine", () => {
     expect(screen.queryByTestId("layer-map")).not.toBeInTheDocument();
     expect(toggle).toHaveFocus();
   });
+  it("returns focus to the tree toggle when the drawer closes by Escape or backdrop", async () => {
+    await titleFor();
+    const toggle = screen.getByTestId("tree-drawer-toggle");
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("tree-drawer")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Close the install tree" }).focus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("tree-drawer")).not.toBeInTheDocument();
+    expect(toggle).toHaveFocus();
+
+    fireEvent.click(toggle);
+    const backdrop = screen.getByRole("button", { name: "Close the install tree" });
+    backdrop.focus();
+    fireEvent.click(backdrop);
+    expect(screen.queryByTestId("tree-drawer")).not.toBeInTheDocument();
+    expect(toggle).toHaveFocus();
+  });
   it("names the page and nothing else", async () => {
     // On the commonest install the host is the same on every tab, so it
     // is noise that costs the page name its room.
