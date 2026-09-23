@@ -170,7 +170,8 @@ function ok(body: unknown) {
   return { status: 200, body };
 }
 
-type Handler = (params: URLSearchParams) => { status: number; body?: unknown };
+type Reply = { status: number; body?: unknown };
+type Handler = (params: URLSearchParams) => Reply | Promise<Reply>;
 let handlers: Map<string, Handler>;
 
 beforeEach(() => {
@@ -213,7 +214,9 @@ beforeEach(() => {
         body: init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined,
       });
       const handler = handlers.get(`${init?.method ?? "GET"} ${path}`);
-      const result = handler ? handler(params) : { status: 418, body: { detail: `?? ${path}` } };
+      const result = handler
+        ? await handler(params)
+        : { status: 418, body: { detail: `?? ${path}` } };
       return new Response(result.body === undefined ? null : JSON.stringify(result.body), {
         status: result.status,
         statusText: String(result.status),
@@ -444,6 +447,40 @@ describe("honesty on the detail", () => {
     useModel({ resolvedCommit: "abc1234def5678" });
     await openTheRepo();
     expect(screen.getByText(/pinned at abc1234/)).toBeInTheDocument();
+  });
+});
+
+describe("two searches in flight", () => {
+  it("shows the newer one's results even when the older one answers last", async () => {
+    render(<DiscoverPage />);
+    await screen.findByRole("button", { name: /Qwen3\.8 27B/ }, { timeout: 5000 });
+
+    let releaseOld!: () => void;
+    const oldHeld = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    handlers.set("GET library/v1/catalogue/search", async (params) => {
+      if (params.get("sort") === "likes") {
+        await oldHeld;
+        return ok({ results: [{ repo: "old/Stale-GGUF", name: "Stale answer", owner: "old" }] });
+      }
+      return ok({ results: [{ repo: "new/Fresh-GGUF", name: "Fresh answer", owner: "new" }] });
+    });
+    const sort = screen.getByLabelText("Sort order");
+    await act(async () => {
+      fireEvent.change(sort, { target: { value: "likes" } });
+    });
+    await act(async () => {
+      fireEvent.change(sort, { target: { value: "trending" } });
+    });
+    await screen.findByRole("button", { name: /Fresh answer/ });
+    await act(async () => {
+      releaseOld();
+      await oldHeld;
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByRole("button", { name: /Stale answer/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Fresh answer/ })).toBeInTheDocument();
   });
 });
 

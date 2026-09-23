@@ -217,7 +217,16 @@ function DiscoverPageInner() {
     })();
   }, []);
 
+  // **Only the newest search may answer.** Format and sort fire at once
+  // and typing after the debounce, and the hub's latency varies, so an
+  // earlier request could land last: the list then showed the old query's
+  // results, the fade cleared while the newer one was still out, and a
+  // stale pasted-link answer re-selected its repo over whatever had just
+  // been clicked. RepoDetail already guarded this way; search did not.
+  const searchSeq = useRef(0);
   const search = useCallback(async () => {
+    const mine = ++searchSeq.current;
+    const current = () => mine === searchSeq.current;
     setSearching(true);
     setSearchError(null);
     try {
@@ -228,6 +237,7 @@ function DiscoverPageInner() {
         "library",
         `/v1/catalogue/search?${params.toString()}`,
       );
+      if (!current()) return;
       setResults(page.results ?? []);
       setInterpreted(page.interpretedAs === "repo" ? "repo" : "search");
       // A pasted link named one repo. Selecting it is the whole point:
@@ -236,12 +246,13 @@ function DiscoverPageInner() {
         setSelectedRepo(page.interpretedFrom);
       }
     } catch (err) {
+      if (!current()) return;
       if (err instanceof ApiError && err.status === 401) return;
       setResults([]);
       setInterpreted("search");
       setSearchError(describeError(err));
     } finally {
-      setSearching(false);
+      if (current()) setSearching(false);
     }
   }, [debouncedQuery, format, sort]);
 

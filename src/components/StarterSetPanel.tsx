@@ -60,21 +60,31 @@ export function StarterSetPanel({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Asked once with no budget and again when the node's arrives; the
+    // first answer, scored against the library's own host, must not land
+    // over the second.
+    let cancelled = false;
     void (async () => {
       try {
         const params = new URLSearchParams({
           contextLength: String(contextLength),
           ...fitQuery(budget),
         });
-        setSet(await api.get<StarterSet>("library", `/v1/catalogue/starter?${params}`));
+        const answer = await api.get<StarterSet>("library", `/v1/catalogue/starter?${params}`);
+        if (cancelled) return;
+        setSet(answer);
         setError(null);
       } catch (err) {
+        if (cancelled) return;
         if (err instanceof ApiError && err.status === 401) return;
         // Not a page-level error: the search box beside this still
         // works, and it is the thing to fall back to.
         setError(err instanceof Error ? err.message : String(err));
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [budget, contextLength]);
 
   if (error) {
