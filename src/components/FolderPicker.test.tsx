@@ -138,3 +138,22 @@ describe("FolderPicker", () => {
     expect(screen.queryByText("No subdirectories here.")).not.toBeInTheDocument();
   });
 });
+
+describe("a path that could not be listed", () => {
+  it("cannot be picked, and the previous folder is not handed back in its place", async () => {
+    const onPick = vi.fn();
+    render(
+      <FolderPicker target="library" initialPath="/home/x" onPick={onPick} onClose={() => {}} />,
+    );
+    await screen.findByText("models");
+    fireEvent.change(screen.getByLabelText("Path"), { target: { value: "/nope" } });
+    fireEvent.click(screen.getByRole("button", { name: "go" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("/nope does not exist on nas.");
+    // It returned /home/x here: what the box and the error were not about.
+    expect(screen.getByRole("button", { name: "use this folder" })).toBeDisabled();
+    expect(screen.getByText("Not listed. Fix the path or go up.")).toBeInTheDocument();
+    // "up" still works from the last good listing.
+    expect(screen.getByRole("button", { name: "up" })).toBeEnabled();
+    expect(onPick).not.toHaveBeenCalled();
+  });
+});

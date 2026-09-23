@@ -42,17 +42,23 @@ export function FolderPicker({
   const [typed, setTyped] = useState<string>(initialPath ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Only the newest listing may land: on a slow remote node an older
+  // answer arriving second put the picker back in a folder already left.
+  const sequence = useRef(0);
 
   const open = useCallback(
     async (path: string | null) => {
+      const mine = ++sequence.current;
       setLoading(true);
       setError(null);
       try {
         const query = path && path.trim() ? `?path=${encodeURIComponent(path.trim())}` : "";
         const result = await api.get<DirectoryListing>(target, `/v1/directories${query}`);
+        if (mine !== sequence.current) return;
         setListing(result);
         setTyped(result.path ?? "");
       } catch (err) {
+        if (mine !== sequence.current) return;
         if (err instanceof ApiError && err.status === 401) return;
         if (err instanceof ApiError && (err.status === 405 || isNotImplemented(err))) {
           setError(
@@ -62,7 +68,7 @@ export function FolderPicker({
           setError(describeError(err));
         }
       } finally {
-        setLoading(false);
+        if (mine === sequence.current) setLoading(false);
       }
     },
     [target],
@@ -82,7 +88,11 @@ export function FolderPicker({
     return () => opener?.focus?.();
   }, []);
 
-  const current = listing?.path ?? null;
+  // **A failed listing is not a folder to pick.** The last good listing
+  // is kept so "up" still works, but it is not what the box and the error
+  // are about: "use this folder" used to hand back that previous folder,
+  // silently, after the path typed over it could not be listed.
+  const current = error ? null : (listing?.path ?? null);
 
   return (
     <div
@@ -148,10 +158,22 @@ export function FolderPicker({
           </button>
         </form>
 
-        <div className="min-h-[12rem] flex-1 overflow-y-auto px-2 py-2">
+        <div
+          className="min-h-[12rem] flex-1 overflow-y-auto px-2 py-2"
+          aria-busy={loading}
+          data-testid="folder-entries"
+        >
           {error && (
-            <p className="status-error mx-2 rounded-[var(--radius)] border px-3 py-2 text-sm">
+            <p
+              role="alert"
+              className="status-error mx-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
+            >
               {error}
+            </p>
+          )}
+          {loading && (
+            <p role="status" className="px-2 py-1 text-sm text-[color:var(--muted)]">
+              Loading…
             </p>
           )}
           {!error && listing && listing.entries.length === 0 && (
@@ -161,10 +183,13 @@ export function FolderPicker({
           )}
           {!error &&
             listing?.entries.map((entry) => (
+              // Disabled while a listing is out, so a habitual double-click
+              // opens one folder rather than landing on the next list too.
               <button
                 key={entry.path}
                 type="button"
                 onClick={() => void open(entry.path)}
+                disabled={loading}
                 className="flex w-full items-center justify-between gap-3 rounded-[var(--radius)] px-2 py-1 text-left text-sm hover:bg-[color:var(--panel-hover)]"
                 title={entry.path}
               >
@@ -188,7 +213,7 @@ export function FolderPicker({
             className="truncate font-mono text-[0.6875rem] text-[color:var(--muted)]"
             title={current ?? ""}
           >
-            {current ?? "pick a starting point"}
+            {error ? "Not listed. Fix the path or go up." : (current ?? "pick a starting point")}
           </span>
           <div className="flex items-center gap-2">
             <button type="button" onClick={onClose} className={buttonClass}>
