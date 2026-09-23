@@ -292,6 +292,11 @@ function Row({
             href={target}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
+            // The whole name on hover. A leaf is about 19 characters wide
+            // in the column, and a driver's name is the model's plus a
+            // profile and "-driver" -- the part that tells two profiles
+            // or quants apart is the part that was cut off.
+            title={node.hint ? `${node.label} · ${node.hint}` : node.label}
             data-tree-sel={node.sel}
             data-layer={node.layer ?? "install"}
             className={`font-ui flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius)] px-1.5 py-1 text-sm transition-colors hover:bg-[color:var(--panel-hover)] ${
@@ -300,9 +305,12 @@ function Row({
             style={active ? { boxShadow: `inset 2px 0 0 0 ${accentVar(accent)}` } : undefined}
           >
             <LayerIcon name={node.icon} accent={accent} size={14} />
-            <span className="truncate">{node.label}</span>
+            <span className="min-w-0 truncate">{node.label}</span>
+            {/* Shrinks with the label instead of squeezing it: a hint
+                that would not shrink cut "Eugene Plexus" to four letters
+                beside "control root unreachable". */}
             {node.hint && (
-              <span className="ml-auto shrink-0 truncate text-[0.625rem] text-[color:var(--muted)]">
+              <span className="ml-auto max-w-[55%] min-w-0 truncate text-[0.625rem] text-[color:var(--muted)]">
                 {node.hint}
               </span>
             )}
@@ -311,13 +319,17 @@ function Row({
           <button
             type="button"
             onClick={() => onToggle(key)}
+            aria-expanded={expanded}
+            title={node.hint ? `${node.label} · ${node.hint}` : node.label}
             data-tree-group={key}
             className="font-ui flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius)] px-1.5 py-1 text-left text-sm text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
           >
             <LayerIcon name={node.icon} accent={accent} size={14} />
-            <span className="truncate">{node.label}</span>
+            <span className="min-w-0 truncate">{node.label}</span>
             {node.hint && (
-              <span className="ml-auto shrink-0 truncate text-[0.625rem]">{node.hint}</span>
+              <span className="ml-auto max-w-[55%] min-w-0 truncate text-[0.625rem]">
+                {node.hint}
+              </span>
             )}
           </button>
         )}

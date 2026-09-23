@@ -124,7 +124,7 @@ export function FirstModelCard({
         <ul data-testid="home-downloads" className="mt-3 flex flex-col gap-2">
           {downloads.map((task) => (
             <li key={task.id} className="text-sm">
-              <Link href={task.href} className="block truncate hover:underline">
+              <Link href={task.href} title={task.title} className="block truncate hover:underline">
                 {task.title}
               </Link>
               {task.detail && (
@@ -254,7 +254,7 @@ function DownloadList({ downloads }: { downloads: Task[] }) {
     <ul data-testid="home-downloads" className="mt-3 flex flex-col gap-2">
       {downloads.map((task) => (
         <li key={task.id} className="text-sm">
-          <Link href={task.href} className="block truncate hover:underline">
+          <Link href={task.href} title={task.title} className="block truncate hover:underline">
             {task.title}
           </Link>
           {task.detail && (

@@ -80,3 +80,18 @@ describe("the twist gutter", () => {
     expect(spacer.className).not.toMatch(/\[\d+px\]/);
   });
 });
+
+describe("a row's whole name", () => {
+  const LONG = "qwen3-coder-30b-a3b-instruct-UD-Q4_K_XL-long-context-driver";
+  const tree: TreeNode = {
+    ...TREE,
+    hint: "control root unreachable",
+    children: [...TREE.children, leaf(LONG, "driver:gpu:x")],
+  };
+
+  it("is on hover, since the column cuts it where two versions differ", () => {
+    render(<ResourceTree tree={tree} localNode={null} selected={null} ready={true} />);
+    expect(screen.getByTitle(LONG)).toBeInTheDocument();
+    expect(screen.getByTitle("Eugene Plexus · control root unreachable")).toBeInTheDocument();
+  });
+});
