@@ -45,6 +45,7 @@ import {
   withSystemPrompt,
 } from "@/lib/sampling";
 import { getSessionToken } from "@/lib/session";
+import { seconds, tokenCount } from "@/lib/turnFormat";
 import { usePolling } from "@/lib/usePolling";
 import type {
   ChatCompletionMessage,
@@ -107,6 +108,9 @@ interface TurnInfo extends CompletionRoutingInfo {
   finishReason?: string | null;
   /** From the client's own clock: send to first parsed frame. */
   firstFrameMs?: number | null;
+  /** From the client's own clock: send to the end of the answer --
+   * the report's `total`, so the two can never disagree. */
+  elapsedMs?: number | null;
   /** Completion tokens over the time after the first frame — an
    * approximate decode rate measured where the person sits, not the
    * backend's own number. Null when the window is too small to mean
@@ -298,10 +302,21 @@ export default function PlaygroundPage() {
           .map((m) => m.id),
       );
       setModelsError(null);
-      setModel((current) => {
-        if (current && data.some((m) => m.id === current)) return current;
-        return data[0]?.id ?? null;
-      });
+      // The chosen model can drop out of the list -- stopped, idled out,
+      // or gone from a gateway's routes -- and the picker falls to the
+      // first one left. It used to do that silently, so the next
+      // message in a conversation went to a different model with
+      // nothing on screen saying so.
+      const current = modelRef.current;
+      const next = current && data.some((m) => m.id === current) ? current : (data[0]?.id ?? null);
+      if (current && next !== current) {
+        setNotice(
+          next
+            ? `${current} is no longer offered, so your next message goes to ${next}.`
+            : `${current} is no longer offered, and no other model is.`,
+        );
+      }
+      setModel(next);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401 && transport.kind === "proxy") return;
       setModelsError(e instanceof ApiError ? (errorMessage(e.body) ?? e.message) : String(e));
@@ -444,6 +459,7 @@ export default function PlaygroundPage() {
         completionTokens: response.usage?.completion_tokens,
         finishReason: response.choices?.[0]?.finish_reason ?? null,
         firstFrameMs: response.report.firstFrameMs,
+        elapsedMs: response.report.elapsedMs,
         tokPerSec: clientTokPerSec(
           response.usage?.completion_tokens,
           response.report.elapsedMs,
@@ -788,7 +804,7 @@ function ModelPicker({
       <p className="font-ui truncate text-[0.6875rem] text-[color:var(--muted)]">
         {selected?.owned_by ?? "unknown provider"}
         {selected?.x_eugene_plexus?.context_length != null &&
-          ` · ${selected.x_eugene_plexus.context_length.toLocaleString()} ctx`}
+          ` · ${tokenCount(selected.x_eugene_plexus.context_length)} ctx`}
         {selected?.x_eugene_plexus?.tool_calling === true && " · tools"}
         {selected?.x_eugene_plexus?.image_input === true && " · images"}
         {replicas > 1 && ` · ${replicas} replicas`}
@@ -805,20 +821,21 @@ function RoutingBar({ info }: { info: TurnInfo }) {
   if (info.driver) parts.push(`driver ${info.driver}`);
   if (info.runtime) parts.push(`runtime ${info.runtime}`);
   if (info.backend) parts.push(info.backend);
-  if (info.latency_ms != null) parts.push(`${(info.latency_ms / 1000).toFixed(1)}s`);
+  // The browser's total, as the report below spells it; the gateway's
+  // own figure is in the report, labelled as the gateway's.
+  if (info.elapsedMs != null) parts.push(`${seconds(info.elapsedMs)} total`);
   if (info.promptTokens != null && info.completionTokens != null) {
     parts.push(`${info.promptTokens}→${info.completionTokens} tok`);
   }
   // Both from this browser's clock: what the person sitting here
   // experienced, not the backend's own accounting. The rate is decode
   // only (after the first frame), and approximate — hence the tilde.
-  if (info.firstFrameMs != null)
-    parts.push(`first token ${(info.firstFrameMs / 1000).toFixed(2)}s`);
+  if (info.firstFrameMs != null) parts.push(`first token ${seconds(info.firstFrameMs)}`);
   if (info.tokPerSec != null) parts.push(`~${info.tokPerSec.toFixed(1)} tok/s`);
   // The window that applied to *this* turn, which is not the smallest
   // across every replica -- that one is on the model picker above.
   if (info.context_length != null) {
-    parts.push(`${info.context_length.toLocaleString()} ctx`);
+    parts.push(`${tokenCount(info.context_length)} ctx`);
   }
   return (
     <div className="flex items-center gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[0.6875rem] text-[color:var(--muted)]">

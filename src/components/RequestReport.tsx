@@ -5,13 +5,14 @@ import { useState } from "react";
 import { CopyButton } from "@/components/CopyButton";
 import type { RequestReport as Report } from "@/lib/completions";
 import { type PageLocation, buildCurl, explainFailure, summarizeReport } from "@/lib/diagnostic";
+import { seconds, tokenCount } from "@/lib/turnFormat";
 
 /**
  * What one request did on the wire, from this browser's side.
  *
  * The routing bar above it says what the control plane did with the
  * request; this says what the client saw -- which URL, which status,
- * how long to the first frame, how many frames -- and ends with the
+ * how long to the first token, how many frames -- and ends with the
  * `curl` line that replays the request outside a browser. Both halves
  * together are what a bug report needs, and the `curl` is what turns
  * "the playground uses the tool fine" into something a shell can check.
@@ -67,9 +68,9 @@ export function RequestReport({
               {report.truncatedBy && !report.error ? ` — cut short: ${report.truncatedBy}` : ""}
             </Row>
             <Row label="timing">
-              {report.elapsedMs !== null ? `${report.elapsedMs} ms total` : "—"}
+              {report.elapsedMs !== null ? `${seconds(report.elapsedMs)} total` : "—"}
               {report.streamed && report.firstFrameMs !== null
-                ? ` · first frame at ${report.firstFrameMs} ms`
+                ? ` · first token at ${seconds(report.firstFrameMs)}`
                 : ""}
             </Row>
             {report.streamed && (
@@ -94,8 +95,9 @@ export function RequestReport({
                   report.routing.tier != null && `tier ${report.routing.tier}`,
                   report.routing.attempts != null && `${report.routing.attempts} attempt(s)`,
                   report.routing.latency_ms != null &&
-                    `${report.routing.latency_ms} ms gateway-side`,
-                  report.routing.context_length != null && `${report.routing.context_length} ctx`,
+                    `${seconds(report.routing.latency_ms)} at the gateway`,
+                  report.routing.context_length != null &&
+                    `${tokenCount(report.routing.context_length)} ctx`,
                   report.routing.prompt_truncated === true && "INPUT TRUNCATED",
                 ]
                   .filter(Boolean)

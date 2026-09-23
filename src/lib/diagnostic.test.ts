@@ -193,7 +193,7 @@ describe("summarizeReport", () => {
       }),
     );
     expect(line).toBe(
-      "direct · HTTP 200 · 1.23s · first frame 0.11s · 79 frames · finish stop · driver ollama-qwen",
+      "direct · HTTP 200 · 1.23 s total · first token 0.11 s · 79 frames · finish stop · driver ollama-qwen",
     );
   });
   it("does not invent a status for a network failure", () => {

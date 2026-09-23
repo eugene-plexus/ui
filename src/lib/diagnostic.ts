@@ -17,6 +17,7 @@
  */
 
 import type { RequestReport } from "./completions";
+import { seconds } from "./turnFormat";
 import type { Tool } from "./types";
 
 /** What the page knows about its own address. `window.location`
@@ -316,9 +317,9 @@ export function summarizeReport(r: RequestReport): string {
   const parts: string[] = [r.mode === "direct" ? "direct" : "via agent proxy"];
   if (r.status !== null) parts.push(`HTTP ${r.status}`);
   else if (r.error) parts.push("no response");
-  if (r.elapsedMs !== null) parts.push(`${(r.elapsedMs / 1000).toFixed(2)}s`);
+  if (r.elapsedMs !== null) parts.push(`${seconds(r.elapsedMs)} total`);
   if (r.streamed && r.firstFrameMs !== null) {
-    parts.push(`first frame ${(r.firstFrameMs / 1000).toFixed(2)}s`);
+    parts.push(`first token ${seconds(r.firstFrameMs)}`);
   }
   if (r.streamed) parts.push(`${r.frames} frames`);
   if (r.toolCallDeltas > 0)

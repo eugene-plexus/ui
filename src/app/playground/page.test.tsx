@@ -14,7 +14,7 @@
  * page never takes.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -451,5 +451,87 @@ describe("Copy JSON", () => {
     expect(copied.some((m) => "generatedAt" in m)).toBe(false);
     expect(copied[0]).toEqual({ role: "system", content: "Be brief." });
     expect(copied.map((m) => m.role)).toEqual(["system", "user", "assistant"]);
+  });
+});
+
+describe("the model going away", () => {
+  const TWO = {
+    object: "list",
+    data: [
+      { id: "qwen3-14b", object: "model", created: 0, owned_by: "eugene-plexus" },
+      { id: "llama-8b", object: "model", created: 0, owned_by: "eugene-plexus" },
+    ],
+  };
+
+  it("says so when the chosen model drops out, and names the one that takes over", async () => {
+    handlers.set("GET gateway/v1/models", () => json(200, TWO));
+    handlers.set("POST gateway/v1/chat/completions", () => sse(["ok"], "stop"));
+    await renderReady();
+
+    // The poll comes round and the model this conversation was on is gone.
+    handlers.set("GET gateway/v1/models", () => json(200, { object: "list", data: [TWO.data[1]] }));
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("turn-notice")).toHaveTextContent(
+        "qwen3-14b is no longer offered, so your next message goes to llama-8b.",
+      ),
+    );
+    send("hello");
+    await waitFor(() => expect(chatCalls()).toHaveLength(1));
+    expect(chatCalls()[0]!.body!.model).toBe("llama-8b");
+  });
+});
+
+describe("one turn's numbers", () => {
+  it("the bar and the report spell the same total, the same first token and the same window", async () => {
+    handlers.set("GET gateway/v1/models", () =>
+      json(200, {
+        object: "list",
+        data: [
+          {
+            id: "qwen3-14b",
+            object: "model",
+            created: 0,
+            owned_by: "eugene-plexus",
+            x_eugene_plexus: { surfaces: ["chat"], context_length: 32768 },
+          },
+        ],
+      }),
+    );
+    handlers.set("POST gateway/v1/chat/completions", () => {
+      const frames = [
+        JSON.stringify({ choices: [{ index: 0, delta: { content: "Hi" } }] }),
+        JSON.stringify({
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 5, completion_tokens: 7 },
+          x_eugene_plexus: { driver: "qwen-driver", latency_ms: 2500, context_length: 32768 },
+        }),
+        "[DONE]",
+      ];
+      return new Response(frames.map((f) => `data: ${f}\n\n`).join(""), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    await renderReady();
+    send("hello");
+    await waitFor(() => expect(screen.getByTestId("request-report")).toBeInTheDocument());
+
+    const text = document.body.textContent ?? "";
+    // The bar, the report's summary and its timing row: one total.
+    const totals = [...text.matchAll(/(\d+\.\d\d s) total/g)].map((m) => m[1]);
+    expect(totals.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(totals).size).toBe(1);
+    // One word for the first token, and no "ms" spelling of any of it.
+    expect(text).not.toMatch(/first frame/);
+    expect(text).not.toMatch(/\d ms\b/);
+    // The gateway's own figure is labelled as the gateway's, in seconds.
+    expect(text).toContain("2.50 s at the gateway");
+    // The window reads one way wherever it is shown.
+    expect(text).toContain("32,768 ctx");
+    expect(text).not.toContain("32768 ctx");
   });
 });
