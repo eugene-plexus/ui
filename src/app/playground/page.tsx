@@ -45,6 +45,7 @@ import {
   withSystemPrompt,
 } from "@/lib/sampling";
 import { getSessionToken } from "@/lib/session";
+import { usePolling } from "@/lib/usePolling";
 import type {
   ChatCompletionMessage,
   ComponentList,
@@ -276,7 +277,7 @@ export default function PlaygroundPage() {
   // failure is a result, not an inconvenience to route around.
   const loadModels = useCallback(async () => {
     try {
-      const list = await listModels(transportRef.current);
+      const list = await listModels(transport);
       // Chat models only. The library will discover, download and launch
       // a dedicated embedding model, and the gateway now refuses one on
       // this surface with a 400 -- so offering it in the picker would be
@@ -302,19 +303,19 @@ export default function PlaygroundPage() {
         return data[0]?.id ?? null;
       });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401 && transportRef.current.kind === "proxy")
-        return;
+      if (e instanceof ApiError && e.status === 401 && transport.kind === "proxy") return;
       setModelsError(e instanceof ApiError ? (errorMessage(e.body) ?? e.message) : String(e));
     }
-  }, []);
+  }, [transport]);
 
-  useEffect(() => {
-    if (setupGate !== "ready") return;
-    if (transport.kind === "direct" && (!transport.baseUrl || !transport.key)) return;
-    void loadModels();
-    const id = setInterval(() => void loadModels(), 15000);
-    return () => clearInterval(id);
-  }, [setupGate, loadModels, transport]);
+  // Paused in a hidden tab, like every other poll here; a changed
+  // transport is a new `loadModels`, so it is asked at once.
+  usePolling(
+    loadModels,
+    15000,
+    setupGate === "ready" &&
+      !(transport.kind === "direct" && (!transport.baseUrl || !transport.key)),
+  );
 
   // Chat history stays browser-side for the first pass — the design's
   // explicit call. Durable multi-device history needs a component that

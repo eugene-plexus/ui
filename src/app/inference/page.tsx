@@ -26,6 +26,7 @@ import { loadKey, recallLoadSeconds, rememberLoadSeconds } from "@/lib/loadMemor
 import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib/nodeBudget";
 import { formatSelection } from "@/lib/resourceTree";
 import { useIssues } from "@/lib/useIssues";
+import { usePolling } from "@/lib/usePolling";
 import type {
   ComponentPlacementList,
   DriversInfo,
@@ -175,17 +176,12 @@ export default function InferencePage() {
   // Poll rather than subscribe: a runtime's status changes on the agent's
   // own readiness cadence, so there is nothing for a push channel to
   // deliver sooner, and a dashboard that reconnects a socket is one that
-  // can silently stop updating.
-  useEffect(() => {
-    void load();
-    const id = setInterval(() => void load(), POLL_MS);
-    return () => clearInterval(id);
-  }, [load]);
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), POLL_MS);
-    return () => clearInterval(id);
-  }, []);
+  // can silently stop updating. Through `usePolling`, like every other
+  // screen: this one was the last on a raw interval, and kept four
+  // endpoints busy every three seconds behind a hidden tab.
+  usePolling(load, POLL_MS);
+  const tick = useCallback(() => setNow(Date.now()), []);
+  usePolling(tick, POLL_MS);
 
   const rows = useMemo(() => (sources ? buildRows(sources, localName) : []), [sources, localName]);
   const details = useMemo(() => nodeDetails(facts), [facts]);
@@ -200,7 +196,15 @@ export default function InferencePage() {
    * whenever this screen happened to be opened.
    */
   const wasLoading = useRef(new Map<string, string>());
+  // When the previous look was taken. A load that finished while the tab
+  // was hidden is seen late, and "now minus the start" would then record
+  // the time spent away as load time -- so only a finish seen within a
+  // couple of polls of the last look is remembered.
+  const lastLook = useRef<number | null>(null);
   useEffect(() => {
+    const seenAt = Date.now();
+    const fresh = lastLook.current !== null && seenAt - lastLook.current <= 2 * POLL_MS;
+    lastLook.current = seenAt;
     const previous = wasLoading.current;
     const next = new Map<string, string>();
     for (const row of rows) {
@@ -209,12 +213,12 @@ export default function InferencePage() {
       const before = previous.get(row.key);
       const finished =
         (before === "loading" || before === "starting") && row.runtimeStatus === "ready";
-      if (!finished) continue;
+      if (!finished || !fresh) continue;
       const started = runtimeOf(row, details)?.lastRestart;
       if (!started) continue;
       const at = Date.parse(started);
       if (Number.isNaN(at)) continue;
-      rememberLoadSeconds(loadKey(row.node, row.model), (Date.now() - at) / 1000);
+      rememberLoadSeconds(loadKey(row.node, row.model), (seenAt - at) / 1000);
     }
     wasLoading.current = next;
   }, [rows, details]);

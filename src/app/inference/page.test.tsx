@@ -546,3 +546,32 @@ describe("removing a row", () => {
     confirm.mockRestore();
   });
 });
+
+describe("a hidden tab", () => {
+  it("stops asking, and asks once when it is shown again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const hidden = vi.spyOn(document, "hidden", "get");
+    try {
+      await rowFor("gemma-3-27b");
+      const driverReads = () =>
+        (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter((c) =>
+          String(c[0]).endsWith("gateway/v1/admin/drivers"),
+        ).length;
+      hidden.mockReturnValue(true);
+      const before = driverReads();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(9_000);
+      });
+      // Four endpoints every three seconds, behind a game, for nobody.
+      expect(driverReads()).toBe(before);
+      hidden.mockReturnValue(false);
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      expect(driverReads()).toBe(before + 1);
+    } finally {
+      hidden.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
