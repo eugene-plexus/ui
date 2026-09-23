@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
+  type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
@@ -167,7 +169,9 @@ export function ChatInput({
     return () => window.removeEventListener("keydown", handler);
   }, [pending, onStop]);
 
-  async function addFiles(list: FileList | null) {
+  // Reads nothing but setters and a ref, so one instance serves every
+  // render -- which is what lets the window's drop listener below call it.
+  const addFiles = useCallback(async (list: FileList | File[] | null) => {
     if (!list) return;
     const added: AttachmentText[] = [];
     const addedImages: ImageAttachment[] = [];
@@ -208,6 +212,41 @@ export function ChatInput({
     setImages((current) => [...current, ...addedImages]);
     setFileError(error);
     if (fileInput.current) fileInput.current.value = "";
+  }, []);
+
+  // **A file dropped anywhere on the page is an attachment**, not a
+  // navigation. With nothing handling it, the browser's default opened
+  // the dropped PNG or .txt in place of the playground and the typed
+  // message went with it. `dragover` has to be cancelled too, or `drop`
+  // never fires. Only file drags: text dragged between fields is left
+  // to the browser.
+  useEffect(() => {
+    const carriesFiles = (e: DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    const onDragOver = (e: DragEvent) => {
+      if (carriesFiles(e)) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();
+      if (!disabled) void addFiles(Array.from(e.dataTransfer?.files ?? []));
+    };
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [disabled, addFiles]);
+
+  // A pasted screenshot is an attachment too. Only when the clipboard
+  // holds files and no text: an Office paste carries a bitmap of the
+  // selection beside the text, and the person meant the text.
+  function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const pasted = e.clipboardData?.files;
+    if (!pasted || pasted.length === 0 || e.clipboardData.getData("text/plain") !== "") return;
+    e.preventDefault();
+    void addFiles(Array.from(pasted));
   }
 
   return (
@@ -292,11 +331,12 @@ export function ChatInput({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           rows={2}
           placeholder={
             disabled
               ? "Waiting…"
-              : "Send a message… (Enter to send, Shift+Enter for newline; attach text files or PNG/JPEG images)"
+              : "Send a message… (Enter to send, Shift+Enter for newline; attach, drop or paste text files or PNG/JPEG images)"
           }
           disabled={disabled}
           className="max-h-[calc(10lh_+_1rem_+_2px)] min-w-0 basis-full resize-none overflow-y-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50 sm:flex-1 sm:basis-auto"

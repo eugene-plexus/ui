@@ -13,7 +13,7 @@
  * and scrolls past it.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ChatInput } from "./ChatInput";
@@ -84,5 +84,49 @@ describe("an attached file's size", () => {
     await waitFor(() => expect(chip).toHaveTextContent("12 KB"));
     expect(chip).not.toHaveTextContent("12,345 bytes");
     expect(screen.getByTitle("12,345 bytes")).toBeInTheDocument();
+  });
+});
+
+describe("files that arrive without the attach button", () => {
+  const notes = () => new File(["some notes"], "notes.txt", { type: "text/plain" });
+
+  it("a file dropped on the page is attached, and the page does not navigate", async () => {
+    render(<ChatInput onSend={vi.fn()} disabled={false} />);
+    // Nothing handled a drop, so the browser opened the file in place of
+    // the playground and the typed message went with it.
+    const over = createEvent.dragOver(window, { dataTransfer: { types: ["Files"], files: [] } });
+    fireEvent(window, over);
+    expect(over.defaultPrevented).toBe(true);
+    const drop = createEvent.drop(window, {
+      dataTransfer: { types: ["Files"], files: [notes()] },
+    });
+    fireEvent(window, drop);
+    expect(drop.defaultPrevented).toBe(true);
+    expect(await screen.findByTestId("attachment-chip")).toHaveTextContent("notes.txt");
+  });
+
+  it("text dragged between fields is left to the browser", () => {
+    render(<ChatInput onSend={vi.fn()} disabled={false} />);
+    const drop = createEvent.drop(window, { dataTransfer: { types: ["text/plain"], files: [] } });
+    fireEvent(window, drop);
+    expect(drop.defaultPrevented).toBe(false);
+  });
+
+  it("a pasted file is attached, but a paste that carries text stays text", async () => {
+    render(<ChatInput onSend={vi.fn()} disabled={false} />);
+    const box = screen.getByTestId("composer");
+    const withText = createEvent.paste(box, {
+      clipboardData: { files: [notes()], getData: () => "the words" },
+    });
+    fireEvent(box, withText);
+    expect(withText.defaultPrevented).toBe(false);
+    expect(screen.queryByTestId("attachment-chip")).toBeNull();
+
+    const fileOnly = createEvent.paste(box, {
+      clipboardData: { files: [notes()], getData: () => "" },
+    });
+    fireEvent(box, fileOnly);
+    expect(fileOnly.defaultPrevented).toBe(true);
+    expect(await screen.findByTestId("attachment-chip")).toHaveTextContent("notes.txt");
   });
 });
