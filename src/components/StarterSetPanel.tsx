@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { FitBadge, formatBytes } from "@/components/FitBadge";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, describeError } from "@/lib/api";
 import { fitQuery, type NodeBudget } from "@/lib/nodeBudget";
 import {
   downloadSize,
@@ -58,6 +58,7 @@ export function StarterSetPanel({
 }) {
   const [set, setSet] = useState<StarterSet | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     // Asked once with no budget and again when the node's arrives; the
@@ -79,18 +80,28 @@ export function StarterSetPanel({
         if (err instanceof ApiError && err.status === 401) return;
         // Not a page-level error: the search box beside this still
         // works, and it is the thing to fall back to.
-        setError(err instanceof Error ? err.message : String(err));
+        setError(describeError(err));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [budget, contextLength]);
+  }, [budget, contextLength, attempt]);
 
   if (error) {
     return (
       <p className="text-sm text-[color:var(--muted)]">
         The suggested models could not be loaded ({error}). Search above for one by name.
+        <button
+          type="button"
+          onClick={() => {
+            setError(null);
+            setAttempt((n) => n + 1);
+          }}
+          className="font-ui ml-2 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
+        >
+          Try again
+        </button>
       </p>
     );
   }

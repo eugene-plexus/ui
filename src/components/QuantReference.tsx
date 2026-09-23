@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, describeError } from "@/lib/api";
 import type { QuantTable, QuantTier } from "@/lib/types";
 
 /**
@@ -34,18 +34,21 @@ export function QuantReference() {
   const [open, setOpen] = useState(false);
   const [tiers, setTiers] = useState<QuantTier[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!open || tiers !== null) return;
     void (async () => {
+      setError(null);
       try {
         const table = await api.get<QuantTable>("library", "/v1/quants");
         setTiers(table.tiers ?? []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        // The library's own sentence, not the status line.
+        setError(describeError(err));
       }
     })();
-  }, [open, tiers]);
+  }, [open, tiers, attempt]);
 
   return (
     <div className="rounded-[var(--radius)] border border-[color:var(--border)] text-sm">
@@ -73,7 +76,18 @@ export function QuantReference() {
             the larger one is better.
           </p>
 
-          {error && <p className="text-status-error">{error}</p>}
+          {error && (
+            <p role="alert" className="text-status-error">
+              {error}
+              <button
+                type="button"
+                onClick={() => setAttempt((n) => n + 1)}
+                className="font-ui ml-2 rounded-[var(--radius)] border border-current px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
+              >
+                Try again
+              </button>
+            </p>
+          )}
           {tiers === null && !error && <p className="text-[color:var(--muted)]">loading…</p>}
 
           {tiers && (

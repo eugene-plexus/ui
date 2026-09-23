@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { api } from "@/lib/api";
+import { api, describeError } from "@/lib/api";
 import type { CatalogueCard } from "@/lib/types";
 
 /**
@@ -28,6 +28,9 @@ export function ModelCard({ repo }: { repo: string }) {
   const [open, setOpen] = useState(false);
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bumped by Try again. The only retry used to be closing and reopening
+  // the panel -- and when that worked, the red error stayed above the card.
+  const [attempt, setAttempt] = useState(0);
 
   // Reset when the repo changes, or an opened card would keep showing
   // the previous model's prose under a new heading.
@@ -39,6 +42,7 @@ export function ModelCard({ repo }: { repo: string }) {
   useEffect(() => {
     if (!open || markdown !== null) return;
     void (async () => {
+      setError(null);
       try {
         const params = new URLSearchParams({ repo });
         const card = await api.get<CatalogueCard>(
@@ -47,10 +51,11 @@ export function ModelCard({ repo }: { repo: string }) {
         );
         setMarkdown(card.markdown ?? "");
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        // The library's own sentence, not "HTTP 502 Bad Gateway".
+        setError(describeError(err));
       }
     })();
-  }, [open, markdown, repo]);
+  }, [open, markdown, repo, attempt]);
 
   return (
     <div className="rounded-[var(--radius)] border border-[color:var(--border)] text-sm">
@@ -66,7 +71,14 @@ export function ModelCard({ repo }: { repo: string }) {
 
       {open && (
         <div className="border-t border-[color:var(--border)] px-3 py-3">
-          {error && <p className="text-status-error">{error}</p>}
+          {error && (
+            <p role="alert" className="text-status-error">
+              {error}
+              <button type="button" onClick={() => setAttempt((n) => n + 1)} className={RETRY}>
+                Try again
+              </button>
+            </p>
+          )}
           {markdown === null && !error && (
             <p className="text-[color:var(--muted)]">loading the model card…</p>
           )}
@@ -91,6 +103,9 @@ export function ModelCard({ repo }: { repo: string }) {
     </div>
   );
 }
+
+const RETRY =
+  "font-ui ml-2 rounded-[var(--radius)] border border-current px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]";
 
 function Card({ children }: { children: string }) {
   return (
