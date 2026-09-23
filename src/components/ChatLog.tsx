@@ -237,9 +237,13 @@ function ChatBubble({
       )}
       {/* Visible on hover and on keyboard focus. focus-within matters: a
           hover-only control is unreachable by keyboard, and these are the
-          only way to get a reply out of the playground. */}
+          only way to get a reply out of the playground. And always on a
+          touch screen: Tailwind puts `hover:` behind `(hover: hover)`, so
+          on a phone they stayed invisible -- while still taking taps, so
+          a tap beside a bubble could fire an unseen Edit (which drops
+          everything after it) or Regenerate. */}
       <div
-        className={`mt-1 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 ${
+        className={`mt-1 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100 ${
           isUser ? "flex-row-reverse" : ""
         }`}
       >
@@ -495,7 +499,7 @@ function Markdown({ children }: { children: string }) {
             <CopyButton
               text={nodeText(children)}
               title="Copy this code block"
-              className="absolute top-1.5 right-1.5 border border-[color:var(--border)] bg-[color:var(--panel)] opacity-0 transition-opacity group-hover/code:opacity-100 focus:opacity-100"
+              className="absolute top-1.5 right-1.5 border border-[color:var(--border)] bg-[color:var(--panel)] opacity-0 transition-opacity group-hover/code:opacity-100 focus:opacity-100 pointer-coarse:opacity-100"
             />
           </div>
         ),

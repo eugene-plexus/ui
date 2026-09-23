@@ -230,3 +230,14 @@ describe("a long unbroken token", () => {
     expect(bubble.className).toMatch(/(^|\s)min-w-0(\s|$)/);
   });
 });
+
+describe("a message's actions on a touch screen", () => {
+  it("are shown, since there is no hover to reveal them", () => {
+    // `hover:` only applies under (hover: hover), so on a phone the row
+    // stayed at opacity 0 and still took taps.
+    render(<ChatLog messages={[{ role: "assistant", content: "hi" }]} pending={false} />);
+    const row = screen.getByTitle("Copy this message").parentElement!;
+    expect(row.className).toMatch(/(^|\s)opacity-0(\s|$)/);
+    expect(row.className).toMatch(/(^|\s)pointer-coarse:opacity-100(\s|$)/);
+  });
+});
