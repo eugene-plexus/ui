@@ -233,7 +233,50 @@ describe("/backends/add", () => {
         /Local — Ollama could not be added/,
       ),
     );
+    // The agent's own sentence -- not advice to edit agent.yaml by hand,
+    // which every 409 used to be replaced with whatever it was about.
+    const shown = document.querySelector(".status-error")?.textContent ?? "";
+    expect(shown).toContain("a component named ollama already exists");
+    expect(shown).not.toMatch(/agent\.yaml/);
     expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
     expect(calls.map(key)).not.toContain("PATCH ollama/v1/config");
+  });
+});
+
+describe("a model the list does not have", () => {
+  async function reachThePicker() {
+    const user = userEvent.setup({ delay: null });
+    render(<AddBackendPage />);
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Which app" }),
+      "ollama_local",
+    );
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await screen.findByRole("heading", { name: "Which model?" });
+    return user;
+  }
+
+  it("can be typed in after choosing Something else", async () => {
+    const user = await reachThePicker();
+    // It stored a single space, which trims to nothing: the box never
+    // opened and the select snapped back to "Choose a model...".
+    await user.selectOptions(screen.getByLabelText("Model"), "Something else…");
+    const box = screen.getByLabelText("Model id");
+    expect(box).toHaveFocus();
+    await user.type(box, "llama3:8b");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByTestId("backend-added");
+    const patches = calls.filter((c) => key(c) === "PATCH ollama/v1/config").map((c) => c.body);
+    expect(patches.at(-1)).toEqual({ modelId: "llama3:8b" });
+  });
+
+  it("keeps the box open when it is cleared, with Save off", async () => {
+    const user = await reachThePicker();
+    await user.selectOptions(screen.getByLabelText("Model"), "Something else…");
+    const box = screen.getByLabelText("Model id");
+    await user.type(box, "x");
+    await user.clear(box);
+    expect(screen.getByLabelText("Model id")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 });

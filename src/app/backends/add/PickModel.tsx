@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 /**
  * Which model the new app should answer for.
  *
@@ -12,6 +14,9 @@
  * making the person hand-type an exact model id, which is what this
  * replaced.
  */
+
+/** The select's value for "type one in", which no model id can be. */
+const OTHER = "__other__";
 
 export function PickModel({
   driverName,
@@ -26,8 +31,21 @@ export function PickModel({
   disabled?: boolean;
   onChange: (v: string) => void;
 }) {
+  // Whether the type-in box is the choice. Held here rather than read off
+  // `value`: "Something else..." used to store a single space, which reads
+  // as empty once trimmed, so the box never opened, the select snapped
+  // back to "Choose a model..." and a model pulled after the list was read
+  // could not be entered at all -- and clearing the box closed it.
   const listed = models.includes(value);
-  const other = value.trim() !== "" && !listed;
+  const [typing, setTyping] = useState(value.trim() !== "" && !listed);
+  const other = typing || (value.trim() !== "" && !listed);
+  const typeIn = useRef<HTMLInputElement | null>(null);
+  const [focusTypeIn, setFocusTypeIn] = useState(false);
+  useEffect(() => {
+    if (!focusTypeIn) return;
+    typeIn.current?.focus();
+    setFocusTypeIn(false);
+  }, [focusTypeIn]);
 
   return (
     <>
@@ -47,9 +65,19 @@ export function PickModel({
           </p>
           <select
             id="backend-model"
-            value={other ? "__other__" : value}
+            value={other ? OTHER : value}
             disabled={disabled}
-            onChange={(e) => onChange(e.target.value === "__other__" ? " " : e.target.value)}
+            onChange={(e) => {
+              const picked = e.target.value;
+              if (picked === OTHER) {
+                setTyping(true);
+                setFocusTypeIn(true);
+                onChange("");
+              } else {
+                setTyping(false);
+                onChange(picked);
+              }
+            }}
             className={input}
           >
             <option value="">Choose a model…</option>
@@ -58,7 +86,7 @@ export function PickModel({
                 {m}
               </option>
             ))}
-            <option value="__other__">Something else…</option>
+            <option value={OTHER}>Something else…</option>
           </select>
         </div>
       )}
@@ -71,9 +99,11 @@ export function PickModel({
             Exactly as the app names it. Something pulled just now will not be in the list.
           </p>
           <input
+            ref={typeIn}
             id="backend-model-id"
             type="text"
-            value={value.trim()}
+            // Untrimmed while typing; Save trims.
+            value={value}
             disabled={disabled}
             onChange={(e) => onChange(e.target.value)}
             spellCheck={false}
