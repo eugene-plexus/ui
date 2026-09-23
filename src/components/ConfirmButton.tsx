@@ -13,7 +13,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
  *
  * Focus moves to the way OUT, not to the action: a second Enter on a
  * button that has just changed underneath the pointer should be the
- * harmless answer. Escape is the same answer.
+ * harmless answer. Escape is the same answer. And backing out puts focus
+ * back on the button that asked -- both ways out unmount the element
+ * holding it, which otherwise drops a keyboard user onto <body>.
  */
 export function ConfirmButton({
   label,
@@ -44,15 +46,27 @@ export function ConfirmButton({
 }) {
   const [asking, setAsking] = useState(false);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const returnFocus = useRef(false);
 
   useEffect(() => {
     if (asking) cancelRef.current?.focus();
+    else if (returnFocus.current) {
+      returnFocus.current = false;
+      triggerRef.current?.focus();
+    }
   }, [asking]);
+
+  function backOut() {
+    returnFocus.current = true;
+    setAsking(false);
+  }
 
   if (!asking) {
     return (
       <button
         type="button"
+        ref={triggerRef}
         onClick={() => setAsking(true)}
         disabled={disabled}
         className={className}
@@ -72,7 +86,7 @@ export function ConfirmButton({
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();
-          setAsking(false);
+          backOut();
         }
       }}
     >
@@ -92,7 +106,7 @@ export function ConfirmButton({
       <button
         type="button"
         ref={cancelRef}
-        onClick={() => setAsking(false)}
+        onClick={backOut}
         className={className}
         data-testid={testId ? `${testId}-cancel` : undefined}
       >

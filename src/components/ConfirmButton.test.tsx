@@ -40,10 +40,13 @@ describe("ConfirmButton", () => {
     fireEvent.click(screen.getByTestId("k"));
     fireEvent.click(screen.getByTestId("k-cancel"));
     expect(screen.getByTestId("k")).toBeInTheDocument();
+    // Back on the button that asked, not dropped onto the page.
+    expect(screen.getByTestId("k")).toHaveFocus();
 
     fireEvent.click(screen.getByTestId("k"));
     fireEvent.keyDown(screen.getByTestId("k-confirm"), { key: "Escape" });
     expect(screen.getByTestId("k")).toBeInTheDocument();
+    expect(screen.getByTestId("k")).toHaveFocus();
     expect(onConfirm).not.toHaveBeenCalled();
   });
 });
