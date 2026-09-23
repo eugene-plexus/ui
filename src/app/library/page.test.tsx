@@ -104,6 +104,10 @@ type Result = { status: number; body?: unknown };
 type Handler = () => Result;
 let handlers: Map<string, Handler>;
 let posted: string[];
+/** Every GET, with its query string, in the order it was sent. */
+let gets: string[];
+/** Routes whose answer never arrives, for "still asking" states. */
+let hanging: Set<string>;
 
 function ok(body: unknown): Result {
   return { status: 200, body };
@@ -132,6 +136,8 @@ function install(): Map<string, Handler> {
 beforeEach(() => {
   handlers = install();
   posted = [];
+  gets = [];
+  hanging = new Set();
   sessionStorage.clear();
   localStorage.clear();
   sessionStorage.setItem("eugene-session-token", "test-token");
@@ -142,6 +148,8 @@ beforeEach(() => {
       const path = route.split("?")[0] ?? "";
       const method = init?.method ?? "GET";
       if (method !== "GET") posted.push(`${method} ${path}`);
+      else gets.push(route);
+      if (hanging.has(`${method} ${path}`)) return new Promise<Response>(() => {});
       const handler = handlers.get(`${method} ${path}`);
       const result = handler ? handler() : { status: 418, body: { detail: `?? ${path}` } };
       return new Response(result.body === undefined ? null : JSON.stringify(result.body), {
@@ -437,5 +445,97 @@ describe("a runtime that exists but is stopped", () => {
     // Stopped frees the memory, so the prediction is about this model
     // again and is shown plainly.
     expect(screen.getByTestId("model-fit")).toHaveAttribute("data-resident", "false");
+  });
+});
+
+describe("the fit panel and the header's node picker", () => {
+  beforeEach(() => {
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
+    handlers.set("GET control/v1/nodes", () =>
+      ok({
+        nodes: [
+          { name: "Amish_Station", reachable: true },
+          {
+            name: "gpu-b",
+            reachable: true,
+            devices: [{ kind: "cuda", name: "RTX 3090", memoryFreeBytes: 20 * GIB }],
+          },
+        ],
+      }),
+    );
+    handlers.set("GET node:gpu-b/v1/engines", () =>
+      ok({ engines: [{ engine: "llama_cpp", available: true, modelFormats: ["gguf"] }] }),
+    );
+    handlers.set("GET node:gpu-b/v1/runtimes", () => ok({ runtimes: [] }));
+  });
+
+  it("scores the node the picker moves to, without another model being selected", async () => {
+    await openTheModel();
+    fireEvent.change(screen.getByLabelText("Node to score against and launch on"), {
+      target: { value: "gpu-b" },
+    });
+    // A second copy of the picker inside the panel kept scoring the first
+    // node until a different model was opened.
+    await waitFor(() =>
+      expect(gets.filter((g) => g.startsWith("library/v1/models/gemma/fit")).at(-1)).toContain(
+        `vramBytes=${20 * GIB}`,
+      ),
+    );
+  });
+
+  it("never asks for a fit before the picker has chosen a node", async () => {
+    // A node that reports its card, so its budget is not null. A fit sent
+    // before the picker answered carries no budget, and the library scores
+    // it against its own host -- which can land after the right answer.
+    handlers.set("GET agent/v1/node", () =>
+      ok({
+        enrolled: true,
+        name: "Amish_Station",
+        devices: [{ kind: "cuda", name: "RTX 5090", memoryFreeBytes: 5.6 * GIB }],
+      }),
+    );
+    await openTheModel();
+    const fits = gets.filter((g) => g.startsWith("library/v1/models/gemma/fit"));
+    expect(fits.length).toBeGreaterThan(0);
+    for (const request of fits) expect(request).toContain("vramBytes=");
+  });
+});
+
+describe("before the picked node has said which engines it has", () => {
+  beforeEach(() => {
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
+  });
+
+  it("says it is asking, and does not call the model unloadable", async () => {
+    hanging.add("GET agent/v1/engines");
+    await openTheModel();
+    expect(screen.getByTestId("engines-unknown")).toHaveTextContent(
+      "Checking which engines Amish_Station has",
+    );
+    expect(screen.queryByText(/No engine here can load/)).toBeNull();
+    expect(screen.queryByText("no engine")).toBeNull();
+  });
+
+  it("says the question failed, rather than that there is no engine", async () => {
+    handlers.set("GET agent/v1/engines", () => ({
+      status: 502,
+      body: { detail: "Amish_Station did not answer." },
+    }));
+    await openTheModel();
+    const line = await screen.findByRole("alert");
+    expect(line).toHaveTextContent("Could not ask Amish_Station which engines it has");
+    expect(line).toHaveTextContent("Amish_Station did not answer.");
+    expect(screen.queryByText(/No engine here can load/)).toBeNull();
+    expect(screen.queryByText("no engine")).toBeNull();
+  });
+});
+
+describe("sizes", () => {
+  it("are decimal, the unit the download and the hub quoted", async () => {
+    await openTheModel();
+    // 23,800,000,000 bytes read "22.2 GB" here and "23.80 GB" on Discover.
+    expect(screen.queryByText(/22\.2 GB/)).toBeNull();
+    expect(screen.getAllByText("24 GB").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByTitle("23,800,000,000 bytes").length).toBeGreaterThanOrEqual(2);
   });
 });

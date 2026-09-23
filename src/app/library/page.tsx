@@ -14,8 +14,9 @@ import { NodePicker } from "@/components/NodePicker";
 import { RunButton } from "@/components/RunButton";
 import { ApiError, api, describeError } from "@/lib/api";
 import { capableEngines } from "@/lib/engineCompat";
-import { type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
+import { type NodeBudget, type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
+import { formatBytesShort } from "@/lib/tasks";
 import { usePolling } from "@/lib/usePolling";
 import type {
   EngineDescriptor,
@@ -88,6 +89,10 @@ function LibraryPageInner() {
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
   const [scan, setScan] = useState<Scan | null>(null);
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
+  // A failed engine read is not "this node has no engines": treating it
+  // as one put "no engine" on every row and hid Run whenever the picked
+  // node was slow or down.
+  const [enginesError, setEnginesError] = useState<string | null>(null);
   // What the picked node has LOADED, which neither the library nor the
   // engine list knows -- and without it this page told Troy a model that
   // was serving on Amish_Station would not fit there, and offered to
@@ -156,12 +161,17 @@ function LibraryPageInner() {
   useEffect(() => {
     if (target === null) return;
     let cancelled = false;
+    // Unknown again while the new node is asked, so the previous node's
+    // engines are never shown as this one's.
+    setEngines(null);
+    setEnginesError(null);
     void (async () => {
       try {
         const list = await api.get<EngineList>(target, "/v1/engines");
         if (!cancelled) setEngines(list.engines ?? []);
-      } catch {
-        if (!cancelled) setEngines([]);
+      } catch (err) {
+        if (cancelled || (err instanceof ApiError && err.status === 401)) return;
+        setEnginesError(describeError(err));
       }
     })();
     return () => {
@@ -239,9 +249,12 @@ function LibraryPageInner() {
   // an adapter. Not filtered by `available`: an engine that is merely
   // not installed yet is a different problem from one that could never
   // load this format, and they deserve different messages.
+  // Null while the answer is not in: a row says "no engine" only once the
+  // node has actually said so.
   const loadableFormats = useMemo(() => {
+    if (engines === null) return null;
     const out = new Set<string>();
-    for (const e of engines ?? []) for (const f of e.modelFormats ?? []) out.add(f);
+    for (const e of engines) for (const f of e.modelFormats ?? []) out.add(f);
     return out;
   }, [engines]);
 
@@ -326,7 +339,8 @@ function LibraryPageInner() {
               <ModelDetail
                 key={current.id}
                 model={current}
-                engines={engines ?? []}
+                engines={engines}
+                enginesError={enginesError}
                 node={picker.selected}
                 runtimes={runtimes}
                 onChanged={() => void loadModels()}
@@ -428,7 +442,8 @@ function ModelList({
   models: LibraryModel[] | null;
   selected: string | null;
   onSelect: (id: string) => void;
-  loadableFormats: Set<string>;
+  /** Null while the picked node's engines are not known yet. */
+  loadableFormats: Set<string> | null;
   /** The picked node's runtimes, so a running model is visible without
    * clicking it -- the list is where someone scanning for "which of
    * these is up" looks first. */
@@ -510,7 +525,7 @@ function ModelList({
         </div>
       )}
       {shown.map((m) => {
-        const unloadable = !loadableFormats.has(m.format);
+        const unloadable = loadableFormats !== null && !loadableFormats.has(m.format);
         const live = runningModel(m, runtimes);
         return (
           <button
@@ -547,7 +562,11 @@ function ModelList({
               <span className="font-mono">{m.format}</span>
               {m.gguf?.quantization && <span className="font-mono">{m.gguf.quantization}</span>}
               {m.sizeLabel && <span>{m.sizeLabel}</span>}
-              {m.sizeBytes != null && <span>{formatBytes(m.sizeBytes)}</span>}
+              {m.sizeBytes != null && (
+                <span title={`${m.sizeBytes.toLocaleString()} bytes`}>
+                  {formatBytesShort(m.sizeBytes)}
+                </span>
+              )}
               {m.capabilities?.embedding && <span>embedding</span>}
               {m.capabilities?.vision && <span>vision</span>}
               {(m.profileCount ?? 0) > 0 && (
@@ -641,13 +660,17 @@ function SkippedPanel({ scan }: { scan: Scan }) {
 function ModelDetail({
   model,
   engines,
+  enginesError,
   node,
   runtimes,
   onChanged,
   onRuntimesChanged,
 }: {
   model: LibraryModel;
-  engines: EngineDescriptor[];
+  /** Null while the picked node has not said which engines it has. */
+  engines: EngineDescriptor[] | null;
+  /** Why the engine read failed, when it did. */
+  enginesError: string | null;
   node: TargetNode | null;
   /** What the picked node is running, so this page does not offer to
    * start something that is already up. */
@@ -662,7 +685,8 @@ function ModelDetail({
   // join lives in lib/engineCompat: format first, and an MLX-quantized
   // directory narrows to the MLX engine (integer-packed weights nothing
   // else loads).
-  const capable = capableEngines(model, engines);
+  const enginesKnown = engines !== null;
+  const capable = capableEngines(model, engines ?? []);
   const usable = capable.filter((e) => e.available);
 
   const running = runningModel(model, runtimes);
@@ -750,12 +774,38 @@ function ModelDetail({
 
       <Facts model={model} />
 
-      {model.status === "present" && <FitPanel model={model} running={running} where={where} />}
+      {model.status === "present" && (
+        <FitPanel
+          model={model}
+          running={running}
+          where={where}
+          budget={node?.budget ?? null}
+          ready={node !== null}
+        />
+      )}
+
+      {/* Nothing below is said about engines until the node has answered:
+          "no engine can load this" was printed, and Run hidden, for as
+          long as the question was in flight -- and for good when it
+          failed. */}
+      {!enginesKnown && (
+        <p
+          data-testid="engines-unknown"
+          role={enginesError ? "alert" : "status"}
+          className={`rounded-[var(--radius)] border px-3 py-2 text-sm ${
+            enginesError ? "status-error" : "border-[color:var(--border)] text-[color:var(--muted)]"
+          }`}
+        >
+          {enginesError
+            ? `Could not ask ${where} which engines it has: ${enginesError}`
+            : `Checking which engines ${where} has…`}
+        </p>
+      )}
 
       {/* The format/engine join. Two distinct answers: no adapter exists
           for this format at all, or one does but no binary is installed.
           Since S3 the second is not a detour: Run asks to install it. */}
-      {capable.length === 0 ? (
+      {!enginesKnown ? null : capable.length === 0 ? (
         <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
           No engine here can load a <span className="font-mono">{model.format}</span> model.
           llama.cpp reads GGUF only; safetensors needs vLLM, which is installed by hand. You can
@@ -784,7 +834,7 @@ function ModelDetail({
           "start a second copy on the same card" is an expert's
           deliberate act -- so it moves out of the primary slot rather
           than disappearing (`easy-default-expert-override`). */}
-      {model.status === "present" && capable.length > 0 && (
+      {model.status === "present" && enginesKnown && capable.length > 0 && (
         <div data-testid="model-run">
           {running && !running.stopped ? (
             <RunningPanel
@@ -953,38 +1003,51 @@ function FitPanel({
   model,
   running,
   where,
+  budget,
+  ready,
 }: {
   model: LibraryModel;
   /** What the picked node is doing with it. Null means nothing. */
   running: RunningModel | null;
   where: string;
+  /** The memory of the node picked in the header. */
+  budget: NodeBudget | null;
+  /** False until the header's picker has resolved a node. */
+  ready: boolean;
 }) {
   const [fit, setFit] = useState<ModelFit | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
   // Whose memory this is about: the node picked in the header, which is
-  // also where Launch goes -- see `nodeBudget.ts`.
-  const { budget } = useTargetNode();
-
+  // also where Launch goes -- see `nodeBudget.ts`. Handed down rather
+  // than read from a second `useTargetNode()`: that copy read the
+  // remembered node once, so switching the header picker left this panel
+  // scoring the previous machine until another model was selected. It
+  // waits for the picker too -- a request with no budget is scored
+  // against the library's own host, and could land after the right one.
   useEffect(() => {
     setFit(null);
     setError(null);
+    if (!ready) return;
+    let cancelled = false;
     void (async () => {
       try {
         const params = new URLSearchParams(fitQuery(budget)).toString();
-        setFit(
-          await api.get<ModelFit>(
-            "library",
-            `/v1/models/${encodeURIComponent(model.id)}/fit${params ? `?${params}` : ""}`,
-          ),
+        const answer = await api.get<ModelFit>(
+          "library",
+          `/v1/models/${encodeURIComponent(model.id)}/fit${params ? `?${params}` : ""}`,
         );
+        if (!cancelled) setFit(answer);
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) return;
+        if (cancelled || (err instanceof ApiError && err.status === 401)) return;
         setError(describeError(err));
       }
     })();
-  }, [model.id, budget]);
+    return () => {
+      cancelled = true;
+    };
+  }, [model.id, budget, ready]);
 
   if (error) {
     return <p className="text-sm text-[color:var(--muted)]">could not measure fit: {error}</p>;
@@ -1165,7 +1228,10 @@ function Facts({ model }: { model: LibraryModel }) {
 
       {model.sizeBytes != null && (
         <Row label="on disk">
-          {formatBytes(model.sizeBytes)} across {model.fileCount ?? 1} file
+          <span title={`${model.sizeBytes.toLocaleString()} bytes`}>
+            {formatBytesShort(model.sizeBytes)}
+          </span>{" "}
+          across {model.fileCount ?? 1} file
           {(model.fileCount ?? 1) === 1 ? "" : "s"}
         </Row>
       )}
@@ -1222,13 +1288,6 @@ function engineName(engine: string): string {
 
 function round(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} B`;
 }
 
 function relativeAge(iso: string): string {
