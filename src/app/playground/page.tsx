@@ -658,7 +658,10 @@ export default function PlaygroundPage() {
         {turnInfo && <RoutingBar info={turnInfo} />}
         {report && <RequestReport report={report} page={page} apiKey={apiKey || null} />}
         {error && (
-          <div className="status-error flex items-center gap-3 border-t px-4 py-2 text-sm">
+          <div
+            role="alert"
+            className="status-error flex items-center gap-3 border-t px-4 py-2 text-sm"
+          >
             <span className="min-w-0 flex-1">{error}</span>
             {canRetry && (
               <button

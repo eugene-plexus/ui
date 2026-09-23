@@ -79,7 +79,16 @@ export function ChatLog({
 
   return (
     <div className="relative h-full">
-      <div ref={scrollRef} className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+      {/* A log, so a screen reader hears each new turn -- it heard
+          nothing at all before. Busy while an answer streams, so it is
+          read once, when it is finished, rather than token by token. */}
+      <div
+        ref={scrollRef}
+        role="log"
+        aria-label="Conversation"
+        aria-busy={pending}
+        className="flex h-full flex-col gap-4 overflow-y-auto p-4"
+      >
         {visible.map((msg, i) => (
           <ChatBubble
             key={i}
@@ -112,8 +121,12 @@ export function ChatLog({
             onSubmit={onToolResults}
           />
         )}
-        {pending && (
-          <p className="font-ui text-sm text-[color:var(--muted)]">Waiting on the backend…</p>
+        {/* Only until the answer starts: it sat under a reply that was
+            visibly streaming, saying the opposite of what was on screen. */}
+        {pending && last?.role !== "assistant" && (
+          <p role="status" className="font-ui text-sm text-[color:var(--muted)]">
+            Waiting on the backend…
+          </p>
         )}
       </div>
       {!isAtBottom && <JumpToBottomButton onClick={scrollToBottom} />}

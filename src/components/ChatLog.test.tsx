@@ -241,3 +241,40 @@ describe("a message's actions on a touch screen", () => {
     expect(row.className).toMatch(/(^|\s)pointer-coarse:opacity-100(\s|$)/);
   });
 });
+
+describe("the conversation, to a screen reader", () => {
+  it("is a log, busy while an answer is still arriving", () => {
+    const { rerender } = render(
+      <ChatLog messages={[{ role: "user", content: "hi" }]} pending={true} />,
+    );
+    const log = screen.getByRole("log", { name: "Conversation" });
+    expect(log).toHaveAttribute("aria-busy", "true");
+    rerender(
+      <ChatLog
+        messages={[
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "hello" },
+        ]}
+        pending={false}
+      />,
+    );
+    expect(log).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("says it is waiting only until the answer starts", () => {
+    const { rerender } = render(
+      <ChatLog messages={[{ role: "user", content: "hi" }]} pending={true} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Waiting on the backend");
+    rerender(
+      <ChatLog
+        messages={[
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "Half an ans" },
+        ]}
+        pending={true}
+      />,
+    );
+    expect(screen.queryByText(/Waiting on the backend/)).toBeNull();
+  });
+});
