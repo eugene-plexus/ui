@@ -123,6 +123,9 @@ function DiscoverPageInner() {
   // pasted reference and `results` holds that one repo.
   const [interpreted, setInterpreted] = useState<"search" | "repo">("search");
   const [starterBusy, setStarterBusy] = useState<string | null>(null);
+  // The starter card's own refusal, shown on the card that was pressed.
+  // It went to the search results' error line, in the other column.
+  const [starterError, setStarterError] = useState<string | null>(null);
 
   const [hardware, setHardware] = useState<HostHardware | null>(null);
   // Whose memory the verdicts are about: the chosen node's, defaulting
@@ -131,6 +134,16 @@ function DiscoverPageInner() {
   // machine -- see `nodeBudget.ts`.
   const { nodes, selected, select, budget } = useTargetNode();
   const { downloads, reload: reloadDownloads, active } = useDownloads();
+  // Files a transfer is writing right now, by their path in the repo.
+  const inFlightFiles = useMemo(
+    () =>
+      new Set(
+        downloads
+          .filter((d) => !["done", "failed", "cancelled"].includes(d.state))
+          .flatMap((d) => d.files.map((f) => f.path)),
+      ),
+    [downloads],
+  );
   const [showDownloads, setShowDownloads] = useState(true);
 
   useEffect(() => {
@@ -238,7 +251,7 @@ function DiscoverPageInner() {
   const downloadStarter = useCallback(
     async (model: StarterModel) => {
       setStarterBusy(model.repo);
-      setSearchError(null);
+      setStarterError(null);
       try {
         await api.post("library", "/v1/downloads", {
           repo: model.repo,
@@ -246,9 +259,13 @@ function DiscoverPageInner() {
           files: [model.file],
         });
         setShowDownloads(true);
-        reloadDownloads();
+        // Waited for, so the button stays busy until the list carries the
+        // transfer and the card can say it is downloading: clearing busy
+        // first left "Download 9.1 GB" pressable, and a second press met
+        // the library's "another download is already writing" 409.
+        await reloadDownloads();
       } catch (err) {
-        setSearchError(describeError(err));
+        setStarterError(describeError(err));
       } finally {
         setStarterBusy(null);
       }
@@ -333,6 +350,8 @@ function DiscoverPageInner() {
                 hardware={hardware}
                 contextLength={contextLength}
                 busy={starterBusy}
+                inFlight={inFlightFiles}
+                error={starterError}
                 onDownload={downloadStarter}
                 onOpenRepo={setSelectedRepo}
               />
@@ -563,6 +582,8 @@ function EmptyDetail({
   hardware,
   contextLength,
   busy,
+  inFlight,
+  error,
   onDownload,
   onOpenRepo,
 }: {
@@ -570,6 +591,8 @@ function EmptyDetail({
   hardware: HostHardware | null;
   contextLength: number;
   busy: string | null;
+  inFlight: Set<string>;
+  error: string | null;
   onDownload: (model: StarterModel) => void;
   onOpenRepo: (repo: string) => void;
 }) {
@@ -580,6 +603,8 @@ function EmptyDetail({
         budget={budget}
         contextLength={contextLength}
         busy={busy}
+        inFlight={inFlight}
+        error={error}
         onDownload={onDownload}
         onOpenRepo={onOpenRepo}
       />

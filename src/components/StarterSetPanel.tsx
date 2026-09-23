@@ -38,6 +38,8 @@ export function StarterSetPanel({
   budget,
   contextLength,
   busy,
+  inFlight = new Set<string>(),
+  error: downloadError = null,
   onDownload,
   onOpenRepo,
 }: {
@@ -45,6 +47,12 @@ export function StarterSetPanel({
   contextLength: number;
   /** The repo currently downloading, if any, so its button says so. */
   busy: string | null;
+  /** Files a transfer is writing now. A suggestion whose file is among
+   * them is not offered again: the card used to forget, the moment the
+   * request returned, that it had started one. */
+  inFlight?: Set<string>;
+  /** Why the last Download from this panel was refused. */
+  error?: string | null;
   onDownload: (model: StarterModel) => void;
   onOpenRepo: (repo: string) => void;
 }) {
@@ -106,7 +114,7 @@ export function StarterSetPanel({
             <button
               type="button"
               onClick={() => onDownload(pick)}
-              disabled={busy !== null || !!pick.alreadyOwned}
+              disabled={busy !== null || !!pick.alreadyOwned || inFlight.has(pick.file)}
               className={primary}
               data-testid="starter-download"
             >
@@ -114,12 +122,23 @@ export function StarterSetPanel({
                 ? "Already on disk"
                 : busy === pick.repo
                   ? "starting…"
-                  : `Download ${downloadSize(pick.sizeBytes)}`}
+                  : inFlight.has(pick.file)
+                    ? "Downloading…"
+                    : `Download ${downloadSize(pick.sizeBytes)}`}
             </button>
             <button type="button" onClick={() => onOpenRepo(pick.repo)} className={secondary}>
               Choose another version
             </button>
           </div>
+          {downloadError && (
+            <p
+              role="alert"
+              data-testid="starter-error"
+              className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
+            >
+              {downloadError}
+            </p>
+          )}
         </section>
       ) : (
         <section className="status-warn rounded-[var(--radius)] border px-4 py-3 text-sm">
@@ -173,10 +192,14 @@ export function StarterSetPanel({
                   <button
                     type="button"
                     onClick={() => onDownload(model)}
-                    disabled={busy !== null || !!model.alreadyOwned}
+                    disabled={busy !== null || !!model.alreadyOwned || inFlight.has(model.file)}
                     className={smallButton}
                   >
-                    {model.alreadyOwned ? "on disk" : "download"}
+                    {model.alreadyOwned
+                      ? "on disk"
+                      : inFlight.has(model.file)
+                        ? "downloading"
+                        : "download"}
                   </button>
                 </div>
               </div>

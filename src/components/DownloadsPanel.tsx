@@ -343,7 +343,13 @@ const smallButton =
  * the library page, so a transfer started on one is visible on the other
  * — a download outlives the screen it was started from.
  */
-export function useDownloads(): { downloads: Download[]; reload: () => void; active: number } {
+export function useDownloads(): {
+  downloads: Download[];
+  /** Resolves once the list has been read again, so a caller can wait
+   * for a download it just started to be on it. */
+  reload: () => Promise<void>;
+  active: number;
+} {
   const [downloads, setDownloads] = useState<Download[]>([]);
 
   const reload = useCallback(async () => {
@@ -369,5 +375,5 @@ export function useDownloads(): { downloads: Download[]; reload: () => void; act
     return () => clearInterval(id);
   }, [active, reload]);
 
-  return { downloads, reload: () => void reload(), active };
+  return { downloads, reload, active };
 }

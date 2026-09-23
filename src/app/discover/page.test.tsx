@@ -545,3 +545,66 @@ describe("selection and preferences survive", () => {
     expect(lastQuery("library/v1/catalogue/search").get("format")).toBeNull();
   });
 });
+
+describe("the starter set's Download", () => {
+  const STARTER_FILE = "Qwen3.8-27B-UD-Q4_K_M.gguf";
+  beforeEach(() => {
+    handlers.set("GET library/v1/catalogue/starter", () =>
+      ok({
+        reviewed: "2026-09-16",
+        reviewedDaysAgo: 0,
+        source: "shipped",
+        models: [
+          {
+            sizeClass: "30B",
+            baseModel: "Qwen/Qwen3.8-27B",
+            repo: REPO,
+            file: STARTER_FILE,
+            label: "UD-Q4_K_M",
+            sizeBytes: WEIGHTS,
+            why: "most downloaded in its class",
+          },
+        ],
+        recommended: { sizeClass: "30B", reason: "The largest that runs in GPU memory here." },
+      }),
+    );
+  });
+
+  it("is not offered again while that file is downloading", async () => {
+    handlers.set("GET library/v1/downloads", () =>
+      ok({
+        downloads: [
+          {
+            id: "d1",
+            repo: REPO,
+            state: "downloading",
+            files: [{ path: STARTER_FILE, destinationPath: "", state: "downloading" }],
+            bytesTotal: WEIGHTS,
+            bytesDownloaded: 1,
+          },
+        ],
+      }),
+    );
+    render(<DiscoverPage />);
+    // It forgot, the moment its request returned, that it had started one.
+    await waitFor(() => expect(screen.getByTestId("starter-download")).toBeDisabled(), {
+      timeout: 5000,
+    });
+    expect(screen.getByTestId("starter-download")).toHaveTextContent("Downloading…");
+  });
+
+  it("says a refusal on its own card, not in the search results", async () => {
+    handlers.set("POST library/v1/downloads", () => ({
+      status: 409,
+      body: { detail: { title: "Busy", detail: "Another download is already writing that file." } },
+    }));
+    render(<DiscoverPage />);
+    const button = await screen.findByTestId("starter-download", {}, { timeout: 5000 });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(await screen.findByTestId("starter-error")).toHaveTextContent(
+      "Another download is already writing that file.",
+    );
+  });
+});
