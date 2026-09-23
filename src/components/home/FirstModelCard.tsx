@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 
 import { RunButton } from "@/components/RunButton";
 import type { FirstModelState } from "@/lib/home";
@@ -189,11 +188,12 @@ function SuggestedModelCard({
   node: TargetNode;
   onDownloadStarted?: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const started = downloads.length > 0;
+  // Under way unless every row has failed, so a chain that failed can be
+  // started again from here -- its row, with the reason, stays in the
+  // list below until it is dismissed from the tray.
+  const started = downloads.some((t) => t.tone !== "error");
 
   function downloadAndRun() {
-    setBusy(true);
     // One action, one task: the download, the engine question, the
     // profile and the launch are one tray entry from here (§6.3). The
     // store owns the failure from this point, so there is no local
@@ -208,7 +208,6 @@ function SuggestedModelCard({
       node,
     );
     onDownloadStarted?.();
-    setBusy(false);
   }
 
   return (
@@ -227,15 +226,11 @@ function SuggestedModelCard({
         <button
           type="button"
           onClick={downloadAndRun}
-          disabled={busy || started}
+          disabled={started}
           className={primary}
           data-testid="home-primary"
         >
-          {started
-            ? "Getting it…"
-            : busy
-              ? "Starting…"
-              : `Download and run · ${downloadSize(model.sizeBytes)}`}
+          {started ? "Getting it…" : `Download and run · ${downloadSize(model.sizeBytes)}`}
         </button>
         <Link href="/discover" className={tertiary}>
           Choose a different model

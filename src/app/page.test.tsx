@@ -160,7 +160,9 @@ beforeEach(() => {
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
       };
       recorder.push(call);
-      const handler = routes.get(key(call));
+      // An exact route first, then the path without its query string.
+      const handler =
+        routes.get(key(call)) ?? routes.get(`${call.method} ${call.route.split("?")[0]}`);
       const result = handler
         ? handler()
         : { status: 418, body: { detail: { title: `unhandled route: ${key(call)}` } } };
@@ -972,5 +974,58 @@ describe("unlocking the control root from Home", () => {
 
     await waitFor(() => expect(card).toHaveAttribute("data-issue-count", "0"));
     expect(card).toHaveTextContent("Nothing.");
+  });
+});
+
+describe("Home's Download and run", () => {
+  const STARTER = {
+    reviewed: "2026-09-16",
+    reviewedDaysAgo: 0,
+    source: "shipped",
+    models: [
+      {
+        sizeClass: "30B",
+        baseModel: "Qwen/Qwen3.8-27B",
+        repo: "unsloth/Qwen3.8-27B-GGUF",
+        file: "Qwen3.8-27B-UD-Q4_K_M.gguf",
+        label: "UD-Q4_K_M",
+        sizeBytes: 16464440224,
+        why: "most downloaded in its class",
+      },
+    ],
+    recommended: {
+      sizeClass: "30B",
+      reason: "Qwen/Qwen3.8-27B is the largest of these that runs entirely in GPU memory.",
+    },
+  };
+
+  beforeEach(() => {
+    handlers.set("GET library/v1/catalogue/starter", () => ({ status: 200, body: STARTER }));
+    handlers.set("POST library/v1/downloads", () => ({
+      status: 201,
+      body: {
+        id: "dl-7",
+        state: "downloading",
+        repo: STARTER.models[0]!.repo,
+        files: [{ path: STARTER.models[0]!.file, destinationPath: "", state: "downloading" }],
+        bytesTotal: 16464440224,
+        bytesDownloaded: 0,
+      },
+    }));
+  });
+
+  it("says it is getting the model, in the card, once pressed", async () => {
+    render(<HomePage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("home-primary")).toHaveTextContent("Download and run"),
+    );
+    fireEvent.click(screen.getByTestId("home-primary"));
+    // The chain's row claims its download's, so a card that listed only
+    // download rows went blank -- and kept its button -- once it started.
+    await waitFor(() => expect(screen.getByTestId("home-primary")).toBeDisabled());
+    expect(screen.getByTestId("home-primary")).toHaveTextContent("Getting it…");
+    expect(await screen.findByTestId("home-downloads")).toHaveTextContent(
+      "to run on Amish_Station",
+    );
   });
 });

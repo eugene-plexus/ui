@@ -361,12 +361,25 @@ export interface RunDownloadSpec {
  * Keyed by the DOWNLOAD's id, because the model has none until the file
  * lands.
  */
+/** The id prefix of a run that began with a download (`startDownloadAndRun`). */
+const DOWNLOAD_AND_RUN = "dl:";
+
+/**
+ * Whether a tray task is a "download and run" chain. Such a run CLAIMS
+ * its download's row for the whole transfer (one entry, §6.3), so a
+ * screen that shows downloads has to show these as well or it shows
+ * nothing at all while one is under way.
+ */
+export function isDownloadAndRun(task: { kind: string; id: string }): boolean {
+  return task.kind === "run" && task.id.startsWith(DOWNLOAD_AND_RUN);
+}
+
 export function startDownloadAndRun(
   spec: RunDownloadSpec,
   node: TargetNode,
   options: RunOptions = {},
 ): string {
-  const id = `dl:${spec.repo}/${spec.file}@${node.target}`;
+  const id = `${DOWNLOAD_AND_RUN}${spec.repo}/${spec.file}@${node.target}`;
   const existing = tasks.get(id);
   if (existing && !isTerminal(existing.step)) return id;
   dismissRun(id);

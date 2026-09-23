@@ -17,7 +17,7 @@ import { guessGatewayBaseUrl } from "@/lib/diagnostic";
 import { chatModels, firstModelState, machineStrip } from "@/lib/home";
 import { type Sources, buildRows } from "@/lib/inferenceRows";
 import { budgetFromNode, fitQuery, localTargetNode } from "@/lib/nodeBudget";
-import { getRuns, resumeClaimedRuns } from "@/lib/oneClickRun";
+import { getRuns, isDownloadAndRun, resumeClaimedRuns } from "@/lib/oneClickRun";
 import type {
   ComponentList,
   ComponentPlacementList,
@@ -215,7 +215,14 @@ export default function HomePage() {
     () => (sources ? buildRows(sources, node?.name ?? null) : []),
     [sources, node],
   );
-  const downloads = useMemo(() => tasks.filter((t) => t.kind === "download"), [tasks]);
+  // Downloads, and the "download and run" chains that claim them: the
+  // chain's row replaces its download's in the task list for the whole
+  // transfer, so filtering on `download` alone left the card blank -- and
+  // its button enabled -- from the moment one was started.
+  const downloads = useMemo(
+    () => tasks.filter((t) => t.kind === "download" || isDownloadAndRun(t)),
+    [tasks],
+  );
   // The address a harness would use, guessed the same way the playground's
   // diagnostic panel guesses it — and, like there, labelled a guess and
   // correctable, because a container that publishes 8080 as 8280 makes it
