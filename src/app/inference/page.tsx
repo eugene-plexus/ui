@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { ApiError, api, describeError } from "@/lib/api";
 import { offeredOnThisNode } from "@/lib/engineCompat";
 import { describeControlRoot } from "@/lib/controlRoot";
@@ -247,19 +248,9 @@ export default function InferencePage() {
    * removed an Ollama by killing its process and the supervisor put it
    * back, which is what supervision is for.
    */
+  // Asked inline by the row's own button (`ConfirmButton`), the way every
+  // other irreversible action here asks -- this was the browser's modal.
   async function remove(row: Row) {
-    const what = row.runtime
-      ? `the runtime "${row.runtime}"${row.driver ? ` and its driver "${row.driver}"` : ""}`
-      : `the driver "${row.driver}"`;
-    const confirmed = window.confirm(
-      `Remove ${what}${row.node ? ` from ${row.node}` : ""}?
-
-` +
-        (row.runtime
-          ? "The engine process is stopped and the model is no longer served. The model files stay where they are."
-          : "The gateway stops routing to it. Whatever it fronts is untouched -- only this install's knowledge of it goes."),
-    );
-    if (!confirmed) return;
     const key = `${row.node ?? ""}/${row.runtime ?? row.driver ?? ""}:remove`;
     setBusy(key);
     setActionError(null);
@@ -728,15 +719,17 @@ function RowView({
             >
               {busy === `${prefix}restart` ? "…" : "restart"}
             </button>
-            <button
-              type="button"
-              onClick={() => onRemove(row)}
-              disabled={busy !== null}
-              className={`${dangerButton} ml-1`}
-              title="Stops the engine and forgets the runtime and its driver. The model files stay."
-            >
-              {busy === `${prefix}remove` ? "…" : "remove"}
-            </button>
+            <span className="ml-1 inline-block">
+              <ConfirmButton
+                label={busy === `${prefix}remove` ? "…" : "remove"}
+                prompt="The engine stops; the model files stay."
+                onConfirm={() => onRemove(row)}
+                disabled={busy !== null}
+                className={dangerButton}
+                title="Stops the engine and forgets the runtime and its driver. The model files stay."
+                testId="remove-row"
+              />
+            </span>
           </>
         ) : (
           row.driver && (
@@ -755,15 +748,17 @@ function RowView({
               >
                 config
               </Link>
-              <button
-                type="button"
-                onClick={() => onRemove(row)}
-                disabled={busy !== null}
-                className={`${dangerButton} ml-1`}
-                title="Forgets this driver and stops its process. The backend it fronts is untouched."
-              >
-                {busy === `${row.node ?? ""}/${row.driver}:remove` ? "…" : "remove"}
-              </button>
+              <span className="ml-1 inline-block">
+                <ConfirmButton
+                  label={busy === `${row.node ?? ""}/${row.driver}:remove` ? "…" : "remove"}
+                  prompt="The app it fronts is untouched."
+                  onConfirm={() => onRemove(row)}
+                  disabled={busy !== null}
+                  className={dangerButton}
+                  title="Forgets this driver and stops its process. The backend it fronts is untouched."
+                  testId="remove-row"
+                />
+              </span>
             </>
           )
         )}

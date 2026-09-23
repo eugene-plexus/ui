@@ -523,3 +523,26 @@ describe("how long a model has sat idle", () => {
     expect(row).not.toHaveTextContent("5423s");
   });
 });
+
+describe("removing a row", () => {
+  it("asks inline, not with the browser's dialog, and removes on the second click", async () => {
+    const confirm = vi.spyOn(window, "confirm");
+    let deleted = 0;
+    handlers.set("DELETE agent/v1/runtimes/gemma-a", () => {
+      deleted += 1;
+      return { status: 204 };
+    });
+    const row = await rowFor("gemma-3-27b");
+    await act(async () => {
+      within(row).getByTestId("remove-row").click();
+    });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(deleted).toBe(0);
+    expect(row).toHaveTextContent("The engine stops; the model files stay.");
+    await act(async () => {
+      within(row).getByTestId("remove-row-confirm").click();
+    });
+    await waitFor(() => expect(deleted).toBe(1));
+    confirm.mockRestore();
+  });
+});

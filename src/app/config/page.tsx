@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ConfigEditor } from "@/components/ConfigEditor";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { UIPreferences } from "@/components/UIPreferences";
 import { api, describeError } from "@/lib/api";
 import { targetFor } from "@/lib/nodeBudget";
@@ -136,13 +137,6 @@ function ConfigPageInner() {
    */
   async function removeDriver() {
     if (!selection || selection.type !== "driver" || !selection.name) return;
-    const confirmed = window.confirm(
-      `Remove the driver "${selection.name}"${node ? ` from ${node}` : ""}?\n\n` +
-        "Its process is stopped and the gateway stops routing to it. Whatever it fronts " +
-        "(an Ollama, a cloud CLI, an engine you run yourself) is untouched -- only this " +
-        "install's knowledge of it goes.",
-    );
-    if (!confirmed) return;
     setRemoving(true);
     setRemoveError(null);
     try {
@@ -163,7 +157,9 @@ function ConfigPageInner() {
     <AppShell>
       <div className="flex min-h-0 flex-1 flex-col">
         {removeError && (
-          <div className="status-error border-b px-4 py-2 text-sm">{removeError}</div>
+          <div role="alert" className="status-error border-b px-4 py-2 text-sm">
+            {removeError}
+          </div>
         )}
 
         {/* Which machine these settings are about. Every path in a
@@ -186,15 +182,17 @@ function ConfigPageInner() {
               )}
             </span>
             {selection.type === "driver" && (
-              <button
-                type="button"
-                onClick={() => void removeDriver()}
+              // Asked inline, like every other irreversible action here;
+              // this was the browser's modal dialog.
+              <ConfirmButton
+                label={removing ? "removing…" : "Remove this driver"}
+                prompt="Its process stops and nothing is routed to it. What it fronts is untouched."
+                onConfirm={removeDriver}
                 disabled={removing}
                 className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error-border)] hover:text-[color:var(--status-error-fg)] disabled:opacity-30"
                 title="Stops the driver's process and forgets its declaration. What it fronts is untouched."
-              >
-                {removing ? "removing…" : "Remove this driver"}
-              </button>
+                testId="remove-driver"
+              />
             )}
           </div>
         )}
