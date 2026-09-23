@@ -278,3 +278,33 @@ describe("the conversation, to a screen reader", () => {
     expect(screen.queryByText(/Waiting on the backend/)).toBeNull();
   });
 });
+
+describe("an answer with nothing in it", () => {
+  it("says so, instead of an empty bubble, and offers nothing to copy", () => {
+    render(<ChatLog messages={[{ role: "assistant", content: "" }]} pending={false} />);
+    expect(screen.getByTestId("empty-reply")).toHaveTextContent("The model sent no text.");
+    expect(screen.queryByTitle("Copy this message")).toBeNull();
+  });
+
+  it("is not a tool-call turn, which has its cards instead of text", () => {
+    render(
+      <ChatLog
+        messages={[
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "c1",
+                type: "function",
+                function: { name: "get_weather", arguments: '{"city":"Oslo"}' },
+              },
+            ],
+          },
+        ]}
+        pending={false}
+      />,
+    );
+    expect(screen.queryByTestId("empty-reply")).toBeNull();
+  });
+});

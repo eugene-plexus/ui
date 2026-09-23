@@ -167,6 +167,11 @@ function ChatBubble({
   // a fetch. The bytes still never appear as TEXT anywhere.
   const images = parts?.filter((part) => part.type === "image_url") ?? [];
   const calls = message.role === "assistant" ? (message.tool_calls ?? []) : [];
+  // An answer that finished with nothing in it. A 200 with no content
+  // was a bordered box with nothing inside, which reads as a rendering
+  // fault -- and it is common: a reasoning model that spends its whole
+  // budget thinking sends its thinking elsewhere and no text at all.
+  const empty = message.role === "assistant" && !text && images.length === 0 && calls.length === 0;
   const generated = typeof message.generatedAt === "string" ? new Date(message.generatedAt) : null;
   const generationTime = generated && Number.isFinite(generated.getTime()) ? generated : null;
   const timestamp =
@@ -237,7 +242,19 @@ function ChatBubble({
                 )}
               </span>
             )}
-            {isUser ? <Collapsible text={text} /> : <Markdown>{text}</Markdown>}
+            {empty ? (
+              <p
+                data-testid="empty-reply"
+                className="text-[color:var(--muted)] italic"
+                title="A reasoning model can spend its whole token budget thinking. Raising Max tokens usually helps."
+              >
+                The model sent no text.
+              </p>
+            ) : isUser ? (
+              <Collapsible text={text} />
+            ) : (
+              <Markdown>{text}</Markdown>
+            )}
           </div>
         )
       )}
@@ -262,11 +279,14 @@ function ChatBubble({
       >
         {/* The raw markdown, not the rendered text: what is useful about a
             reply from a coding model is its source. */}
-        <CopyButton
-          iconOnly
-          text={text || JSON.stringify(calls, null, 2)}
-          title="Copy this message"
-        />
+        {/* Nothing to copy from an empty answer; it used to copy "[]". */}
+        {!empty && (
+          <CopyButton
+            iconOnly
+            text={text || JSON.stringify(calls, null, 2)}
+            title="Copy this message"
+          />
+        )}
         {onEdit && (
           <button
             type="button"
