@@ -67,6 +67,40 @@ function ticksFor(points: HourPoint[], series: Series[]): { max: number; mid: nu
   return { max: top, mid: top / 2 };
 }
 
+/**
+ * What a sighted reader takes from the chart at a glance, as a sentence:
+ * each series' latest value and its peak hour. The chart's label used to
+ * say only that a table existed, and its `aria-describedby` named an id
+ * no element had.
+ */
+export function chartSummary(
+  points: HourPoint[],
+  series: Series[],
+  format: (v: number) => string,
+): string {
+  const span = points.length;
+  const parts: string[] = [];
+  for (const s of series) {
+    let latest: { v: number; t: string } | null = null;
+    let peak: { v: number; t: string } | null = null;
+    for (const p of points) {
+      const v = s.value(p);
+      if (v === null) continue;
+      latest = { v, t: p.t };
+      if (peak === null || v > peak.v) peak = { v, t: p.t };
+    }
+    if (!latest || !peak) {
+      parts.push(`${s.name}: nothing measured in this window.`);
+      continue;
+    }
+    parts.push(
+      `${s.name}: latest ${format(latest.v)} at ${hourLabel(latest.t, span)}, ` +
+        `highest ${format(peak.v)} at ${hourLabel(peak.t, span)}.`,
+    );
+  }
+  return parts.join(" ");
+}
+
 function xFor(index: number, count: number): number {
   // Center of the index's slot, so bars and line points line up.
   return PAD_LEFT + ((index + 0.5) / count) * PLOT_W;
@@ -112,6 +146,7 @@ export function HourChart({
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const { max } = useMemo(() => ticksFor(points, series), [points, series]);
+  const summary = useMemo(() => chartSummary(points, series, format), [points, series, format]);
   const span = points.length;
 
   if (points.length === 0) return null;
@@ -156,6 +191,7 @@ export function HourChart({
           className="w-full"
           role="img"
           aria-label={`${title} per hour; the same values are in the table below this chart.`}
+          aria-describedby={id}
           onPointerMove={onMove}
           onPointerLeave={() => setHover(null)}
         >
@@ -311,6 +347,10 @@ export function HourChart({
           </div>
         )}
       </div>
+
+      <p id={id} className="sr-only">
+        {summary}
+      </p>
 
       <details className="mt-1">
         <summary className="font-ui cursor-pointer text-xs text-[color:var(--muted)]">
