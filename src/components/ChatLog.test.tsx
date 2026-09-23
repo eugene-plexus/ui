@@ -217,3 +217,16 @@ describe("ChatLog with images in a model's reply", () => {
     expect(screen.getByRole("link", { name: /image/ })).toHaveAttribute("href", leak);
   });
 });
+
+describe("a long unbroken token", () => {
+  it("wraps inside its bubble rather than running past it", () => {
+    // jsdom lays nothing out, so this pins the rule that does the work:
+    // overflow-wrap on the bubble, and a bubble allowed to be narrower
+    // than its longest word.
+    const url = `https://example.com/${"a".repeat(400)}`;
+    render(<ChatLog messages={[{ role: "assistant", content: url }]} pending={false} />);
+    const bubble = screen.getByTestId("message-bubble");
+    expect(bubble.className).toMatch(/(^|\s)break-words(\s|$)/);
+    expect(bubble.className).toMatch(/(^|\s)min-w-0(\s|$)/);
+  });
+});

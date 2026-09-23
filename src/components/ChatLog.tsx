@@ -185,8 +185,13 @@ function ChatBubble({
         </div>
       ) : (
         (text || images.length > 0 || calls.length === 0) && (
+          // `break-words`: a URL, a path or a hash has no space to wrap at,
+          // and ran out past the bubble's edge and gave the whole
+          // transcript a sideways scrollbar. Code blocks and tables keep
+          // their own scrolling -- this does not change min-content width.
           <div
-            className={`max-w-[80%] rounded-[var(--radius)] px-4 py-2 text-sm leading-relaxed text-[color:var(--foreground)] backdrop-blur-[var(--bubble-blur)] ${
+            data-testid="message-bubble"
+            className={`max-w-[80%] min-w-0 rounded-[var(--radius)] px-4 py-2 text-sm leading-relaxed break-words text-[color:var(--foreground)] backdrop-blur-[var(--bubble-blur)] ${
               isUser
                 ? "bg-[color:var(--bubble-soft-bg)] whitespace-pre-wrap"
                 : "border border-[color:var(--border)] bg-[color:var(--bubble-bg)]"
