@@ -55,7 +55,11 @@ function SecretInput({
   onChange,
   className,
 }: {
-  controlProps: { id: string; "aria-describedby": string | undefined };
+  controlProps: {
+    id: string;
+    "aria-describedby": string | undefined;
+    "aria-invalid"?: true;
+  };
   value: unknown;
   /** A key is stored on the component. */
   saved: boolean;
@@ -121,11 +125,16 @@ export function ConfigFieldInput({
   browseTarget,
   pathSuggestions,
   savedValue,
+  error,
   onChange,
 }: {
   field: ConfigFieldDef;
   value: unknown;
   pending: boolean;
+  /** Why the component refused the value last saved here, if it did. Said
+   * under the field and tied to its input, not only in the banner at the
+   * top of a page that may be scrolled a long way from it. */
+  error?: string | null;
   /** What the component last reported for this field, before any edit.
    * A secret needs it: the only sign a key is stored is the component
    * answering `<redacted>`, and an edit replaces the value that said so. */
@@ -160,10 +169,15 @@ export function ConfigFieldInput({
   const inputId = useId();
   const labelId = `${inputId}-label`;
   const descriptionId = `${inputId}-description`;
+  const errorId = `${inputId}-error`;
   const compound = COMPOUND_VALUE_TYPES.has(field.valueType);
+  const describedBy =
+    [field.description ? descriptionId : null, error ? errorId : null].filter(Boolean).join(" ") ||
+    undefined;
   const controlProps = {
     id: inputId,
-    "aria-describedby": field.description ? descriptionId : undefined,
+    "aria-describedby": describedBy,
+    ...(error ? { "aria-invalid": true as const } : {}),
   };
 
   function renderInput() {
@@ -436,7 +450,10 @@ export function ConfigFieldInput({
   }
 
   return (
-    <div className="grid grid-cols-1 items-start gap-2 border-b border-[color:var(--border)] py-3 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-4">
+    <div
+      data-config-key={field.key}
+      className="grid grid-cols-1 items-start gap-2 border-b border-[color:var(--border)] py-3 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-4"
+    >
       <div className="flex flex-col gap-1">
         {compound ? (
           <span id={labelId} className="text-sm font-medium">
@@ -460,9 +477,15 @@ export function ConfigFieldInput({
         className="flex flex-col gap-2"
         role={compound ? "group" : undefined}
         aria-labelledby={compound ? labelId : undefined}
-        aria-describedby={compound && field.description ? descriptionId : undefined}
+        aria-describedby={compound ? describedBy : undefined}
+        aria-invalid={compound && error ? true : undefined}
       >
         {renderInput()}
+        {error && (
+          <p id={errorId} className="text-status-error text-sm" data-testid="config-field-error">
+            Not saved: {error}
+          </p>
+        )}
         {field.description && (
           <p id={descriptionId} className="text-sm leading-relaxed text-[color:var(--muted)]">
             {field.description}

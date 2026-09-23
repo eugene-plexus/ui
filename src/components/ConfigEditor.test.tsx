@@ -194,12 +194,27 @@ it("opens rejected hidden settings and preserves their draft", async () => {
   fireEvent.change(screen.getByDisplayValue("hub"), { target: { value: "bad-address" } });
   fireEvent.click(screen.getByRole("button", { name: /Show less/ }));
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  await screen.findByText(/Invalid address/);
+  await screen.findByText(/Invalid address/, { selector: "li" });
   expect(screen.getByDisplayValue("bad-address")).toBeVisible();
   expect(screen.getByRole("button", { name: /Show less/ })).toHaveAttribute(
     "aria-expanded",
     "true",
   );
+});
+
+it("marks a refused setting at the field, and moves focus there", async () => {
+  reject = true;
+  render(<ConfigEditor target="library" label="Library" />);
+  fireEvent.click(await screen.findByRole("button", { name: /Show more/ }));
+  fireEvent.change(screen.getByDisplayValue("hub"), { target: { value: "bad-address" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await screen.findByText(/Invalid address/, { selector: "li" });
+  const box = screen.getByLabelText("catalogueBaseUrl");
+  await waitFor(() => expect(box).toHaveAttribute("aria-invalid", "true"));
+  expect(box).toHaveAccessibleDescription(/Invalid address/);
+  await waitFor(() => expect(box).toHaveFocus());
+  // The field that was not refused is not marked.
+  expect(screen.getByLabelText("futureSetting")).not.toHaveAttribute("aria-invalid");
 });
 
 it("does not make a disclosure when fewer than three applicable settings qualify", async () => {
@@ -275,5 +290,5 @@ it("keeps a refusal and its typed value through the restart the rest of the save
   // Before: the reload replaced the draft and cleared the banner, so both
   // the refused value and the sentence saying why were gone.
   expect(screen.getByDisplayValue("not a url")).toBeInTheDocument();
-  expect(screen.getByText(/Invalid address/)).toBeInTheDocument();
+  expect(screen.getByText(/Invalid address/, { selector: "li" })).toBeInTheDocument();
 });

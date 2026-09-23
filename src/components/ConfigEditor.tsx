@@ -85,6 +85,25 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   // re-render — it's read inside the change handler and seeded from the
   // initial server doc on load.
   const draftCacheRef = useRef<Record<string, Record<string, unknown>>>({});
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Why each refused field was refused, for the field itself to say.
+  const refusedMessages = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const r of saveStatus?.rejected ?? []) out[r.key] = r.message;
+    return out;
+  }, [saveStatus]);
+
+  // A save that was refused moves focus to the first refused field on the
+  // page, so the person lands where the fix is. Not while the restart
+  // dialog is up: it holds focus, and gives it back here when it closes.
+  useEffect(() => {
+    const refused = new Set(Object.keys(refusedMessages));
+    if (refused.size === 0 || restart.phase !== "idle") return;
+    const rows = rootRef.current?.querySelectorAll<HTMLElement>("[data-config-key]") ?? [];
+    const first = Array.from(rows).find((r) => refused.has(r.dataset.configKey ?? ""));
+    first?.querySelector<HTMLElement>("input, select, textarea, button")?.focus();
+  }, [refusedMessages, restart.phase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -429,6 +448,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
             field={fieldForRender(f, draft, serverDoc!)}
             value={draft[f.key]}
             savedValue={(serverDoc as Record<string, unknown>)[f.key]}
+            error={refusedMessages[f.key] ?? null}
             pending={saving}
             topology={topology}
             browseTarget={target}
@@ -442,7 +462,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div ref={rootRef} className="flex h-full flex-col">
       <header className="flex items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">{label}</h2>
