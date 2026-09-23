@@ -87,6 +87,10 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const expired = searchParams.get("reason") === "expired";
   const [passphrase, setPassphrase] = useState("");
+  // A long passphrase typed blind, with no way to look and no word about
+  // Caps Lock, is the commonest way a right passphrase is refused.
+  const [shown, setShown] = useState(false);
+  const [capsLock, setCapsLock] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Probe init state on mount via the public /v1/auth/status endpoint
@@ -255,22 +259,50 @@ function LoginForm() {
           <label className="font-ui mb-1 block text-sm font-medium" htmlFor="passphrase">
             Passphrase
           </label>
-          <input
-            ref={field}
-            id="passphrase"
-            type="password"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            readOnly={submitting}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={error ? "passphrase-error" : undefined}
-            autoFocus
-            autoComplete="current-password"
-            spellCheck={false}
-            className={`font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)] ${
-              submitting ? "opacity-50" : ""
-            }`}
-          />
+          <div className="flex items-stretch gap-2">
+            <input
+              ref={field}
+              id="passphrase"
+              type={shown ? "text" : "password"}
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              onKeyDown={(e) => setCapsLock(e.getModifierState?.("CapsLock") ?? false)}
+              onKeyUp={(e) => setCapsLock(e.getModifierState?.("CapsLock") ?? false)}
+              onBlur={() => setCapsLock(false)}
+              readOnly={submitting}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={
+                [error ? "passphrase-error" : null, capsLock ? "passphrase-caps" : null]
+                  .filter(Boolean)
+                  .join(" ") || undefined
+              }
+              autoFocus
+              autoComplete="current-password"
+              spellCheck={false}
+              className={`font-ui min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)] ${
+                submitting ? "opacity-50" : ""
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => setShown((v) => !v)}
+              aria-pressed={shown}
+              aria-controls="passphrase"
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            >
+              {shown ? "Hide" : "Show"}
+            </button>
+          </div>
+          {capsLock && (
+            <p
+              id="passphrase-caps"
+              role="status"
+              data-testid="caps-lock"
+              className="status-warn mt-2 rounded-[var(--radius)] border px-3 py-1.5 text-sm"
+            >
+              Caps Lock is on.
+            </p>
+          )}
           {error && (
             <p
               id="passphrase-error"

@@ -10,7 +10,7 @@
  * root, and a session that must survive the root's 401.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -89,6 +89,33 @@ async function signIn(passphrase: string) {
 }
 
 const controlLogins = () => calls.filter((c) => c.url.endsWith("/api/proxy/control/v1/auth/login"));
+
+describe("typing the passphrase", () => {
+  it("can be shown, and hidden again", async () => {
+    render(<LoginPage />);
+    const field = await screen.findByLabelText(/passphrase/i);
+    expect(field).toHaveAttribute("type", "password");
+    await userEvent.click(screen.getByRole("button", { name: "Show" }));
+    expect(field).toHaveAttribute("type", "text");
+    await userEvent.click(screen.getByRole("button", { name: "Hide" }));
+    expect(field).toHaveAttribute("type", "password");
+  });
+
+  it("says when Caps Lock is on", async () => {
+    render(<LoginPage />);
+    const field = await screen.findByLabelText(/passphrase/i);
+    field.focus();
+    const event = new KeyboardEvent("keydown", { key: "A", bubbles: true });
+    Object.defineProperty(event, "getModifierState", {
+      value: (k: string) => k === "CapsLock",
+    });
+    act(() => {
+      field.dispatchEvent(event);
+    });
+    expect(await screen.findByTestId("caps-lock")).toHaveTextContent("Caps Lock is on.");
+    expect(field).toHaveAccessibleDescription(/Caps Lock is on/);
+  });
+});
 
 describe("sign-in unlocks the control root", () => {
   it("posts the same passphrase to the root after the agent accepts it, then navigates", async () => {
