@@ -77,6 +77,16 @@ export default function RoutingPage() {
   const [rawValue, setRawValue] = useState<unknown>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [draft, setDraft] = useState<ModelSlot[]>([]);
+  // **A list's key is its own, not its position.** Keyed by index,
+  // removing a list shifted every later card's half-typed "model id to
+  // try next" onto the list above it, and Enter then added that fallback
+  // to the wrong list. One id per list, dropped with the list; a wholesale
+  // replacement (a reload, the JSON editor) keeps ids by position.
+  const slotIds = useRef<number[]>([]);
+  const nextSlotId = useRef(0);
+  while (slotIds.current.length < draft.length) slotIds.current.push(nextSlotId.current++);
+  if (slotIds.current.length > draft.length) slotIds.current.length = draft.length;
+  const slotKey = (index: number) => slotIds.current[index] ?? `at-${index}`;
   const [routing, setRouting] = useState<RoutingTableView | null>(null);
   const [routingError, setRoutingError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -287,12 +297,17 @@ export default function RoutingPage() {
                   <div className="space-y-4">
                     {visible.map(({ slot, index }) => (
                       <SlotCard
-                        key={index}
+                        key={slotKey(index)}
                         slot={slot}
                         routing={routing}
                         disabled={saving}
                         onRename={(name) => setDraft((d) => renameSlot(d, index, name))}
-                        onRemove={() => setDraft((d) => removeSlot(d, index))}
+                        onRemove={() => {
+                          // The removed list's key goes with it, so the lists
+                          // below keep their own half-typed fallbacks.
+                          slotIds.current.splice(index, 1);
+                          setDraft((d) => removeSlot(d, index));
+                        }}
                         onSetTarget={(j, id) => setDraft((d) => setTarget(d, index, j, id))}
                         onMoveTarget={(j, delta) => setDraft((d) => moveTarget(d, index, j, delta))}
                         onRemoveTarget={(j) => setDraft((d) => removeTarget(d, index, j))}
@@ -481,8 +496,39 @@ function SlotCard({
   const [newTarget, setNewTarget] = useState("");
   const self = selfTier(routing, slot.model);
 
+  // **Focus follows the fallback it moved.** Rows are keyed by position,
+  // so after ↓ the focused button belonged to the neighbour that took the
+  // row's place, and a second Enter moved that one back: [A,B,C] became
+  // [B,A,C] and then [A,B,C] again. After a move, the same arrow on the
+  // moved row takes focus (or the other one, at an end); after a remove,
+  // the next row's Remove, or the add box when none is left.
+  const card = useRef<HTMLElement | null>(null);
+  const focusNext = useRef<string | null>(null);
+  useEffect(() => {
+    const selector = focusNext.current;
+    if (!selector) return;
+    focusNext.current = null;
+    card.current?.querySelector<HTMLElement>(selector)?.focus();
+  });
+  const count = slot.targets.length;
+  function move(j: number, delta: -1 | 1) {
+    const to = j + delta;
+    const edge = (delta < 0 && to === 0) || (delta > 0 && to === count - 1);
+    const arrow = edge ? (delta < 0 ? "down" : "up") : delta < 0 ? "up" : "down";
+    focusNext.current = `[data-move="${arrow}"][data-row="${to}"]`;
+    onMoveTarget(j, delta);
+  }
+  function remove(j: number) {
+    focusNext.current =
+      count > 1
+        ? `[data-move="remove"][data-row="${Math.min(j, count - 2)}"]`
+        : "[data-add-target]";
+    onRemoveTarget(j);
+  }
+
   return (
     <section
+      ref={card}
       data-testid="routing-slot"
       className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4"
     >
@@ -533,7 +579,9 @@ function SlotCard({
             <span className="flex gap-1">
               <button
                 type="button"
-                onClick={() => onMoveTarget(j, -1)}
+                data-move="up"
+                data-row={j}
+                onClick={() => move(j, -1)}
                 disabled={disabled || j === 0}
                 aria-label={`Try ${target || "this fallback"} earlier`}
                 className={smallButtonClass}
@@ -542,7 +590,9 @@ function SlotCard({
               </button>
               <button
                 type="button"
-                onClick={() => onMoveTarget(j, 1)}
+                data-move="down"
+                data-row={j}
+                onClick={() => move(j, 1)}
                 disabled={disabled || j === slot.targets.length - 1}
                 aria-label={`Try ${target || "this fallback"} later`}
                 className={smallButtonClass}
@@ -551,7 +601,9 @@ function SlotCard({
               </button>
               <button
                 type="button"
-                onClick={() => onRemoveTarget(j)}
+                data-move="remove"
+                data-row={j}
+                onClick={() => remove(j)}
                 disabled={disabled}
                 aria-label={`Remove ${target || "this fallback"}`}
                 className={smallButtonClass}
@@ -575,6 +627,7 @@ function SlotCard({
         }}
       >
         <input
+          data-add-target
           value={newTarget}
           onChange={(e) => setNewTarget(e.target.value)}
           list={DATALIST_ID}

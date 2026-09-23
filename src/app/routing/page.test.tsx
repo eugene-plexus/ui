@@ -341,3 +341,55 @@ describe("the JSON fallback", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 });
+
+describe("the keyboard", () => {
+  it("moves a fallback twice with two presses, rather than moving it back", async () => {
+    const card = await renderPage();
+    const user = userEvent.setup();
+    within(card).getByRole("button", { name: "Try qwen3-coder-30b later" }).focus();
+    // Keyed by position, focus stayed on the row's buttons while the row
+    // became the neighbour, so the second press undid the first.
+    await user.keyboard("{Enter}");
+    await user.keyboard("{Enter}");
+    const rows = within(card).getAllByTestId("target-row");
+    expect(rows.map((r) => (within(r).getByRole("combobox") as HTMLInputElement).value)).toEqual([
+      "claude",
+      "missing-model",
+      "qwen3-coder-30b",
+    ]);
+  });
+
+  it("keeps focus in the list after the last fallback is removed", async () => {
+    const card = await renderPage();
+    const user = userEvent.setup();
+    // The last row's buttons unmount with it, which dropped focus to the page.
+    await user.click(within(card).getByRole("button", { name: "Remove missing-model" }));
+    expect(within(card).getByRole("button", { name: "Remove claude" })).toHaveFocus();
+  });
+});
+
+describe("removing a list", () => {
+  it("leaves the next list's half-typed fallback where it was typed", async () => {
+    handlers.set("GET gateway/v1/config", () => ({
+      status: 200,
+      body: {
+        modelSlots: [
+          { model: "coder", targets: ["claude"] },
+          { model: "writer", targets: ["claude"] },
+        ],
+      },
+    }));
+    render(<RoutingPage />);
+    const user = userEvent.setup();
+    const writerAdd = await screen.findByLabelText(
+      "Add a fallback to writer",
+      {},
+      { timeout: 5000 },
+    );
+    await user.type(writerAdd, "half-typed");
+    await user.click(screen.getAllByRole("button", { name: "Remove list" })[0]!);
+    // Keyed by index, the coder card's state was reused for the writer
+    // list, and the text typed into writer's box vanished from it.
+    expect(screen.getByLabelText("Add a fallback to writer")).toHaveValue("half-typed");
+  });
+});
