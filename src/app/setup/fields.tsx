@@ -187,25 +187,33 @@ export function SecretInput({
   value,
   onChange,
   placeholder,
+  autoComplete = "off",
+  errorId,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  autoComplete?: string;
+  /** The id of the line saying what is wrong with this value, when there
+   * is one. It joins the description and marks the box invalid. */
+  errorId?: string;
 }) {
   const [reveal, setReveal] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const control = useFieldControl();
+  const describedBy = [control?.describedBy, errorId].filter(Boolean).join(" ") || undefined;
   return (
     <div className="flex items-stretch gap-2">
       <input
         ref={inputRef}
         id={control?.id}
-        aria-describedby={control?.describedBy}
+        aria-describedby={describedBy}
+        aria-invalid={errorId ? true : undefined}
         type={reveal ? "text" : "password"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        autoComplete="off"
+        autoComplete={autoComplete}
         spellCheck={false}
         className="font-ui flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
       />

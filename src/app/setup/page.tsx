@@ -483,10 +483,10 @@ export default function WizardPage() {
   }
 
   const proposedPath = proposal.status === "ready" ? proposal.path : null;
+  const canProceed = canContinue(screen, draft, passphrase, passphraseConfirm, proposedPath);
 
-  return (
-    <main className="relative z-10 flex h-screen flex-col">
-      <WizardHeader screen={screen} />
+  const body = (
+    <>
       <div className="flex-1 overflow-y-auto px-6 py-8">
         <div className="mx-auto max-w-2xl">
           {screen === 1 && (
@@ -513,7 +513,10 @@ export default function WizardPage() {
             </p>
           )}
           {error && (
-            <p className="status-error mt-6 rounded-[var(--radius)] border px-3 py-2 text-sm">
+            <p
+              role="alert"
+              className="status-error mt-6 rounded-[var(--radius)] border px-3 py-2 text-sm"
+            >
               {error}
             </p>
           )}
@@ -522,10 +525,34 @@ export default function WizardPage() {
       <WizardFooter
         screen={screen}
         working={working}
-        canProceed={canContinue(screen, draft, passphrase, passphraseConfirm, proposedPath)}
+        canProceed={canProceed}
         onCancel={cancel}
         onPrimary={screen === 1 ? () => void commitPassphrase() : () => void finish()}
+        submits={screen === 1}
       />
+    </>
+  );
+
+  // Screen 1 is a form, so Enter in either box presses Continue. Screen 2
+  // is not: its folder picker renders a form of its own, and forms do not
+  // nest.
+  return (
+    <main className="relative z-10 flex h-screen flex-col">
+      <WizardHeader screen={screen} />
+      {screen === 1 ? (
+        <form
+          noValidate
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!working && canProceed) void commitPassphrase();
+          }}
+        >
+          {body}
+        </form>
+      ) : (
+        body
+      )}
     </main>
   );
 }

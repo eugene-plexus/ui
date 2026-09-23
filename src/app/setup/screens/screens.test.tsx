@@ -117,6 +117,46 @@ describe("the passphrase screen", () => {
   });
 });
 
+describe("the passphrase screen's warnings", () => {
+  function renderWith(passphrase: string, passphraseConfirm: string) {
+    render(
+      <ScreenPassphrase
+        passphrase={passphrase}
+        passphraseConfirm={passphraseConfirm}
+        securityMode="prompt_on_startup"
+        keyringAvailable={true}
+        onPassphrase={vi.fn()}
+        onPassphraseConfirm={vi.fn()}
+        onSecurityMode={vi.fn()}
+      />,
+    );
+  }
+
+  it("ties the too-short line to the box it is about", () => {
+    renderWith("short", "");
+    const first = screen.getByLabelText("Passphrase");
+    expect(first).toHaveAttribute("aria-invalid", "true");
+    expect(first).toHaveAccessibleDescription(/Use at least \d+ characters/);
+  });
+
+  it("ties the mismatch line to the confirm box", () => {
+    renderWith("correct horse battery staple", "correct horse");
+    const second = screen.getByLabelText("Confirm passphrase");
+    expect(second).toHaveAttribute("aria-invalid", "true");
+    expect(second).toHaveAccessibleDescription(/match yet/);
+    expect(screen.getByLabelText("Passphrase")).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("asks for a new password, so a password manager offers to save it", () => {
+    renderWith("", "");
+    expect(screen.getByLabelText("Passphrase")).toHaveAttribute("autocomplete", "new-password");
+    expect(screen.getByLabelText("Confirm passphrase")).toHaveAttribute(
+      "autocomplete",
+      "new-password",
+    );
+  });
+});
+
 describe("the folders screen", () => {
   const ready = { status: "ready", path: "/home/sam/Eugene Models", home: "/home/sam" } as const;
 

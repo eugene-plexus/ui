@@ -59,14 +59,23 @@ export function ScreenPassphrase({
         label="Passphrase"
         description={`At least ${MIN_PASSPHRASE_LENGTH} characters. A short sentence works well.`}
       >
+        {/* `new-password`, so a password manager offers to save it, and
+            the line saying what is wrong is read with the box it is
+            about. */}
         <SecretInput
           value={passphrase}
           onChange={onPassphrase}
           placeholder="A line of poetry, a sentence, a long phrase…"
+          autoComplete="new-password"
+          errorId={tooShort ? "passphrase-too-short" : undefined}
         />
       </Field>
       {tooShort && (
-        <p data-testid="passphrase-too-short" className="text-status-error -mt-2 mb-4 text-sm">
+        <p
+          id="passphrase-too-short"
+          data-testid="passphrase-too-short"
+          className="text-status-error -mt-2 mb-4 text-sm"
+        >
           Use at least {MIN_PASSPHRASE_LENGTH} characters. This one has {typed}.
         </p>
       )}
@@ -75,10 +84,14 @@ export function ScreenPassphrase({
           value={passphraseConfirm}
           onChange={onPassphraseConfirm}
           placeholder="(repeat the passphrase)"
+          autoComplete="new-password"
+          errorId={mismatch ? "passphrase-mismatch" : undefined}
         />
       </Field>
       {mismatch && (
-        <p className="text-status-error -mt-2 mb-4 text-sm">Passphrases don&rsquo;t match yet.</p>
+        <p id="passphrase-mismatch" className="text-status-error -mt-2 mb-4 text-sm">
+          Passphrases don&rsquo;t match yet.
+        </p>
       )}
       <hr className="my-6 border-[color:var(--border)]" />
       <h3 className="font-ui mb-3 text-sm font-semibold">After a reboot</h3>

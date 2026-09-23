@@ -266,6 +266,22 @@ describe("screen 1: what Continue commits", () => {
     expect(sessionStorage.getItem("eugene-session-token")).toBe("post-enroll-token");
   });
 
+  it("continues on Enter from the confirm box", async () => {
+    const user = newUser();
+    render(<WizardPage />);
+    await screen.findByRole("heading", { name: /^Choose a passphrase$/ });
+    await user.type(
+      screen.getByPlaceholderText(/a line of poetry/i),
+      "correct horse battery staple",
+    );
+    await user.type(
+      screen.getByPlaceholderText(/repeat the passphrase/i),
+      "correct horse battery staple{Enter}",
+    );
+    await screen.findByRole("heading", { name: /^Where should models live\?$/ }, { timeout: 5000 });
+    expect(calls.filter((c) => key(c) === "POST agent/v1/auth/initialize")).toHaveLength(1);
+  });
+
   it("treats an already-initialized control root as done, not as a failure", async () => {
     // Re-running setup against an install whose trust root is already set up
     // is not an error, and 409 must not be retried: it is the final answer.
@@ -311,6 +327,8 @@ describe("screen 1: what Continue commits", () => {
       { timeout: 20000 },
     );
     expect(error).toHaveClass("status-error");
+    // Announced, not just painted: a screen reader heard nothing.
+    expect(error).toHaveAttribute("role", "alert");
     // And it points at the diagnosis instead of at a shell.
     expect(error).toHaveTextContent(/Needs attention/i);
     expect(error.textContent ?? "").not.toMatch(/POST|\/v1\/auth\/initialize|dev-seed/i);
