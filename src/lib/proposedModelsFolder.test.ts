@@ -9,7 +9,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { DirectoryListing } from "./types";
-import { homeFrom, joinPath, proposedModelsFolder, separatorFor } from "./proposedModelsFolder";
+import {
+  homeFrom,
+  joinPath,
+  parentOf,
+  presetModelsFolder,
+  proposedModelsFolder,
+  separatorFor,
+} from "./proposedModelsFolder";
 
 function listing(entries: { name: string; path: string }[]): DirectoryListing {
   return {
@@ -67,5 +74,26 @@ describe("joinPath", () => {
     expect(separatorFor("models\\here")).toBe("\\");
     expect(separatorFor("models/here")).toBe("/");
     expect(separatorFor("models")).toBe("/");
+  });
+});
+
+describe("a folder the installer already chose", () => {
+  it("is the first Library folder, in either shape the library sends", () => {
+    expect(presetModelsFolder({ folders: [{ path: "/home/sam/Eugene Models", mounts: [] }] })).toBe(
+      "/home/sam/Eugene Models",
+    );
+    expect(presetModelsFolder({ folders: ["/models"] })).toBe("/models");
+  });
+
+  it("is nothing on an install that chose none, or a library that did not answer", () => {
+    expect(presetModelsFolder({ folders: [] })).toBeNull();
+    expect(presetModelsFolder(null)).toBeNull();
+    expect(presetModelsFolder({ folders: [{ path: "  " }] })).toBeNull();
+    expect(presetModelsFolder({ folders: "nope" })).toBeNull();
+  });
+
+  it("starts a picker in the folder's parent", () => {
+    expect(parentOf("/home/sam/Eugene Models")).toBe("/home/sam");
+    expect(parentOf("/models")).toBe("/models");
   });
 });

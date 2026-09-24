@@ -384,6 +384,40 @@ describe("screen 1: what Continue commits", () => {
     expect(screen.getByTestId("no-keyring-note").textContent).toMatch(/ask for the passphrase/i);
   });
 
+  it("under its own account, says it unlocks itself and sets both processes to the file", async () => {
+    // The Linux system install (2026-09-24): no keyring for that account,
+    // and none needed. A stored keyring choice from an earlier visit does
+    // not survive it either - there is nothing to choose.
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: { initialized: false, unlocked: false, keyringAvailable: false, passphraseFile: true },
+    }));
+    sessionStorage.setItem(
+      "eugene-wizard-draft",
+      JSON.stringify({
+        modelRoots: [],
+        folderChoice: "make",
+        customFolder: null,
+        securityMode: "os_keyring",
+      }),
+    );
+
+    const user = newUser();
+    render(<WizardPage />);
+
+    await waitFor(() => expect(screen.getByTestId("passphrase-file-note")).toBeVisible());
+    expect(screen.getByTestId("passphrase-file-note").textContent).toMatch(/unlocks itself/i);
+    expect(screen.queryByRole("checkbox", { name: /unlock eugene on its own/i })).toBeNull();
+    expect(screen.queryByTestId("no-keyring-note")).toBeNull();
+
+    await continuePastPassphrase(user);
+
+    const agentPatches = calls.filter((c) => key(c) === "PATCH agent/v1/config");
+    const controlPatches = calls.filter((c) => key(c) === "PATCH control/v1/config");
+    expect(agentPatches.map((c) => c.body)).toEqual([{ securityMode: "passphrase_file" }]);
+    expect(controlPatches.map((c) => c.body)).toEqual([{ securityMode: "passphrase_file" }]);
+  });
+
   it("keeps a choice the operator made before a tab refresh", async () => {
     handlers.set("GET agent/v1/auth/status", () => ({
       status: 200,
@@ -426,6 +460,39 @@ describe("screen 1: what Continue commits", () => {
     await user.type(screen.getByPlaceholderText(/a line of poetry/i), "hunter2");
     await waitFor(() => expect(sessionStorage.getItem("eugene-wizard-draft")).not.toBeNull());
     expect(sessionStorage.getItem("eugene-wizard-draft")).not.toContain("hunter2");
+  });
+});
+
+describe("screen 2: a folder the installer already chose", () => {
+  it("is proposed instead of the library's home, which is not the person's", async () => {
+    // The Linux system install: the library runs as Eugene's own account,
+    // whose home is /var/lib/eugene-plexus, and the installer made the
+    // person's own folder the library's default (2026-09-24).
+    handlers.set("GET library/v1/directories", () => ({
+      status: 200,
+      body: {
+        host: "box",
+        entries: [
+          { name: "/", path: "/", kind: "directory" },
+          { name: "Home", path: "/var/lib/eugene-plexus", kind: "directory" },
+        ],
+      },
+    }));
+    handlers.set("GET library/v1/folders", () => ({
+      status: 200,
+      body: { folders: [{ path: "/home/sam/Eugene Models", mounts: [] }] },
+    }));
+    const user = newUser();
+    render(<WizardPage />);
+    await continuePastPassphrase(user);
+    await waitFor(() =>
+      expect(screen.getByTestId("proposed-folder")).toHaveTextContent("/home/sam/Eugene Models"),
+    );
+    expect(screen.getByTestId("proposed-folder")).not.toHaveTextContent("/var/lib");
+    await finish(user);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"), { timeout: 5000 });
+    const roots = calls.find((c) => key(c) === "PATCH library/v1/config");
+    expect(roots?.body).toEqual({ modelRoots: ["/home/sam/Eugene Models"] });
   });
 });
 

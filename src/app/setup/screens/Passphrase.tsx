@@ -27,6 +27,7 @@ export function ScreenPassphrase({
   passphraseConfirm,
   securityMode,
   keyringAvailable,
+  passphraseFile = false,
   onPassphrase,
   onPassphraseConfirm,
   onSecurityMode,
@@ -37,6 +38,10 @@ export function ScreenPassphrase({
   /** What the agent measured about this host's OS keyring; `null` while
    * unknown (still loading, or an agent that predates the field). */
   keyringAvailable: boolean | null;
+  /** The agent runs under its own account and unlocks itself from a file
+   * only that account can read (the Linux system install, 2026-09-24).
+   * Then there is nothing to choose, and the screen says what happens. */
+  passphraseFile?: boolean;
   onPassphrase: (v: string) => void;
   onPassphraseConfirm: (v: string) => void;
   onSecurityMode: (v: SecurityMode) => void;
@@ -95,7 +100,16 @@ export function ScreenPassphrase({
       )}
       <hr className="my-6 border-[color:var(--border)]" />
       <h3 className="font-ui mb-3 text-sm font-semibold">After a reboot</h3>
-      {noKeyring ? (
+      {passphraseFile ? (
+        <p
+          className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
+          data-testid="passphrase-file-note"
+        >
+          Eugene runs under its own account on this machine. It keeps your passphrase in a file only
+          that account can read, so it unlocks itself after a restart. Programs you run, AI agents
+          included, cannot read that file.
+        </p>
+      ) : noKeyring ? (
         <p
           className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
           data-testid="no-keyring-note"
@@ -116,16 +130,20 @@ export function ScreenPassphrase({
 
           Rewritten because the mechanism changed, not to make a weaker
           sentence true: see the roadmap's decision 4. */}
-      <Checkbox
-        checked={!noKeyring && securityMode === "os_keyring"}
-        disabled={noKeyring}
-        onChange={(checked) => onSecurityMode(checked ? "os_keyring" : "prompt_on_startup")}
-        label="Unlock Eugene on its own after a restart"
-        description="Eugene stores its key with the operating system and comes back ready to answer."
-      />
-      <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
-        Untick to be asked for the passphrase every time Eugene starts.
-      </p>
+      {!passphraseFile && (
+        <>
+          <Checkbox
+            checked={!noKeyring && securityMode === "os_keyring"}
+            disabled={noKeyring}
+            onChange={(checked) => onSecurityMode(checked ? "os_keyring" : "prompt_on_startup")}
+            label="Unlock Eugene on its own after a restart"
+            description="Eugene stores its key with the operating system and comes back ready to answer."
+          />
+          <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
+            Untick to be asked for the passphrase every time Eugene starts.
+          </p>
+        </>
+      )}
       <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
         Eugene itself starts when this machine does, before anyone signs in. You can change any of
         this later under Config.

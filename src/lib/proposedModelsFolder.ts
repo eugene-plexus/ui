@@ -41,6 +41,36 @@ export function homeFrom(listing: DirectoryListing | null | undefined): string |
   return path ? path : null;
 }
 
+/**
+ * The folder an installer already chose, from the library's `GET /v1/folders`
+ * (2026-09-24), or `null` when there is none -- which is every per-user install.
+ *
+ * It wins over `<home>/Eugene Models` because the library's home is not always
+ * the person's. Under its own account on Linux it is `/var/lib/eugene-plexus`,
+ * which the person cannot open; as a Windows service it is SYSTEM's profile,
+ * inside the Windows directory; in the container it is nobody's. The installers
+ * set the library's default folder for exactly those cases, and until now the
+ * wizard proposed past it.
+ */
+export function presetModelsFolder(list: { folders?: unknown } | null | undefined): string | null {
+  const folders: unknown[] = Array.isArray(list?.folders) ? list.folders : [];
+  const first = folders[0];
+  const path =
+    typeof first === "string"
+      ? first
+      : first && typeof first === "object"
+        ? (first as { path?: unknown }).path
+        : null;
+  return typeof path === "string" && path.trim() ? path.trim() : null;
+}
+
+/** The directory `path` is in, for a picker to start from; `path` itself when
+ * it has no parent to give. */
+export function parentOf(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  return trimmed.replace(/[\\/][^\\/]*$/, "") || trimmed;
+}
+
 /** `<home>/Eugene Models`, joined the way the home path's shape implies;
  * `null` when there is no home to build under. */
 export function proposedModelsFolder(listing: DirectoryListing | null | undefined): string | null {

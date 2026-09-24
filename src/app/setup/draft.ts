@@ -40,7 +40,13 @@ export const DRAFT_KEY = "eugene-wizard-draft";
  */
 export const TOTAL_SCREENS = 2;
 
-export type SecurityMode = "prompt_on_startup" | "os_keyring";
+/**
+ * `passphrase_file` is never a choice on screen: the agent reports it
+ * (`passphraseFile`) when it runs under its own account on the Linux system
+ * install, and the wizard follows. So a restored draft never carries it -
+ * `restoreDraft` accepts only the two a person can pick.
+ */
+export type SecurityMode = "prompt_on_startup" | "os_keyring" | "passphrase_file";
 
 /**
  * What `GET /v1/auth/status` answers before the wizard has a token. The two
@@ -52,6 +58,9 @@ export interface AuthStatusView {
   initialized: boolean;
   unlocked?: boolean | null;
   keyringAvailable?: boolean | null;
+  /** True when the agent unlocks itself from a passphrase file only its own
+   * account can read (2026-09-24). Absent from an older agent. */
+  passphraseFile?: boolean | null;
 }
 
 export interface InitializeResponse {

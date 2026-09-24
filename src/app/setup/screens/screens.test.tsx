@@ -118,6 +118,31 @@ describe("the passphrase screen", () => {
   });
 });
 
+describe("the passphrase screen under its own account", () => {
+  it("says the install unlocks itself and offers no keyring choice", () => {
+    render(
+      <ScreenPassphrase
+        passphrase=""
+        passphraseConfirm=""
+        securityMode="passphrase_file"
+        keyringAvailable={false}
+        passphraseFile
+        onPassphrase={vi.fn()}
+        onPassphraseConfirm={vi.fn()}
+        onSecurityMode={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("passphrase-file-note").textContent).toMatch(/unlocks itself/i);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByTestId("no-keyring-note")).toBeNull();
+  });
+
+  it("never restores the file mode from a saved draft: it is not a choice", () => {
+    const restored = restoreDraft({ ...blankDraft(), securityMode: "passphrase_file" });
+    expect(restored?.securityMode).toBe("prompt_on_startup");
+  });
+});
+
 describe("the passphrase screen's warnings", () => {
   function renderWith(passphrase: string, passphraseConfirm: string) {
     render(

@@ -61,7 +61,12 @@ import { useEffect, useRef, useState } from "react";
 import { SetupGateScreen } from "@/components/SetupGateScreen";
 import { ApiError, api } from "@/lib/api";
 import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
-import { homeFrom, proposedModelsFolder } from "@/lib/proposedModelsFolder";
+import {
+  homeFrom,
+  parentOf,
+  presetModelsFolder,
+  proposedModelsFolder,
+} from "@/lib/proposedModelsFolder";
 import { hasSessionToken, setSessionToken } from "@/lib/session";
 import type { ComponentList, DirectoryListing } from "@/lib/types";
 import { SETUP_GATE_TIMEOUT_MS, isNoAnswer } from "@/lib/useSetupGate";
@@ -121,6 +126,9 @@ export default function WizardPage() {
   // the status probe answers, or forever against an agent that predates
   // the field - either way the draft keeps the passphrase prompt.
   const [keyringAvailable, setKeyringAvailable] = useState<boolean | null>(null);
+  // The agent runs under its own account and unlocks itself from a file
+  // (the Linux system install). Not a choice: the screen says so.
+  const [passphraseFile, setPassphraseFile] = useState(false);
   // The folder Eugene offers to make, once the library has been asked for
   // its home. Asked only on screen 2, because only then is there a session.
   const [proposal, setProposal] = useState<FolderProposal>({ status: "loading" });
@@ -208,6 +216,14 @@ export default function WizardPage() {
         // must match what the screen showed.
         setDraft((prev) => ({ ...prev, securityMode: "prompt_on_startup" }));
       }
+      // Last, so it wins over the keyring branch above: an agent under its
+      // own account has no keyring (false) and needs none. The control
+      // root on this host reads the same file, so step 3 writes the mode
+      // to both, as it does for the keyring.
+      if (status?.passphraseFile === true) {
+        setPassphraseFile(true);
+        setDraft((prev) => ({ ...prev, securityMode: "passphrase_file" }));
+      }
 
       if (!status?.initialized) {
         setScreen(1);
@@ -262,6 +278,16 @@ export default function WizardPage() {
           api.get<DirectoryListing>("library", "/v1/directories"),
         );
         if (cancelled) return;
+        // A folder the installer chose wins: the library's home is its own
+        // account's, which on a system install is not the person's.
+        const preset = presetModelsFolder(
+          await api.get<{ folders?: unknown }>("library", "/v1/folders").catch(() => null),
+        );
+        if (cancelled) return;
+        if (preset) {
+          setProposal({ status: "ready", path: preset, home: parentOf(preset) });
+          return;
+        }
         const path = proposedModelsFolder(roots);
         const home = homeFrom(roots);
         if (path && home) {
@@ -495,6 +521,7 @@ export default function WizardPage() {
               passphraseConfirm={passphraseConfirm}
               securityMode={draft.securityMode}
               keyringAvailable={keyringAvailable}
+              passphraseFile={passphraseFile}
               onPassphrase={setPassphrase}
               onPassphraseConfirm={setPassphraseConfirm}
               onSecurityMode={(v) => patchDraft({ securityMode: v })}
