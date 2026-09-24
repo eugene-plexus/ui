@@ -86,8 +86,8 @@ export interface paths {
          *     Server-Sent Events stream. Events:
          *
          *     - `event: token` — `data` is a JSON `StreamToken`: `text` for a
-         *       text fragment, `toolCalls` for tool-call fragments, never
-         *       both in one frame
+         *       text fragment, `reasoning` for a reasoning fragment,
+         *       `toolCalls` for tool-call fragments, exactly one per frame
          *     - `event: done`  — `data` is the final `GenerateResponse` JSON
          *     - `event: error` — `data` is a `Problem` JSON
          *
@@ -104,6 +104,45 @@ export interface paths {
          *     before the response is handed over.
          */
         post: operations["generateStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/generate/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count a request's prompt tokens with the backend's own tokenizer, generating nothing.
+         * @description The prompt this request would put in front of the model, counted
+         *     by the backend that would serve it -- **the same payload
+         *     `/v1/generate` sends**, thinking directive and all, rendered by
+         *     the backend's own chat template and counted by its own
+         *     tokenizer. Nothing is generated and no prefill runs. Added
+         *     2026-09-23 for the Anthropic door's `count_tokens`.
+         *
+         *     **llama.cpp only, and measured.** The payload goes to
+         *     `/apply-template` and the prompt it returns to `/tokenize` with
+         *     `add_special: true`; against Gemma 4 E4B on b10948 that gave
+         *     27, 59 and 95 tokens for a plain, a tool-bearing and a tool-loop
+         *     request, **exactly** the `prompt_tokens` a one-token generation
+         *     of each reported. Every other backend answers **501**: vLLM has
+         *     a `/tokenize` of its own that has not been run here, Ollama and
+         *     hosted providers have none, and the agentic CLIs have no prompt
+         *     to count. A backend that does not know is not asked to guess.
+         *
+         *     **A request carrying an image is 501 too**: an image's token
+         *     cost is decided by the projector when it encodes the picture,
+         *     and the template renders only a marker for it.
+         */
+        post: operations["countPromptTokens"];
         delete?: never;
         options?: never;
         head?: never;
@@ -391,7 +430,8 @@ export interface components {
             /**
              * @description A2 provenance: names of settings explicitly requested by the caller,
              *     using this request's field names (maxTokens, temperature, topP, seed,
-             *     stop, tools, toolChoice, responseFormat). The gateway preserves this
+             *     stop, tools, toolChoice, responseFormat, topK, minP, frequencyPenalty,
+             *     presencePenalty, parallelToolCalls). The gateway preserves this
              *     list on each fallback attempt. An adapter must refuse a known unsupported
              *     explicit setting with 400, rather than silently dropping it. Settings
              *     supplied only by profiles/defaults retain the adapter's default behavior.
@@ -457,6 +497,56 @@ export interface components {
             /** @description Optional stop sequences. */
             stop?: string[];
             /**
+             * @description Sample from only the K most likely tokens; 0 disables the cut.
+             *     Not an OpenAI parameter -- llama.cpp and vLLM both take it as
+             *     `top_k`, and Anthropic's Messages API has it natively. Caller-
+             *     owned like every sampler here: carried when the caller set it,
+             *     never substituted by a driver.
+             *
+             *     **Added 2026-09-23.** Until then both front doors refused it
+             *     with a 400 because this request had nowhere to put it, which
+             *     made it the last sampling parameter with that gap after
+             *     `topP` and `seed` closed theirs on 2026-09-19.
+             *
+             *     An adapter whose backend is known to reject it (a hosted
+             *     OpenAI endpoint, the agentic CLIs) refuses it when explicit,
+             *     and omits it from `capabilities.supportedSettings` so the
+             *     gateway routes around that backend instead.
+             */
+            topK?: number;
+            /**
+             * Format: float
+             * @description Discard tokens less likely than this fraction of the most
+             *     likely one. A llama.cpp and vLLM extension (`min_p`), carried
+             *     and refused exactly as `topK` is.
+             */
+            minP?: number;
+            /**
+             * Format: float
+             * @description OpenAI's `frequency_penalty`: penalise a token by how often
+             *     it has already appeared. Carried to every backend that takes
+             *     it; refused when explicit by the agentic CLIs and, by the
+             *     same rule that omits `temperature`, by models whose sampler
+             *     is fixed.
+             */
+            frequencyPenalty?: number;
+            /**
+             * Format: float
+             * @description OpenAI's `presence_penalty`: penalise a token for having
+             *     appeared at all. Carried and refused exactly as
+             *     `frequencyPenalty` is.
+             */
+            presencePenalty?: number;
+            /**
+             * @description Whether the model may request several tools in one turn.
+             *     OpenAI's `parallel_tool_calls`, which llama.cpp also reads.
+             *     **The default differs by backend**: llama.cpp assumes false
+             *     when it is absent and OpenAI assumes true, so an absent
+             *     field is left absent rather than filled in -- choosing for
+             *     the caller would change what some backend already does.
+             */
+            parallelToolCalls?: boolean;
+            /**
              * Format: uuid
              * @description Caller-supplied id for log correlation. Echoed in the response.
              */
@@ -481,6 +571,14 @@ export interface components {
             toolChoice?: ("none" | "auto" | "required") | components["schemas"]["NamedToolChoice"];
             responseFormat?: components["schemas"]["ResponseFormat"];
         };
+        TokenCount: {
+            /**
+             * @description Tokens the backend's own template and tokenizer produce for
+             *     this request's prompt -- what `usage.promptTokens` on a
+             *     generation of the same request would report.
+             */
+            promptTokens: number;
+        };
         GenerateResponse: {
             /**
              * @description The generated assistant text. **Nullable since tool calling
@@ -490,6 +588,34 @@ export interface components {
              *     `content` is the common agent-loop case.
              */
             content?: string | null;
+            /**
+             * @description The model's reasoning for this turn, when the backend
+             *     reports it separately from `content` -- `reasoning_content`
+             *     from llama.cpp, `reasoning` from vLLM. Absent when there was
+             *     none, when the backend puts reasoning inline in `content`
+             *     (then `thinkingMode` and the thinking filter govern it), and
+             *     always when this driver's `thinkingMode` is `off`.
+             *
+             *     **Added 2026-09-23, and before it every token of it was
+             *     discarded.** Measured against llama.cpp b10948 launched with
+             *     the agent's own argv: a reasoning model's thinking arrives
+             *     in `reasoning_content` by default, this driver read only
+             *     `content`, and a Qwen3 that spent its whole `max_tokens`
+             *     budget thinking came back as an **empty answer with
+             *     `finishReason: length`** and nothing to say why. A stop
+             *     sequence can match inside the reasoning too, which produced
+             *     the same empty `stop`.
+             */
+            reasoning?: string | null;
+            /**
+             * @description Which of the request's `stop` strings ended the answer, when
+             *     the backend says. vLLM does (`stop_reason` on the choice);
+             *     **llama.cpp b10948 does not** -- measured, its choice carries
+             *     `finish_reason`, `index` and `message` and nothing else -- so
+             *     for most local installs this stays null and `finishReason`
+             *     stays `stop`. Set together with `finishReason: stop_sequence`.
+             */
+            stopSequence?: string | null;
             /**
              * @description Tools the model chose to call. Present when `finishReason`
              *     is `tool_calls`.
@@ -532,12 +658,24 @@ export interface components {
             latencyMs?: number;
         };
         /**
-         * @description One `event: token` payload. Exactly one of `text` or `toolCalls`
-         *     is set.
+         * @description One `event: token` payload. Exactly one of `text`, `reasoning`
+         *     or `toolCalls` is set.
+         *
+         *     A reasoning frame is output like any other: it is the first
+         *     thing a reasoning model produces, so it is also the commit point
+         *     one layer up -- once a caller has been shown the model thinking,
+         *     a failure cannot cascade onto another model's answer.
          */
         StreamToken: {
             /** @description A fragment of the assistant's text. */
             text?: string;
+            /**
+             * @description A fragment of the model's reasoning, from a backend that
+             *     streams it separately (`delta.reasoning_content` on
+             *     llama.cpp, `delta.reasoning` on vLLM). Never sent when this
+             *     driver's `thinkingMode` is `off`.
+             */
+            reasoning?: string;
             /** @description Fragments of one or more tool calls, accumulated by `index`. */
             toolCalls?: components["schemas"]["ToolCallDelta"][];
         };
@@ -605,6 +743,21 @@ export interface components {
             promptTokens?: number;
             completionTokens?: number;
             totalTokens?: number;
+            /**
+             * @description How many of `promptTokens` the backend served from its
+             *     prompt cache rather than computing. Reported by llama.cpp
+             *     and vLLM as `usage.prompt_tokens_details.cached_tokens`;
+             *     absent when the backend says nothing, never guessed.
+             */
+            cachedPromptTokens?: number;
+            /**
+             * @description How many of `completionTokens` were reasoning. vLLM reports
+             *     it (`completion_tokens_details.reasoning_tokens`) when its
+             *     reasoning parser is on; llama.cpp b10948 does not, and a
+             *     count this driver made up from characters would be a
+             *     tokenizer it does not have. Absent means unknown, not zero.
+             */
+            reasoningTokens?: number;
         };
         /**
          * @description Text to embed. Batched because every backend that does this
@@ -996,8 +1149,11 @@ export interface components {
         MessageContentPart: components["schemas"]["TextContentPart"] | components["schemas"]["ImageContentPart"];
         /**
          * @description Text, null for an assistant tool-call turn, or ordered user content parts.
-         *     Images are inline PNG/JPEG only: four per request, 5 MiB decoded each,
-         *     10 MiB decoded total, 16 million pixels each, maximum dimension 8192.
+         *     Images are inline PNG/JPEG only: the gateway's `maxImagesPerRequest`
+         *     per request (12 by default, at most 64, counted across the whole
+         *     conversation), 5 MiB decoded each, 10 MiB decoded total, 16 million
+         *     pixels each, maximum dimension 8192. The inference-driver enforces
+         *     the ceiling of 64; the gateway enforces the setting.
          *     JSON bodies are limited to 16 MiB. Remote URLs are never fetched.
          */
         MessageContent: string | null | components["schemas"]["MessageContentPart"][];
@@ -1028,6 +1184,25 @@ export interface components {
              *     `content` is the result, serialized by the caller.
              */
             toolCallId?: string;
+            /**
+             * @description On an **assistant** message: the reasoning the model produced
+             *     for that turn, as the backend reported it separately from
+             *     `content` (`reasoning_content` on llama.cpp, `reasoning` on
+             *     vLLM). Handed back so the next turn of a tool loop reaches
+             *     the model with its own earlier thinking.
+             *
+             *     **Load-bearing rather than decorative, and measured:**
+             *     llama.cpp b10948 renders a history turn's reasoning into the
+             *     prompt for templates that preserve it (Qwen3, gpt-oss) --
+             *     the same tool-loop request was 172 prompt tokens without it
+             *     and 184 with a twelve-token canary. Dropped here, a model
+             *     resuming a tool loop has forgotten why it called the tool.
+             *
+             *     Absent on every other role, and an adapter whose backend
+             *     has no such channel (the agentic CLIs, a hosted OpenAI
+             *     endpoint) omits it upstream rather than inventing one.
+             */
+            reasoning?: string | null;
             /**
              * Format: date-time
              * @description When the message was produced. Server-assigned if omitted.
@@ -1702,6 +1877,74 @@ export interface operations {
              *     `event: error`, since the 200 is already committed.
              */
             504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    countPromptTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description The count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenCount"];
+                };
+            };
+            /**
+             * @description The request cannot be counted as asked: tools against a
+             *     backend that cannot carry them, or a setting this backend
+             *     refuses -- the same refusals `/v1/generate` makes.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller disconnected; the count was abandoned. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description This backend cannot count exactly without generating (see
+             *     above), or the request carries an image. The caller should
+             *     count some other way; nothing was sent to the model.
+             */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The backend failed or could not be reached while counting. */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -55,6 +55,14 @@ export interface ComponentPlacement {
   node: string | null;
 }
 
+/** One installed app, as its machine's agent reports it. */
+export interface AppPlacement {
+  id: string;
+  name: string;
+  /** The machine it runs on; null on a machine with no name yet. */
+  node: string | null;
+}
+
 /** Everything the tree is built from. Every field may be empty. */
 export interface Topology {
   /** This node's name, from `GET /v1/node`. Null before enrollment. */
@@ -65,6 +73,12 @@ export interface Topology {
   components: ComponentPlacement[];
   /** The install's own name, when the root offers one. */
   installName?: string | null;
+  /**
+   * Installed apps, from each machine's own agent
+   * (`specs/docs/design/apps-and-spokes.md`). Optional so every topology
+   * written before apps existed is still a whole one.
+   */
+  apps?: AppPlacement[];
   /**
    * True when the control root could not be reached or answered `503
    * Locked`. The tree still renders; it says what is missing.
@@ -145,6 +159,10 @@ const PAGES: Record<string, PageRef[]> = {
     { id: "home", label: "Home", route: "/", icon: "Monitor" },
     { id: "playground", label: "Playground", route: "/playground", icon: "Terminal" },
     { id: "inference", label: "Inference", route: "/inference", icon: "Cpu" },
+    // The app catalogue and every installed app, on every machine. On the
+    // install root because installing is a question about the install --
+    // which machine is a picker on the page, the way Library's launch is.
+    { id: "apps", label: "Apps", route: "/apps", icon: "Blocks" },
     // Theme and font size. Browser-local, not install-wide, and the page
     // says so -- but it has to hang somewhere in a tree of objects, and
     // the install root is the only row that is not a component.
@@ -179,6 +197,14 @@ const PAGES: Record<string, PageRef[]> = {
   ],
   agent: [{ id: "config", label: "Config", route: "/config", icon: "Server" }],
   driver: [{ id: "config", label: "Config", route: "/config", icon: "Server" }],
+  // An installed app. Settings is listed for every app, though a custom
+  // app may publish none: which pages an object has depends on its kind,
+  // never on data that arrives later (see `pagesForSelection`), and the
+  // page says so plainly when there is nothing to edit.
+  app: [
+    { id: "overview", label: "Overview", route: "/apps/app", icon: "Blocks" },
+    { id: "settings", label: "Settings", route: "/apps/settings", icon: "Server" },
+  ],
 };
 
 /** Every route any page entry names. The vitest suite checks these exist. */
@@ -228,6 +254,14 @@ export function buildTree(topology: Topology): TreeNode {
       if (singleton) children.push(singleton);
     }
   }
+
+  // Apps first: they are "Your tools", the layer drawn above the front
+  // door, so the tree reads down the architecture page as before. Absent
+  // until something is installed -- the catalogue is the install root's
+  // Apps page, and an empty branch would be a thing to click that holds
+  // nothing, which is why a missing singleton is omitted too.
+  const apps = appBranch(topology.apps ?? [], machines, localNode);
+  if (apps) children.unshift(apps);
 
   return {
     sel: "install",
@@ -562,14 +596,79 @@ function driverBranch(
   };
 }
 
+/**
+ * Installed apps, per machine -- or, with one machine, straight under the
+ * branch, the same flip `driverBranch` makes.
+ *
+ * **Only machines with an app get a group.** A driver branch lists every
+ * machine because "running nothing" and "not in the install" must look
+ * different on the screen about backends; an app is optional by
+ * definition, and a group per machine reading "none" would be the fleet
+ * you do not have, again. A leaf's `sel` is `app:<id>@<node>`, or
+ * `app:<id>` on a machine with no name.
+ */
+function appBranch(
+  apps: AppPlacement[],
+  machines: ReadonlyArray<string | null>,
+  localNode: string | null,
+): TreeNode | null {
+  if (apps.length === 0) return null;
+  const layer = layerOf("tools");
+  const keyOf = (a: AppPlacement): string | null => a.node ?? localNode;
+  const byName = (a: AppPlacement, b: AppPlacement) => a.name.localeCompare(b.name);
+  const leaf = (a: AppPlacement): TreeNode => {
+    const key = keyOf(a);
+    return {
+      sel: key ? `app:${a.id}@${key}` : `app:${a.id}`,
+      kind: "leaf",
+      label: a.name,
+      layer: layer.id,
+      icon: "Blocks",
+      node: key,
+      children: [],
+      pages: PAGES.app ?? [],
+    };
+  };
+  const branch = (children: TreeNode[]): TreeNode => ({
+    sel: null,
+    kind: "branch",
+    label: "Apps",
+    layer: layer.id,
+    icon: "Blocks",
+    children,
+    pages: [],
+  });
+
+  if (machines.length === 1) return branch([...apps].sort(byName).map(leaf));
+
+  const keys: (string | null)[] = [];
+  for (const m of machines) if (apps.some((a) => keyOf(a) === m)) keys.push(m);
+  for (const a of apps) if (!keys.includes(keyOf(a))) keys.push(keyOf(a));
+  return branch(
+    keys.map((key) => ({
+      sel: null,
+      kind: "nodeGroup" as const,
+      label: key ?? localNode ?? THIS_MACHINE,
+      layer: layer.id,
+      icon: "Blocks" as const,
+      node: key,
+      children: apps
+        .filter((a) => keyOf(a) === key)
+        .sort(byName)
+        .map(leaf),
+      pages: [],
+    })),
+  );
+}
+
 /* ────────────────────────────── selection ───────────────────────────── */
 
 export interface Selection {
-  /** `install`, `gateway`, `library`, `libraryNode`, `control`, `agent`, or `driver`. */
-  type: "install" | "gateway" | "library" | "libraryNode" | "control" | "agent" | "driver";
-  /** The machine, for an agent, a driver, or a node under the Library. */
+  /** `install`, `gateway`, `library`, `libraryNode`, `control`, `agent`, `driver`, or `app`. */
+  type: "install" | "gateway" | "library" | "libraryNode" | "control" | "agent" | "driver" | "app";
+  /** The machine, for an agent, a driver, an app, or a node under the Library. */
   node: string | null;
-  /** The driver's own name. */
+  /** The driver's own name, or the app's id. */
   name: string | null;
 }
 
@@ -602,17 +701,20 @@ export function parseSelection(raw: string | null | undefined): Selection | null
     const node = value.slice("agent:".length);
     return node ? { type: "agent", node, name: null } : null;
   }
-  if (value.startsWith("driver:")) {
-    const rest = value.slice("driver:".length);
+  // A driver and an app are both `<prefix>:<name>@<node>`, with the
+  // machine optional for one that has no name yet.
+  for (const type of ["driver", "app"] as const) {
+    if (!value.startsWith(`${type}:`)) continue;
+    const rest = value.slice(type.length + 1);
     const at = rest.lastIndexOf("@");
-    // No `@` is a driver on an unenrolled machine, which has no name to
+    // No `@` is an object on an unenrolled machine, which has no name to
     // qualify it with. `@` at position 0 is a missing name, which is
     // malformed.
     if (at === 0) return null;
-    if (at < 0) return rest ? { type: "driver", node: null, name: rest } : null;
+    if (at < 0) return rest ? { type, node: null, name: rest } : null;
     const name = rest.slice(0, at);
     const node = rest.slice(at + 1);
-    return name && node ? { type: "driver", node, name } : null;
+    return name && node ? { type, node, name } : null;
   }
   return null;
 }
@@ -630,9 +732,10 @@ export function formatSelection(selection: Selection): string {
     case "libraryNode":
       return selection.node ? `library:node:${selection.node}` : "library:node";
     case "driver":
+    case "app":
       return selection.node
-        ? `driver:${selection.name ?? ""}@${selection.node}`
-        : `driver:${selection.name ?? ""}`;
+        ? `${selection.type}:${selection.name ?? ""}@${selection.node}`
+        : `${selection.type}:${selection.name ?? ""}`;
   }
 }
 
@@ -711,6 +814,9 @@ export function configTabFor(selection: Selection, localNode: string | null): st
       return !selection.node || selection.node === localNode ? "agent" : `node:${selection.node}`;
     case "driver":
       return selection.name;
+    // An app's settings are its own page, not a Config tab: the agent
+    // serves them on the app's behalf at `/v1/apps/{id}/config`.
+    case "app":
     case "install":
       return null;
   }
@@ -743,6 +849,7 @@ export function defaultSelectionFor(
     case "/":
     case "/playground":
     case "/inference":
+    case "/apps":
       return "install";
     case "/metrics":
     case "/routing":
@@ -819,8 +926,12 @@ export function findSelected(root: TreeNode, sel: string | null): TreeNode | nul
     // (its agent); the Library leaf for that machine is found by node.
     return machineRows.find((n) => (n.node ?? null) === localNodeOf(root)) ?? null;
   }
-  if (selection.type === "driver" && !selection.node && selection.name) {
-    const prefix = `driver:${selection.name}`;
+  if (
+    (selection.type === "driver" || selection.type === "app") &&
+    !selection.node &&
+    selection.name
+  ) {
+    const prefix = `${selection.type}:${selection.name}`;
     return rows.find((n) => n.sel === prefix || n.sel?.startsWith(`${prefix}@`)) ?? null;
   }
   return null;

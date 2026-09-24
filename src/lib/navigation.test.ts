@@ -93,8 +93,8 @@ describe("the registry agrees with the website", () => {
 });
 
 describe("every screen resolves", () => {
-  it("has nine navigable screens", () => {
-    expect(SCREENS).toHaveLength(9);
+  it("has ten navigable screens", () => {
+    expect(SCREENS).toHaveLength(10);
   });
 
   it("puts Home at the root and the playground beside it, both under Your tools", () => {
@@ -109,9 +109,13 @@ describe("every screen resolves", () => {
     expect(playground?.label).toBe("Playground");
     expect(home?.layer).toBe("tools");
     expect(playground?.layer).toBe("tools");
+    // Apps are tools too (apps-and-spokes.md §11): something that speaks
+    // the API with one key, filed under the layer above the front door
+    // rather than a ninth layer the website would have to grow.
     expect(SCREENS.filter((s) => s.layer === "tools").map((s) => s.href)).toEqual([
       "/",
       "/playground",
+      "/apps",
     ]);
   });
 
@@ -185,6 +189,7 @@ describe("the groups are the page's two halves", () => {
     expect(NAV_GROUPS.at(0)?.screens.map((s) => s.href)).toEqual([
       "/",
       "/playground",
+      "/apps",
       "/metrics",
       "/routing",
       "/inference",

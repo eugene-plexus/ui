@@ -492,6 +492,302 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The apps installed on this node, with their live status.
+         * @description One entry per installed app. An app is not a component: it holds
+         *     a client key and nothing else, runs from its own Python
+         *     environment, and reaches the hub the way any outside client does.
+         *     See the `apps` tag and `docs/design/apps-and-spokes.md`.
+         */
+        get: operations["listApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/app-catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The apps this node can install, and whether it can install any.
+         * @description The catalogue shipped with this agent release plus any custom
+         *     entries the operator added on this node. A new app in a later
+         *     release is a new row here; the agent needs no new code for it.
+         *
+         *     `installable: false` is a real answer with `reason` saying what to
+         *     do: this agent cannot find `uv`, or has not enrolled (an agent
+         *     that has not enrolled signs with a key that changes at every
+         *     start, so an app's key would stop working at the next restart).
+         */
+        get: operations["getAppCatalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/app-catalogue/custom": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add an app that is not in the shipped catalogue.
+         * @description Operator-only, and **refused with 403 until the agent's
+         *     `allowCustomApps` setting is on** — the same expert-switch posture
+         *     as `allowUnrestrictedEngineLaunch`, for the same reason: it runs
+         *     code this release did not ship. The entry is stored on this node
+         *     and installed like any other; it is how a spoke somebody else
+         *     wrote gets the same supervision ours do. **Installing it runs its code as the user
+         *     this agent runs as, holding the client key minted for it** — a UI
+         *     must say so before the operator confirms.
+         *
+         *     409 when an entry with this `id` already exists, shipped or custom;
+         *     422 when `source` is neither an archive URL nor an existing folder
+         *     on this node.
+         */
+        post: operations["addCustomApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/app-catalogue/custom/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a custom entry from this node's catalogue.
+         * @description 409 while the app is installed — uninstall it first, so an entry
+         *     is never removed from under something still running from it.
+         */
+        delete: operations["removeCustomApp"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        /** One installed app. */
+        get: operations["getApp"];
+        put?: never;
+        post?: never;
+        /**
+         * Stop an app, revoke its key and remove its environments.
+         * @description Revoking the key is part of uninstalling, not a separate step: an
+         *     app that is gone must not leave a working credential behind. The
+         *     app's `data` directory is kept unless `purge` is true, so an
+         *     uninstall followed by a reinstall picks up where it left off.
+         *
+         *     The key is revoked at whoever holds the registry — the control
+         *     root on an enrolled node — with the caller's own credential. If
+         *     that revocation fails the uninstall stops with the authority's
+         *     answer and nothing has been removed.
+         */
+        delete: operations["uninstallApp"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{id}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        /** Progress of the current or most recent install of this app. */
+        get: operations["getAppInstall"];
+        put?: never;
+        /**
+         * Install, or update to, the catalogue's version of an app.
+         * @description Returns immediately; poll the GET on this path. One install runs
+         *     per app, the same singleton shape as an engine install.
+         *
+         *     The version installed is the one the catalogue names — there is
+         *     no version in the request, because an app's version is pinned by
+         *     the release that ships it (or by the operator's custom entry).
+         *     Installing a version beside an installed one is how an update
+         *     works: the new environment is built, verified and moved into
+         *     place while the old one keeps running, then the app restarts on
+         *     the new one. The previous environment is kept for rollback.
+         *
+         *     On a first install the agent mints the app's client key with the
+         *     **caller's** credential, named `app:<id>@<node>`, so it appears in
+         *     the install's key list like any other and can be narrowed or
+         *     revoked there.
+         *
+         *     403 for a custom entry while `allowCustomApps` is off; 409 when an
+         *     install is in flight or that version is already installed; 422
+         *     when this node cannot install apps (`AppCatalogue.reason`).
+         */
+        post: operations["installApp"];
+        /** Cancel an install in flight. */
+        delete: operations["cancelAppInstall"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start an installed app, and keep it started across restarts. */
+        post: operations["startApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop an installed app, and keep it stopped across restarts. */
+        post: operations["stopApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{id}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart an installed app.
+         * @description Clears a `crashed` state, like restarting a component.
+         */
+        post: operations["restartApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{id}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an app's own settings, through this agent.
+         * @description For an app whose manifest declares `configTrio: true`. The agent
+         *     checks the operator's session and calls the app's own
+         *     `GET /v1/config` on loopback with the **admin token** it handed
+         *     the app at this spawn — a credential that means something to that
+         *     app and nothing to the hub. So the operator never talks to an app
+         *     directly with a hub credential, and a console on any node reaches
+         *     it through `node:<name>`.
+         *
+         *     409 when the app declares no config trio; 503 when it is not
+         *     answering.
+         */
+        get: operations["getAppConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change an app's own settings, through this agent. */
+        patch: operations["updateAppConfig"];
+        trace?: never;
+    };
+    "/v1/apps/{id}/config/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        /** An app's own config schema, through this agent. */
+        get: operations["getAppConfigSchema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/benchmarks": {
         parameters: {
             query?: never;
@@ -1715,8 +2011,9 @@ export interface components {
         };
         BoundAddress: {
             /**
-             * @description `agent`, or a `ComponentKind`. Engines are not listed: they
-             *     are deliberately never widened.
+             * @description `agent`, a `ComponentKind`, or `app:<id>` for an installed
+             *     app. Engines are not listed: they are deliberately never
+             *     widened.
              */
             process: string;
             /** @description The interface bound — `127.0.0.1`, `0.0.0.0`, or one address. */
@@ -2371,12 +2668,46 @@ export interface components {
              *     application built with any 13.x toolkit runs on any 13.x
              *     driver, minus PTX JIT for newer PTX and APIs the driver
              *     lacks; verified live with b10990's 13.4 build on a 13.3
-             *     driver), and the agent logs the choice. A different major
-             *     is never chosen, and the refusal says so. The candidate
+             *     driver), and the agent logs the choice. The candidate
              *     minors are read from the release's own asset names, not a
              *     table: the table this replaced went stale in a day.
+             *
+             *     **A NEWER major is never chosen** — a 13.x build needs a
+             *     13.x driver, and the refusal says so and names the fix. **An
+             *     OLDER major is**, when the driver's own major has nothing
+             *     this machine's cards can run: NVIDIA's drivers are backward
+             *     compatible, so a 12.x build loads on a 13.x driver with the
+             *     CUDA runtime it ships beside it. Until 2026-09-23 this said a
+             *     different major was never chosen *either way*, which refused
+             *     a working build on the one kind of host that needs it — see
+             *     `computeCapability`.
              */
             acceleratorVersion?: string;
+            /**
+             * @description For CUDA, the **lowest** compute capability among this
+             *     machine's NVIDIA cards, as `nvidia-smi --query-gpu=compute_cap`
+             *     reports it (`6.1` for a Pascal Quadro P4000, `12.0` for an
+             *     RTX 5090). Absent when the driver would not say, which is
+             *     only drivers old enough that no published build loads on
+             *     them anyway.
+             *
+             *     **It exists because the driver's CUDA version is not enough
+             *     to choose a build.** From CUDA 13 the toolkit no longer
+             *     compiles for Maxwell, Pascal or Volta, and upstream
+             *     llama.cpp's own build adds `50-virtual 61-virtual 70-virtual`
+             *     only below 13 — so a card below 7.5 cannot run a 13.x build
+             *     at all, while the last driver branch that supports it (580)
+             *     reports CUDA 13.0. Choosing by driver alone installs a build
+             *     with no kernels for the card, which fails at model load with
+             *     nothing naming why. So a 13.x build is a candidate only at
+             *     7.5 or above, a 12.x build at 5.0 or above, and below 5.0
+             *     nothing published runs and the refusal says so.
+             *
+             *     **The lowest card decides**, because one engine may use every
+             *     visible card and a build must carry code for all of them: a
+             *     3090 beside a P4000 gets the 12.x build, which carries both.
+             */
+            computeCapability?: string;
         };
         EngineInstallRequest: {
             /**
@@ -3541,6 +3872,238 @@ export interface components {
          */
         FolderReachSource: "same_path" | "inherited" | "override";
         /**
+         * @description What an app is, how to install it, and what it needs from the hub.
+         *     The shipped catalogue is a list of these; so is a custom entry.
+         *
+         *     **Nothing here grants anything on the hub.** An app receives a
+         *     client key scoped by `uses` and the addresses it needs, and no
+         *     service token, signing key or master key — the same things a
+         *     third-party client could be given, which is the rule the design
+         *     calls *our spokes get no back doors*.
+         *
+         *     **What an app owes the agent** is small: bind the port in
+         *     `EUGENE_PLEXUS_APP_BIND_PORT` (on `EUGENE_PLEXUS_APP_BIND_HOST`
+         *     when set, loopback otherwise) and answer `GET /healthz` with a
+         *     2xx once it is serving — an app that never does reads `starting`
+         *     for as long as it runs. It finds its key in the file named by
+         *     `EUGENE_PLEXUS_APP_KEY_FILE`, the gateway at
+         *     `EUGENE_PLEXUS_APP_GATEWAY_URL` (absent when none could be
+         *     found), keeps its state under `EUGENE_PLEXUS_APP_DATA_DIR`, and —
+         *     with `configTrio` — requires `EUGENE_PLEXUS_APP_ADMIN_TOKEN` as
+         *     the bearer on its config trio.
+         */
+        AppManifest: {
+            /**
+             * @description Stable identifier: a directory name under the node's `apps`
+             *     directory, part of the key's name, and the path segment in
+             *     `/v1/apps/{id}`. Lowercase so two spellings cannot be two apps.
+             */
+            id: string;
+            /** @description What a person calls it. */
+            name: string;
+            /** @description One or two sentences for the catalogue card. */
+            summary?: string;
+            /**
+             * Format: uri
+             * @description Where to read about it. Display only.
+             */
+            homepage?: string;
+            /**
+             * @description What `uv pip install` is given, as `<package> @ <source>`: an
+             *     `https://` archive URL — for a GitHub repo,
+             *     `https://github.com/<owner>/<repo>/archive/<commit>.tar.gz` —
+             *     or, for a custom entry, a directory on this node holding the
+             *     package (a developer's own checkout). The shipped catalogue
+             *     uses archive URLs at pinned commits, the way the installers
+             *     pin the hub's own packages.
+             */
+            source: string;
+            /**
+             * @description The label this install is recorded under and the name of its
+             *     environment's directory — the commit, for a catalogue entry.
+             *     Updating an app is installing a different `version`.
+             */
+            version: string;
+            /** @description The distribution name, e.g. `eugene-plexus-chat`. */
+            package: string;
+            /**
+             * @description The module run as `python -m <entry>` with the app's own
+             *     interpreter. The install imports it once before it counts as
+             *     installed, so a package that installs and cannot start is a
+             *     failed install rather than a crash loop later.
+             */
+            entry: string;
+            /**
+             * @description The Python the app's environment is built with.
+             * @default 3.12
+             */
+            python: string;
+            /**
+             * @description Whether the app serves a browser UI on its port. A UI is
+             *     opened on the app's own origin and never embedded in or
+             *     proxied through the console: the console's origin holds the
+             *     operator session and an unauthenticated proxy to every
+             *     component, and anything running there has operator authority.
+             * @default false
+             */
+            ui: boolean;
+            /**
+             * @description Whether the app serves `GET /v1/config`, `GET
+             *     /v1/config/schema` and `PATCH /v1/config`, requiring the admin
+             *     token this agent hands it at each spawn. Required of apps we
+             *     ship; optional for a custom entry, whose page then shows
+             *     status, logs and Open only.
+             * @default false
+             */
+            configTrio: boolean;
+            /**
+             * @description The hub surfaces the app's key is scoped to.
+             * @default [
+             *       "inference"
+             *     ]
+             */
+            uses: components["schemas"]["AppHubSurface"][];
+        };
+        /**
+         * @description A public hub surface an app's client key may be used on.
+         *
+         *     * `inference` — the gateway's client doors (`/v1/models`,
+         *       `/v1/chat/completions` and the rest), under A5's default
+         *       limits. The operator narrows or widens the key like any other.
+         *
+         *     One member today on purpose. A trainer depositing models into the
+         *     Library would add a second, together with the Library endpoint it
+         *     names, when a trainer exists to use it — not before.
+         * @enum {string}
+         */
+        AppHubSurface: "inference";
+        /**
+         * @description * `catalogue` — shipped with this agent release.
+         *     * `custom` — added by an operator on this node.
+         * @enum {string}
+         */
+        AppOrigin: "catalogue" | "custom";
+        AppCatalogueEntry: {
+            manifest: components["schemas"]["AppManifest"];
+            origin: components["schemas"]["AppOrigin"];
+            /**
+             * @description The version installed on this node, when one is. Differs from
+             *     `manifest.version` when an update is available.
+             */
+            installedVersion?: string;
+        };
+        AppCatalogue: {
+            apps: components["schemas"]["AppCatalogueEntry"][];
+            /** @description Whether this node can install apps at all. */
+            installable: boolean;
+            /** @description Why not, and what to do. Present when `installable: false`. */
+            reason?: string;
+        };
+        /**
+         * @description Progress of one install. Named phases, as for engines, because
+         *     they fail for different reasons: `creating` is the Python
+         *     download, `installing` is the package index and the network, and
+         *     `verifying` failing means the package installed and cannot start.
+         */
+        AppInstall: {
+            app: string;
+            version?: string;
+            /**
+             * @description * `resolving` — reading the catalogue and minting the key.
+             *     * `creating` — building the environment with the manifest's
+             *       Python.
+             *     * `installing` — installing the package into it.
+             *     * `verifying` — importing `entry` with that interpreter.
+             *     * `done` / `failed` / `cancelled` — terminal, and retained
+             *       until the next install of this app starts.
+             * @enum {string}
+             */
+            state: "resolving" | "creating" | "installing" | "verifying" | "done" | "failed" | "cancelled";
+            /** @description What is happening now, for a status line. */
+            message?: string;
+            /**
+             * @description Populated when `state: failed`: the tail of the tool's own
+             *     output where there is one, because "install failed" is the
+             *     one message nobody can act on.
+             */
+            error?: string;
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            finishedAt?: string;
+        };
+        AppList: {
+            apps: components["schemas"]["App"][];
+        };
+        /**
+         * @description One installed app: what was installed (persisted in `apps.yaml`
+         *     beside `agent.yaml`) and what the agent observes now.
+         *
+         *     `apps.yaml` is a separate file on purpose. An entry this agent
+         *     cannot read degrades the apps alone — the file is kept as
+         *     `apps.yaml.unreadable` and `/healthz` says why — and never takes
+         *     the topology, runtimes or passphrase with it.
+         */
+        App: {
+            id: string;
+            name: string;
+            version: string;
+            /** @description The environment kept for rollback, when there is one. */
+            previousVersion?: string;
+            origin: components["schemas"]["AppOrigin"];
+            /** @description This node's name, when it has one. */
+            node?: string;
+            /**
+             * @description Whether the operator wants it running. Start and stop set it,
+             *     and it survives the agent restarting.
+             */
+            enabled: boolean;
+            status: components["schemas"]["ComponentStatus"];
+            /**
+             * @description The port it binds, allocated from 8190-8289 and persisted so
+             *     its address does not change between restarts.
+             */
+            port: number;
+            /**
+             * Format: uri
+             * @description Where a browser opens its UI: this node's advertised host with
+             *     the app's port, or loopback on a node that advertises none.
+             *     Present only for an app with `ui: true`.
+             */
+            uiUrl?: string;
+            /**
+             * Format: uri
+             * @description The gateway address handed to the app at its last start — the
+             *     local gateway when this node runs one, otherwise the owning
+             *     node's agent proxy (`<agent>/api/proxy/gateway`), which is the
+             *     same public path a browser uses and survives a port remap that
+             *     a component address does not. Absent when none could be found;
+             *     an app we ship then says so and takes an address in its own
+             *     config.
+             */
+            gatewayUrl?: string;
+            ui: boolean;
+            configTrio: boolean;
+            uses: components["schemas"]["AppHubSurface"][];
+            /**
+             * @description The client key minted for it. Revoking that key cuts the app
+             *     off from the hub; uninstalling revokes it.
+             */
+            keyId?: string;
+            keyName?: string;
+            /** Format: date-time */
+            installedAt?: string;
+            pid?: number;
+            /** Format: date-time */
+            lastRestart?: string;
+            lastError?: string;
+            /**
+             * @description Something the operator should know that is not an error — the
+             *     gateway could not be found, say — in words they can act on.
+             */
+            detail?: string;
+        };
+        /**
          * @description Issued on successful login. The UI stores `sessionToken` as a
          *     Secure / HttpOnly / SameSite=Strict cookie or in memory; every
          *     subsequent proxy request includes it as
@@ -4025,6 +4588,55 @@ export interface components {
             };
         };
         /**
+         * @description Current effective config values, keyed by `ConfigField.key`.
+         *     Values of fields with `sensitive: true` are returned as the
+         *     literal string `"<redacted>"` regardless of whether they are
+         *     set. Returned by `GET /v1/config`.
+         */
+        ConfigDocument: {
+            [key: string]: unknown;
+        };
+        /**
+         * @description Partial update for `PATCH /v1/config`. Every present key is
+         *     set; absent keys are left unchanged. To revert a field to its
+         *     default, send `null` as the value. Sensitive fields are written
+         *     through directly (the redacted form sent back by GET is never
+         *     accepted as a write value).
+         */
+        ConfigUpdateRequest: {
+            [key: string]: unknown;
+        };
+        /** @description A per-field validation failure during PATCH. */
+        ConfigFieldError: {
+            key: string;
+            message: string;
+        };
+        /**
+         * @description Outcome of a `PATCH /v1/config` call. Validation failures on
+         *     individual keys do not abort the whole request — valid changes
+         *     are applied, invalid ones are reported in `rejected`.
+         */
+        ConfigUpdateResult: {
+            /** @description Keys that were validated and applied successfully. */
+            applied: string[];
+            /**
+             * @description Keys whose new values failed validation. The current value
+             *     is preserved.
+             */
+            rejected: components["schemas"]["ConfigFieldError"][];
+            /**
+             * @description True if any key in `applied` has `requiresRestart: true`,
+             *     meaning a process restart is needed for the change to take
+             *     effect. The UI should surface this to the user.
+             */
+            requiresRestart: boolean;
+            /**
+             * @description Keys whose new values are stored but not yet active. Subset
+             *     of `applied`. Empty unless `requiresRestart` is true.
+             */
+            pendingRestart?: string[];
+        };
+        /**
          * @description What kind of device this is.
          *
          *     A named schema rather than an inline enum because an inline one
@@ -4176,55 +4788,6 @@ export interface components {
              */
             entries: components["schemas"]["DirectoryEntry"][];
         };
-        /**
-         * @description Current effective config values, keyed by `ConfigField.key`.
-         *     Values of fields with `sensitive: true` are returned as the
-         *     literal string `"<redacted>"` regardless of whether they are
-         *     set. Returned by `GET /v1/config`.
-         */
-        ConfigDocument: {
-            [key: string]: unknown;
-        };
-        /**
-         * @description Partial update for `PATCH /v1/config`. Every present key is
-         *     set; absent keys are left unchanged. To revert a field to its
-         *     default, send `null` as the value. Sensitive fields are written
-         *     through directly (the redacted form sent back by GET is never
-         *     accepted as a write value).
-         */
-        ConfigUpdateRequest: {
-            [key: string]: unknown;
-        };
-        /** @description A per-field validation failure during PATCH. */
-        ConfigFieldError: {
-            key: string;
-            message: string;
-        };
-        /**
-         * @description Outcome of a `PATCH /v1/config` call. Validation failures on
-         *     individual keys do not abort the whole request — valid changes
-         *     are applied, invalid ones are reported in `rejected`.
-         */
-        ConfigUpdateResult: {
-            /** @description Keys that were validated and applied successfully. */
-            applied: string[];
-            /**
-             * @description Keys whose new values failed validation. The current value
-             *     is preserved.
-             */
-            rejected: components["schemas"]["ConfigFieldError"][];
-            /**
-             * @description True if any key in `applied` has `requiresRestart: true`,
-             *     meaning a process restart is needed for the change to take
-             *     effect. The UI should surface this to the user.
-             */
-            requiresRestart: boolean;
-            /**
-             * @description Keys whose new values are stored but not yet active. Subset
-             *     of `applied`. Empty unless `requiresRestart` is true.
-             */
-            pendingRestart?: string[];
-        };
         /** @description Liveness / readiness response shape. */
         Health: {
             /** @enum {string} */
@@ -4263,7 +4826,10 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /** @description The app's `AppManifest.id`. */
+        AppId: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -4899,6 +5465,392 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    listApps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Installed apps. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    getAppCatalogue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The catalogue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppCatalogue"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    addCustomApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppManifest"];
+            };
+        };
+        responses: {
+            /** @description Added to this node's catalogue. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppCatalogueEntry"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    removeCustomApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    getApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    uninstallApp: {
+        parameters: {
+            query?: {
+                /** @description Also delete the app's `data` directory. */
+                purge?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Uninstalled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getAppInstall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Install state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppInstall"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    installApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Install accepted and running. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppInstall"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    cancelAppInstall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled; the state reflects it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppInstall"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    startApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    stopApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    restartApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    getAppConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app's config document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigDocument"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    updateAppConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The app's answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigUpdateResult"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getAppConfigSchema: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app's config schema. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigSchema"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     listBenchmarks: {

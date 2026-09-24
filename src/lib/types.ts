@@ -170,6 +170,18 @@ export type LibraryFolderReach = AgentComponents["schemas"]["LibraryFolderReach"
 export type LibraryFolderStatus = AgentComponents["schemas"]["LibraryFolderStatus"];
 export type FolderReachSource = AgentComponents["schemas"]["FolderReachSource"];
 
+// --- Agent: optional apps, the hub's spokes ---------------------------
+// `specs/docs/design/apps-and-spokes.md`. Per node, like runtimes: each
+// agent installs and supervises its own, and the console reads every
+// node's through `node:<name>`.
+
+export type App = AgentComponents["schemas"]["App"];
+export type AppList = AgentComponents["schemas"]["AppList"];
+export type AppManifest = AgentComponents["schemas"]["AppManifest"];
+export type AppCatalogue = AgentComponents["schemas"]["AppCatalogue"];
+export type AppCatalogueEntry = AgentComponents["schemas"]["AppCatalogueEntry"];
+export type AppInstall = AgentComponents["schemas"]["AppInstall"];
+
 // --- Control: the install-wide views --------------------------------
 //
 // The control root asks every enrolled node's agent and adds the one

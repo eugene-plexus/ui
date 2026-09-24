@@ -229,11 +229,15 @@ export interface paths {
          *
          *     ### Compatibility hints and explicit refusals (A2)
          *
-         *     `cache_control`, `thinking` and `context_management` remain accepted for
-         *     measured Claude Code compatibility, but are not enforced. Non-null ignored
-         *     hints are named in `x-eugene-plexus-ignored-settings` on both response modes.
-         *     `metadata` is discarded as an opaque annotation. Unknown top-level fields
-         *     and non-null `top_k` are rejected with 400 naming the field.
+         *     `cache_control`, `context_management` and `output_config.effort`
+         *     remain accepted for measured Claude Code compatibility, but are not
+         *     enforced (`output_config` was added 2026-09-23, when a newer Claude
+         *     Code began sending it and this door refused every request). `thinking`
+         *     decides whether the model's reasoning is returned as `thinking`
+         *     blocks (see below) and nothing more. Ignored hints are named in
+         *     `x-eugene-plexus-ignored-settings` on both response modes.
+         *     `metadata` is discarded as an opaque annotation. Unknown top-level
+         *     fields are rejected with 400 naming the field.
          *
          *     `cache_control` appears on system blocks, on the last user
          *     content block **and on `tool_result` blocks**; prompt caching is
@@ -254,19 +258,109 @@ export interface paths {
          *     reasoning block, and that decision belongs to the operator who
          *     owns the model rather than to the caller.
          *
-         *     `top_k` is a real loss and is documented as one: both local
-         *     engines accept it and neither of our contracts carries it. It
-         *     was the same omission `top_p` and `seed` had on the internal
-         *     request until 2026-09-19; those two are carried now and `top_k`
-         *     is the last one left.
+         *     ### Reasoning comes back as `thinking` blocks, when asked for
+         *
+         *     Since 2026-09-23 a model's reasoning -- which llama.cpp and vLLM
+         *     report separately from the answer -- is returned as a `thinking`
+         *     content block ahead of the text, streamed as `thinking_delta`
+         *     events. **Only when the request's `thinking` is non-null and not
+         *     `{"type": "disabled"}`**, which is Anthropic's own rule: a client
+         *     that never enabled thinking reads `content[0].text`, and a
+         *     thinking block in first place would break the commonest line of
+         *     Anthropic SDK code there is. Claude Code sends `adaptive` for a
+         *     local model id, so it gets them.
+         *
+         *     **`display` is honoured the way Anthropic defines it.**
+         *     `"omitted"` returns the block with `thinking` empty, and
+         *     `"summarized"` or no `display` returns the text (ours is the
+         *     whole reasoning, not a summary: there is nothing to condense it
+         *     with and nothing to hide). **Claude Code sends `"omitted"` on
+         *     every request** (measured, 2.1.207), so it is shown no reasoning
+         *     text, by its own choice.
+         *
+         *     What an omitted block still carries is continuity, in
+         *     `signature` -- which is what Anthropic's opaque signature is
+         *     for. Ours is `eugene-plexus-reasoning-v1:` followed by the
+         *     reasoning in base64: a value only this gateway reads, never a
+         *     claim to be Anthropic's. A `thinking` block sent back on a later
+         *     assistant turn is carried to the backend as that turn's
+         *     reasoning, from its text or else from that signature, so a tool
+         *     loop through Claude Code reaches the model with its own earlier
+         *     thinking -- llama.cpp renders it into the prompt for templates
+         *     that keep it. A signature this gateway did not write is ignored,
+         *     and a `redacted_thinking` block is dropped: nothing in it is
+         *     readable here.
+         *
+         *     What is still not honoured, and is named on the ignored-settings
+         *     header when sent: a `budget_tokens`, and `disabled` as an
+         *     instruction to the model. Both hide or cap what the model does,
+         *     and the model's thinking is the operator's `thinkingMode` to
+         *     govern.
+         *
+         *     `top_k` is carried to the backend since 2026-09-23. It was
+         *     refused with a 400 before that, being the last sampler neither
+         *     internal contract could carry.
+         *
+         *     ### Images are carried, on the OpenAI door's path
+         *
+         *     Since 2026-09-23 an `image` block with a `base64` source is
+         *     carried to the backend as an inline image part, and from there it
+         *     is the shared path's: the limits `MessageContent` states
+         *     (`maxImagesPerRequest`, 12 by default, 5 MiB decoded each, 10 MiB
+         *     total, 8192 px a side),
+         *     a check that the bytes are the picture they claim to be, and
+         *     routing **only to a backend that confirms image input**. A model
+         *     that cannot see the picture is never asked -- the request is a
+         *     400 saying so, before anything is forwarded or woken, which is
+         *     why this was refused until a vision backend could be routed to.
+         *
+         *     **Claude Code's image arrives inside a `tool_result`**, and that
+         *     decided the shape (captured with `scripts/r4-capture.py --mode
+         *     imageread`, Claude Code 2.1.207 / agent-sdk 0.3.280): its `Read`
+         *     of an image file returns a result whose content is a lone
+         *     `image` block and no text. An OpenAI `tool` message carries text
+         *     only and image parts ride on user messages, so the picture
+         *     **moves**: the tool message keeps its call id and says, in a
+         *     bracketed line, that the tool returned an image attached to the
+         *     next user message; and that user message -- directly after the
+         *     turn's tool messages, ahead of the person's own words -- opens
+         *     with `The image returned by tool call <id>:` and the picture. A
+         *     person's own image block stays where they put it among their
+         *     text.
+         *
+         *     PNG and JPEG pass through byte for byte. **GIF and WebP are
+         *     re-encoded to PNG**, losslessly, because Claude Code sends a small
+         *     `.gif` or `.webp` exactly as it found it (captured) while local
+         *     engines and this gateway's internal contract take PNG and JPEG;
+         *     an animated one is refused. A large image needs nothing: the
+         *     same capture sent a 36 MB 4000x3000 PNG as a 490 KB JPEG, so the
+         *     client resizes before our limits could bite.
+         *
+         *     A `url` source is refused and never fetched -- the gateway
+         *     dialling an address a caller names is the request forgery this
+         *     project closed for node addresses -- and so is a Files API
+         *     `file` source, which names a store that exists only at Anthropic.
+         *     An image on an `assistant` or `system` turn is refused: there is
+         *     nowhere on a backend's wire for it. Every image refusal names the
+         *     block in the caller's own coordinates
+         *     (`messages.2.content.0.content.0.source`).
+         *
+         *     **The image limit counts the whole conversation**, because a
+         *     client sends its history on every request and the model receives
+         *     every picture in it each time. It was a fixed four until
+         *     2026-09-23, when a Claude Code session that had read five
+         *     screenshots was refused on every turn after the fifth; it is the
+         *     gateway's `maxImagesPerRequest` now, twelve by default and at most
+         *     64, and a refusal names both the setting and the block that tipped
+         *     it.
          *
          *     ### What is refused, with a 400 naming the field
          *
-         *     Image blocks, document blocks, server-side tool types,
-         *     `mcp_servers`, more than four `stop_sequences`, and a missing
-         *     `max_tokens`. Each is refused rather than dropped because each
+         *     Document blocks, server-side tool types, `mcp_servers`, more
+         *     than four `stop_sequences`, a missing `max_tokens`, and the image
+         *     cases above. Each is refused rather than dropped because each
          *     changes what the answer would be: a model that never saw the
-         *     image is not answering the question that was asked.
+         *     document is not answering the question that was asked.
          *
          *     **A model nothing serves is also a 400 here, not a 404.**
          *     Measured: Claude Code discards the body of a 404 and shows a
@@ -287,11 +381,13 @@ export interface paths {
          *
          *     **Content blocks are numbered statefully and our internal
          *     stream is not**, which is the one piece of real work in the
-         *     translation. Text deltas carry no index of their own, while tool
-         *     fragments carry a per-call index; the translator therefore holds
-         *     the open text block and a map from tool-call index to content
-         *     block index, and emits `content_block_stop` for the text block
-         *     before the first tool block opens. Getting it wrong means a
+         *     translation. Text and reasoning deltas carry no index of their
+         *     own, while tool fragments carry a per-call index; the translator
+         *     therefore holds the open text or thinking block and a map from
+         *     tool-call index to content block index, and emits
+         *     `content_block_stop` for whatever is open before the next kind
+         *     of block starts -- a `thinking` block closes before the answer's
+         *     first `text` block opens. Getting it wrong means a
          *     strict SDK rejects the stream *inside* a 200, which reads to the
          *     user as the model producing nothing.
          *
@@ -299,6 +395,13 @@ export interface paths {
          *     driver**, never on request acceptance. It names the model, and
          *     until the first token the cascade can still change which backend
          *     — and therefore which model id — answers.
+         *
+         *     Its `usage.input_tokens` is **0**: a local engine reports the
+         *     prompt's size when it finishes, not when it starts. The real
+         *     count arrives on `message_delta`, and that is the one a client
+         *     keeps — measured 2026-09-23, Claude Code's session transcript
+         *     and result hold the `message_delta` count whether or not
+         *     `message_start` carried one.
          *
          *     The failover rule is unchanged and is inherited rather than
          *     re-implemented, because the commit point sits below both
@@ -335,6 +438,280 @@ export interface paths {
          *     continues past its first turn.
          */
         post: operations["createAnthropicMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/messages/count_tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count a Messages request's input tokens with the serving backend's own tokenizer.
+         * @description Anthropic's token-counting endpoint, answered by the backend that
+         *     would serve the request: the body is translated exactly as
+         *     `POST /v1/messages` translates it, and the driver counts the
+         *     resulting prompt with the backend's own template and tokenizer
+         *     (`POST /v1/generate/count` on the inference-driver). **Nothing is
+         *     generated and nothing is woken.**
+         *
+         *     ### Why it exists: measured, 2026-09-23
+         *
+         *     Claude Code's `/context` calls this endpoint 13-14 times, one per
+         *     category (system prompt pieces, tool groups, skills), beta
+         *     `token-counting-2024-11-01`, bodies `{model, messages, system?,
+         *     tools?}` with no `max_tokens`. **Answered with a 404 it does not
+         *     fail -- it counts by inference instead**: each 404 was followed at
+         *     once by a real `POST /v1/messages` with `max_tokens: 1`, and the
+         *     engine evaluated prompts of up to 9,050 tokens for one output
+         *     token each (17.8 s apiece on a CPU). One diagnostic command cost
+         *     fourteen prefills, would wake an idle-unloaded model, and put
+         *     fourteen one-token requests in `GET /v1/metrics`.
+         *
+         *     ### When it cannot count, it says so with a 400
+         *
+         *     A count is answered only by a **ready** backend that can count
+         *     exactly -- llama.cpp today. When none can (the model is asleep,
+         *     its backend is vLLM, Ollama, a hosted provider or an agentic CLI,
+         *     or the request carries an image, whose cost only the projector
+         *     knows), this is a **400** naming the reason, and Claude Code falls
+         *     back to counting by inference as above. **A 400 and not a 5xx,
+         *     by measurement:** answered 400, 403 or 404, `/context` tried each
+         *     count once and fell back; answered 501 or 503, it retried every
+         *     one first. A stopped model is never woken to count: a caller who
+         *     wants that pays for it knowingly, through the fallback.
+         *
+         *     ### What it shares with the Messages door, and what it does not
+         *
+         *     The same credentials (`x-api-key` or `Authorization: Bearer`) and
+         *     the same **403** for a rejected one; the same refusals (documents,
+         *     server-side tools, unknown settings); the same client-key model
+         *     scope and `localOnly` rule. **It does not take a concurrency
+         *     reservation or count against a key's request rate** -- a count is
+         *     a key *check*, not an admission, since `/context` sends fourteen
+         *     at once -- and it is **not recorded** in `GET /v1/metrics`,
+         *     because it is not inference.
+         */
+        post: operations["countAnthropicMessageTokens"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/responses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * OpenAI's Responses API, so Codex CLI and other Responses clients can use local models.
+         * @description **The fourth front door, and the only one Codex CLI can use.**
+         *     Codex 0.130 refuses `wire_api = "chat"` at startup, so without
+         *     this path it cannot be pointed at this install at all.
+         *
+         *     It is a **translation at the edge**, exactly as `/v1/messages`
+         *     is: the body becomes the internal request `/v1/chat/completions`
+         *     builds, and from there every door shares the surface refusal, the
+         *     tools refusal, the refresh-and-wake, the settings profile, the
+         *     image path, client-key admission, the truncation detector, the
+         *     cascade and the recording. Every shape below was captured from a
+         *     real Codex CLI rather than read from the documentation
+         *     (`docs/acceptance/responses-measurement.md`).
+         *
+         *     ### Stateless: the conversation lives in the client
+         *
+         *     Codex sends `store: false` and **resends the whole conversation
+         *     on every turn**, with no `previous_response_id`. This gateway
+         *     keeps no response store either, so `previous_response_id`,
+         *     `conversation`, `prompt` (a stored prompt template),
+         *     `background: true` and an `item_reference` input item are each
+         *     refused with a 400 naming the field: each points at state that
+         *     exists only on OpenAI's servers. `store: true` is accepted and
+         *     named on the ignored-settings header, because nothing is kept;
+         *     every response reports `store: false`.
+         *
+         *     ### What the input becomes
+         *
+         *     `instructions` becomes the leading system message. A `developer`
+         *     or `system` message becomes a system message where it stands.
+         *     `input_text` is text and `input_image` is an image part (below).
+         *     A `function_call` item is the assistant turn's tool call and a
+         *     `function_call_output` is the `tool` message answering it, by
+         *     `call_id`; consecutive assistant-side items (reasoning, a
+         *     message, calls) form one assistant turn. **Adjacent messages of
+         *     the same role are joined** with a blank line: Codex sends two
+         *     user messages in a row on every request, and a chat template
+         *     that requires alternating roles would refuse them.
+         *
+         *     `web_search` is on **every** Codex request as
+         *     `{"type": "web_search", "external_web_access": false}`. It is
+         *     accepted, removed, and named on the ignored-settings header:
+         *     this gateway has no search to run, and refusing it would refuse
+         *     the first request of every session, as `/v1/messages` once did
+         *     with `output_config`. Every other server-side tool (file search,
+         *     code interpreter, computer use, image generation, MCP, a custom
+         *     or local-shell tool) is refused with a 400 naming its type.
+         *
+         *     ### Reasoning goes out as `reasoning_text` and comes back
+         *
+         *     A model's reasoning is a `reasoning` output item whose `content`
+         *     holds one `reasoning_text` part -- the Responses API's slot for a
+         *     model's own reasoning, which is what a local engine reports.
+         *     `summary` is empty: there is nothing here to summarize with, so
+         *     a requested `reasoning.summary` is named on the ignored-settings
+         *     header, as is `reasoning.effort` (the model's settings profile
+         *     governs how it thinks).
+         *
+         *     When `include` asks for `reasoning.encrypted_content`, the item
+         *     also carries `encrypted_content`:
+         *     `eugene-plexus-reasoning-v1:` and the reasoning in base64 -- the
+         *     same carrier the Anthropic door's omitted thinking uses, readable
+         *     only here and never a claim to be OpenAI's. Codex sends reasoning
+         *     items back on later turns with `content` and `encrypted_content`
+         *     intact (measured), and either one is carried to the backend as
+         *     that assistant turn's reasoning, so a tool loop reaches the model
+         *     with its own earlier thinking.
+         *
+         *     ### Images
+         *
+         *     An `input_image` whose `image_url` is an inline `data:` URL is
+         *     carried on the image path every door shares: the limits in
+         *     `MessageContent`, a check that the bytes are the picture they
+         *     claim to be, and routing only to a backend that confirms image
+         *     input. A URL is refused and never fetched, and so is a `file_id`.
+         *     **`detail` is accepted whatever it says** -- Codex sends
+         *     `"high"` on every image (measured), both on a `-i` attachment and
+         *     in its `view_image` tool's result -- and a value other than
+         *     `auto` is named on the ignored-settings header, because a local
+         *     projector sizes the picture itself. An image inside a
+         *     `function_call_output` moves to the next user message, labelled
+         *     with the call id, as on `/v1/messages`: a `tool` message carries
+         *     text only.
+         *
+         *     ### No cap from the install default
+         *
+         *     Codex sends **no `max_output_tokens`**, which in this protocol
+         *     means no cap -- and an answer that ends in `response.incomplete`
+         *     is **generated six times and then failed** by Codex (measured).
+         *     So on this door an absent `max_output_tokens` takes the model's
+         *     settings profile `maxTokens` when it sets one and otherwise sends
+         *     none, leaving the answer bounded by the context window and
+         *     `requestTimeoutSeconds`. The gateway's install-wide
+         *     `defaultMaxTokens` does not apply here. Every other door keeps
+         *     using it.
+         *
+         *     ### Statuses: chosen for what the client does with them
+         *
+         *     Measured against Codex 0.130 (the record's §3): a **400** is shown
+         *     once; a 401, 403 or 404 is retried five times and then shown; a
+         *     5xx is retried twenty-nine times; a 429's and a 500's message are
+         *     discarded. Hence **a model nothing serves is a 400 here, not a
+         *     404** -- the same divergence `/v1/messages` makes, for the same
+         *     kind of reason -- and a rejected credential stays the OpenAI
+         *     door's 401, which Codex bounds and shows.
+         *
+         *     ### Streaming
+         *
+         *     `stream: true` produces the Responses event stream: every frame
+         *     carries both an `event:` name and a `data:` object whose `type`
+         *     repeats it, and a `sequence_number` counting from 0. There is no
+         *     `[DONE]`. `response.created` and `response.in_progress` open it;
+         *     each output item is `response.output_item.added`, its deltas
+         *     (`response.reasoning_text.delta`, `response.output_text.delta`
+         *     inside a `content_part`, or `response.function_call_arguments.delta`),
+         *     its `.done` events and `response.output_item.done`; the stream ends
+         *     with `response.completed`, or `response.incomplete` when the answer
+         *     was cut at the output cap or by a content filter.
+         *
+         *     **The stream opens as soon as a backend is chosen, and stays
+         *     open with `response.in_progress` every ten seconds until output
+         *     arrives.** Codex drops a stream that is silent for five minutes
+         *     -- before the first event too -- and retries it from the start,
+         *     and an SSE comment does not reset that timer (measured). A local
+         *     engine prefilling Codex's first prompt on a processor can take
+         *     longer than that. `response.created` therefore names the model
+         *     that was *asked for*; the terminal event names the one that
+         *     answered, which after a cascade can differ.
+         *
+         *     A failure after that point is `response.failed`, never a bare
+         *     `error` event, which Codex reports without our message. Its
+         *     `error.code` is chosen for what the client should do:
+         *     `context_length_exceeded` when the backend refused an over-long
+         *     prompt (Codex stops and says the context is full),
+         *     `invalid_prompt` when another attempt cannot help -- a backend
+         *     that refused the request, a deadline that fired while the engine
+         *     was still computing, a credential turned off mid-stream -- and
+         *     `server_error` for a failure a retry can fix.
+         *
+         *     The failover rule is inherited unchanged: possible until the first
+         *     token, impossible after it.
+         *
+         *     ### The envelope does not go in the body
+         *
+         *     `x_eugene_plexus` rides on response headers, as on `/v1/messages`
+         *     (`x-eugene-plexus-driver`, `-runtime`, `-backend`, `-latency-ms`,
+         *     `-attempts`, `-tier`, `-swapped-in`, `-waited-ms`,
+         *     `-context-length`, `-prompt-truncated`), and
+         *     `x-eugene-plexus-ignored-settings` names every accepted setting
+         *     this gateway does not honour. The recording rides the shared path
+         *     and lands in `GET /v1/metrics` like any other request.
+         *
+         *     ### Accepted and discarded, refused
+         *
+         *     Discarded as opaque annotations: `metadata`, `client_metadata`,
+         *     `user`, `safety_identifier`. Accepted and named on the
+         *     ignored-settings header when set: `prompt_cache_key` and
+         *     `prompt_cache_retention` (a local engine keeps its own cache),
+         *     `service_tier`, `truncation: "auto"` (this gateway never drops
+         *     input to make it fit; the engine refuses instead),
+         *     `stream_options.include_obfuscation`, `text.verbosity`, and the
+         *     `include` values that ask for server-side tool output nothing
+         *     here produces. `max_tool_calls` bounds built-in tools, of which
+         *     none run here, and is accepted. Refused with a 400 naming the
+         *     field: every stateful field above, `top_logprobs` above 0 and the
+         *     `message.output_text.logprobs` include, an `input_file` or
+         *     `input_audio` part, `tool_choice` forcing a tool that is not a
+         *     function, and any top-level field not listed in
+         *     `ResponsesRequest`.
+         */
+        post: operations["createResponse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/responses/{responseId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                responseId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Always 404 -- this gateway keeps no response store.
+         * @description Answered so that a client asking for a stored response is told
+         *     why there is none, in OpenAI's envelope, rather than receiving a
+         *     framework's bare 404. `DELETE`, and the `cancel` and
+         *     `input_items` sub-resources, answer the same way.
+         */
+        get: operations["retrieveResponse"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1090,6 +1467,39 @@ export interface components {
              */
             seed?: number;
             /**
+             * Format: float
+             * @description Carried to the backend. Refused with 400 by backends that
+             *     cannot honour it (the agentic CLIs; OpenAI models with a
+             *     fixed sampler), which are skipped when choosing a backend
+             *     rather than tried and failed.
+             *
+             *     **Refused with a 400 at this door until 2026-09-23**, like
+             *     the four fields below it, although llama.cpp and vLLM both
+             *     take all of them: the internal request had nowhere to carry
+             *     them, and a refusal was the honest answer to that. Clients
+             *     that send them by default -- SillyTavern, Open WebUI's
+             *     advanced parameters -- could not use this door at all.
+             */
+            frequency_penalty?: number;
+            /**
+             * Format: float
+             * @description Carried and refused exactly as `frequency_penalty` is.
+             */
+            presence_penalty?: number;
+            /**
+             * @description **Not an OpenAI parameter.** A local-engine extension that
+             *     llama.cpp and vLLM both read; 0 disables the cut. Refused
+             *     by backends known to reject it -- OpenAI's own endpoint and
+             *     the agentic CLIs -- and those are routed around.
+             */
+            top_k?: number;
+            /**
+             * Format: float
+             * @description **Not an OpenAI parameter.** llama.cpp's and vLLM's `min_p`,
+             *     carried and refused exactly as `top_k` is.
+             */
+            min_p?: number;
+            /**
              * @description When true the response is an SSE stream of
              *     `ChatCompletionChunk` objects terminated by `data: [DONE]`.
              * @default false
@@ -1153,6 +1563,14 @@ export interface components {
              *     function. Passed through; the gateway does not enforce it.
              */
             tool_choice?: ("none" | "auto" | "required") | components["schemas"]["NamedToolChoice"];
+            /**
+             * @description Whether the model may request several tools in one turn.
+             *     Carried when set and left absent when not, because the
+             *     backends disagree about the default -- llama.cpp assumes
+             *     false, OpenAI true -- and filling one in would change what
+             *     one of them already does.
+             */
+            parallel_tool_calls?: boolean;
             response_format?: components["schemas"]["ResponseFormat"];
         };
         /**
@@ -1163,9 +1581,38 @@ export interface components {
          *     SDK parses is how "compatible" quietly stops being true.
          */
         ChatCompletionMessage: {
-            /** @enum {string} */
-            role: "system" | "user" | "assistant" | "tool";
+            /**
+             * @description `developer` is OpenAI's newer name for the instruction role,
+             *     sent by current SDKs and frameworks when they target a
+             *     reasoning model. It reaches the backend as `system`, in
+             *     place -- local chat templates know only `system`, and the
+             *     two mean the same thing to a model that is not OpenAI's.
+             *     Refused with a 400 until 2026-09-23.
+             * @enum {string}
+             */
+            role: "system" | "developer" | "user" | "assistant" | "tool";
             content?: components["schemas"]["MessageContent"];
+            /**
+             * @description **On a response:** the model's reasoning for this turn, when
+             *     the backend reported it separately from `content`. The name
+             *     is DeepSeek's and llama.cpp's, and the one OpenAI-compatible
+             *     clients already parse (vLLM's `reasoning` is normalised to
+             *     it). Absent when there was none or when the serving driver's
+             *     `thinkingMode` is `off`.
+             *
+             *     **On a request:** accepted on an `assistant` message and
+             *     handed back to the backend, so a tool loop resumes with the
+             *     model's own earlier thinking -- a client that appends the
+             *     response message verbatim sends it back, and llama.cpp
+             *     renders it into the prompt for templates that keep it.
+             *
+             *     Added 2026-09-23. Before it every token of a reasoning
+             *     model's thinking was discarded one hop down, so a model that
+             *     spent its whole budget thinking answered with an empty
+             *     `content` and `finish_reason: length`, with nothing to say
+             *     why.
+             */
+            reasoning_content?: string | null;
             /** @description Optional participant name, per OpenAI. */
             name?: string;
             /**
@@ -1265,6 +1712,15 @@ export interface components {
                 /** @enum {string} */
                 role?: "assistant";
                 content?: string | null;
+                /**
+                 * @description A fragment of the model's reasoning, forwarded as the
+                 *     backend produces it and before any `content`. Accumulate
+                 *     it the way `content` is accumulated. Its first frame is
+                 *     the stream's commit point like any other output: once a
+                 *     caller has seen the model thinking, a failure truncates
+                 *     rather than cascading onto another model.
+                 */
+                reasoning_content?: string | null;
                 /**
                  * @description Tool-call fragments. Each carries an `index` and the
                  *     caller accumulates by it: `id` and `function.name`
@@ -1399,6 +1855,23 @@ export interface components {
             prompt_tokens?: number;
             completion_tokens?: number;
             total_tokens?: number;
+            /**
+             * @description Present only when the backend reported it. `cached_tokens`
+             *     is the part of `prompt_tokens` served from the backend's
+             *     prompt cache -- llama.cpp and vLLM both report it.
+             */
+            prompt_tokens_details?: {
+                cached_tokens?: number;
+            };
+            /**
+             * @description Present only when the backend reported it.
+             *     `reasoning_tokens` is the part of `completion_tokens` spent
+             *     reasoning; vLLM reports it with its reasoning parser on,
+             *     llama.cpp does not, and it is never estimated here.
+             */
+            completion_tokens_details?: {
+                reasoning_tokens?: number;
+            };
         };
         /**
          * @description Namespaced extension recording how this particular request was
@@ -1689,13 +2162,14 @@ export interface components {
         /**
          * @description Request body for `POST /v1/messages`, in Anthropic's shape.
          *
-         *     Measured Claude Code hints (`thinking`, `cache_control`,
-         *     `context_management`) are accepted with a response header naming ignored
-         *     settings. Metadata is discarded. Unknown top-level settings and top_k
-         *     are explicitly rejected. This is a text/tool translation, not full parity.
+         *     Measured Claude Code hints (`cache_control`, `context_management`)
+         *     are accepted with a response header naming ignored settings;
+         *     `thinking` chooses whether reasoning is returned. Metadata is
+         *     discarded. Unknown top-level settings are explicitly rejected.
+         *     This is a text, image and tool translation, not full parity.
          *
          *     Consequently **this schema does not decide what is refused**.
-         *     The refusals — image and document blocks, server-side tools,
+         *     The refusals — document blocks, server-side tools,
          *     `mcp_servers`, more than four `stop_sequences` — are enforced
          *     against the raw request body by the implementation, with a 400
          *     naming the field, because a model that ignores extra keys cannot
@@ -1751,8 +2225,11 @@ export interface components {
             /** Format: float */
             top_p?: number;
             /**
-             * @description Unsupported. A non-null value returns 400 naming top_k. Before A2
-             *     this was silently discarded despite controlling generation.
+             * @description Carried to the backend since 2026-09-23. Before A2 it was
+             *     silently discarded despite controlling generation; from A2
+             *     until 2026-09-23 it was refused with a 400, because the
+             *     internal request had nowhere to put it. Backends known to
+             *     reject it are routed around.
              */
             top_k?: number;
             /**
@@ -1791,11 +2268,43 @@ export interface components {
              *     true for the one configuration asking for no thinking at
              *     all.
              *
-             *     This is a compatibility concession, not enforcement of the caller's
-             *     reasoning budget. Non-null values are disclosed on the ignored-settings
-             *     response header. The operator's profile governs local thinking behavior.
+             *     **What it does decide, since 2026-09-23: whether the
+             *     response carries `thinking` blocks, and whether their text
+             *     is shown.** Non-null and not `{"type": "disabled"}` returns
+             *     the model's reasoning, when the backend reported any, as a
+             *     `thinking` block ahead of the answer -- with the text, or
+             *     with the text empty and the reasoning carried in `signature`
+             *     when `display` is `"omitted"`. Absent, null or disabled
+             *     returns none, which is Anthropic's own behaviour and keeps
+             *     `content[0].text` pointing at the answer for every client
+             *     that never asked.
+             *
+             *     What it does not decide: a `budget_tokens` is not enforced,
+             *     and `disabled` hides the blocks without stopping the model
+             *     thinking. Either is named on the ignored-settings response
+             *     header. The operator's `thinkingMode` governs what a local
+             *     model actually does.
              */
             thinking?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * @description **Accepted for `effort` only, and not enforced.** Claude Code
+             *     sends `{"effort": "high"}` on every request -- measured
+             *     2026-09-23 (2.1.207 with agent-sdk 0.3.280, beta header
+             *     `effort-2025-11-24`), absent from the 2026-09-19 capture --
+             *     and the unknown-field refusal A2 added turned that into a
+             *     400 on the first request of every session: **Claude Code
+             *     could not use this door at all** until this field was named.
+             *     How hard a local model thinks is the operator's
+             *     `thinkingMode`, exactly as for `thinking.budget_tokens`, so a
+             *     non-null value is named on the ignored-settings header.
+             *
+             *     Any other key -- structured output's `format` above all --
+             *     is refused with a 400 naming it: it changes what the answer
+             *     is, and this door does not implement it.
+             */
+            output_config?: {
                 [key: string]: unknown;
             } | null;
             /**
@@ -1809,6 +2318,30 @@ export interface components {
             };
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * @description Request body for `POST /v1/messages/count_tokens`: a Messages
+         *     request without `max_tokens` (Claude Code sends `model`,
+         *     `messages` and, per category, `system` or `tools`). Translated
+         *     exactly as `POST /v1/messages` translates it, with the same
+         *     refusals enforced against the raw body.
+         */
+        AnthropicCountTokensRequest: {
+            model: string;
+            messages: components["schemas"]["AnthropicInputMessage"][];
+            system?: string | components["schemas"]["AnthropicSystemBlock"][];
+            tools?: components["schemas"]["AnthropicToolDefinition"][];
+            tool_choice?: components["schemas"]["AnthropicToolChoice"];
+        } & {
+            [key: string]: unknown;
+        };
+        AnthropicTokenCount: {
+            /**
+             * @description The prompt's size as the serving backend's own template and
+             *     tokenizer count it -- what a generation of the same request
+             *     would report as its input.
+             */
+            input_tokens: number;
         };
         /**
          * @description One turn. A tool result is **a `tool_result` block inside a
@@ -1855,15 +2388,20 @@ export interface components {
          *     union that rejects the next block type Anthropic adds, on a wire
          *     we do not own.
          *
-         *     The variants this gateway carries: `text` (`text`), `tool_use`
-         *     (`id`, `name`, `input`), and `tool_result` (`tool_use_id`,
-         *     `content`, `is_error`).
+         *     The variants this gateway carries: `text` (`text`), `image`
+         *     (`source`, base64 only -- see the endpoint), `tool_use`
+         *     (`id`, `name`, `input`), `tool_result` (`tool_use_id`,
+         *     `content`, `is_error`), and `thinking` (`thinking`,
+         *     `signature`) -- returned ahead of the answer when the request
+         *     enabled thinking, and read back on an assistant turn as that
+         *     turn's reasoning. `redacted_thinking` is accepted on the way in
+         *     and dropped.
          *
-         *     The variants it refuses with a 400: `image` and `document`. They
-         *     are refused rather than dropped because a model that never
-         *     received the image is not answering the question that was
-         *     asked, and a silently text-only answer to *"what is in this
-         *     screenshot"* is worse than a refusal that names the reason.
+         *     The variant it refuses with a 400: `document`. Refused rather
+         *     than dropped because a model that never received the document
+         *     is not answering the question that was asked. `image` was
+         *     refused on the same reasoning until 2026-09-23, when it began
+         *     to be carried to backends that confirm image input.
          */
         AnthropicContentBlock: {
             /** @description `text`, `tool_use`, `tool_result`, `image`, `document`, … */
@@ -1881,8 +2419,10 @@ export interface components {
             tool_use_id?: string;
             /**
              * @description On `tool_result`: the result, as a string or as a list of
-             *     blocks. Claude Code sends a plain string; a list containing
-             *     an image block is refused like any other image.
+             *     blocks. Claude Code sends a plain string for text, and for
+             *     its `Read` of an image a list holding one `image` block and
+             *     no text -- whose picture is carried on the next user message,
+             *     since a `tool` message carries text only.
              */
             content?: string | components["schemas"]["AnthropicContentBlock"][];
             /**
@@ -1891,6 +2431,28 @@ export interface components {
              *     cannot see its own tool failed will call it again.
              */
             is_error?: boolean;
+            /** @description On `thinking`: the model's reasoning, as the backend reported it. */
+            thinking?: string;
+            /**
+             * @description On `thinking`: opaque to the client, as Anthropic's is. From
+             *     this gateway it is empty when the text is shown, and
+             *     `eugene-plexus-reasoning-v1:<base64 of the reasoning>` when
+             *     the request asked for `display: "omitted"` -- so a client
+             *     that echoes the block back unchanged, as Anthropic tells it
+             *     to, returns the reasoning for the next turn. Not Anthropic's
+             *     signature and not verifiable by Anthropic; a signature
+             *     without that prefix is ignored on the way in.
+             */
+            signature?: string;
+            /**
+             * @description On `image`: `{"type": "base64", "media_type": "image/png",
+             *     "data": "<base64>"}`. `media_type` is `image/png`,
+             *     `image/jpeg`, `image/gif` or `image/webp`; the last two are
+             *     re-encoded to PNG. A `url` or `file` source is refused.
+             */
+            source?: {
+                [key: string]: unknown;
+            };
             cache_control?: {
                 [key: string]: unknown;
             };
@@ -1946,6 +2508,14 @@ export interface components {
             type: "auto" | "any" | "tool" | "none";
             /** @description With `type: tool`: which one. */
             name?: string;
+            /**
+             * @description Carried as the backend's `parallel_tool_calls` with the
+             *     opposite sense: true asks for at most one tool call per
+             *     turn. **Silently dropped until 2026-09-23**, which broke the
+             *     rule that a setting changing the answer is refused or
+             *     honoured, never discarded.
+             */
+            disable_parallel_tool_use?: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -1968,8 +2538,9 @@ export interface components {
              */
             model: string;
             /**
-             * @description `text` blocks and `tool_use` blocks, in the order the
-             *     backend produced them.
+             * @description A `thinking` block first when the request enabled thinking
+             *     and the backend reported reasoning, then `text` and
+             *     `tool_use` blocks in the order the backend produced them.
              */
             content: components["schemas"]["AnthropicContentBlock"][];
             /**
@@ -1989,14 +2560,28 @@ export interface components {
              * @enum {string|null}
              */
             stop_reason?: "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | "refusal" | null;
+            /**
+             * @description Which `stop_sequences` entry ended the answer, with
+             *     `stop_reason: stop_sequence`, when the backend says so. vLLM
+             *     does; **llama.cpp does not** -- it reports a matched stop
+             *     string and a natural end identically -- so behind llama.cpp
+             *     this stays null and `stop_reason` reads `end_turn`.
+             */
             stop_sequence?: string | null;
             usage?: components["schemas"]["AnthropicUsage"];
         };
         /**
          * @description Token counts, renamed from the backend's OpenAI-shaped `usage`.
-         *     Cache fields are reported as zero rather than omitted: a client
-         *     that reads them should see an honest nothing rather than an
-         *     absence it has to guess about.
+         *
+         *     **Anthropic's `input_tokens` excludes cached input and ours
+         *     follows it**: when the backend reports how much of the prompt
+         *     came from its cache (llama.cpp and vLLM both do), that part is
+         *     `cache_read_input_tokens` and `input_tokens` is the rest, so the
+         *     three fields sum to the prompt the way a client that computes
+         *     context usage expects. Reported as zero when the backend says
+         *     nothing -- an honest nothing rather than an absence to guess
+         *     about. `cache_creation_input_tokens` is always zero: a local
+         *     engine's cache is not something a request pays to write.
          */
         AnthropicUsage: {
             input_tokens: number;
@@ -2044,8 +2629,13 @@ export interface components {
             content_block?: components["schemas"]["AnthropicContentBlock"];
             /**
              * @description `{"type": "text_delta", "text": …}` for prose,
+             *     `{"type": "thinking_delta", "thinking": …}` for reasoning
+             *     (none under `display: "omitted"`), a closing
+             *     `{"type": "signature_delta", "signature": …}` on an omitted
+             *     thinking block,
              *     `{"type": "input_json_delta", "partial_json": …}` for a tool
-             *     call's arguments, and on `message_delta` the `stop_reason`.
+             *     call's arguments, and on `message_delta` the `stop_reason`
+             *     and `stop_sequence`.
              */
             delta?: {
                 [key: string]: unknown;
@@ -2084,6 +2674,221 @@ export interface components {
                  */
                 message: string;
             };
+        };
+        /**
+         * @description Request body for `POST /v1/responses`, in OpenAI's shape. Like
+         *     `AnthropicMessagesRequest`, **this schema is what the gateway
+         *     reads, not what it refuses**: the refusals are enforced against
+         *     the raw body by the implementation, with a 400 naming the field,
+         *     and the endpoint description lists them. A top-level field not
+         *     named here is refused.
+         */
+        ResponsesRequest: {
+            /** @description A model id from `GET /v1/models`, resolved against this install's slots. */
+            model: string;
+            /**
+             * @description A string (one user message), or the conversation as a list of
+             *     items. Codex resends the whole conversation on every turn.
+             */
+            input: string | components["schemas"]["ResponsesInputItem"][];
+            /** @description The leading system message. */
+            instructions?: string | null;
+            tools?: components["schemas"]["ResponsesTool"][];
+            /**
+             * @description `auto`, `none`, `required`, or `{"type": "function", "name": …}`.
+             *     Forcing any other tool type is refused.
+             */
+            tool_choice?: ("auto" | "none" | "required") | {
+                [key: string]: unknown;
+            };
+            parallel_tool_calls?: boolean | null;
+            /** @description Codex sets this on every request. */
+            stream?: boolean | null;
+            temperature?: number | null;
+            top_p?: number | null;
+            /**
+             * @description Absent means no cap here -- see "No cap from the install
+             *     default" on the endpoint. The model's settings profile still
+             *     applies.
+             */
+            max_output_tokens?: number | null;
+            /**
+             * @description `format` (`text`, `json_object`, or `json_schema` with `name`,
+             *     `schema`, `strict`, `description`) is carried as the backend's
+             *     response format. `verbosity` is accepted and not honoured.
+             */
+            text?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * @description `effort` and `summary` are accepted and not honoured, and are
+             *     named on the ignored-settings header when set. Codex sends
+             *     null for a model id it does not know.
+             */
+            reasoning?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * @description `reasoning.encrypted_content` is honoured. The server-side tool
+             *     includes are accepted (nothing here produces those items).
+             *     `message.output_text.logprobs` is refused.
+             */
+            include?: string[] | null;
+            /** @description Nothing is ever stored; `true` is named on the ignored-settings header. */
+            store?: boolean | null;
+            /** @description Refused when set. This gateway keeps no response store. */
+            previous_response_id?: string | null;
+            /** @enum {string|null} */
+            truncation?: "auto" | "disabled" | null;
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** @description Sent by Codex (`x-codex-installation-id`). Discarded. */
+            client_metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** @description Sent by Codex (the session id). A local engine keeps its own cache. */
+            prompt_cache_key?: string | null;
+            user?: string | null;
+            safety_identifier?: string | null;
+            service_tier?: string | null;
+            max_tool_calls?: number | null;
+            top_logprobs?: number | null;
+            background?: boolean | null;
+            stream_options?: {
+                [key: string]: unknown;
+            } | null;
+            prompt_cache_retention?: string | null;
+            /** @description Refused when set. Conversations are stored objects. */
+            conversation?: unknown;
+            /** @description Refused when set. A stored prompt template exists only at OpenAI. */
+            prompt?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description One conversation item. **Modelled loosely on purpose**, as
+         *     `AnthropicContentBlock` is: the variants differ by `type`, and a
+         *     strict union would reject the next item type on a wire we do not
+         *     own.
+         *
+         *     Carried: `message` (`role` user, assistant, system or developer;
+         *     `content` a string or parts; `type` may be omitted), `function_call`
+         *     (`call_id`, `name`, `arguments` as a JSON string),
+         *     `function_call_output` (`call_id`, `output` as a string or a list
+         *     of `input_text` / `input_image` parts), and `reasoning`
+         *     (`content` of `reasoning_text` parts, `encrypted_content`).
+         *     Codex drops `id` and `status` when it sends items back
+         *     (measured), so neither is required. Refused: `item_reference` and
+         *     any other type.
+         */
+        ResponsesInputItem: {
+            type?: string;
+            role?: string;
+            /** @description A string, or a list of parts. */
+            content?: unknown;
+            call_id?: string;
+            name?: string;
+            arguments?: string;
+            /** @description A string, or a list of `input_text` / `input_image` parts. */
+            output?: unknown;
+            summary?: {
+                [key: string]: unknown;
+            }[];
+            encrypted_content?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description A `function` tool (`name`, `description`, `parameters`, `strict`)
+         *     maps onto an OpenAI chat function. `web_search` is accepted and
+         *     removed (see the endpoint); any other `type` is refused.
+         */
+        ResponsesTool: {
+            type: string;
+            name?: string;
+            description?: string;
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description A response object. `output` holds a `reasoning` item first when
+         *     the model reasoned, then a `message` with one `output_text` part,
+         *     then one `function_call` item per tool call. The request's settings
+         *     are echoed as OpenAI echoes them; `store` is always false.
+         */
+        ResponsesResponse: {
+            id: string;
+            /** @enum {string} */
+            object: "response";
+            created_at: number;
+            /**
+             * @description `incomplete` when the answer was cut at the output cap
+             *     (`incomplete_details.reason: max_output_tokens`) or by a
+             *     content filter (`content_filter`).
+             * @enum {string}
+             */
+            status: "completed" | "incomplete" | "failed" | "in_progress";
+            incomplete_details?: {
+                [key: string]: unknown;
+            } | null;
+            error?: {
+                [key: string]: unknown;
+            } | null;
+            /** @description The model that answered, which after a cascade may not be the one asked for. */
+            model: string;
+            output: components["schemas"]["ResponsesOutputItem"][];
+            usage?: components["schemas"]["ResponsesUsage"];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description `{"type": "reasoning", "id", "summary": [], "content":
+         *     [{"type": "reasoning_text", "text"}], "encrypted_content"?}`,
+         *     `{"type": "message", "id", "role": "assistant", "status",
+         *     "content": [{"type": "output_text", "text", "annotations": []}]}`,
+         *     or `{"type": "function_call", "id", "status", "call_id", "name",
+         *     "arguments"}`.
+         */
+        ResponsesOutputItem: {
+            /** @enum {string} */
+            type: "reasoning" | "message" | "function_call";
+            id?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description Token counts in OpenAI's names. **Unlike Anthropic's,
+         *     `input_tokens` includes cached input**; `input_tokens_details` and
+         *     `output_tokens_details` appear only when the backend reported them.
+         */
+        ResponsesUsage: {
+            input_tokens: number;
+            output_tokens: number;
+            total_tokens: number;
+            input_tokens_details?: {
+                [key: string]: unknown;
+            };
+            output_tokens_details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description One frame of the Responses event stream. The SSE `event:` name
+         *     and `data.type` always agree, and every frame has a
+         *     `sequence_number`.
+         */
+        ResponsesStreamEvent: {
+            /** @enum {string} */
+            type: "response.created" | "response.in_progress" | "response.output_item.added" | "response.output_item.done" | "response.content_part.added" | "response.content_part.done" | "response.output_text.delta" | "response.output_text.done" | "response.reasoning_text.delta" | "response.reasoning_text.done" | "response.function_call_arguments.delta" | "response.function_call_arguments.done" | "response.completed" | "response.incomplete" | "response.failed";
+            sequence_number: number;
+            response?: components["schemas"]["ResponsesResponse"];
+        } & {
+            [key: string]: unknown;
         };
         /**
          * @description The pinned TypeSafe System One request, verbatim — see
@@ -2163,9 +2968,9 @@ export interface components {
             x_eugene_plexus?: components["schemas"]["CompletionRoutingInfo"];
         };
         /**
-         * @description Error envelope for the two OpenAI-compatible operations. The
-         *     rest of the gateway returns RFC 7807 `problem+json`; these two
-         *     cannot, because OpenAI SDKs parse this shape to build their
+         * @description Error envelope for the OpenAI-compatible operations, `/v1/responses`
+         *     included. The rest of the gateway returns RFC 7807 `problem+json`;
+         *     these cannot, because OpenAI SDKs parse this shape to build their
          *     exceptions and would report a problem+json body as an unhelpful
          *     generic failure. One surface, one foreign convention, honoured
          *     exactly.
@@ -2590,8 +3395,11 @@ export interface components {
         MessageContentPart: components["schemas"]["TextContentPart"] | components["schemas"]["ImageContentPart"];
         /**
          * @description Text, null for an assistant tool-call turn, or ordered user content parts.
-         *     Images are inline PNG/JPEG only: four per request, 5 MiB decoded each,
-         *     10 MiB decoded total, 16 million pixels each, maximum dimension 8192.
+         *     Images are inline PNG/JPEG only: the gateway's `maxImagesPerRequest`
+         *     per request (12 by default, at most 64, counted across the whole
+         *     conversation), 5 MiB decoded each, 10 MiB decoded total, 16 million
+         *     pixels each, maximum dimension 8192. The inference-driver enforces
+         *     the ceiling of 64; the gateway enforces the setting.
          *     JSON bodies are limited to 16 MiB. Remote URLs are never fetched.
          */
         MessageContent: string | null | components["schemas"]["MessageContentPart"][];
@@ -3304,7 +4112,8 @@ export interface operations {
             };
             /**
              * @description The request names something this gateway cannot carry —
-             *     an image or document block, a server-side tool,
+             *     a document block, an image it cannot carry or no ready
+             *     backend can see, a server-side tool,
              *     `mcp_servers`, more than four `stop_sequences`, a missing
              *     `max_tokens` — **or names a model nothing serves**, which is
              *     a 400 here rather than a 404 because Claude Code discards a
@@ -3385,6 +4194,168 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnthropicErrorResponse"];
+                };
+            };
+        };
+    };
+    countAnthropicMessageTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnthropicCountTokensRequest"];
+            };
+        };
+        responses: {
+            /** @description The count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnthropicTokenCount"];
+                };
+            };
+            /**
+             * @description The request names something this door refuses, names a model
+             *     nothing serves, or cannot be counted exactly right now (see
+             *     above). Claude Code falls back to counting by inference.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnthropicErrorResponse"];
+                };
+            };
+            /** @description Missing, malformed, expired or revoked credential, as on `/v1/messages`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnthropicErrorResponse"];
+                };
+            };
+        };
+    };
+    createResponse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResponsesRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description A response object, or a Responses event stream when `stream`
+             *     was true.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponsesResponse"];
+                    "text/event-stream": components["schemas"]["ResponsesStreamEvent"];
+                };
+            };
+            /**
+             * @description The request names something this door refuses (see above), an
+             *     image it cannot carry or no ready backend can see, a backend
+             *     refused it -- **or it names a model nothing serves**, which is
+             *     a 400 here and not a 404 because Codex retries a 404 five
+             *     times before showing it.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description Missing, malformed, expired or revoked credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The client disconnected; the backend call was cancelled and recorded. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description Every eligible backend failed after the cascade ran, or a
+             *     driver refused the gateway's own credential.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description A backend serves the model but is not ready, or the gateway is starting. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description No backend answered within `requestTimeoutSeconds`. Not
+             *     cascaded: the backend is almost certainly still computing.
+             */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    retrieveResponse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                responseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response is ever stored here. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
                 };
             };
         };

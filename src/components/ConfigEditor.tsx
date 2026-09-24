@@ -47,7 +47,51 @@ interface RestartState {
  * the whole point: a component that adds a knob gets a form field for
  * free.
  */
-export function ConfigEditor({ target, label }: { target: ProxyTarget; label: string }) {
+/**
+ * Where a config trio lives and how its process is restarted.
+ *
+ * A component serves the trio at `/v1/config` and restarts itself through
+ * `/v1/admin/restart`. An app does neither: the agent serves the app's
+ * trio at `/v1/apps/{id}/config`, calling the app with an admin token the
+ * operator never sees, and restarts it at `/v1/apps/{id}/restart`
+ * (`specs/docs/design/apps-and-spokes.md` §11.2). Pointed at an app with
+ * the component defaults, this editor would have PATCHed and restarted
+ * the agent itself.
+ */
+export interface ConfigEndpoints {
+  /** The trio's base path; `/schema` is appended for the schema. */
+  config: string;
+  /** Ask for a restart; resolves to the status line to show while waiting. */
+  restart: () => Promise<string>;
+  /** True once the process answers again within `timeoutMs`. */
+  waitUntilBack: (timeoutMs: number) => Promise<boolean>;
+  /** Whether `POST <config>/test` exists. */
+  canTest: boolean;
+}
+
+function componentEndpoints(target: ProxyTarget): ConfigEndpoints {
+  return {
+    config: "/v1/config",
+    restart: async () => {
+      const result = await api.post<RestartResult>(target, "/v1/admin/restart", {});
+      return `Process exiting in ~${result.delayMs}ms — waiting for it to come back…`;
+    },
+    waitUntilBack: (timeoutMs) => waitForHealthz(target, timeoutMs),
+    canTest: true,
+  };
+}
+
+export function ConfigEditor({
+  target,
+  label,
+  endpoints,
+}: {
+  target: ProxyTarget;
+  label: string;
+  /** Omitted for a component; see `ConfigEndpoints`. */
+  endpoints?: ConfigEndpoints;
+}) {
+  const ends = useMemo(() => endpoints ?? componentEndpoints(target), [endpoints, target]);
   const [schema, setSchema] = useState<ConfigSchema | null>(null);
   const [serverDoc, setServerDoc] = useState<ConfigDocument | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
@@ -115,8 +159,8 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
       setSaveStatus(null);
       try {
         const [schemaResp, docResp] = await Promise.all([
-          api.get<ConfigSchema>(target, "/v1/config/schema"),
-          api.get<ConfigDocument>(target, "/v1/config"),
+          api.get<ConfigSchema>(target, `${ends.config}/schema`),
+          api.get<ConfigDocument>(target, ends.config),
         ]);
         if (cancelled) return;
         setSchema(schemaResp);
@@ -174,7 +218,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
     return () => {
       cancelled = true;
     };
-  }, [target]);
+  }, [target, ends.config]);
 
   const dirtyKeys = useMemo(() => {
     if (!serverDoc) return new Set<string>();
@@ -256,7 +300,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
       for (const k of dirtyKeys) {
         patch[k] = draft[k];
       }
-      const result = await api.patch<ConfigUpdateResult>(target, "/v1/config", patch);
+      const result = await api.patch<ConfigUpdateResult>(target, ends.config, patch);
       if (result.rejected.length) setShowMore(true);
       setSaveStatus({
         applied: result.applied,
@@ -280,7 +324,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         void performRestart(refused);
       }
       // Refresh from server so the editor reflects any server-side coercions.
-      const fresh = await api.get<ConfigDocument>(target, "/v1/config");
+      const fresh = await api.get<ConfigDocument>(target, ends.config);
       setServerDoc(fresh);
       // Keep user's edits to fields the server rejected, otherwise reset to server values.
       const rejectedKeys = new Set(result.rejected.map((r) => r.key));
@@ -332,7 +376,7 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         overrides[k] = draft[k];
       }
       const body = dirtyKeys.size > 0 ? { overrides } : {};
-      const result = await api.post<ConfigTestResult>(target, "/v1/config/test", body);
+      const result = await api.post<ConfigTestResult>(target, `${ends.config}/test`, body);
       setTestStatus(result);
     } catch (e) {
       // Network / non-200 errors come through as ApiError; render as a
@@ -361,12 +405,9 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
   async function performRestart(refused: Record<string, unknown> = {}) {
     setRestart({ phase: "scheduled", message: "Asking the process to exit…" });
     try {
-      const result = await api.post<RestartResult>(target, "/v1/admin/restart", {});
-      setRestart({
-        phase: "waiting",
-        message: `Process exiting in ~${result.delayMs}ms — waiting for it to come back…`,
-      });
-      const ok = await waitForHealthz(target, 30_000);
+      const waiting = await ends.restart();
+      setRestart({ phase: "waiting", message: waiting });
+      const ok = await ends.waitUntilBack(30_000);
       if (ok) {
         setRestart({ phase: "back", message: `${label} is back online.` });
         // Auto-dismiss the success state — the operator didn't ask for
@@ -379,8 +420,8 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
         // Reload schema/doc from the freshly-restarted process.
         try {
           const [schemaResp, docResp] = await Promise.all([
-            api.get<ConfigSchema>(target, "/v1/config/schema"),
-            api.get<ConfigDocument>(target, "/v1/config"),
+            api.get<ConfigSchema>(target, `${ends.config}/schema`),
+            api.get<ConfigDocument>(target, ends.config),
           ]);
           setSchema(schemaResp);
           setServerDoc(docResp);
@@ -483,15 +524,17 @@ export function ConfigEditor({ target, label }: { target: ProxyTarget; label: st
               className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
             />
           )}
-          <button
-            type="button"
-            onClick={test}
-            disabled={testing || saving}
-            title="Test the current draft against the running services without committing it."
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
-          >
-            {testing ? "Testing…" : "Test"}
-          </button>
+          {ends.canTest && (
+            <button
+              type="button"
+              onClick={test}
+              disabled={testing || saving}
+              title="Test the current draft against the running services without committing it."
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+            >
+              {testing ? "Testing…" : "Test"}
+            </button>
+          )}
           <button
             type="button"
             onClick={save}

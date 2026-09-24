@@ -264,8 +264,20 @@ describe("the root is the install, not the control root", () => {
     expect(tree.layer).toBeNull();
     // Home first (S1): a first-time user lands on what is running and
     // what to do next, not on a diagnostic.
-    expect(tree.pages.map((p) => p.id)).toEqual(["home", "playground", "inference", "preferences"]);
-    expect(tree.pages.map((p) => p.route)).toEqual(["/", "/playground", "/inference", "/config"]);
+    expect(tree.pages.map((p) => p.id)).toEqual([
+      "home",
+      "playground",
+      "inference",
+      "apps",
+      "preferences",
+    ]);
+    expect(tree.pages.map((p) => p.route)).toEqual([
+      "/",
+      "/playground",
+      "/inference",
+      "/apps",
+      "/config",
+    ]);
   });
 });
 
@@ -575,8 +587,62 @@ describe("an old link still lands on the right object", () => {
       "home",
       "playground",
       "inference",
+      "apps",
       "preferences",
     ]);
+  });
+});
+
+describe("installed apps", () => {
+  const withApps = (apps: Topology["apps"]): Topology => ({ ...TWO_MACHINE, apps });
+
+  it("adds no branch until something is installed", () => {
+    // The catalogue is the install root's Apps page; an empty branch is a
+    // thing to click that holds nothing, like a missing singleton.
+    expect(labels(buildTree(TWO_MACHINE))).not.toContain("Apps");
+    expect(labels(buildTree(withApps([])))).not.toContain("Apps");
+  });
+
+  it("draws Apps first, the layer above the front door, grouped by machine", () => {
+    const tree = buildTree(
+      withApps([
+        { id: "chat", name: "Chat", node: "nas" },
+        { id: "connector", name: "Discord", node: "Amish_Station" },
+      ]),
+    );
+    expect(labels(tree)[0]).toBe("Apps");
+    const apps = tree.children[0]!;
+    expect(apps.layer).toBe("tools");
+    // Only machines with an app get a group, in the tree's machine order.
+    expect(apps.children.map((g) => g.label)).toEqual(["Amish_Station", "nas"]);
+    expect(apps.children.map((g) => g.children.map((c) => c.sel))).toEqual([
+      ["app:connector@Amish_Station"],
+      ["app:chat@nas"],
+    ]);
+    const chat = findNode(tree, "app:chat@nas");
+    expect(chat?.pages.map((p) => p.route)).toEqual(["/apps/app", "/apps/settings"]);
+  });
+
+  it("hangs apps straight off the branch on a one-machine install", () => {
+    const tree = buildTree({
+      localNode: "solo",
+      nodes: ["solo"],
+      components: [],
+      apps: [{ id: "chat", name: "Chat", node: "solo" }],
+    });
+    const apps = tree.children.find((c) => c.label === "Apps");
+    expect(apps?.children.map((c) => c.sel)).toEqual(["app:chat@solo"]);
+  });
+
+  it("round-trips an app selection, and finds a machine-less one", () => {
+    const sel = parseSelection("app:chat@nas");
+    expect(sel).toEqual({ type: "app", node: "nas", name: "chat" });
+    expect(formatSelection(sel!)).toBe("app:chat@nas");
+    expect(parseSelection("app:@nas")).toBeNull();
+    const tree = buildTree(withApps([{ id: "chat", name: "Chat", node: "nas" }]));
+    expect(findSelected(tree, "app:chat")?.sel).toBe("app:chat@nas");
+    expect(configTabFor(sel!, "nas")).toBeNull();
+    expect(defaultSelectionFor("/apps")).toBe("install");
   });
 });
 

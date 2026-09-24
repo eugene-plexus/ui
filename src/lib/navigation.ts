@@ -46,7 +46,8 @@ export type IconName =
   | "FolderOpen"
   | "FolderTree"
   | "KeyRound"
-  | "Route";
+  | "Route"
+  | "Blocks";
 
 /**
  * A colour *role*, not a colour. `left` and `right` resolve to the
@@ -173,7 +174,7 @@ export interface Screen {
 }
 
 /**
- * The nine navigable screens.
+ * The ten navigable screens.
  *
  * Order within each group is the diagram's order, not alphabetical:
  * tools → gateway → drivers for the request path, then the rail's
@@ -217,6 +218,19 @@ export const SCREENS: readonly Screen[] = [
     layer: "tools",
     spans: [],
     blurb: "A reference client and a diagnostic: talk to a model the way a harness does.",
+  },
+  {
+    // Optional apps (specs docs/design/apps-and-spokes.md). Filed under
+    // `tools`, not a ninth layer: an app is exactly what that layer's
+    // blurb describes -- something that speaks the API, pointed at one URL
+    // with one key -- and "Your tools" is already the layer drawn above
+    // the front door, which is where the design put them.
+    href: "/apps",
+    label: "Apps",
+    icon: "Blocks",
+    layer: "tools",
+    spans: ["agent"],
+    blurb: "Optional apps each machine can install and run, holding one key like any other tool.",
   },
   {
     href: "/metrics",

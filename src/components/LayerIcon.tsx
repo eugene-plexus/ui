@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Blocks,
   Cloud,
   Cpu,
   Database,
@@ -53,6 +54,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   FolderTree,
   KeyRound,
   Route,
+  Blocks,
 };
 
 export function LayerIcon({

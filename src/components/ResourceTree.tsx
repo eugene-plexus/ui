@@ -5,16 +5,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { accentVar, layerOf } from "@/lib/navigation";
+import { agentTarget } from "@/lib/apps";
 import {
   configTabFor,
   hrefFor,
   parseSelection,
+  type AppPlacement,
   type ComponentPlacement,
   type PageRef,
   type Topology,
   type TreeNode,
 } from "@/lib/resourceTree";
-import type { ComponentList, NodeIdentity } from "@/lib/types";
+import type { AppList, ComponentList, NodeIdentity } from "@/lib/types";
 import { useRefreshWithIssues } from "@/lib/useIssues";
 import { usePolling } from "@/lib/usePolling";
 
@@ -106,8 +108,33 @@ export function useTopology(): { topology: Topology; ready: boolean } {
       merged.set(`${c.name}@${on ?? ""}`, { name: c.name, kind: c.kind, node: on });
     }
 
+    // Installed apps live on each machine's own agent, so they are read
+    // per machine -- this one directly, every other through `node:<name>`
+    // -- and every read is soft, like the four above: a machine that is
+    // down contributes no apps rather than an error.
+    const localName = node?.name ?? null;
+    const machines = [
+      localName,
+      ...(nodeNames?.nodes ?? [])
+        .map((n) => n.name)
+        .filter((n): n is string => typeof n === "string" && n.length > 0 && n !== localName),
+    ];
+    const appLists = await Promise.all(
+      machines.map((m) =>
+        api
+          .get<AppList>(agentTarget(m, localName), "/v1/apps")
+          .then((list) => ({ machine: m, apps: list.apps ?? [] }))
+          .catch(() => ({ machine: m, apps: [] })),
+      ),
+    );
+    if (!live.current) return;
+    const apps: AppPlacement[] = appLists.flatMap(({ machine, apps }) =>
+      apps.map((a) => ({ id: a.id, name: a.name, node: a.node ?? machine })),
+    );
+
     const next: Topology = {
       localNode: node?.name ?? null,
+      apps,
       nodes: (nodeNames?.nodes ?? [])
         .map((n) => n.name)
         .filter((n): n is string => typeof n === "string" && n.length > 0),
