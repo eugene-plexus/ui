@@ -22,6 +22,7 @@ import { describe, expect, it } from "vitest";
 import {
   SKEW_BLOCKING_SECONDS,
   SKEW_WARN_SECONDS,
+  TRUST_STALE_SECONDS,
   declaresNoOffload,
   describeCompute,
   describeCopying,
@@ -1214,5 +1215,44 @@ describe("describeModelSource", () => {
 
   it("says nothing at all when there is nothing to say", () => {
     expect(describeModelSource({})).toBeNull();
+  });
+});
+
+describe("a machine that has not heard from the control root", () => {
+  function heardFrom(age: number | undefined, enrolled = true): NodeFacts {
+    const json = JSON.stringify({ enrolled, name: "Amish_Station", trustBundleAgeSeconds: age });
+    return facts({
+      name: "Amish_Station",
+      label: "Amish_Station",
+      identity: body<NodeIdentity>(json),
+    });
+  }
+
+  it("says so past ten missed pulls, naming the machine and how long", () => {
+    const issues = issuesFrom({ ...NOTHING, perNode: [heardFrom(TRUST_STALE_SECONDS + 300)] });
+    expect(kinds(issues)).toEqual(["trust-stale"]);
+    const [issue] = issues;
+    expect(issue?.severity).toBe("warning");
+    expect(issue?.node).toBe("Amish_Station");
+    expect(issue?.title).toBe("Amish_Station has not heard from the control root for 15 minutes");
+    expect(issue?.href).toBe("/nodes");
+  });
+
+  it("stays quiet inside the window, which a minute's pull keeps it in", () => {
+    const issues = issuesFrom({ ...NOTHING, perNode: [heardFrom(TRUST_STALE_SECONDS - 1)] });
+    expect(kinds(issues)).toEqual([]);
+  });
+
+  it("says nothing for a machine that has joined no install, or did not say", () => {
+    for (const node of [heardFrom(100_000, false), heardFrom(undefined)]) {
+      expect(kinds(issuesFrom({ ...NOTHING, perNode: [node] }))).toEqual([]);
+    }
+  });
+
+  it("counts a long silence in hours and then days", () => {
+    const hours = issuesFrom({ ...NOTHING, perNode: [heardFrom(5 * 3600)] });
+    expect(hours[0]?.title).toMatch(/for 5 hours$/);
+    const days = issuesFrom({ ...NOTHING, perNode: [heardFrom(3 * 86400)] });
+    expect(days[0]?.title).toMatch(/for 3 days$/);
   });
 });

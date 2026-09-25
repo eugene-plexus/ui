@@ -1889,10 +1889,13 @@ export interface components {
             trustBundleVersion?: number;
             /**
              * Format: int64
-             * @description Seconds since the held bundle was signed. Reported, never
-             *     enforced: a bundle keeps working while the root is dead, so
-             *     its age is what tells an operator this node has not heard
-             *     from the root.
+             * @description Seconds since this agent last took the control root's bundle
+             *     -- a push, or the pull it makes every minute. Not the
+             *     bundle's signing time: a quiet install's bundle can be days
+             *     old and current. Reported, never enforced: a bundle keeps
+             *     working while the root is dead, so this is what tells an
+             *     operator the node has not heard from the root. Past ten
+             *     minutes the console lists it as an issue.
              */
             trustBundleAgeSeconds?: number;
             /**

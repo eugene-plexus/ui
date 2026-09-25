@@ -57,6 +57,7 @@ export type IssueKind =
   | "node-down"
   | "folder-unreachable"
   | "clock-skew"
+  | "trust-stale"
   | "engine-unavailable"
   | "engine-build-stale"
   | "runtime-on-cpu";
@@ -173,6 +174,17 @@ export const SKEW_WARN_SECONDS = 30;
 /** Past this the install is at the edge of refusing its own traffic. */
 export const SKEW_BLOCKING_SECONDS = 240;
 
+/**
+ * A machine that joined an install takes the control root's list of
+ * trusted keys every minute (per-node token keys, 2026-09-25). Ten
+ * minutes without it is ten missed pulls: the machine keeps working with
+ * what it last heard, but a machine removed from the install, or a
+ * sign-out, since then is not known there. The age is reported by the
+ * machine itself and never enforced -- a dead root must not stop the
+ * install serving -- so this is where it becomes something to act on.
+ */
+export const TRUST_STALE_SECONDS = 600;
+
 export function issuesFrom(sources: IssueSources): Issue[] {
   const issues: Issue[] = [
     ...sealedRootIssue(sources),
@@ -182,6 +194,7 @@ export function issuesFrom(sources: IssueSources): Issue[] {
   for (const node of sources.perNode) {
     issues.push(
       ...componentDownIssues(node),
+      ...trustStaleIssues(node),
       ...folderIssues(node),
       ...engineIssues(node),
       ...staleBuildIssues(node),
@@ -371,6 +384,33 @@ function clockSkewIssues(perNode: NodeFacts[]): Issue[] {
       href: "/nodes",
     },
   ];
+}
+
+function trustStaleIssues(node: NodeFacts): Issue[] {
+  const identity = node.identity;
+  if (!identity?.enrolled) return [];
+  const age = identity.trustBundleAgeSeconds;
+  if (typeof age !== "number" || age < TRUST_STALE_SECONDS) return [];
+  return [
+    {
+      id: `trust-stale:${node.name ?? node.label}`,
+      kind: "trust-stale",
+      severity: "warning",
+      title: `${node.label} has not heard from the control root for ${formatAge(age)}`,
+      detail:
+        "It keeps working with what it last heard. A machine removed from the install, " +
+        "or a sign-out, since then is not known there yet. Check that it can reach the control root.",
+      href: "/nodes",
+      node: node.name,
+    },
+  ];
+}
+
+function formatAge(seconds: number): string {
+  if (seconds < 90 * 60) return formatSkew(seconds);
+  const hours = seconds / 3600;
+  if (hours < 36) return `${Math.round(hours)} hours`;
+  return `${Math.round(hours / 24)} days`;
 }
 
 function formatSkew(seconds: number): string {
