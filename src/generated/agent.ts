@@ -250,9 +250,10 @@ export interface paths {
          *
          *     Any enrolled agent forwards management to the active control root using
          *     the caller's operator credential. Records and revocations are install-wide.
-         *     An unenrolled agent owns a standalone registry. Existing records migrate
-         *     automatically using the enrolled node identity; migration status is visible
-         *     in the list response. Unavailable authorities return 503 for writes.
+         *     An unenrolled agent owns a standalone registry, and its keys are
+         *     signed by that machine alone: they stop working if it joins an
+         *     install, and are not carried over (per-node token keys, 2026-09-25).
+         *     Unavailable authorities return 503 for writes.
          *
          *     Operator-only, and it is one of the few endpoints where that
          *     matters as much as it does on the trust root: a token minted
@@ -2445,11 +2446,8 @@ export interface components {
              * @description Reserved; not currently measured.
              */
             lastUsedAt?: string;
-            originNode?: string;
             /** @description Absent on legacy keys (all models, no per-key limits); new keys receive bounded defaults. */
             limits?: components["schemas"]["ClientKeyLimits"];
-            /** @description True for a record imported from a pre-A3 node-local registry. */
-            migrated?: boolean;
         };
         ClientKeyList: {
             keys: components["schemas"]["ClientKey"][];
@@ -2457,8 +2455,6 @@ export interface components {
             revision?: number;
             /** @enum {string} */
             scope?: "install" | "standalone";
-            /** @enum {string} */
-            migration?: "complete" | "pending" | "error" | "standalone";
             detail?: string;
         };
         ClientKeyCreateRequest: {

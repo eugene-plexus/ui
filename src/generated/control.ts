@@ -107,28 +107,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/nodes/{name}/client-keys/import": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import existing node-local client-key records
-         * @description Authenticated by the enrolled node signature, not a service bearer. Active root only. Idempotent and revocation-preserving; a node cannot overwrite another node's record.
-         */
-        post: operations["importLegacyClientKeys"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/nodes": {
         parameters: {
             query?: never;
@@ -966,11 +944,8 @@ export interface components {
              * @description Reserved; not currently measured.
              */
             lastUsedAt?: string;
-            originNode?: string;
             /** @description Absent on legacy keys (all models, no per-key limits); new keys receive bounded defaults. */
             limits?: components["schemas"]["ClientKeyLimits"];
-            /** @description True for a record imported from a pre-A3 node-local registry. */
-            migrated?: boolean;
         };
         ClientKeyList: {
             keys: components["schemas"]["ClientKey"][];
@@ -978,8 +953,6 @@ export interface components {
             revision?: number;
             /** @enum {string} */
             scope?: "install" | "standalone";
-            /** @enum {string} */
-            migration?: "complete" | "pending" | "error" | "standalone";
             detail?: string;
         };
         ClientKeyCreateRequest: {
@@ -1005,16 +978,6 @@ export interface components {
             /** @description Authority UTC Unix timestamp. Intermediaries must not renew it. */
             generatedAt: number;
             keys: components["schemas"]["ClientKeyPolicyEntry"][];
-        };
-        ClientKeyImport: {
-            keys: components["schemas"]["ClientKey"][];
-            /**
-             * @description Base64 Ed25519 signature by the enrolled node over UTF-8
-             *     'eugene-plexus/client-keys/import/v1\n' followed by canonical JSON
-             *     {"node":name,"keys":keys}, sorted keys, compact separators, ensure_ascii=false.
-             *     Idempotent; imported revocations cannot be cleared by replay.
-             */
-            signature: string;
         };
         NodeList: {
             nodes: components["schemas"]["Node"][];
@@ -1503,7 +1466,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "importClientKeys" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -1533,10 +1496,6 @@ export interface components {
                 [key: string]: unknown;
             };
             clientKeys?: components["schemas"]["ClientKey"][];
-            /** @description Node-to-digest map of committed legacy imports, replicated with the registry. */
-            clientKeyImports?: {
-                [key: string]: string;
-            };
             /** Format: int64 */
             index: number;
             /** Format: int64 */
@@ -2590,35 +2549,6 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Problem"];
-        };
-    };
-    importLegacyClientKeys: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ClientKeyImport"];
-            };
-        };
-        responses: {
-            /** @description Import committed; metadata confirms migration. Keys are empty to avoid disclosing the operator registry to a node. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClientKeyList"];
-                };
-            };
-            401: components["responses"]["Problem"];
-            409: components["responses"]["Problem"];
-            503: components["responses"]["Problem"];
         };
     };
     listNodes: {

@@ -14,50 +14,46 @@ function show() {
 }
 
 describe("install-wide key registry", () => {
-  it("names migrated origins and the admission dependency", async () => {
+  it("names the install-wide registry and the admission dependency", async () => {
     const registry: ClientKeyList = {
       keys: [
         {
-          id: "old",
+          id: "k1",
           name: "Laptop",
           tail: "sample",
           createdAt: "2026-09-01T00:00:00Z",
           expiresAt: "2099-09-01T00:00:00Z",
-          migrated: true,
-          originNode: "nas",
         },
       ],
       scope: "install",
-      migration: "complete",
-      detail: "Existing keys are registered install-wide.",
     };
     const get = vi.spyOn(api, "get").mockResolvedValue(registry);
     show();
-    expect(await screen.findByText("migrated from nas")).toBeInTheDocument();
-    expect(screen.getByTestId("key-migration")).toHaveTextContent("registered install-wide");
+    expect(await screen.findByText("Laptop")).toBeInTheDocument();
+    expect(screen.getByText(/apply to every gateway in this install/)).toBeInTheDocument();
     expect(screen.getByText(/Client requests need the active key authority/)).toBeInTheDocument();
+    expect(screen.queryByText(/migrat/i)).toBeNull();
     expect(get).toHaveBeenCalledWith("agent", "/v1/auth/client-keys");
   });
 
-  it("shows migration trouble and refreshes after recovery", async () => {
-    const get = vi.spyOn(api, "get").mockResolvedValue({
-      keys: [],
-      scope: "install",
-      migration: "error",
-      detail: "Existing keys could not be registered. Restore the control connection.",
-    });
+  // Per-node token keys (2026-09-25): a standalone machine's keys are
+  // signed by it alone and are not carried into an install it joins.
+  it("says a standalone machine's keys stop working when it joins", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [], scope: "standalone" });
     show();
-    expect(await screen.findByTestId("key-migration")).toHaveTextContent("could not be registered");
-    get.mockResolvedValue({
-      keys: [],
-      scope: "install",
-      migration: "complete",
-      detail: "Existing keys are registered install-wide.",
-    });
+    expect(await screen.findByText(/stop working when it does/)).toBeInTheDocument();
+    expect(screen.queryByText(/will migrate/i)).toBeNull();
+  });
+
+  it("refreshes after the authority recovers", async () => {
+    const get = vi
+      .spyOn(api, "get")
+      .mockRejectedValue(new Error("Client-key authority unavailable"));
+    show();
+    expect(await screen.findByTestId("key-error")).toHaveTextContent("authority unavailable");
+    get.mockResolvedValue({ keys: [], scope: "install" });
     fireEvent.click(screen.getByText("Refresh key status"));
-    expect(
-      await screen.findByText("Existing keys are registered install-wide."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/apply to every gateway in this install/)).toBeInTheDocument();
   });
 
   it("reports authority failure without claiming an empty healthy registry", async () => {
@@ -65,7 +61,6 @@ describe("install-wide key registry", () => {
     show();
     expect(await screen.findByTestId("key-error")).toHaveTextContent("authority unavailable");
     expect(screen.getByText(/Registry status has not been confirmed/)).toBeInTheDocument();
-    expect(screen.queryByTestId("key-migration")).not.toBeInTheDocument();
   });
 });
 

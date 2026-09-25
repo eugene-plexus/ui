@@ -89,7 +89,8 @@ const TONE_CLASS = {
  * The verdict is the only thing here allowed to call the address right.
  *
  * Key management uses the local agent, which forwards to the control root
- * when enrolled. The response identifies registry scope and migration status.
+ * when enrolled. The response says which registry answered: the install's,
+ * or this machine's own before it joins one.
  */
 export function UseFromAppsCard({
   models,
@@ -541,26 +542,10 @@ export function UseFromAppsCard({
         {registry?.scope === "install"
           ? " Keys and revocations apply to every gateway in this install."
           : registry?.scope === "standalone"
-            ? " This machine currently manages its own keys."
+            ? " This machine manages its own keys until it joins an install, and they stop working when it does."
             : " Registry status has not been confirmed."}
       </p>
 
-      {registry?.migration && (
-        <p
-          data-testid="key-migration"
-          role="status"
-          className={
-            registry.migration === "error" || registry.migration === "pending"
-              ? "status-warn mt-2 text-sm"
-              : "font-ui mt-2 text-sm text-[color:var(--muted)]"
-          }
-        >
-          {registry.detail ??
-            (registry.migration === "standalone"
-              ? "Existing keys will migrate when this machine joins an install."
-              : "Existing keys are registered install-wide.")}
-        </p>
-      )}
       <p className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]">
         Client requests need the active key authority. If it is unreachable, clients cannot start
         inference or list models; operator management remains available. Permission changes stop
@@ -589,7 +574,6 @@ export function UseFromAppsCard({
                 className="font-ui flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-[color:var(--border)] pt-1 text-[0.6875rem]"
               >
                 <span className="font-semibold">{key.name}</span>
-                {key.migrated && <span>migrated from {key.originNode ?? "another node"}</span>}
                 <code className="font-mono">{keyLabel(key.tail)}</code>
                 <span className="text-[color:var(--muted)]">{status.text}</span>
                 <span className="basis-full">{describeClientLimits(key.limits)}</span>
