@@ -891,11 +891,10 @@ export interface paths {
          *
          *     **Probed anonymously** (2026-09-18). Operator-gated, as every
          *     admin path here is, and it dials whatever the operator typed —
-         *     that is the feature. What it no longer carries is this install's
-         *     `service:gateway` token, which every component in the install
-         *     accepts, so a URL in a form was enough to collect one. An
-         *     operator typing an address is not an operator deciding to hand
-         *     out a credential.
+         *     that is the feature. What it no longer carries is this
+         *     gateway's service token, so a URL in a form is not enough to
+         *     collect one. An operator typing an address is not an operator
+         *     deciding to hand out a credential.
          *
          *     Consequently a backend that wants a key answers **401, and that
          *     is reported as `reachable: true`** with the reason in `error`. It
@@ -1033,8 +1032,8 @@ export interface paths {
          *     emitted none. Treat absence as a per-request fact, not a
          *     property of a backend kind.
          *
-         *     Operator-only. No component needs this, so a `service:*` token
-         *     is refused rather than accepted for reads as elsewhere; and
+         *     Operator-only. No component needs this, so a service token is
+         *     refused rather than accepted for reads as elsewhere; and
          *     model names plus traffic volumes are not nothing on a shared
          *     tailnet.
          */

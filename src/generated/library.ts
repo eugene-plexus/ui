@@ -205,7 +205,8 @@ export interface paths {
          *     reader that matters is a node's agent inheriting its path rules
          *     — a worker with no library of its own reaches this through the
          *     install (`agent.yaml`, `POST /v1/library/folders/check`) with a
-         *     `service:agent` token, at every launch, and holds a copy for
+         *     `sub: agent` service token its own node minted for this machine,
+         *     at every launch, and holds a copy for
          *     spawns the library is not around for. Nothing here is secret:
          *     the same paths appear on every model in `GET /v1/models`, and
          *     the mounts are addresses an operator typed for other machines

@@ -74,7 +74,7 @@ export interface paths {
         };
         /**
          * Issue current client-key authorization policy
-         * @description Operator or agent/gateway service token only. Only the active root issues fresh policy. No signing secret is returned.
+         * @description An operator session, or a service token with `sub` `agent` or `gateway` from a member node's key. Only the active root issues fresh policy. No signing secret is returned.
          */
         get: operations["getClientKeyPolicy"];
         put?: never;
@@ -169,25 +169,22 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Revoke a node's enrollment, which rotates the signing key.
-         * @description **This is a rotation, not a deletion,** and the distinction is
-         *     the sharp edge of the whole design. A revoked node still *holds*
-         *     the service-token signing key, so removing its registry entry
-         *     would not stop it authenticating to other components. Revoking
-         *     therefore mints a new signing key, redistributes it to every
-         *     remaining node, and bumps the epoch.
+         * Revoke a node's enrollment, which removes its key from the trust bundle.
+         * @description One `revokeNode` log entry. It removes the node's token key from
+         *     the trust bundle, and with it every token the node ever minted.
+         *     Every session whose `aud` names it as the console dies too.
          *
-         *     Consequences the caller must expect. Nodes that are `down` during
-         *     the rotation hold a superseded key and are refused until they
-         *     reconnect and are re-keyed — so this is **resumable and
-         *     idempotent** by necessity, not by preference. And the runtimes
-         *     the revoked node was hosting become un-declared: the models
-         *     themselves are untouched on that host's disk, but nothing in this
-         *     install will route to them.
+         *     Nothing else changes. No key is rotated, nobody else is signed
+         *     out, and no client key is reissued, because since 2026-09-25 no
+         *     other machine holds a key the revoked one could use. The new
+         *     bundle is pushed to every node at once; a node that is `down`
+         *     takes it when it next reaches this root. `nodesBehind` in the
+         *     answer, and `Node.trustBundleVersion` afterwards, say which
+         *     nodes do not hold it yet.
          *
-         *     Returns 409 when a rotation is already in flight, because two
-         *     concurrent rotations would leave the install in a mixed-key state
-         *     with no single correct answer.
+         *     The runtimes the node hosted become un-declared. The models
+         *     stay on that host's disk, but nothing in this install will route
+         *     to them.
          */
         delete: operations["revokeNode"];
         options?: never;
@@ -203,13 +200,14 @@ export interface paths {
          *     just went stale. That was live for four milestones.
          *
          *     **The credential is the signature, not a bearer**, and it is the
-         *     mirror image of `POST /v1/node/rekey` in `agent.yaml`: the root
-         *     proves itself to a node with its identity key, and a node proves
-         *     itself to the root with its own. Two reasons a bearer cannot do
-         *     this job here, and the second is the load-bearing one:
+         *     mirror image of `POST /v1/node/trust-bundle` in `agent.yaml`: the
+         *     root proves itself to a node with its identity key, and a node
+         *     proves itself to the root with its own. Two reasons a bearer
+         *     cannot do this job here, and the second is the load-bearing one:
          *
-         *     1. A service token names a *kind*, not a host, so any component
-         *        anywhere in the install could re-address any node.
+         *     1. Only this root and the node itself should be able to move a
+         *        node, and the node's identity key is the one credential that
+         *        says both "this node" and "not a copy of a token it was sent".
          *     2. **Every other mutation on this root is operator-only**, on
          *        purpose — "a compromised peer holding a service token must not
          *        be able to enroll a host or re-key the install". An unattended
@@ -365,11 +363,15 @@ export interface paths {
          *     no credential yet. This is the one endpoint here that does not
          *     take a session token.
          *
-         *     The agent generates its identity keypair first and sends only the
-         *     public half; **the private key never leaves the node**, which is
-         *     what makes per-node sealing meaningful. In exchange it receives
-         *     its name, the current service-token signing key, the current
-         *     epoch, and the control root's identity.
+         *     The agent generates its keys first and sends only their public
+         *     halves: the identity keys for sealing and for address
+         *     announcements, and its **token key**. **No private key leaves the
+         *     node.** In exchange it receives its name, the current epoch, this
+         *     root's identity, and a trust bundle that already lists the new
+         *     node's key, so its own tokens verify from the first request.
+         *
+         *     A `gateway` grant on the join token becomes this node's grant in
+         *     the bundle. The node cannot ask for one.
          *
          *     The `url` it sends is recorded as `Node.url` — where this root
          *     probes it, forwards declarations to it, and where a gateway sends
@@ -407,9 +409,9 @@ export interface paths {
          *     without losing whatever it has not applied, and this is where an
          *     operator sees that before deciding rather than after.
          *
-         *     Readable by any service token as well as the operator, because
-         *     an agent needs to learn the current epoch and a driver needs to
-         *     know whether management is available.
+         *     Readable by an operator session and by a member node's `agent`
+         *     or `gateway` service token, because an agent needs to learn the
+         *     current epoch.
          */
         get: operations["controlStatus"];
         put?: never;
@@ -444,10 +446,9 @@ export interface paths {
          *     ordering**, so clock skew between hosts cannot affect
          *     correctness.
          *
-         *     **Operator or `service:control` only**, not any service token.
-         *     The entries include the ones that wrote the install's key
-         *     material, so this is the same door as `readSnapshot` and takes
-         *     the same level; see there for why.
+         *     **An operator session only.** The entries include the ones that
+         *     wrote the install's key material, so this is the same door as
+         *     `readSnapshot` and takes the same level; see there for why.
          */
         get: operations["readLog"];
         put?: never;
@@ -477,16 +478,18 @@ export interface paths {
          *     which are sealed on the hosts that read them and never travel
          *     here.
          *
-         *     **Operator or `service:control` only** (2026-09-18), which is
-         *     narrower than every other read on this root and deliberately so.
-         *     What comes back includes `sealedSigningKey`, `salt` and
-         *     `passphraseVerifier`; a `service:*` holder that has no master key
-         *     — a gateway, a library, a driver, an agent that has not unlocked
-         *     — gains an **offline attack on the operator's passphrase** by
-         *     reading it, and none of them has a reason to. The one caller that
-         *     must have it is a standby, bootstrapping or recovering from
-         *     compaction, and it presents `service:control`. Not operator-only,
-         *     because replication has to work at 3am with nobody logged in.
+         *     **An operator session only** (2026-09-25), narrower than every
+         *     other read on this root and deliberately so. What comes back
+         *     includes `sealedSigningKey`, `salt` and `passphraseVerifier`, so
+         *     any other holder gains an **offline attack on the operator's
+         *     passphrase** by reading it. Until 2026-09-25 a year-long
+         *     `service:control` token opened it, and this root handed one to
+         *     every node on every poll. Service tokens are addressed to one
+         *     machine now, and none is addressed here for this.
+         *
+         *     **Known gap:** a standby that follows the log unattended needs a
+         *     credential of its own, and no production path has ever given it
+         *     one. It is recorded in the design (§5), not solved here.
          */
         get: operations["readSnapshot"];
         put?: never;
@@ -518,16 +521,14 @@ export interface paths {
          *     The standby verifies the passphrase, derives the master key,
          *     confirms its applied index, increments the epoch, appends a
          *     `promote` entry, and begins accepting writes. Then it **announces
-         *     the epoch** to every enrolled node: a `POST /v1/node/rekey`
-         *     (`agent.yaml`) carrying the *unchanged* signing key and the new
-         *     epoch, signed with the control identity that promotion
+         *     the epoch** to every enrolled node: it pushes a trust bundle
+         *     carrying the new epoch (`POST /v1/node/trust-bundle`,
+         *     `agent.yaml`), signed with the control identity that promotion
          *     deliberately preserved. Agents record it and fence the old root
          *     by refusing its lower one. A node that is `down` during the
-         *     announcement learns the epoch from the next rotation or
-         *     announcement that reaches it — the bounded, visible window this
-         *     document accepts in place of quorum. Announcing is best-effort
-         *     and is not a log entry: it delivers an observation about the
-         *     log's own epoch.
+         *     announcement learns the epoch when it next pulls the bundle, which
+         *     is the bounded, visible window this document accepts in place of
+         *     quorum.
          *
          *     **Refusing to promote is a valid outcome.** A standby that cannot
          *     prove its state reports how far behind it is and returns 409;
@@ -549,32 +550,50 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Progress of the current or most recent key rotation. */
-        get: operations["getKeyRotation"];
+        get?: never;
         put?: never;
         /**
-         * Mint a new service-token signing key and redistribute it.
-         * @description Explicit, and no longer a side effect of restarting. Through M4
-         *     service tokens were "rotated on each agent restart", which was
-         *     harmless when one process spawned everything and is an outage
-         *     once there are N nodes — a restart that re-keys the install would
-         *     break every component that had not yet been told.
+         * Replace this root's token key. Every session and client key ends.
+         * @description The emergency lever for "this root's token key may have leaked".
+         *     It generates a new key, seals it into the log, and publishes a
+         *     bundle naming only the new key. Every operator session and every
+         *     client key in the install stops verifying at once, and has to be
+         *     signed in again or reissued.
          *
-         *     Rotation is therefore a first-class operation with its own log
-         *     entry, resumable, and tolerant of nodes that are `down`: they are
-         *     re-keyed on reconnect and refused until then. `GET` reports the
-         *     state of the current or most recent rotation, which persists
-         *     until the next one starts so a UI that reconnects afterwards
-         *     still learns how it ended.
-         *
-         *     Each node is re-keyed with a `POST /v1/node/rekey` (`agent.yaml`)
-         *     **signed by the control root's identity key**, not authenticated
-         *     by a service token — a rotation is the operation that invalidates
-         *     every service token, and a re-run of an interrupted one cannot
-         *     know which key each node still holds. The identity key does not
-         *     rotate, which is what makes it the credential that survives this.
+         *     Node keys are untouched and nothing private is distributed:
+         *     only the bundle moves, the same way a revocation's does.
          */
         post: operations["rotateSigningKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/trust/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed set of keys every verifier in the install trusts.
+         * @description **Public, and safe to be.** The bundle holds public keys and
+         *     signed-out session ids, and its signature is the credential: an
+         *     agent checks it against the identity key it pinned at enrollment
+         *     and refuses a lower `version` than it holds. Every agent pulls it
+         *     every 60 seconds and whenever this root becomes reachable again.
+         *     That pull is how a node that was down during a revocation
+         *     catches up.
+         *
+         *     A sealed root still answers, with the last bundle it signed,
+         *     which it keeps on disk. A root that has never signed one answers
+         *     503.
+         */
+        get: operations["getTrustBundle"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -687,8 +706,8 @@ export interface paths {
         /**
          * Set the operator passphrase on a fresh install.
          * @description First-run only, and refused once `initialized` is true. Derives
-         *     the master key via Argon2id and generates the first
-         *     service-token signing key and this root's epoch-1 identity.
+         *     the master key via Argon2id and generates this root's token
+         *     key and its epoch-1 identity.
          *
          *     The passphrase is unrecoverable by design: losing it means losing
          *     every sealed secret in the install, including the recovery
@@ -712,7 +731,21 @@ export interface paths {
         put?: never;
         /**
          * Exchange the operator passphrase for a session token.
-         * @description Returns `common.yaml`'s shared `AuthLoginResponse`, the same
+         * @description **The only place an operator session is minted** in an enrolled
+         *     install. An agent's own login forwards here.
+         *
+         *     The session's `aud` depends on who asked:
+         *
+         *     * **An agent forwarding a sign-in** sends its own service token
+         *       (`sub: agent`, addressed to `control`) as `Authorization`. The
+         *       session is then addressed to that machine and to this root:
+         *       `["node:<name>", "control"]`.
+         *     * **A login with no such token** gets `["control"]`: the wizard,
+         *       a sealed-root unlock, or a caller reaching this port directly.
+         *
+         *     A correct passphrase also unseals this root when it is locked.
+         *
+         *     Returns `common.yaml`'s shared `AuthLoginResponse`, the same
          *     shape the agent's login returns, so the field is `sessionToken`.
          *
          *     It was not always. This document used to define its own local
@@ -724,6 +757,72 @@ export interface paths {
          *     than documented.
          */
         post: operations["authLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/sessions/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Sign the presented session out, everywhere in the install.
+         * @description Appends a replicated `revokeSession` entry. The session's `jti`
+         *     joins the trust bundle's `revokedSessions`, and the new bundle is
+         *     pushed, so every machine refuses the session and every token
+         *     exchanged from it (by `sid`) within seconds. An agent's own
+         *     sign-out forwards here, and keeps a local copy for when this
+         *     root cannot be reached.
+         */
+        delete: operations["authLogout"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a session for a short-lived token addressed to one other machine.
+         * @description RFC 8693 token exchange. It is **how the console acts on another
+         *     machine without handing it the session**.
+         *
+         *     **Who calls it.** The agent the operator signed in on, from its
+         *     proxy, whenever a request is going to a different machine.
+         *     `Authorization` is that agent's own service token
+         *     (`sub: agent`, addressed to `control`), the actor.
+         *     `subjectToken` is the operator's session.
+         *
+         *     **What is checked.**
+         *
+         *     * The session verifies, is not signed out, and is addressed to
+         *       the actor's machine. A session cannot be exchanged by a
+         *       machine it was not issued to.
+         *     * `audience` names an enrolled node.
+         *
+         *     **What comes back.** An `ep-session+jwt` addressed to that one
+         *     node and living 5 minutes, and never beyond the session's own
+         *     `exp`. It carries `act: {"sub": "node:<actor>"}` and
+         *     `sid: <session jti>`, so signing the session out, or revoking
+         *     the actor's machine, ends it too. The receiving machine sees only
+         *     this token, and it is worthless anywhere else.
+         */
+        post: operations["exchangeToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -974,6 +1073,30 @@ export interface components {
              */
             signingPublicKey?: string;
             /**
+             * @description Base64 of this node's raw Ed25519 **token** public key, the
+             *     key its tokens are signed with. It is listed in the trust
+             *     bundle as `node:<name>`. The private half was generated on
+             *     the node and has never been anywhere else. A third key,
+             *     separate from `publicKey` and `signingPublicKey`, because
+             *     each key does one job.
+             */
+            tokenPublicKey?: string;
+            /**
+             * @description What this node's key may issue, as the trust bundle lists it:
+             *     always `node`, plus `gateway` when the join token that
+             *     enrolled it said so. Given by the operator, never claimed by
+             *     the node.
+             */
+            grants?: components["schemas"]["TrustGrant"][];
+            /**
+             * Format: int64
+             * @description The trust bundle version this node reported holding on the
+             *     last probe. A value below the current one is a node that has
+             *     not yet taken a revocation or a rotation. Observation, not
+             *     applied state, so never replicated; `null` until probed.
+             */
+            trustBundleVersion?: number | null;
+            /**
              * Format: int64
              * @description The highest announcement sequence accepted from this node. A
              *     `PATCH /v1/nodes/{name}` at or below it is a replay and is
@@ -1052,6 +1175,14 @@ export interface components {
              * @default 900
              */
             ttlSeconds: number;
+            /**
+             * @description Extra grants the node enrolled with this token receives in the
+             *     trust bundle. `gateway` lets it mint `sub: gateway` tokens to
+             *     other machines, which the install's gateway needs in order to
+             *     reach every node's drivers and agent. The wizard asks for it
+             *     on the machine that runs the gateway; `/nodes` does not.
+             */
+            grants?: "gateway"[];
         };
         JoinToken: {
             /**
@@ -1075,6 +1206,7 @@ export interface components {
             expiresAt: string;
             /** @description The node name this token is bound to, when it is bound. */
             nodeName?: string;
+            grants?: "gateway"[];
         };
         /**
          * @description One outstanding join token, **without the token**.
@@ -1091,6 +1223,8 @@ export interface components {
             expiresAt: string;
             /** @description The node name this token is bound to, when it is bound. */
             nodeName?: string;
+            /** @description What the node it enrolls will be granted, as minted. */
+            grants?: "gateway"[];
             /**
              * @description True once this token has enrolled a node. A spent token is
              *     kept until it expires so a replay answers 409 "already
@@ -1114,12 +1248,17 @@ export interface components {
              */
             publicKey: string;
             /**
-             * @description The agent's Ed25519 public key, recorded as
+             * @description The agent's Ed25519 identity public key, recorded as
              *     `Node.signingPublicKey` and used to verify later address
-             *     announcements. Optional so an older agent still enrolls; the
-             *     cost of omitting it is that the node cannot re-advertise.
+             *     announcements.
              */
-            signingPublicKey?: string;
+            signingPublicKey: string;
+            /**
+             * @description Base64 of the agent's raw Ed25519 token public key, recorded
+             *     as `Node.tokenPublicKey` and listed in the trust bundle. The
+             *     agent generated the pair; the private half stays on it.
+             */
+            tokenPublicKey: string;
             /**
              * Format: uri
              * @description Where other hosts reach this agent — its `advertiseUrl`,
@@ -1166,11 +1305,10 @@ export interface components {
              *     separators=(",", ":"))`. `name` is the path parameter and
              *     `url` is the value in this body, verbatim and unnormalized.
              *
-             *     Same construction as `RekeyRequest.signature` in
-             *     `agent.yaml`, deliberately: three fields, one serializer,
-             *     stated here so both sides implement it from one sentence.
-             *     Including `name` is what stops one node's announcement being
-             *     replayed against another's record.
+             *     Three fields, one serializer, stated here so both sides
+             *     implement it from one sentence. Including `name` is what
+             *     stops one node's announcement being replayed against
+             *     another's record.
              *
              *     **Verified against the raw request body, never against a
              *     parsed `url`.** An OpenAPI `format: uri` becomes a URL type
@@ -1216,31 +1354,15 @@ export interface components {
              *     from then on refuses any root presenting a lower one.
              */
             epoch: number;
+            trustBundle: components["schemas"]["SignedTrustBundle"];
             /**
-             * @description Base64 of the install's unencrypted Ed25519 private key in
-             *     PKCS8 PEM format. This trusted agent is a token minter, so
-             *     enrollment transfers private material to it. It derives
-             *     SubjectPublicKeyInfo public PEM for gateway, library and
-             *     inference-driver children; those receive `AUTH_VERIFY_KEY`
-             *     and their own service token, never this private key.
-             *     New installs and rotations sign JWTs with `alg: EdDSA`.
-             *     An upgraded install retains its existing base64 32-byte
-             *     HS256 key until explicit rotation; no re-enrollment is needed.
-             *     The format selects the algorithm, independently of JWT headers.
+             * @description Base64 of the control root's raw Ed25519 identity public key.
+             *     The node pins it and from then on accepts a trust bundle only
+             *     if this key signed it. **No private key is in this
+             *     response**: until 2026-09-25 it carried the install's signing
+             *     key in plaintext, which made every node the install.
              */
-            signingKey: string;
-            /**
-             * @description The key's generation (`Snapshot.signingKeyId`), so the node
-             *     can tell a later `POST /v1/node/rekey` that is newer from one
-             *     that is a replay.
-             */
-            signingKeyId?: string;
-            /**
-             * @description The control root's public key, so the node can verify that
-             *     later epoch changes come from a root it recognises rather
-             *     than from anything that can reach its port.
-             */
-            controlPublicKey?: string;
+            controlPublicKey: string;
             /**
              * @description The second recipient every secret on this node is sealed to.
              *     Held by the control root under the passphrase-derived key, so
@@ -1369,9 +1491,19 @@ export interface components {
          *     upsert would have worked and been worse: the log is read by
          *     operators, and a node that moved house would appear to have
          *     enrolled again.
+         *
+         *     **`revokeSession` (2026-09-25)** records a sign-out, because the
+         *     trust bundle every machine checks sessions against is built
+         *     from applied state. A sign-out a standby had not seen would be a
+         *     session a promotion brought back.
+         *
+         *     **`rotateSigningKey` still carries `revokedNode`** in logs
+         *     written before 2026-09-25, when revoking a node rotated the
+         *     shared key. It removes that node if it is still enrolled. Nothing
+         *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "importClientKeys" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "promote";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "importClientKeys" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -1441,11 +1573,15 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
-             * @description Names the current signing-key generation. Not a secret, and
-             *     the thing a node reports back so a rotation can tell which
-             *     hosts are stale rather than counting how many are.
+             * @description Names the current generation of this root's token key. Not a
+             *     secret.
              */
             signingKeyId?: string;
+            /**
+             * @description Sessions signed out and not yet expired, as `revokeSession`
+             *     wrote them. The trust bundle carries the same list.
+             */
+            revokedSessions?: components["schemas"]["RevokedSession"][];
             /**
              * @description The Argon2id salt. Replicated because without it the same
              *     passphrase derives a different key, and a standby that cannot
@@ -1464,21 +1600,24 @@ export interface components {
              */
             sealedRecoveryKey?: string;
             /**
-             * @description The current service-token signing key, sealed under the
-             *     passphrase-derived key.
+             * @description This root's token key, sealed under the passphrase-derived
+             *     key: what signs operator sessions, exchanged tokens and client
+             *     keys. It never leaves a root in any other form.
              *
-             *     The design's replication set requires this — *"otherwise
-             *     every node must re-enroll after promotion"* — and the first
-             *     implementation found it missing here, which would have made
-             *     a snapshot-bootstrapped standby unpromotable without
-             *     re-enrolling the install. It is **sealed** rather than
-             *     plaintext because a snapshot is a file on a second host and
-             *     this key mints every service token in the install; the
-             *     standby has the salt and the verifier but no master key
-             *     until the operator supplies the passphrase at promotion,
-             *     which is exactly the moment it needs to open this.
+             *     Replicated so a promoted standby signs with the same key and
+             *     nobody has to sign in again or reissue a client key. It is
+             *     **sealed** because a snapshot is a file on a second host; the
+             *     standby has the salt and the verifier but no master key until
+             *     the operator supplies the passphrase at promotion, which is
+             *     exactly the moment it needs to open this.
              */
             sealedSigningKey?: string;
+            /**
+             * @description Base64 of the raw public half of the above, in the clear, so a
+             *     root can publish a bundle naming it without unsealing
+             *     anything.
+             */
+            rootTokenPublicKey?: string;
             /**
              * @description The control root's own identity private key, sealed under
              *     the passphrase-derived key. Its public half is what nodes
@@ -1512,40 +1651,41 @@ export interface components {
             force: boolean;
         };
         /**
-         * @description Progress of a service-token signing-key rotation, whether
-         *     triggered explicitly or by revoking a node.
-         *
-         *     Phases are named rather than reduced to a percentage because a
-         *     rotation that stops partway leaves the install in a mixed-key
-         *     state, and the operator needs to know which nodes are on which
-         *     key rather than what fraction is done.
+         * @description What a revocation or a root-key rotation changed. Both publish a
+         *     new trust bundle and push it. Nothing is re-keyed on any node,
+         *     so there is no mixed-key state to track. A node either holds the
+         *     new bundle or it does not yet, and it says which on every probe
+         *     (`Node.trustBundleVersion`).
          */
-        KeyRotation: {
+        TrustChange: {
             /**
-             * @description `distributing` is the interesting one: nodes that are `down`
-             *     hold a superseded key and are refused until they reconnect
-             *     and are re-keyed. That is why rotation has to be resumable
-             *     and idempotent rather than a single atomic act.
-             * @enum {string}
+             * Format: int64
+             * @description The bundle version this change produced.
              */
-            state: "minting" | "distributing" | "done" | "failed";
+            version: number;
             /** @enum {string} */
-            reason?: "operator" | "revocation";
+            reason: "revocation" | "rotation";
             /** @description Set when `reason: revocation`. */
             revokedNode?: string;
-            nodesTotal?: number;
-            nodesRekeyed?: number;
             /**
-             * @description Nodes that have not yet taken the new key, named rather than
-             *     counted, because "which host is stale" is the question an
-             *     operator actually has.
+             * @description Nodes that had not acknowledged `version` when this answered:
+             *     named, because "which host still trusts the old key" is the
+             *     question an operator has. They take it from the push, or
+             *     when they next pull.
              */
-            nodesPending?: string[];
-            error?: string;
+            nodesBehind: string[];
+        };
+        TokenExchangeRequest: {
+            /** @description The operator's session, addressed to the actor's machine. */
+            subjectToken: string;
+            /** @description The one machine the exchanged token may be presented to. */
+            audience: string;
+        };
+        TokenExchangeResponse: {
+            /** @description An `ep-session+jwt` addressed to `audience`, with `act` and `sid`. */
+            accessToken: string;
             /** Format: date-time */
-            startedAt?: string;
-            /** Format: date-time */
-            finishedAt?: string;
+            expiresAt: string;
         };
         ComponentPlacementList: {
             components: components["schemas"]["ComponentPlacement"][];
@@ -1641,8 +1781,8 @@ export interface components {
              */
             initialized: boolean;
             /**
-             * @description True while the master key is in memory and the install's
-             *     signing key is open. False is the sealed root that answers
+             * @description True while the master key is in memory and this root's
+             *     token key is open. False is the sealed root that answers
              *     `503 Locked` across its surface — the state a container comes
              *     back in after every restart under `prompt_on_startup`.
              *     Absent from a root that predates the field.
@@ -1716,6 +1856,22 @@ export interface components {
             retryAfterSeconds?: number;
         };
         /**
+         * @description What a key in a `TrustBundle` may issue. Checked by every
+         *     verifier against the token's `typ`, `sub` and `aud`:
+         *
+         *     * `authority`: the control root's token key, or a standalone
+         *       agent's own. Sessions, exchanged tokens, client keys, and
+         *       service tokens with `sub: control`, to any recipient.
+         *     * `node`: an enrolled agent's token key. Service tokens to **its
+         *       own machine** with any `sub`, and service tokens with
+         *       `sub: agent` to other machines and to `control`.
+         *     * `gateway`: given to a node by the operator's join token, never
+         *       claimed by the node. Service tokens with `sub: gateway` to
+         *       other machines and to `control`.
+         * @enum {string}
+         */
+        TrustGrant: "authority" | "node" | "gateway";
+        /**
          * @description What kind of device this is.
          *
          *     A named schema rather than an inline enum because an inline one
@@ -1770,6 +1926,16 @@ export interface components {
              */
             memoryFreeBytes?: number;
         };
+        SignedTrustBundle: {
+            /**
+             * @description A JWS compact serialization with header
+             *     `{"alg": "EdDSA", "typ": "ep-trust-bundle+jwt"}`, whose
+             *     payload is a `TrustBundle`, signed with the key its
+             *     `authority` names. The signature covers the payload's exact
+             *     bytes, so nothing has to be re-serialized to check it.
+             */
+            jws: string;
+        };
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
@@ -1803,6 +1969,19 @@ export interface components {
          * @enum {string}
          */
         ComponentKind: "control" | "gateway" | "inference-driver" | "library";
+        /**
+         * @description An operator session signed out anywhere in the install. A
+         *     verifier refuses a session whose `jti` is listed, and an
+         *     exchanged token whose `sid` is. Pruned once `exp` has passed.
+         */
+        RevokedSession: {
+            jti: string;
+            /**
+             * Format: int64
+             * @description The session's own `exp`, unix seconds.
+             */
+            exp: number;
+        };
         /**
          * @description Which engine adapter constructs the argv and interprets
          *     readiness. Deliberately a closed enum rather than a free string:
@@ -1865,16 +2044,18 @@ export interface components {
          */
         AuthLoginResponse: {
             /**
-             * @description Opaque bearer token. Signed and validated server-side; the
-             *     UI should never inspect its contents. Lifetime is bounded
-             *     by `expiresAt`. New installs and key rotations use JWT
-             *     `alg: EdDSA` with Ed25519. Existing HS256 installs retain
-             *     their 32-byte key until explicit rotation. Agent and control
-             *     hold private signing keys; gateway, library and driver hold
-             *     public verification keys after migration. Verifiers select
-             *     exactly one algorithm from trusted key material, not from
-             *     token headers. Rotation invalidates all prior tokens;
-             *     there is no simultaneous HS256/EdDSA acceptance window.
+             * @description Opaque bearer token; the UI should never inspect its
+             *     contents. Lifetime is bounded by `expiresAt`.
+             *
+             *     An `ep-session+jwt` (see `TrustBundle` for the profile),
+             *     signed by the control root's token key. It is addressed to
+             *     the machine the operator signed in on and to the control
+             *     root (`aud: ["node:<name>", "control"]`), or to the root
+             *     alone for a login made there directly. A standalone agent
+             *     that has not joined an install signs its own. The console
+             *     acts on other machines by exchanging it
+             *     (`control.yaml`, `POST /v1/auth/token`), never by sending
+             *     it on.
              */
             sessionToken: string;
             /** Format: date-time */
@@ -2495,18 +2676,31 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Revocation accepted; rotation in progress. */
+            /** @description Revoked; the new bundle is being pushed. */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["KeyRotation"];
+                    "application/json": components["schemas"]["TrustChange"];
                 };
             };
             404: components["responses"]["Problem"];
-            /** @description A key rotation is already in flight. */
+            /** @description This host is a standby and does not accept writes. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description Locked: the identity key that signs the bundle is not in
+             *     memory, so a bundle without the node could not be published.
+             *     Nothing is revoked.
+             */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2834,36 +3028,6 @@ export interface operations {
             };
         };
     };
-    getKeyRotation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Rotation state. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeyRotation"];
-                };
-            };
-            401: components["responses"]["Problem"];
-            /** @description No rotation has ever run. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
     rotateSigningKey: {
         parameters: {
             query?: never;
@@ -2873,17 +3037,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Rotation accepted. */
+            /** @description Rotated; the new bundle is being pushed. */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["KeyRotation"];
+                    "application/json": components["schemas"]["TrustChange"];
                 };
             };
             401: components["responses"]["Problem"];
-            /** @description A rotation is already in flight. */
+            /** @description This host is a standby and does not accept writes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2892,6 +3056,27 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getTrustBundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current bundle. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedTrustBundle"];
+                };
+            };
+            503: components["responses"]["Problem"];
         };
     };
     listComponents: {
@@ -3073,6 +3258,72 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    authLogout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    exchangeToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Exchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenExchangeResponse"];
+                };
+            };
+            /** @description `audience` names no enrolled node. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description The actor token or the session does not verify, the session
+             *     is signed out, or the session is not addressed to the actor's
+             *     machine.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            503: components["responses"]["Problem"];
         };
     };
     getConfig: {

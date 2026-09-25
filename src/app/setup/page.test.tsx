@@ -235,6 +235,11 @@ describe("screen 1: what Continue commits", () => {
     const init = calls.find((c) => key(c) === "POST control/v1/auth/initialize");
     expect(init?.body).toEqual({ passphrase: "correct horse battery staple" });
 
+    // This machine runs the gateway, so its node is granted `gateway`:
+    // without it the gateway can reach no other machine's drivers.
+    const minted = calls.find((c) => key(c) === "POST control/v1/nodes/join-token");
+    expect(minted?.body).toEqual({ grants: ["gateway"] });
+
     // Order matters: the trust root is initialized only after the topology
     // read has confirmed there is one, and enrollment follows it.
     expect(

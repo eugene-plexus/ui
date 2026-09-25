@@ -28,7 +28,6 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { Attribution } from "@/components/Attribution";
 import { SetupGateScreen } from "@/components/SetupGateScreen";
 import { ApiError, api } from "@/lib/api";
-import { unlockControlRoot } from "@/lib/controlUnlock";
 import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
 import { setSessionToken } from "@/lib/session";
 import { SETUP_GATE_TIMEOUT_MS, isNoAnswer } from "@/lib/useSetupGate";
@@ -58,6 +57,14 @@ function safeNext(raw: string | null): string {
     // fall through
   }
   return "/";
+}
+
+function problemTitle(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const detail = (body as { detail?: unknown }).detail;
+  if (typeof detail !== "object" || detail === null) return undefined;
+  const title = (detail as { title?: unknown }).title;
+  return typeof title === "string" ? title : undefined;
 }
 
 export default function LoginPage() {
@@ -166,19 +173,19 @@ function LoginForm() {
         { skipAuth: true },
       );
       setSessionToken(resp.sessionToken);
-      // The same passphrase opens the control root, which seals on every
-      // restart and used to ask for it a second time on /nodes. Awaited so
-      // the page we land on already routes; never fatal -- see the module.
-      const unlock = await unlockControlRoot(passphrase, resp.sessionToken);
-      if (unlock === "mismatch") {
-        console.warn(
-          "signed in, but the control root refused the same passphrase; the Nodes screen will ask for its own",
-        );
-      }
+      // One call. Since per-node token keys (2026-09-25) the session comes
+      // from the control root: the agent forwards the passphrase there,
+      // and the root's login is also what unlocks it after a restart. This
+      // page used to post the passphrase to the root a second time itself,
+      // which cost a second key derivation on every sign-in.
       router.replace(safeNext(searchParams.get("next")));
     } catch (e) {
       if (e instanceof ApiError) {
-        if (e.status === 503) {
+        // **Only the agent's own "Setup required" sends someone to setup.**
+        // A sign-in that could not reach the control root is also a 503,
+        // and running setup on an install that exists is refused -- the
+        // wizard says so itself. It used to read every 503 as the first.
+        if (e.status === 503 && problemTitle(e.body) === "Setup required") {
           setSetupRequired(true);
           return;
         }

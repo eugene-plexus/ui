@@ -53,7 +53,11 @@ export async function withRetry<T>(
 }
 
 /**
- * Enroll **this** host's agent with the control root it just spawned.
+ * Enroll **this** host's agent with the control root it just spawned,
+ * granting it `gateway` -- this is the machine that runs the install's
+ * gateway, which needs the grant to reach every other machine's drivers
+ * and agents (per-node token keys, D8). Workers joined from `/nodes`
+ * get no grant.
  *
  * A locked decision nothing had ever implemented outside an acceptance
  * script: *"Every node enrolls the same way, including the control host's
@@ -62,20 +66,22 @@ export async function withRetry<T>(
  * `/v1/nodes` at all."*
  *
  * **What it costs to skip, which is how this was found.** An unenrolled
- * agent mints a fresh random signing key on every restart; the control
- * root mints the install's. So a session token from the agent - which is
- * every token this browser has - does not verify at the control root, and
- * every control-root page 401s, clears the session and bounces to login.
- * M9's Playwright arc walked into it on `/nodes`; nothing before had a
- * control-root page to walk into.
+ * agent is its own authority, as `node:local`; nothing else trusts it. So
+ * a session from the agent -- which is every token this browser has --
+ * does not verify at the control root, and every control-root page 401s,
+ * clears the session and bounces to login. M9's Playwright arc walked
+ * into it on `/nodes`; nothing before had a control-root page to walk
+ * into.
  *
  * Order matters and is unforgiving:
  *   1. log in at the control root - it has its own auth and just got a
  *      passphrase, and only an operator there can mint a join token;
  *   2. mint the token;
  *   3. enroll, which **invalidates the session this wizard is holding**,
- *      because the key it was signed with has been replaced;
- *   4. log in again at the agent, which now signs with the install's key.
+ *      because the agent stops being its own authority and trusts the
+ *      root's bundle instead;
+ *   4. log in again at the agent, which now forwards to the root and
+ *      comes back with a session addressed to this machine.
  *
  * Returns the replacement session token. `restart_all` deliberately skips
  * the control root, so the root this just enrolled with stays up.
@@ -91,17 +97,17 @@ export async function enrollLocalAgent(passphrase: string, controlUrl: string): 
   const minted = await api.post<{ token: string }>(
     "control",
     "/v1/nodes/join-token",
-    {},
-    // The root's token, not the browser's session: an install that has
-    // not enrolled yet genuinely has two signing keys, and this call is
-    // addressed to the one holding the other. It used to need a second
-    // header to say so, because resolving `control` spent the first.
+    { grants: ["gateway"] },
+    // The root's session, not the browser's: before enrollment this
+    // agent is its own authority and the root trusts none of its tokens.
+    // The control root is declared on this machine, so the proxy passes
+    // the header through rather than translating it.
     { bearer: session.sessionToken },
   );
   await api.post("agent", "/v1/node/enroll", { controlUrl, token: minted.token });
-  // The enrollment restarted every child and replaced the signing key, so
-  // this is retried: the agent answers immediately but is briefly the only
-  // thing that does.
+  // The enrollment restarted every child and changed what this agent
+  // trusts, so this is retried: the agent answers immediately but is
+  // briefly the only thing that does.
   const replacement = await withRetry(() =>
     api.post<{ sessionToken: string }>(
       "agent",

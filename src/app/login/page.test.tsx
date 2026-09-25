@@ -1,13 +1,12 @@
 /**
- * Sign-in, driven: the passphrase that opens the agent opens the root.
+ * Sign-in, driven: one call, to this machine's agent.
  *
- * Reported from the live install: after a container update the UI asked
- * for the passphrase at sign-in and `/nodes` asked for it again, because
- * only the Nodes screen ever posted it to the sealed control root. What
- * matters here is the sequence of calls -- agent login, then control
- * login with the same passphrase -- and the three ways the second call
- * must NOT interfere with the first: a mismatched root, an unreachable
- * root, and a session that must survive the root's 401.
+ * Since per-node token keys (2026-09-25) the agent forwards the
+ * passphrase to the control root, which mints the session and unlocks
+ * itself in the same step. This page used to post the passphrase to the
+ * root a second time; what matters now is that it does not, and that a
+ * root the agent could not reach is reported rather than read as an
+ * install that needs setting up.
  */
 
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -32,14 +31,12 @@ interface Call {
   authorization: string | null;
 }
 let calls: Call[];
-let controlStatus: number;
-let controlThrows: boolean;
+let agentLoginFailure: { status: number; title: string; detail: string } | null;
 
 beforeEach(() => {
   search = "next=%2Fnodes";
   calls = [];
-  controlStatus = 200;
-  controlThrows = false;
+  agentLoginFailure = null;
   replace.mockReset();
   sessionStorage.clear();
   const seen = calls;
@@ -61,16 +58,21 @@ beforeEach(() => {
         });
       if (url.endsWith("/api/proxy/agent/v1/auth/status")) return json({ initialized: true });
       if (url.endsWith("/api/proxy/agent/v1/auth/login")) {
+        if (agentLoginFailure !== null)
+          return json(
+            {
+              detail: {
+                title: agentLoginFailure.title,
+                detail: agentLoginFailure.detail,
+                status: agentLoginFailure.status,
+              },
+            },
+            agentLoginFailure.status,
+          );
         const body = init?.body ? (JSON.parse(String(init.body)) as { passphrase: string }) : null;
         if (body?.passphrase !== "correct horse")
           return json({ detail: { title: "Invalid", status: 401 } }, 401);
         return json({ sessionToken: "agent-jwt", expiresAt: "2026-09-27T00:00:00Z" });
-      }
-      if (url.endsWith("/api/proxy/control/v1/auth/login")) {
-        if (controlThrows) throw new TypeError("Failed to fetch");
-        if (controlStatus === 200)
-          return json({ sessionToken: "control-jwt", expiresAt: "2026-09-27T00:00:00Z" });
-        return json({ detail: { title: "Invalid token", status: controlStatus } }, controlStatus);
       }
       return json({ detail: "Not Found" }, 404);
     }),
@@ -117,36 +119,35 @@ describe("typing the passphrase", () => {
   });
 });
 
-describe("sign-in unlocks the control root", () => {
-  it("posts the same passphrase to the root after the agent accepts it, then navigates", async () => {
+describe("signing in", () => {
+  it("is one call to this machine's agent, then navigates", async () => {
     await signIn("correct horse");
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/nodes"));
-    const [agentLogin] = calls.filter((c) => c.url.endsWith("/api/proxy/agent/v1/auth/login"));
-    const [rootLogin] = controlLogins();
-    expect(agentLogin?.body).toEqual({ passphrase: "correct horse" });
-    expect(rootLogin?.body).toEqual({ passphrase: "correct horse" });
-    // Ordered: the root is asked only once the agent has said yes.
-    expect(calls.indexOf(agentLogin!)).toBeLessThan(calls.indexOf(rootLogin!));
-    // The fresh session is what the proxy spends to find the root on another node.
-    expect(rootLogin?.authorization).toBe("Bearer agent-jwt");
+    const logins = calls.filter((c) => c.url.includes("/v1/auth/login"));
+    expect(logins).toHaveLength(1);
+    expect(logins[0]?.url).toMatch(/\/api\/proxy\/agent\/v1\/auth\/login$/);
+    expect(logins[0]?.body).toEqual({ passphrase: "correct horse" });
+    expect(controlLogins()).toHaveLength(0);
     expect(sessionStorage.getItem("eugene-session-token")).toBe("agent-jwt");
   });
 
-  it("a root with a different passphrase does not cost the session or the navigation", async () => {
-    controlStatus = 401;
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("reports a control root it could not reach, and does not send anyone to setup", async () => {
+    agentLoginFailure = {
+      status: 503,
+      title: "Control root unreachable",
+      detail: "Signing in needs the control root at http://10.0.0.1:8083, and it did not answer.",
+    };
     await signIn("correct horse");
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/nodes"));
-    expect(sessionStorage.getItem("eugene-session-token")).toBe("agent-jwt");
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/refused the same passphrase/));
-    expect(screen.queryByText(/did not match/i)).toBeNull();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/needs the control root/);
+    expect(replace).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("eugene-session-token")).toBeNull();
   });
 
-  it("an unreachable root does not block sign-in", async () => {
-    controlThrows = true;
+  it("sends an install with no passphrase yet to setup", async () => {
+    agentLoginFailure = { status: 503, title: "Setup required", detail: "No passphrase set yet." };
     await signIn("correct horse");
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/nodes"));
-    expect(sessionStorage.getItem("eugene-session-token")).toBe("agent-jwt");
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/setup"));
   });
 
   it("puts the cursor back in the box and ties the refusal to it", async () => {
@@ -161,7 +162,7 @@ describe("sign-in unlocks the control root", () => {
     expect(field).toHaveAccessibleDescription(/did not match/i);
   });
 
-  it("never asks the root when the agent refused the passphrase", async () => {
+  it("goes nowhere when the passphrase was refused", async () => {
     await signIn("wrong");
     await screen.findByText(/did not match/i);
     expect(controlLogins()).toHaveLength(0);
