@@ -468,6 +468,53 @@ describe("the join command", () => {
     );
   });
 
+  it("keeps saying which port to use after the person starts typing", async () => {
+    // The only hint used to be the placeholder, which is gone at the first
+    // keystroke (2026-09-26).
+    nodesBody = {
+      nodes: [
+        { name: "unraid", role: "control", reachable: true, url: "http://192.168.16.252:8279" },
+        {
+          name: "Amish_Station",
+          role: "worker",
+          reachable: true,
+          url: "http://192.168.16.75:8079",
+        },
+      ],
+    };
+    const user = userEvent.setup({ delay: null });
+    render(<NodesPage />);
+    await screen.findAllByText("Amish_Station");
+    const box = screen.getByRole("textbox", { name: /control root url/i });
+    await user.clear(box);
+    await user.type(box, "192.168.16.252:8279");
+
+    const guide = screen.getByTestId("port-guide");
+    // Visible, not merely present: text content is readable on a hidden
+    // element, and hiding it while typing IS the defect.
+    expect(guide).toBeVisible();
+    expect(guide).toHaveTextContent("8279 — the console");
+    expect(guide).toHaveTextContent("8280 — where your apps send their requests");
+    expect(guide).toHaveTextContent("8283 — the control root. A new machine joins here.");
+    expect(guide).toHaveTextContent("moved by +200 on this install");
+    expect(box).toHaveAttribute("aria-describedby", "port-guide");
+
+    const warning = screen.getByTestId("control-address-warning");
+    expect(warning).toHaveTextContent("It needs http:// at the start.");
+    expect(warning).toHaveTextContent("Port 8279 is this console, not the control root.");
+
+    await user.click(
+      within(warning).getByRole("button", { name: /use http:\/\/192\.168\.16\.252:8283/i }),
+    );
+    expect(box).toHaveValue("http://192.168.16.252:8283");
+    expect(screen.queryByTestId("control-address-warning")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Make a join token" }));
+    expect(await screen.findByText(/eugene-plexus-agent join/)).toHaveTextContent(
+      "--control http://192.168.16.252:8283",
+    );
+  });
+
   it("stops offering the command once the token has run out", async () => {
     mintBody = { ...mintBody, expiresAt: new Date(Date.now() - 1000).toISOString() };
     await mint();

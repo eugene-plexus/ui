@@ -36,7 +36,13 @@ import { AppShell } from "@/components/AppShell";
 import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api } from "@/lib/api";
 import { isLockedError } from "@/lib/controlUnlock";
-import { isLoopbackUrl, joinTokenState, rootControlUrl } from "@/lib/joinCommand";
+import {
+  checkControlAddress,
+  installPorts,
+  isLoopbackUrl,
+  joinTokenState,
+  rootControlUrl,
+} from "@/lib/joinCommand";
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
 import { timeAgo, timeUntil } from "@/lib/relativeTime";
 import { usePolling } from "@/lib/usePolling";
@@ -178,6 +184,8 @@ export default function NodesPage() {
   const [revoking, setRevoking] = useState<string | null>(null);
   const [newNodeName, setNewNodeName] = useState("");
   const [controlUrl, setControlUrl] = useState("");
+  /** The control root's own machine, as the registry lists it: what every port guess starts from. */
+  const [rootAgentUrl, setRootAgentUrl] = useState<string | null>(null);
 
   /**
    * The node list, on a two-second loop.
@@ -203,6 +211,7 @@ export default function NodesPage() {
       // UI can learn one — the browser's own URL is the UI's host, which
       // on a single-box install is loopback and useless to say out loud.
       const root = (list.nodes ?? []).find((n) => n.role === "control" && n.url);
+      setRootAgentUrl(root?.url ?? null);
       if (root?.url) setControlUrl((current) => current || rootControlUrl(root.url!));
     } catch (e) {
       // A sealed root is not an error to report, it is a thing to offer
@@ -325,6 +334,12 @@ export default function NodesPage() {
         used: outstanding.find((t) => t.id === minted.id)?.used ?? false,
       })
     : null;
+  // The ports go on the page, not only in the placeholder: the
+  // placeholder vanished at the first keystroke and left the person to
+  // guess which of three ports was wanted (2026-09-26).
+  const ports = installPorts(rootAgentUrl);
+  const addressCheck = checkControlAddress(controlUrl, ports);
+
   const joinCommand = minted
     ? [
         "eugene-plexus-agent join",
@@ -557,7 +572,8 @@ export default function NodesPage() {
               <input
                 value={controlUrl}
                 onChange={(e) => setControlUrl(e.target.value)}
-                placeholder="http://100.64.0.1:8083"
+                placeholder={`http://100.64.0.1:${ports.control}`}
+                aria-describedby="port-guide"
                 className="w-72 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 font-mono text-sm"
               />
             </label>
@@ -570,6 +586,56 @@ export default function NodesPage() {
               {minting ? "Making…" : "Make a join token"}
             </button>
           </div>
+
+          <div
+            id="port-guide"
+            data-testid="port-guide"
+            className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
+          >
+            <p>
+              Which port? The control root&rsquo;s machine listens on three
+              {ports.offset !== 0 &&
+                `, each moved by ${ports.offset > 0 ? "+" : ""}${ports.offset} on this install`}
+              :
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              <li>
+                <span className="font-mono">{ports.agent}</span> &mdash; the console, where you
+                manage the install
+              </li>
+              <li>
+                <span className="font-mono">{ports.gateway}</span> &mdash; where your apps send
+                their requests
+              </li>
+              <li className="text-[color:var(--foreground)]">
+                <span className="font-mono">{ports.control}</span> &mdash; the control root.{" "}
+                <strong>A new machine joins here.</strong>
+              </li>
+            </ul>
+          </div>
+
+          {addressCheck && (
+            <div
+              data-testid="control-address-warning"
+              role="alert"
+              className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm"
+            >
+              <ul className="space-y-0.5">
+                {addressCheck.problems.map((problem) => (
+                  <li key={problem}>{problem}</li>
+                ))}
+              </ul>
+              {addressCheck.suggestion && (
+                <button
+                  type="button"
+                  onClick={() => setControlUrl(addressCheck.suggestion!)}
+                  className="font-ui mt-2 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+                >
+                  Use <span className="font-mono">{addressCheck.suggestion}</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {mintError && (
             <div className="status-error mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm">

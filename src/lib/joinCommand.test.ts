@@ -1,6 +1,78 @@
 import { describe, expect, it } from "vitest";
 
-import { isLoopbackUrl, joinTokenState, rootControlUrl } from "./joinCommand";
+import {
+  checkControlAddress,
+  installPorts,
+  isLoopbackUrl,
+  joinTokenState,
+  rootControlUrl,
+} from "./joinCommand";
+
+describe("installPorts", () => {
+  it("is the defaults on an ordinary install, or when the root's address is unknown", () => {
+    expect(installPorts("http://10.0.0.5:8079")).toEqual({
+      agent: 8079,
+      gateway: 8080,
+      control: 8083,
+      offset: 0,
+    });
+    expect(installPorts(null)).toEqual({ agent: 8079, gateway: 8080, control: 8083, offset: 0 });
+    expect(installPorts("not a url").control).toBe(8083);
+  });
+
+  it("moves every port by the agent's offset, as the container template publishes them", () => {
+    expect(installPorts("http://192.168.16.252:8279")).toEqual({
+      agent: 8279,
+      gateway: 8280,
+      control: 8283,
+      offset: 200,
+    });
+  });
+});
+
+describe("checkControlAddress", () => {
+  const ordinary = installPorts("http://10.0.0.5:8079");
+  const shifted = installPorts("http://192.168.16.252:8279");
+
+  it("says nothing about a right address, or an empty box", () => {
+    expect(checkControlAddress("http://192.168.16.252:8283", shifted)).toBeNull();
+    expect(checkControlAddress("https://root.tailnet.ts.net:8083", ordinary)).toBeNull();
+    expect(checkControlAddress("   ", ordinary)).toBeNull();
+  });
+
+  it("fixes both halves of what was typed on 2026-09-26: no http:// and the console's port", () => {
+    const check = checkControlAddress("192.168.16.252:8079", ordinary);
+    expect(check?.problems).toEqual([
+      "It needs http:// at the start.",
+      "Port 8079 is this console, not the control root. The control root is on port 8083.",
+    ]);
+    expect(check?.suggestion).toBe("http://192.168.16.252:8083");
+  });
+
+  it("reads the console's and the apps' ports on a shifted install, not the defaults", () => {
+    expect(checkControlAddress("http://192.168.16.252:8279", shifted)?.suggestion).toBe(
+      "http://192.168.16.252:8283",
+    );
+    expect(checkControlAddress("http://192.168.16.252:8280", shifted)?.problems[0]).toMatch(
+      /^Port 8280 is where your apps connect/,
+    );
+    // The DEFAULT control port is the wrong one there, and it says so.
+    expect(checkControlAddress("http://192.168.16.252:8083", shifted)?.problems[0]).toMatch(
+      /control root is on port 8283, not 8083/,
+    );
+  });
+
+  it("adds a missing port, and keeps the host and scheme it was given", () => {
+    const check = checkControlAddress("https://gpu-box", ordinary);
+    expect(check?.problems).toEqual(["It has no port. The control root is on port 8083."]);
+    expect(check?.suggestion).toBe("https://gpu-box:8083");
+  });
+
+  it("offers no fix for something that is not an address", () => {
+    expect(checkControlAddress("http://", ordinary)?.suggestion).toBeNull();
+    expect(checkControlAddress("ftp://gpu-box:8083", ordinary)?.suggestion).toBeNull();
+  });
+});
 
 describe("rootControlUrl", () => {
   it("keeps the agent's port offset, so a remapped install names its own root", () => {

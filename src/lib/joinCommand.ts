@@ -11,6 +11,113 @@ import { isLoopbackHost } from "./diagnostic";
 /** The control root's default port, and the agent's. */
 const CONTROL_PORT = 8083;
 const AGENT_PORT = 8079;
+const GATEWAY_PORT = 8080;
+
+/**
+ * The ports this install's parts listen on, as another machine sees them.
+ *
+ * Nothing on this page can read a published port directly. A container
+ * maps them outside itself, where no component can see the mapping. So
+ * every port keeps the offset the root's own agent address shows, which
+ * is the same guess `rootControlUrl` makes.
+ */
+export interface InstallPorts {
+  /** This console: the agent, which serves the page. */
+  agent: number;
+  /** Where applications send their requests. */
+  gateway: number;
+  /** Where another machine joins. */
+  control: number;
+  /** How far every port sits from its default; 0 on an ordinary install. */
+  offset: number;
+}
+
+export function installPorts(rootAgentUrl: string | null): InstallPorts {
+  let offset = 0;
+  if (rootAgentUrl) {
+    try {
+      const port = new URL(rootAgentUrl).port;
+      if (port !== "" && Number.isInteger(Number(port))) offset = Number(port) - AGENT_PORT;
+    } catch {
+      offset = 0;
+    }
+  }
+  return {
+    agent: AGENT_PORT + offset,
+    gateway: GATEWAY_PORT + offset,
+    control: CONTROL_PORT + offset,
+    offset,
+  };
+}
+
+/** What is wrong with a typed control-root address, and the address that fixes it. */
+export interface ControlAddressCheck {
+  problems: string[];
+  /** The typed address with every problem fixed, or null when none can be. */
+  suggestion: string | null;
+}
+
+/**
+ * Check the address a person typed for the control root.
+ *
+ * It warns and never blocks: someone who moved the root to another port
+ * on purpose knows more than this guess does. A problem it can fix comes
+ * with the fixed address, so the page can offer it in one click.
+ *
+ * Found by a person on Windows (2026-09-26), who typed the console's port
+ * with no `http://`, because nothing on the page said which of three ports
+ * was wanted once the placeholder vanished.
+ */
+export function checkControlAddress(
+  typed: string,
+  ports: InstallPorts,
+): ControlAddressCheck | null {
+  const value = typed.trim();
+  if (value === "") return null;
+  const problems: string[] = [];
+  let candidate = value;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)) {
+    problems.push("It needs http:// at the start.");
+    candidate = `http://${candidate}`;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    return {
+      problems: [
+        "That is not an address. It should look like http://192.168.1.20:" + ports.control + ".",
+      ],
+      suggestion: null,
+    };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return {
+      problems: ["It should start with http:// or https://."],
+      suggestion: null,
+    };
+  }
+  const port = parsed.port === "" ? null : Number(parsed.port);
+  if (port === null) {
+    problems.push(`It has no port. The control root is on port ${ports.control}.`);
+  } else if (port === ports.agent) {
+    problems.push(
+      `Port ${port} is this console, not the control root. The control root is on port ${ports.control}.`,
+    );
+  } else if (port === ports.gateway) {
+    problems.push(
+      `Port ${port} is where your apps connect, not the control root. The control root is on port ${ports.control}.`,
+    );
+  } else if (port !== ports.control) {
+    problems.push(
+      `This install's control root is on port ${ports.control}, not ${port}. ` +
+        "Keep it only if you moved the control root to that port yourself.",
+    );
+  }
+  if (problems.length === 0) return null;
+  if (port !== ports.control) parsed.port = String(ports.control);
+  return { problems, suggestion: parsed.toString().replace(/\/+$/, "") };
+}
 
 /**
  * Turn a node's agent address into the control root's.
@@ -26,12 +133,7 @@ const AGENT_PORT = 8079;
 export function rootControlUrl(agentUrl: string): string {
   try {
     const parsed = new URL(agentUrl);
-    const agentPort = parsed.port === "" ? null : Number(parsed.port);
-    parsed.port = String(
-      agentPort !== null && Number.isInteger(agentPort)
-        ? agentPort + (CONTROL_PORT - AGENT_PORT)
-        : CONTROL_PORT,
-    );
+    parsed.port = String(installPorts(agentUrl).control);
     return parsed.toString().replace(/\/+$/, "");
   } catch {
     return agentUrl;
