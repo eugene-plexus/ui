@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import type { DirectoryListing } from "./types";
 import {
   homeFrom,
+  isInsideWindowsDirectory,
   joinPath,
   parentOf,
   presetModelsFolder,
@@ -95,5 +96,39 @@ describe("a folder the installer already chose", () => {
   it("starts a picker in the folder's parent", () => {
     expect(parentOf("/home/sam/Eugene Models")).toBe("/home/sam");
     expect(parentOf("/models")).toBe("/models");
+  });
+});
+
+describe("a folder inside the Windows directory", () => {
+  // A friend's first install, 2026-09-26: a Windows service runs as SYSTEM,
+  // whose home is inside C:\Windows, and the wizard proposed a models folder
+  // beside the registry hives. Whatever the library reports, never that.
+  const systemProfile = String.raw`C:\WINDOWS\system32\config\systemprofile`;
+
+  it("is never proposed as <home>/Eugene Models", () => {
+    const roots = listing([
+      { name: "C:\\", path: "C:\\" },
+      { name: "Home", path: systemProfile },
+    ]);
+    expect(proposedModelsFolder(roots)).toBeNull();
+  });
+
+  it("is never taken from a folder the library reports", () => {
+    expect(
+      presetModelsFolder({ folders: [String.raw`${systemProfile}\Eugene Models`] }),
+    ).toBeNull();
+  });
+
+  it("is told apart by the directory, any drive and either slash, not by a name that contains it", () => {
+    expect(isInsideWindowsDirectory(String.raw`D:\Windows\Temp`)).toBe(true);
+    expect(isInsideWindowsDirectory("c:/windows")).toBe(true);
+    expect(isInsideWindowsDirectory(String.raw`C:\Users\sam\Windows Stuff`)).toBe(false);
+    expect(isInsideWindowsDirectory(String.raw`C:\WindowsApps`)).toBe(false);
+    expect(isInsideWindowsDirectory("/home/sam/windows")).toBe(false);
+  });
+
+  it("does not stand in the way of an ordinary home", () => {
+    const roots = listing([{ name: "Home", path: String.raw`C:\Users\sam` }]);
+    expect(proposedModelsFolder(roots)).toBe(String.raw`C:\Users\sam\Eugene Models`);
   });
 });

@@ -61,7 +61,8 @@ export function presetModelsFolder(list: { folders?: unknown } | null | undefine
       : first && typeof first === "object"
         ? (first as { path?: unknown }).path
         : null;
-  return typeof path === "string" && path.trim() ? path.trim() : null;
+  if (typeof path !== "string" || !path.trim()) return null;
+  return isInsideWindowsDirectory(path) ? null : path.trim();
 }
 
 /** The directory `path` is in, for a picker to start from; `path` itself when
@@ -71,11 +72,29 @@ export function parentOf(path: string): string {
   return trimmed.replace(/[\\/][^\\/]*$/, "") || trimmed;
 }
 
+/**
+ * Whether `path` is inside a Windows directory (`C:\Windows\...`, any drive).
+ *
+ * **Never proposed, whatever the library says its home is** (2026-09-26). A
+ * Windows service runs as SYSTEM, whose home is
+ * `C:\Windows\System32\config\systemprofile` -- beside the registry hives,
+ * hidden in Explorer, and watched by every antivirus. A friend's first
+ * install proposed `...\systemprofile\Eugene Models` and downloaded a model
+ * into it, because the installer's own folder is read first and a wizard
+ * that could not read it fell back to the home. With nothing sensible to
+ * offer, the person is asked instead.
+ */
+export function isInsideWindowsDirectory(path: string): boolean {
+  return /^[A-Za-z]:[\\/]+windows([\\/]|$)/i.test(path.trim());
+}
+
 /** `<home>/Eugene Models`, joined the way the home path's shape implies;
- * `null` when there is no home to build under. */
+ * `null` when there is no home to build under, or the home is inside the
+ * Windows directory (see `isInsideWindowsDirectory`). */
 export function proposedModelsFolder(listing: DirectoryListing | null | undefined): string | null {
   const home = homeFrom(listing);
-  return home === null ? null : joinPath(home, MODELS_FOLDER_NAME);
+  if (home === null || isInsideWindowsDirectory(home)) return null;
+  return joinPath(home, MODELS_FOLDER_NAME);
 }
 
 /**

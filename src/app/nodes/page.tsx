@@ -769,15 +769,12 @@ export default function NodesPage() {
                     </pre>
                   </div>
                 ))}
-                <p
-                  data-testid="join-already-installed"
-                  className="text-sm text-[color:var(--muted)]"
-                >
-                  If Eugene is already installed on that machine, uninstall it there first: run the
-                  same command with only <span className="font-mono">-Uninstall</span> (Windows) or{" "}
-                  <span className="font-mono">--uninstall</span> (Linux, macOS) at the end. Joining
-                  on top of an existing install would leave that install&rsquo;s own control root
-                  running.
+                {/* The installer's join takes over whatever is there (2026-09-26),
+                    so the person is told what happens to it rather than asked to
+                    uninstall first. */}
+                <p data-testid="join-takes-over" className="text-sm text-[color:var(--muted)]">
+                  If Eugene is already on that machine, this moves it aside first. Nothing is
+                  deleted, and if the join fails it is put back as it was.
                 </p>
                 {!controlUrl && (
                   <p

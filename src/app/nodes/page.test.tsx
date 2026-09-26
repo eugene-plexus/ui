@@ -469,7 +469,14 @@ describe("the join command", () => {
       /^& \(\[scriptblock\]::Create\(\(irm .*install\.ps1\)\)\) -Join /,
     );
     expect(posix.textContent).toMatch(/^curl -fsSL .*install\.sh \| sh -s -- --join /);
-    expect(screen.getByTestId("join-already-installed")).toHaveTextContent("-Uninstall");
+    // The installer's join takes an existing install over (2026-09-26): the
+    // card says what happens to it, and no longer sends anyone to uninstall.
+    const takesOver = screen.getByTestId("join-takes-over");
+    expect(takesOver).toBeVisible();
+    expect(takesOver).toHaveTextContent("moves it aside");
+    expect(takesOver).toHaveTextContent("put back");
+    expect(screen.queryByTestId("join-already-installed")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/uninstall it there first/i);
   });
 
   it("warns that a loopback address will fail on the other machine", async () => {
