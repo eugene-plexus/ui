@@ -5,8 +5,46 @@ import {
   installPorts,
   isLoopbackUrl,
   joinTokenState,
+  posixJoinCommand,
   rootControlUrl,
+  windowsJoinCommand,
 } from "./joinCommand";
+
+describe("the join commands", () => {
+  const base = "https://raw.githubusercontent.com/eugene-plexus/specs/main/scripts";
+  const details = {
+    controlUrl: "http://192.168.16.252:8283",
+    token: "pAC9GuVWqkqczs0jFnEnRYHP6mYH67qtOWeA_0lkDTo",
+    nodeName: "Amish_Station",
+  };
+
+  it("installs and joins in one line on Windows", () => {
+    expect(windowsJoinCommand(details)).toBe(
+      `& ([scriptblock]::Create((irm ${base}/install.ps1))) -Join http://192.168.16.252:8283 ` +
+        "-Token pAC9GuVWqkqczs0jFnEnRYHP6mYH67qtOWeA_0lkDTo -NodeName Amish_Station",
+    );
+  });
+
+  it("installs and joins in one line on Linux or macOS", () => {
+    expect(posixJoinCommand(details)).toBe(
+      `curl -fsSL ${base}/install.sh | sh -s -- --join http://192.168.16.252:8283 ` +
+        "--token pAC9GuVWqkqczs0jFnEnRYHP6mYH67qtOWeA_0lkDTo --name Amish_Station",
+    );
+  });
+
+  it("leaves the name out when none was asked for", () => {
+    expect(windowsJoinCommand({ ...details, nodeName: null })).not.toContain("-NodeName");
+    expect(posixJoinCommand({ ...details, nodeName: undefined })).not.toContain("--name");
+  });
+
+  it("quotes a word each shell would otherwise split or redirect", () => {
+    const odd = { ...details, controlUrl: "http://<this-host>:8083", nodeName: "Troy's box" };
+    expect(windowsJoinCommand(odd)).toContain("-Join 'http://<this-host>:8083'");
+    expect(windowsJoinCommand(odd)).toContain("-NodeName 'Troy''s box'");
+    expect(posixJoinCommand(odd)).toContain("--join 'http://<this-host>:8083'");
+    expect(posixJoinCommand(odd)).toContain(`--name 'Troy'"'"'s box'`);
+  });
+});
 
 describe("installPorts", () => {
   it("is the defaults on an ordinary install, or when the root's address is unknown", () => {

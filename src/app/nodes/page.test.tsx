@@ -444,10 +444,32 @@ describe("the join command", () => {
       ],
     };
     await mint();
-    expect(await screen.findByText(/eugene-plexus-agent join/)).toHaveTextContent(
-      "--control http://192.168.16.252:8283",
+    expect(await screen.findByTestId("join-command-windows")).toHaveTextContent(
+      "-Join http://192.168.16.252:8283 -Token eyJ.join.token",
+    );
+    expect(screen.getByTestId("join-command-posix")).toHaveTextContent(
+      "--join http://192.168.16.252:8283 --token eyJ.join.token",
     );
     expect(screen.queryByTestId("join-loopback")).toBeNull();
+  });
+
+  it("gives the installer's join, one line per shell, never the bare agent command", async () => {
+    // Found on Windows (2026-09-26): the old command was split across lines
+    // with `\`, which PowerShell rejects, and named `eugene-plexus-agent
+    // join`, which does not exist until something is installed.
+    await mint();
+    const windows = await screen.findByTestId("join-command-windows");
+    const posix = screen.getByTestId("join-command-posix");
+    for (const block of [windows, posix]) {
+      expect(block.textContent).not.toContain("\n");
+      expect(block.textContent).not.toContain("\\");
+      expect(block.textContent).not.toMatch(/^eugene-plexus-agent/);
+    }
+    expect(windows.textContent).toMatch(
+      /^& \(\[scriptblock\]::Create\(\(irm .*install\.ps1\)\)\) -Join /,
+    );
+    expect(posix.textContent).toMatch(/^curl -fsSL .*install\.sh \| sh -s -- --join /);
+    expect(screen.getByTestId("join-already-installed")).toHaveTextContent("-Uninstall");
   });
 
   it("warns that a loopback address will fail on the other machine", async () => {
@@ -510,8 +532,8 @@ describe("the join command", () => {
     expect(screen.queryByTestId("control-address-warning")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Make a join token" }));
-    expect(await screen.findByText(/eugene-plexus-agent join/)).toHaveTextContent(
-      "--control http://192.168.16.252:8283",
+    expect(await screen.findByTestId("join-command-windows")).toHaveTextContent(
+      "-Join http://192.168.16.252:8283",
     );
   });
 
@@ -519,7 +541,8 @@ describe("the join command", () => {
     mintBody = { ...mintBody, expiresAt: new Date(Date.now() - 1000).toISOString() };
     await mint();
     expect(await screen.findByTestId("join-token-spent")).toHaveTextContent("has expired");
-    expect(screen.queryByText(/eugene-plexus-agent join/)).toBeNull();
+    expect(screen.queryByTestId("join-command-windows")).toBeNull();
+    expect(screen.queryByTestId("join-command-posix")).toBeNull();
     expect(screen.queryByText(/expires already passed/)).toBeNull();
   });
 
@@ -527,6 +550,7 @@ describe("the join command", () => {
     tokenRows = [{ id: "jt-1", expiresAt: mintBody.expiresAt, used: true }];
     await mint();
     expect(await screen.findByTestId("join-token-spent")).toHaveTextContent("This token was used");
-    expect(screen.queryByText(/eugene-plexus-agent join/)).toBeNull();
+    expect(screen.queryByTestId("join-command-windows")).toBeNull();
+    expect(screen.queryByTestId("join-command-posix")).toBeNull();
   });
 });

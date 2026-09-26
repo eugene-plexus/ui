@@ -1,6 +1,7 @@
 /**
  * The Nodes page's join command: which control-root address it names,
- * and whether the token in it can still be used.
+ * how it is written for each shell, and whether the token in it can
+ * still be used.
  *
  * Pure and kept off the page so both halves are tested as data -- a Next
  * page module may export nothing but the page.
@@ -151,6 +152,54 @@ export function isLoopbackUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Where the installers are served from, the address the deployment docs give. */
+const INSTALLER_BASE = "https://raw.githubusercontent.com/eugene-plexus/specs/main/scripts";
+
+/** What a join needs: where the root is, the token, and the name asked for. */
+export interface JoinDetails {
+  controlUrl: string;
+  token: string;
+  nodeName?: string | null;
+}
+
+/** Characters both shells take as one plain word, so nothing needs quoting. */
+const PLAIN_WORD = /^[A-Za-z0-9._:/@%+=-]+$/;
+
+function powershellWord(value: string): string {
+  return PLAIN_WORD.test(value) ? value : `'${value.replace(/'/g, "''")}'`;
+}
+
+function shellWord(value: string): string {
+  return PLAIN_WORD.test(value) ? value : `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+/**
+ * The join, as the installer runs it, on a Windows machine.
+ *
+ * **The installer, not `eugene-plexus-agent join`.** The page used to
+ * print the agent's own join command. That works only where the agent
+ * is already installed, and installing it without the join first sets
+ * up a control plane of its own on the new machine (2026-09-26). The
+ * installer's `-Join` installs and joins in one step, and asks for
+ * administrator rights itself.
+ *
+ * **One line, for both shells.** The old command was broken across
+ * lines with `\`, which PowerShell rejects ("Missing expression after
+ * unary operator '--'").
+ */
+export function windowsJoinCommand({ controlUrl, token, nodeName }: JoinDetails): string {
+  const args = [`-Join ${powershellWord(controlUrl)}`, `-Token ${powershellWord(token)}`];
+  if (nodeName) args.push(`-NodeName ${powershellWord(nodeName)}`);
+  return `& ([scriptblock]::Create((irm ${INSTALLER_BASE}/install.ps1))) ${args.join(" ")}`;
+}
+
+/** The same join on Linux or macOS, as `tailnet.md` gives it. */
+export function posixJoinCommand({ controlUrl, token, nodeName }: JoinDetails): string {
+  const args = [`--join ${shellWord(controlUrl)}`, `--token ${shellWord(token)}`];
+  if (nodeName) args.push(`--name ${shellWord(nodeName)}`);
+  return `curl -fsSL ${INSTALLER_BASE}/install.sh | sh -s -- ${args.join(" ")}`;
 }
 
 export type JoinTokenState = "usable" | "used" | "expired";

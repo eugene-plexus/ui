@@ -41,7 +41,9 @@ import {
   installPorts,
   isLoopbackUrl,
   joinTokenState,
+  posixJoinCommand,
   rootControlUrl,
+  windowsJoinCommand,
 } from "@/lib/joinCommand";
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
 import { timeAgo, timeUntil } from "@/lib/relativeTime";
@@ -340,14 +342,29 @@ export default function NodesPage() {
   const ports = installPorts(rootAgentUrl);
   const addressCheck = checkControlAddress(controlUrl, ports);
 
-  const joinCommand = minted
+  const joinDetails = minted
+    ? {
+        controlUrl: controlUrl.trim() || `http://<this-host>:${ports.control}`,
+        token: minted.token,
+        nodeName: minted.nodeName,
+      }
+    : null;
+  const joinCommands = joinDetails
     ? [
-        "eugene-plexus-agent join",
-        `  --control ${controlUrl || "http://<this-host>:8083"}`,
-        `  --token ${minted.token}`,
-        ...(minted.nodeName ? [`  --name ${minted.nodeName}`] : []),
-      ].join(" \\\n")
-    : "";
+        {
+          id: "windows",
+          label: "Windows, in PowerShell",
+          note: "It asks for administrator rights.",
+          command: windowsJoinCommand(joinDetails),
+        },
+        {
+          id: "posix",
+          label: "Linux or macOS, in a terminal",
+          note: "It may ask for your password.",
+          command: posixJoinCommand(joinDetails),
+        },
+      ]
+    : [];
 
   return (
     <AppShell
@@ -717,19 +734,38 @@ export default function NodesPage() {
 
           {minted && mintedState === "usable" && (
             <div className="rounded-[var(--radius)] border border-[color:var(--border)] p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="font-ui text-sm text-[color:var(--muted)]">
-                  Run this on the machine you are adding. It expires{" "}
-                  <span title={new Date(minted.expiresAt).toLocaleString()}>
-                    {timeUntil(minted.expiresAt) ?? "soon"}
-                  </span>
-                  .
+              <p className="font-ui mb-3 text-sm text-[color:var(--muted)]">
+                Run one of these on the machine you are adding. It installs Eugene there and joins
+                it to this install in one step. The token expires{" "}
+                <span title={new Date(minted.expiresAt).toLocaleString()}>
+                  {timeUntil(minted.expiresAt) ?? "soon"}
                 </span>
-                <CopyButton text={joinCommand} label="Copy" />
-              </div>
-              <pre className="overflow-x-auto rounded-[var(--radius)] bg-[color:var(--panel)] p-3 font-mono text-xs">
-                {joinCommand}
-              </pre>
+                .
+              </p>
+              {joinCommands.map((c) => (
+                <div key={c.id} className="mb-3">
+                  <div className="mb-1 flex items-center justify-between gap-3">
+                    <span className="font-ui text-sm">
+                      {c.label}
+                      <span className="text-[color:var(--muted)]"> &middot; {c.note}</span>
+                    </span>
+                    <CopyButton text={c.command} label="Copy" />
+                  </div>
+                  <pre
+                    data-testid={`join-command-${c.id}`}
+                    className="overflow-x-auto rounded-[var(--radius)] bg-[color:var(--panel)] p-3 font-mono text-xs"
+                  >
+                    {c.command}
+                  </pre>
+                </div>
+              ))}
+              <p data-testid="join-already-installed" className="text-sm text-[color:var(--muted)]">
+                If Eugene is already installed on that machine, uninstall it there first: run the
+                same command with only <span className="font-mono">-Uninstall</span> (Windows) or{" "}
+                <span className="font-mono">--uninstall</span> (Linux, macOS) at the end. Joining on
+                top of an existing install would leave that install&rsquo;s own control root
+                running.
+              </p>
               {!controlUrl && (
                 <p
                   className="mt-2 text-sm text-[color:var(--muted)]"
@@ -757,10 +793,6 @@ export default function NodesPage() {
                   on Home, or type an address the other machine can reach in the box above.
                 </p>
               )}
-              <p className="mt-2 text-sm text-[color:var(--muted)]">
-                The other machine will also offer this as a question the first time it starts, if it
-                is started at a terminal.
-              </p>
             </div>
           )}
         </section>
