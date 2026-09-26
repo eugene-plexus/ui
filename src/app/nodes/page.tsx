@@ -377,425 +377,439 @@ export default function NodesPage() {
         </span>
       }
     >
-      <main className="relative z-10 mx-auto max-w-4xl px-6 py-8">
-        {error && (
-          <div className="status-error mb-6 rounded-[var(--radius)] border px-3 py-2 text-sm">
-            {error}
-          </div>
-        )}
+      {/* The shell is h-dvh with overflow hidden, so this page brings its
+          own scroller -- without one, Add a node's Copy buttons sat below
+          the fold, out of reach (2026-09-26; /metrics and /routing had
+          the same defect before it). */}
+      <main data-testid="nodes-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl px-6 py-8">
+          {error && (
+            <div className="status-error mb-6 rounded-[var(--radius)] border px-3 py-2 text-sm">
+              {error}
+            </div>
+          )}
 
-        {locked && (
-          <section className="mb-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4">
-            <h2 className="font-ui text-base font-semibold">This control root is locked</h2>
-            <p className="mt-2 text-sm text-[color:var(--muted)]">
-              It is set up and nothing is lost. It keeps this install&rsquo;s signing key sealed
-              until it is given the passphrase after a restart. Until then no models are listed and
-              nothing is served.
-            </p>
-            <p className="mt-2 text-sm text-[color:var(--muted)]">
-              Signing in to this web UI unlocks it too, with the same passphrase. You see this form
-              because the root restarted after you signed in, or holds a different passphrase. This
-              form talks to the control root itself.
-            </p>
-            <form onSubmit={unlock} className="mt-3 flex flex-wrap items-center gap-2">
-              <label htmlFor="unlock-passphrase" className="sr-only">
-                Operator passphrase
-              </label>
-              <input
-                id="unlock-passphrase"
-                type="password"
-                autoComplete="current-password"
-                value={passphrase}
-                onChange={(ev) => setPassphrase(ev.target.value)}
-                placeholder="Operator passphrase"
-                className="min-w-[16rem] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-3 py-1.5 text-sm"
-              />
-              <button
-                type="submit"
-                disabled={unlocking || !passphrase}
-                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
-              >
-                {unlocking ? "Unlocking…" : "Unlock"}
-              </button>
-            </form>
-            {unlockError && (
-              <div className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
-                {unlockError}
-              </div>
-            )}
-            <p className="mt-3 text-sm text-[color:var(--muted)]">
-              This happens on every restart unless auto-unlock is on. A host can use its OS keyring;
-              a container has none, so it reads the passphrase from a file you mount — see{" "}
-              <span className="font-mono">securityMode</span> in the control root&rsquo;s settings.
-            </p>
-          </section>
-        )}
+          {locked && (
+            <section className="mb-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4">
+              <h2 className="font-ui text-base font-semibold">This control root is locked</h2>
+              <p className="mt-2 text-sm text-[color:var(--muted)]">
+                It is set up and nothing is lost. It keeps this install&rsquo;s signing key sealed
+                until it is given the passphrase after a restart. Until then no models are listed
+                and nothing is served.
+              </p>
+              <p className="mt-2 text-sm text-[color:var(--muted)]">
+                Signing in to this web UI unlocks it too, with the same passphrase. You see this
+                form because the root restarted after you signed in, or holds a different
+                passphrase. This form talks to the control root itself.
+              </p>
+              <form onSubmit={unlock} className="mt-3 flex flex-wrap items-center gap-2">
+                <label htmlFor="unlock-passphrase" className="sr-only">
+                  Operator passphrase
+                </label>
+                <input
+                  id="unlock-passphrase"
+                  type="password"
+                  autoComplete="current-password"
+                  value={passphrase}
+                  onChange={(ev) => setPassphrase(ev.target.value)}
+                  placeholder="Operator passphrase"
+                  className="min-w-[16rem] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-3 py-1.5 text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={unlocking || !passphrase}
+                  className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
+                >
+                  {unlocking ? "Unlocking…" : "Unlock"}
+                </button>
+              </form>
+              {unlockError && (
+                <div className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
+                  {unlockError}
+                </div>
+              )}
+              <p className="mt-3 text-sm text-[color:var(--muted)]">
+                This happens on every restart unless auto-unlock is on. A host can use its OS
+                keyring; a container has none, so it reads the passphrase from a file you mount —
+                see <span className="font-mono">securityMode</span> in the control root&rsquo;s
+                settings.
+              </p>
+            </section>
+          )}
 
-        <section className="mb-8">
-          <h2 className="font-ui mb-3 text-base font-semibold">This install</h2>
-          {nodes === null ? (
-            <p className="text-sm text-[color:var(--muted)]">Loading…</p>
-          ) : locked ? (
-            // Not "no nodes" — we did not get to ask. Saying the registry
-            // is empty here would be a confident wrong answer about the
-            // thing the operator is most likely to act on.
-            <p className="text-sm text-[color:var(--muted)]">Unknown until the root is unlocked.</p>
-          ) : nodes.length === 0 ? (
-            <p className="text-sm text-[color:var(--muted)]">
-              No nodes are enrolled. That is unusual — the machine running the control root enrolls
-              itself like any other.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="font-ui text-sm text-[color:var(--muted)]">
-                  <tr>
-                    <th className="py-2 pr-4">Name</th>
-                    <th className="py-2 pr-4">Role</th>
-                    <th className="py-2 pr-4">Address</th>
-                    <th className="py-2 pr-4">Seen</th>
-                    <th className="py-2 pr-4">Host</th>
-                    <th className="py-2 pr-4">Serves</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {nodes.map((n) => (
-                    <tr key={n.name} className="border-t border-[color:var(--border)]">
-                      <td className="py-2 pr-4 font-medium">{n.name}</td>
-                      <td className="py-2 pr-4 text-[color:var(--muted)]">{n.role}</td>
-                      <td className="py-2 pr-4 font-mono text-xs">
-                        {n.url ?? <span className="text-[color:var(--muted)]">none recorded</span>}
-                        {/* A node that has re-advertised has moved at least
+          <section className="mb-8">
+            <h2 className="font-ui mb-3 text-base font-semibold">This install</h2>
+            {nodes === null ? (
+              <p className="text-sm text-[color:var(--muted)]">Loading…</p>
+            ) : locked ? (
+              // Not "no nodes" — we did not get to ask. Saying the registry
+              // is empty here would be a confident wrong answer about the
+              // thing the operator is most likely to act on.
+              <p className="text-sm text-[color:var(--muted)]">
+                Unknown until the root is unlocked.
+              </p>
+            ) : nodes.length === 0 ? (
+              <p className="text-sm text-[color:var(--muted)]">
+                No nodes are enrolled. That is unusual — the machine running the control root
+                enrolls itself like any other.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="font-ui text-sm text-[color:var(--muted)]">
+                    <tr>
+                      <th className="py-2 pr-4">Name</th>
+                      <th className="py-2 pr-4">Role</th>
+                      <th className="py-2 pr-4">Address</th>
+                      <th className="py-2 pr-4">Seen</th>
+                      <th className="py-2 pr-4">Host</th>
+                      <th className="py-2 pr-4">Serves</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nodes.map((n) => (
+                      <tr key={n.name} className="border-t border-[color:var(--border)]">
+                        <td className="py-2 pr-4 font-medium">{n.name}</td>
+                        <td className="py-2 pr-4 text-[color:var(--muted)]">{n.role}</td>
+                        <td className="py-2 pr-4 font-mono text-xs">
+                          {n.url ?? (
+                            <span className="text-[color:var(--muted)]">none recorded</span>
+                          )}
+                          {/* A node that has re-advertised has moved at least
                           once. Surfaced because a changed address used to
                           be invisible until routing failed. */}
-                        {n.advertiseSequence ? (
-                          <span className="ml-2 text-[color:var(--muted)]">
-                            (re-advertised ×{n.advertiseSequence})
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="py-2 pr-4">
-                        {/* Three words, not two. `reachable: false` is both
+                          {n.advertiseSequence ? (
+                            <span className="ml-2 text-[color:var(--muted)]">
+                              (re-advertised ×{n.advertiseSequence})
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {/* Three words, not two. `reachable: false` is both
                             "we looked and it was not there" and "nothing has
                             looked", and a root that has just been unlocked is
                             always the second -- which read as every node being
                             down for a poll interval. See `nodeLiveness.ts`. */}
-                        <LivenessCell node={n} />
-                        {/* When the root last heard from it. Always on the
+                          <LivenessCell node={n} />
+                          {/* When the root last heard from it. Always on the
                             wire and never shown, so a node that was down read
                             the same whether it left a minute or a week ago. */}
-                        {timeAgo(n.lastSeenAt) && (
-                          <span
-                            className="ml-2 text-sm text-[color:var(--muted)]"
-                            data-testid="node-last-seen"
-                            title={
-                              n.lastSeenAt ? new Date(n.lastSeenAt).toLocaleString() : undefined
-                            }
-                          >
-                            {n.reachable ? "" : "last seen "}
-                            {timeAgo(n.lastSeenAt)}
-                          </span>
-                        )}
-                        {/* The root's own words for why. Until 2026-09-15 this
+                          {timeAgo(n.lastSeenAt) && (
+                            <span
+                              className="ml-2 text-sm text-[color:var(--muted)]"
+                              data-testid="node-last-seen"
+                              title={
+                                n.lastSeenAt ? new Date(n.lastSeenAt).toLocaleString() : undefined
+                              }
+                            >
+                              {n.reachable ? "" : "last seen "}
+                              {timeAgo(n.lastSeenAt)}
+                            </span>
+                          )}
+                          {/* The root's own words for why. Until 2026-09-15 this
                             column said only "down" while the probe client held
                             "HTTP 401: ... not yet valid (iat)" -- half a second
                             of clock skew that read as a key problem. */}
-                        {!n.reachable && n.lastError ? (
-                          <div
-                            className="mt-0.5 max-w-md text-sm text-[color:var(--muted)]"
-                            data-testid="node-last-error"
-                          >
-                            {n.lastError}
-                          </div>
-                        ) : null}
-                        {status?.epoch != null &&
-                        n.lastSeenEpoch != null &&
-                        n.lastSeenEpoch < status.epoch ? (
-                          <span
-                            className="ml-2 text-sm text-[color:var(--muted)]"
-                            data-testid="node-behind"
-                            title={behindHint(n.lastSeenEpoch, status.epoch)}
-                          >
-                            catching up
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="py-2 pr-4 text-sm text-[color:var(--muted)]">
-                        {[n.os, n.arch].filter(Boolean).join("/") || "—"}
-                        {n.devices?.length ? ` · ${n.devices.length} device(s)` : ""}
-                      </td>
-                      <td className="py-2 pr-4 text-sm">
-                        {/* The question this table could not answer: a node was
+                          {!n.reachable && n.lastError ? (
+                            <div
+                              className="mt-0.5 max-w-md text-sm text-[color:var(--muted)]"
+                              data-testid="node-last-error"
+                            >
+                              {n.lastError}
+                            </div>
+                          ) : null}
+                          {status?.epoch != null &&
+                          n.lastSeenEpoch != null &&
+                          n.lastSeenEpoch < status.epoch ? (
+                            <span
+                              className="ml-2 text-sm text-[color:var(--muted)]"
+                              data-testid="node-behind"
+                              title={behindHint(n.lastSeenEpoch, status.epoch)}
+                            >
+                              catching up
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="py-2 pr-4 text-sm text-[color:var(--muted)]">
+                          {[n.os, n.arch].filter(Boolean).join("/") || "—"}
+                          {n.devices?.length ? ` · ${n.devices.length} device(s)` : ""}
+                        </td>
+                        <td className="py-2 pr-4 text-sm">
+                          {/* The question this table could not answer: a node was
                           "reachable" and nothing said what it was for. */}
-                        {(served[n.name] ?? []).length === 0 ? (
-                          <span className="text-[color:var(--muted)]">nothing</span>
-                        ) : (
-                          <ul className="space-y-0.5">
-                            {(served[n.name] ?? []).map((s) => (
-                              <li key={s.driver} className="font-mono">
-                                {s.model ?? s.driver}
-                                <span className="ml-1 font-sans text-[color:var(--muted)]">
-                                  via {s.driver}
-                                  {s.runtime ? (
-                                    <span title={"runtime " + s.runtime}>
-                                      {` (${s.runtime}${s.status ? `, ${s.status}` : ""})`}
-                                    </span>
-                                  ) : (
-                                    ""
-                                  )}
-                                  {s.reachable === false ? " · unreachable" : ""}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        <Link href="/inference" className="mt-1 block text-[0.6875rem] underline">
-                          Inference →
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                          {(served[n.name] ?? []).length === 0 ? (
+                            <span className="text-[color:var(--muted)]">nothing</span>
+                          ) : (
+                            <ul className="space-y-0.5">
+                              {(served[n.name] ?? []).map((s) => (
+                                <li key={s.driver} className="font-mono">
+                                  {s.model ?? s.driver}
+                                  <span className="ml-1 font-sans text-[color:var(--muted)]">
+                                    via {s.driver}
+                                    {s.runtime ? (
+                                      <span title={"runtime " + s.runtime}>
+                                        {` (${s.runtime}${s.status ? `, ${s.status}` : ""})`}
+                                      </span>
+                                    ) : (
+                                      ""
+                                    )}
+                                    {s.reachable === false ? " · unreachable" : ""}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          <Link href="/inference" className="mt-1 block text-[0.6875rem] underline">
+                            Inference →
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
-        {/* Hidden rather than disabled while locked: minting a join token
+          {/* Hidden rather than disabled while locked: minting a join token
           is a control-root write, so the button could only produce the
           same 503 the panel above already explains. */}
-        <section hidden={locked}>
-          <h2 className="font-ui mb-2 text-base font-semibold">Add a node</h2>
-          <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
-            Make a token here, then run the command it gives you on the other machine. The token
-            works once, for a short time, and is <strong>shown once</strong>. A lost one is replaced
-            rather than looked up.
-          </p>
-
-          <div className="mb-4 flex flex-wrap items-end gap-3">
-            <label className="font-ui text-sm">
-              <span className="mb-1 block text-[color:var(--muted)]">Node name (optional)</span>
-              <input
-                value={newNodeName}
-                onChange={(e) => setNewNodeName(e.target.value)}
-                placeholder="gpu-box"
-                className="w-56 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 text-sm"
-              />
-            </label>
-            <label className="font-ui text-sm">
-              <span className="mb-1 block text-[color:var(--muted)]">
-                Control root URL the other machine can reach
-              </span>
-              <input
-                value={controlUrl}
-                onChange={(e) => setControlUrl(e.target.value)}
-                placeholder={`http://100.64.0.1:${ports.control}`}
-                aria-describedby="port-guide"
-                className="w-72 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 font-mono text-sm"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => void mint()}
-              disabled={minting}
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {minting ? "Making…" : "Make a join token"}
-            </button>
-          </div>
-
-          <div
-            id="port-guide"
-            data-testid="port-guide"
-            className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
-          >
-            <p>
-              Which port? The control root&rsquo;s machine listens on three
-              {ports.offset !== 0 &&
-                `, each moved by ${ports.offset > 0 ? "+" : ""}${ports.offset} on this install`}
-              :
+          <section hidden={locked}>
+            <h2 className="font-ui mb-2 text-base font-semibold">Add a node</h2>
+            <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
+              Make a token here, then run the command it gives you on the other machine. The token
+              works once, for a short time, and is <strong>shown once</strong>. A lost one is
+              replaced rather than looked up.
             </p>
-            <ul className="mt-1 space-y-0.5">
-              <li>
-                <span className="font-mono">{ports.agent}</span> &mdash; the console, where you
-                manage the install
-              </li>
-              <li>
-                <span className="font-mono">{ports.gateway}</span> &mdash; where your apps send
-                their requests
-              </li>
-              <li className="text-[color:var(--foreground)]">
-                <span className="font-mono">{ports.control}</span> &mdash; the control root.{" "}
-                <strong>A new machine joins here.</strong>
-              </li>
-            </ul>
-          </div>
 
-          {addressCheck && (
-            <div
-              data-testid="control-address-warning"
-              role="alert"
-              className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm"
-            >
-              <ul className="space-y-0.5">
-                {addressCheck.problems.map((problem) => (
-                  <li key={problem}>{problem}</li>
-                ))}
-              </ul>
-              {addressCheck.suggestion && (
-                <button
-                  type="button"
-                  onClick={() => setControlUrl(addressCheck.suggestion!)}
-                  className="font-ui mt-2 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
-                >
-                  Use <span className="font-mono">{addressCheck.suggestion}</span>
-                </button>
-              )}
-            </div>
-          )}
-
-          {mintError && (
-            <div className="status-error mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm">
-              {mintError}
-            </div>
-          )}
-
-          {outstanding.length > 0 && (
-            <div
-              data-testid="outstanding-tokens"
-              className="mb-4 rounded-[var(--radius)] border border-[color:var(--border)] p-3"
-            >
-              <h3 className="font-ui mb-2 text-sm font-semibold">
-                Outstanding tokens ({outstanding.length})
-              </h3>
-              <ul className="space-y-1.5">
-                {outstanding.map((t) => (
-                  <li
-                    key={t.id}
-                    data-testid="token-row"
-                    data-token-id={t.id}
-                    className="flex flex-wrap items-center justify-between gap-2 text-sm"
-                  >
-                    <span>
-                      <span className="font-mono">{t.id}</span>
-                      {t.nodeName ? (
-                        <>
-                          {" "}
-                          · for <span className="font-mono">{t.nodeName}</span>
-                        </>
-                      ) : (
-                        <span className="text-[color:var(--muted)]"> · any node</span>
-                      )}
-                      <span className="text-[color:var(--muted)]">
-                        {" "}
-                        ·{" "}
-                        {t.used ? (
-                          "already used"
-                        ) : joinTokenState(t) === "expired" ? (
-                          <span title={new Date(t.expiresAt).toLocaleString()}>expired</span>
-                        ) : (
-                          <span title={new Date(t.expiresAt).toLocaleString()}>
-                            expires {timeUntil(t.expiresAt) ?? "at an unknown time"}
-                          </span>
-                        )}
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void revoke(t.id)}
-                      disabled={revoking !== null}
-                      data-testid="revoke-token"
-                      className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {revoking === t.id ? "revoking…" : "Revoke"}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 text-[0.6875rem] text-[color:var(--muted)]">
-                The id is a handle, not the token. The token was shown once and is not kept anywhere
-                it could be read back. Revoking one stops it working immediately; a token that has
-                already enrolled a node can be cleared here and the node is untouched.
-              </p>
-            </div>
-          )}
-
-          {minted && mintedState !== "usable" && (
-            <p
-              data-testid="join-token-spent"
-              role="status"
-              className="rounded-[var(--radius)] border border-[color:var(--border)] p-3 text-sm text-[color:var(--muted)]"
-            >
-              {mintedState === "used"
-                ? "This token was used. The machine it added is in the list above."
-                : "This token has expired. Make a new one above."}
-            </p>
-          )}
-
-          {minted && mintedState === "usable" && (
-            <div className="rounded-[var(--radius)] border border-[color:var(--border)] p-3">
-              <p className="font-ui mb-3 text-sm text-[color:var(--muted)]">
-                Run one of these on the machine you are adding. It installs Eugene there and joins
-                it to this install in one step. The token expires{" "}
-                <span title={new Date(minted.expiresAt).toLocaleString()}>
-                  {timeUntil(minted.expiresAt) ?? "soon"}
+            <div className="mb-4 flex flex-wrap items-end gap-3">
+              <label className="font-ui text-sm">
+                <span className="mb-1 block text-[color:var(--muted)]">Node name (optional)</span>
+                <input
+                  value={newNodeName}
+                  onChange={(e) => setNewNodeName(e.target.value)}
+                  placeholder="gpu-box"
+                  className="w-56 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 text-sm"
+                />
+              </label>
+              <label className="font-ui text-sm">
+                <span className="mb-1 block text-[color:var(--muted)]">
+                  Control root URL the other machine can reach
                 </span>
-                .
+                <input
+                  value={controlUrl}
+                  onChange={(e) => setControlUrl(e.target.value)}
+                  placeholder={`http://100.64.0.1:${ports.control}`}
+                  aria-describedby="port-guide"
+                  className="w-72 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 font-mono text-sm"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void mint()}
+                disabled={minting}
+                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {minting ? "Making…" : "Make a join token"}
+              </button>
+            </div>
+
+            <div
+              id="port-guide"
+              data-testid="port-guide"
+              className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
+            >
+              <p>
+                Which port? The control root&rsquo;s machine listens on three
+                {ports.offset !== 0 &&
+                  `, each moved by ${ports.offset > 0 ? "+" : ""}${ports.offset} on this install`}
+                :
               </p>
-              {joinCommands.map((c) => (
-                <div key={c.id} className="mb-3">
-                  <div className="mb-1 flex items-center justify-between gap-3">
-                    <span className="font-ui text-sm">
-                      {c.label}
-                      <span className="text-[color:var(--muted)]"> &middot; {c.note}</span>
-                    </span>
-                    <CopyButton text={c.command} label="Copy" />
-                  </div>
-                  <pre
-                    data-testid={`join-command-${c.id}`}
-                    className="overflow-x-auto rounded-[var(--radius)] bg-[color:var(--panel)] p-3 font-mono text-xs"
+              <ul className="mt-1 space-y-0.5">
+                <li>
+                  <span className="font-mono">{ports.agent}</span> &mdash; the console, where you
+                  manage the install
+                </li>
+                <li>
+                  <span className="font-mono">{ports.gateway}</span> &mdash; where your apps send
+                  their requests
+                </li>
+                <li className="text-[color:var(--foreground)]">
+                  <span className="font-mono">{ports.control}</span> &mdash; the control root.{" "}
+                  <strong>A new machine joins here.</strong>
+                </li>
+              </ul>
+            </div>
+
+            {addressCheck && (
+              <div
+                data-testid="control-address-warning"
+                role="alert"
+                className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm"
+              >
+                <ul className="space-y-0.5">
+                  {addressCheck.problems.map((problem) => (
+                    <li key={problem}>{problem}</li>
+                  ))}
+                </ul>
+                {addressCheck.suggestion && (
+                  <button
+                    type="button"
+                    onClick={() => setControlUrl(addressCheck.suggestion!)}
+                    className="font-ui mt-2 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
                   >
-                    {c.command}
-                  </pre>
-                </div>
-              ))}
-              <p data-testid="join-already-installed" className="text-sm text-[color:var(--muted)]">
-                If Eugene is already installed on that machine, uninstall it there first: run the
-                same command with only <span className="font-mono">-Uninstall</span> (Windows) or{" "}
-                <span className="font-mono">--uninstall</span> (Linux, macOS) at the end. Joining on
-                top of an existing install would leave that install&rsquo;s own control root
-                running.
-              </p>
-              {!controlUrl && (
-                <p
-                  className="mt-2 text-sm text-[color:var(--muted)]"
-                  title="The address comes from the agent's advertiseUrl setting on this machine."
-                >
-                  This root has not said where other machines can reach it. Type that address in the
-                  box above before copying the command.
+                    Use <span className="font-mono">{addressCheck.suggestion}</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {mintError && (
+              <div className="status-error mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm">
+                {mintError}
+              </div>
+            )}
+
+            {outstanding.length > 0 && (
+              <div
+                data-testid="outstanding-tokens"
+                className="mb-4 rounded-[var(--radius)] border border-[color:var(--border)] p-3"
+              >
+                <h3 className="font-ui mb-2 text-sm font-semibold">
+                  Outstanding tokens ({outstanding.length})
+                </h3>
+                <ul className="space-y-1.5">
+                  {outstanding.map((t) => (
+                    <li
+                      key={t.id}
+                      data-testid="token-row"
+                      data-token-id={t.id}
+                      className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                    >
+                      <span>
+                        <span className="font-mono">{t.id}</span>
+                        {t.nodeName ? (
+                          <>
+                            {" "}
+                            · for <span className="font-mono">{t.nodeName}</span>
+                          </>
+                        ) : (
+                          <span className="text-[color:var(--muted)]"> · any node</span>
+                        )}
+                        <span className="text-[color:var(--muted)]">
+                          {" "}
+                          ·{" "}
+                          {t.used ? (
+                            "already used"
+                          ) : joinTokenState(t) === "expired" ? (
+                            <span title={new Date(t.expiresAt).toLocaleString()}>expired</span>
+                          ) : (
+                            <span title={new Date(t.expiresAt).toLocaleString()}>
+                              expires {timeUntil(t.expiresAt) ?? "at an unknown time"}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void revoke(t.id)}
+                        disabled={revoking !== null}
+                        data-testid="revoke-token"
+                        className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {revoking === t.id ? "revoking…" : "Revoke"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-[0.6875rem] text-[color:var(--muted)]">
+                  The id is a handle, not the token. The token was shown once and is not kept
+                  anywhere it could be read back. Revoking one stops it working immediately; a token
+                  that has already enrolled a node can be cleared here and the node is untouched.
                 </p>
-              )}
-              {/* The guess is the root's own recorded address, which on a
+              </div>
+            )}
+
+            {minted && mintedState !== "usable" && (
+              <p
+                data-testid="join-token-spent"
+                role="status"
+                className="rounded-[var(--radius)] border border-[color:var(--border)] p-3 text-sm text-[color:var(--muted)]"
+              >
+                {mintedState === "used"
+                  ? "This token was used. The machine it added is in the list above."
+                  : "This token has expired. Make a new one above."}
+              </p>
+            )}
+
+            {minted && mintedState === "usable" && (
+              <div className="rounded-[var(--radius)] border border-[color:var(--border)] p-3">
+                <p className="font-ui mb-3 text-sm text-[color:var(--muted)]">
+                  Run one of these on the machine you are adding. It installs Eugene there and joins
+                  it to this install in one step. The token expires{" "}
+                  <span title={new Date(minted.expiresAt).toLocaleString()}>
+                    {timeUntil(minted.expiresAt) ?? "soon"}
+                  </span>
+                  .
+                </p>
+                {joinCommands.map((c) => (
+                  <div key={c.id} className="mb-3">
+                    <div className="mb-1 flex items-center justify-between gap-3">
+                      <span className="font-ui text-sm">
+                        {c.label}
+                        <span className="text-[color:var(--muted)]"> &middot; {c.note}</span>
+                      </span>
+                      <CopyButton text={c.command} label="Copy" />
+                    </div>
+                    <pre
+                      data-testid={`join-command-${c.id}`}
+                      className="overflow-x-auto rounded-[var(--radius)] bg-[color:var(--panel)] p-3 font-mono text-xs"
+                    >
+                      {c.command}
+                    </pre>
+                  </div>
+                ))}
+                <p
+                  data-testid="join-already-installed"
+                  className="text-sm text-[color:var(--muted)]"
+                >
+                  If Eugene is already installed on that machine, uninstall it there first: run the
+                  same command with only <span className="font-mono">-Uninstall</span> (Windows) or{" "}
+                  <span className="font-mono">--uninstall</span> (Linux, macOS) at the end. Joining
+                  on top of an existing install would leave that install&rsquo;s own control root
+                  running.
+                </p>
+                {!controlUrl && (
+                  <p
+                    className="mt-2 text-sm text-[color:var(--muted)]"
+                    title="The address comes from the agent's advertiseUrl setting on this machine."
+                  >
+                    This root has not said where other machines can reach it. Type that address in
+                    the box above before copying the command.
+                  </p>
+                )}
+                {/* The guess is the root's own recorded address, which on a
                   single box is loopback until Reach is switched on -- and
                   the old hint only fired when there was NO address, so a
                   command naming 127.0.0.1 was copied with nothing said. */}
-              {controlUrl && isLoopbackUrl(controlUrl) && (
-                <p
-                  data-testid="join-loopback"
-                  role="alert"
-                  className="status-warn mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
-                >
-                  {new URL(controlUrl).hostname} only works on this machine, so this command will
-                  fail on the other one. Turn on{" "}
-                  <Link href="/" className="underline">
-                    Reach it from other devices
-                  </Link>{" "}
-                  on Home, or type an address the other machine can reach in the box above.
-                </p>
-              )}
-            </div>
-          )}
-        </section>
+                {controlUrl && isLoopbackUrl(controlUrl) && (
+                  <p
+                    data-testid="join-loopback"
+                    role="alert"
+                    className="status-warn mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
+                  >
+                    {new URL(controlUrl).hostname} only works on this machine, so this command will
+                    fail on the other one. Turn on{" "}
+                    <Link href="/" className="underline">
+                      Reach it from other devices
+                    </Link>{" "}
+                    on Home, or type an address the other machine can reach in the box above.
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
       </main>
     </AppShell>
   );
