@@ -14,21 +14,21 @@ describe("the join commands", () => {
   const base = "https://raw.githubusercontent.com/eugene-plexus/specs/main/scripts";
   const details = {
     controlUrl: "http://192.168.16.252:8283",
-    token: "pAC9GuVWqkqczs0jFnEnRYHP6mYH67qtOWeA_0lkDTo",
+    token: "example-join-token_not-a-secret",
     nodeName: "Amish_Station",
   };
 
   it("installs and joins in one line on Windows", () => {
     expect(windowsJoinCommand(details)).toBe(
       `& ([scriptblock]::Create((irm ${base}/install.ps1))) -Join http://192.168.16.252:8283 ` +
-        "-Token pAC9GuVWqkqczs0jFnEnRYHP6mYH67qtOWeA_0lkDTo -NodeName Amish_Station",
+        "-Token example-join-token_not-a-secret -NodeName Amish_Station",
     );
   });
 
   it("installs and joins in one line on Linux or macOS", () => {
     expect(posixJoinCommand(details)).toBe(
       `curl -fsSL ${base}/install.sh | sh -s -- --join http://192.168.16.252:8283 ` +
-        "--token pAC9GuVWqkqczs0jFnEnRYHP6mYH67qtOWeA_0lkDTo --name Amish_Station",
+        "--token example-join-token_not-a-secret --name Amish_Station",
     );
   });
 
