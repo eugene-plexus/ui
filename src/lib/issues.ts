@@ -60,6 +60,7 @@ export type IssueKind =
   | "trust-stale"
   | "engine-unavailable"
   | "engine-build-stale"
+  | "engine-build-cpu"
   | "runtime-on-cpu";
 
 /**
@@ -198,6 +199,7 @@ export function issuesFrom(sources: IssueSources): Issue[] {
       ...folderIssues(node),
       ...engineIssues(node),
       ...staleBuildIssues(node),
+      ...cpuBuildIssues(node),
       ...cpuRuntimeIssues(node),
     );
   }
@@ -625,6 +627,45 @@ function staleBuildIssues(node: NodeFacts): Issue[] {
     }
   }
   return out;
+}
+
+// A llama.cpp build with no GPU backend in it: `win-cpu-x64`,
+// `win-cpu-arm64`, `ubuntu-x64`, `ubuntu-arm64`.
+const CPU_BUILD = /^(win-cpu-(x64|arm64)|ubuntu-(x64|arm64))$/;
+
+/**
+ * An engine build that cannot use the card this machine has.
+ *
+ * **Unobservable until 2026-09-27**, which §11.9 of the hobbyist plan
+ * recorded as the case that would earn an issue and could not: the
+ * device list could not see an Arc or a Radeon, so nothing could say the
+ * CPU build was the wrong one. It can now, and the machines this finds
+ * are real: one installed before Eugene could see its card, which is
+ * every Intel and AMD owner on alpha.3, or one whose owner chose the CPU
+ * build under Other builds and forgot. Each is many times slower than it
+ * needs to be, with nothing else on the page saying why.
+ *
+ * A machine whose only build is the CPU one (a Snapdragon) is not this:
+ * its device list names no GPU, because the default build cannot use it.
+ */
+function cpuBuildIssues(node: NodeFacts): Issue[] {
+  const devices = node.identity?.devices ?? [];
+  const card = devices.find((d) => d.kind !== "cpu");
+  if (!card) return [];
+  return (node.engines?.engines ?? [])
+    .filter((e) => e.managed?.variant && CPU_BUILD.test(e.managed.variant))
+    .filter((e) => e.acquisition?.variant && !CPU_BUILD.test(e.acquisition.variant))
+    .map((e) => ({
+      id: `cpu-build:${node.name ?? "local"}:${e.engine}`,
+      kind: "engine-build-cpu" as const,
+      severity: "warning" as const,
+      title: `${engineName(e.engine)} on ${node.label} cannot use its ${card.name ?? "graphics card"}`,
+      detail:
+        `The build installed is ${e.managed!.variant}, which runs on the processor only. ` +
+        `Install ${e.acquisition!.variant} from the Inference page, then restart the models.`,
+      href: "/inference",
+      node: node.name,
+    }));
 }
 
 // --- runtimes on the processor -----------------------------------------

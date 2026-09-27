@@ -1256,3 +1256,94 @@ describe("a machine that has not heard from the control root", () => {
     expect(days[0]?.title).toMatch(/for 3 days$/);
   });
 });
+
+// --- a CPU build on a machine with a card --------------------------------
+
+describe("an engine build that cannot use the machine's card", () => {
+  // 2026-09-27: every Intel and AMD owner on alpha.3 kept whatever build
+  // was installed before Eugene could see their card. The device list
+  // names it now, so the mismatch can be said.
+  const ARC = body<NodeIdentity>(
+    '{"enrolled":false,"devices":[' +
+      '{"kind":"vulkan","name":"Intel(R) Arc(TM) Graphics","index":0,' +
+      '"memoryTotalBytes":17314086912,"memoryFreeBytes":15166603264,"sharedMemory":true},' +
+      '{"kind":"cpu","name":"x86_64","index":0,"memoryTotalBytes":34359738368}]}',
+  );
+  const engines = (installed: string, fallback: string): EngineList =>
+    body<EngineList>(
+      '{"engines":[{"engine":"llama_cpp","available":true,"version":"b11211",' +
+        '"modelFormats":["gguf"],"managed":{"version":"b11211","binaryPath":"x",' +
+        `"variant":"${installed}"},"acquisition":{"policy":"managed","installable":true,` +
+        `"variant":"${fallback}"}}]}`,
+    );
+
+  it("names the card, the build installed and the one to install", () => {
+    const node = facts({
+      name: null,
+      label: "this machine",
+      identity: ARC,
+      engines: engines("win-cpu-x64", "win-vulkan-x64"),
+    });
+    const [issue] = issuesFrom({ ...NOTHING, perNode: [node] });
+    expect(issue!.kind).toBe("engine-build-cpu");
+    expect(issue!.severity).toBe("warning");
+    expect(issue!.title).toBe("llama.cpp on this machine cannot use its Intel(R) Arc(TM) Graphics");
+    expect(issue!.detail).toContain("win-cpu-x64");
+    expect(issue!.detail).toContain("Install win-vulkan-x64");
+  });
+
+  it("the Linux CPU build is one too", () => {
+    const node = facts({
+      name: "box",
+      label: "box",
+      identity: ARC,
+      engines: engines("ubuntu-x64", "ubuntu-vulkan-x64"),
+    });
+    expect(kinds(issuesFrom({ ...NOTHING, perNode: [node] }))).toEqual(["engine-build-cpu"]);
+  });
+
+  it("a GPU build is not", () => {
+    const node = facts({
+      name: null,
+      label: "this machine",
+      identity: ARC,
+      engines: engines("win-sycl-x64", "win-vulkan-x64"),
+    });
+    expect(issuesFrom({ ...NOTHING, perNode: [node] })).toEqual([]);
+  });
+
+  it("a machine whose only build is the CPU one is not", () => {
+    // A Snapdragon: the default is the CPU build, and its device list
+    // names no GPU because that build cannot use the Adreno.
+    const node = facts({
+      name: null,
+      label: "this machine",
+      identity: body<NodeIdentity>('{"enrolled":false,"devices":[{"kind":"cpu","name":"arm"}]}'),
+      engines: engines("win-cpu-arm64", "win-cpu-arm64"),
+    });
+    expect(issuesFrom({ ...NOTHING, perNode: [node] })).toEqual([]);
+  });
+
+  it("a GPU default with no card listed says nothing rather than failing", () => {
+    // A Windows too old for DXCore: the engine picker still reads
+    // Win32_VideoController's names and chooses Vulkan, and the device
+    // list, which needs memory figures, has no card to name.
+    const node = facts({
+      name: null,
+      label: "this machine",
+      identity: body<NodeIdentity>('{"enrolled":false,"devices":[{"kind":"cpu","name":"x86_64"}]}'),
+      engines: engines("win-cpu-x64", "win-vulkan-x64"),
+    });
+    expect(issuesFrom({ ...NOTHING, perNode: [node] })).toEqual([]);
+  });
+
+  it("a card with the CPU build as its default is not either", () => {
+    const node = facts({
+      name: null,
+      label: "this machine",
+      identity: ARC,
+      engines: engines("win-cpu-x64", "win-cpu-x64"),
+    });
+    expect(issuesFrom({ ...NOTHING, perNode: [node] })).toEqual([]);
+  });
+});
