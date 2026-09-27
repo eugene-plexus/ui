@@ -1,4 +1,4 @@
 eugene-plexus-ui static export
 built-from: eugene-plexus/ui@55066138a6a68f8eeb41e530631282fde6b20a73
 built-on:   2026-09-27
-installer-ref: main
+installer-ref: v0.1.0-alpha.4
