@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { FolderPicker } from "@/components/FolderPicker";
 import { ApiError, api, describeError } from "@/lib/api";
 import {
@@ -21,7 +22,14 @@ import {
   withMountBoxes,
 } from "@/lib/libraryReach";
 import { type TargetNode, useTargetNode } from "@/lib/nodeBudget";
-import type { LibraryFolder, LibraryFolderReach, PathMapping } from "@/lib/types";
+import {
+  restartLabel,
+  savedMessage,
+  type StaleModel,
+  staleOn,
+  unreadFolders,
+} from "@/lib/stalePaths";
+import type { LibraryFolder, LibraryFolderReach, PathMapping, RuntimeList } from "@/lib/types";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 /**
@@ -88,6 +96,9 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
   const [failure, setFailure] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState<PickerState | null>(null);
   const [mountBrowseNode, setMountBrowseNode] = useState<string>("");
+  // Running models whose next start opens another file, by proxy target.
+  const [stale, setStale] = useState<Record<string, StaleModel[]>>({});
+  const [restartNote, setRestartNote] = useState<string | null>(null);
 
   const loadFolders = useCallback(async () => {
     try {
@@ -140,6 +151,20 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
     [],
   );
 
+  // Soft: a node that does not answer has nothing listed, and its column
+  // already says it did not answer.
+  const readRunning = useCallback(async (node: TargetNode) => {
+    try {
+      const list = await api.get<RuntimeList>(node.target, "/v1/runtimes");
+      // Worked out here, not in the updater: an answer without `runtimes`
+      // must cost this list, never the page.
+      const found = staleOn(node, Array.isArray(list?.runtimes) ? list.runtimes : []);
+      setStale((prev) => ({ ...prev, [node.target]: found }));
+    } catch {
+      setStale((prev) => ({ ...prev, [node.target]: [] }));
+    }
+  }, []);
+
   const loadOverrides = useCallback(async (node: TargetNode) => {
     try {
       const config = await api.get<{ pathMappings?: unknown }>(node.target, "/v1/config");
@@ -166,14 +191,17 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
   useEffect(() => {
     if (!picker.loaded) return;
     const wanted = gridView ? nodes : selectedNode ? [selectedNode] : [];
-    for (const node of wanted) void checkNode(node);
+    for (const node of wanted) {
+      void checkNode(node);
+      void readRunning(node);
+    }
     if (selectedNode) void loadOverrides(selectedNode);
     // The library's folders (`draft`) are deliberately not a dependency:
     // a check reads the node's own copy, and re-checking every node on
     // every keystroke in the mounts editor would be a poll of the whole
     // install.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [picker.loaded, gridView, selectedNode?.target, checkNode, loadOverrides]);
+  }, [picker.loaded, gridView, selectedNode?.target, checkNode, readRunning, loadOverrides]);
 
   const dirty = useMemo(
     () => serverFolders !== null && JSON.stringify(serverFolders) !== JSON.stringify(draft),
@@ -194,9 +222,14 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
       if (result.rejected && result.rejected.length > 0) {
         setFailure(result.rejected.map((r) => r.message ?? "rejected").join("; "));
       } else {
-        setStatus("Folders saved. Nodes pick the change up at their next launch.");
         await loadFolders();
-        for (const node of nodes) void checkNode(node);
+        // Each check makes that node read the new folders; what it answers
+        // says whether it could.
+        const checks = await Promise.all(
+          nodes.map(async (node) => ({ label: node.label, reach: await checkNode(node) })),
+        );
+        setStatus(savedMessage(checks));
+        await Promise.all(nodes.map((node) => readRunning(node)));
       }
     } catch (err) {
       setFailure(describeError(err));
@@ -250,15 +283,53 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
       if (result.rejected && result.rejected.length > 0) {
         setFailure(result.rejected.map((r) => r.message ?? "rejected").join("; "));
       } else {
-        setStatus(`Overrides saved on ${selectedNode.label}. They apply at the next launch.`);
+        setStatus(`Overrides saved on ${selectedNode.label}.`);
         await loadOverrides(selectedNode);
         await checkNode(selectedNode);
+        await readRunning(selectedNode);
       }
     } catch (err) {
       setFailure(describeError(err));
     } finally {
       setBusy(null);
     }
+  }
+
+  const shownNodes = gridView ? nodes : selectedNode ? [selectedNode] : [];
+  const staleModels = shownNodes.flatMap((node) => stale[node.target] ?? []);
+  const unread = unreadFolders(
+    shownNodes.map((node) => ({ label: node.label, reach: reaches[node.target] ?? null })),
+  );
+
+  async function restartStale() {
+    const models = staleModels;
+    setBusy("restart");
+    setRestartNote(null);
+    const failed: string[] = [];
+    await Promise.all(
+      models.map(async (m) => {
+        try {
+          await api.post(m.target, `/v1/runtimes/${encodeURIComponent(m.runtime)}/restart`, {});
+        } catch (err) {
+          failed.push(`${m.runtime} on ${m.nodeLabel}: ${describeError(err)}`);
+        }
+      }),
+    );
+    const sent = models.length - failed.length;
+    setRestartNote(
+      failed.length === 0
+        ? `${sent === 1 ? "The model is" : `All ${sent} models are`} loading from the new path. ` +
+            "Each answers again once it has loaded."
+        : `Could not restart ${failed.join("; ")}.`,
+    );
+    // A restarted model plans its start at once, so the list empties on
+    // the next read; one that failed to restart stays listed.
+    await Promise.all(
+      shownNodes
+        .filter((node) => models.some((m) => m.target === node.target))
+        .map((node) => readRunning(node)),
+    );
+    setBusy(null);
   }
 
   function onPicked(path: string) {
@@ -339,6 +410,31 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
       {status && !failure && (
         <p className="status-success mb-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
           {status}
+        </p>
+      )}
+      {unread.map((u) => (
+        <p
+          key={u.label}
+          className="status-error mb-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
+          data-testid="folders-unread"
+        >
+          <strong>{u.label}</strong> could not read these folders, so none of their mounts apply
+          there. {u.reason}
+        </p>
+      ))}
+      {staleModels.length > 0 && (
+        <StaleModels
+          models={staleModels}
+          busy={busy !== null}
+          onRestart={() => void restartStale()}
+        />
+      )}
+      {restartNote && (
+        <p
+          className="mb-3 rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm"
+          data-testid="stale-restart-note"
+        >
+          {restartNote}
         </p>
       )}
 
@@ -463,6 +559,55 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
         />
       )}
     </main>
+  );
+}
+
+/* ──────────────────────── models on the old path ──────────────────────── */
+
+/**
+ * The running models that still hold the file they opened before the
+ * folders or overrides changed. A restart moves each to the new path;
+ * nothing else on any machine needs restarting.
+ */
+function StaleModels({
+  models,
+  busy,
+  onRestart,
+}: {
+  models: StaleModel[];
+  busy: boolean;
+  onRestart: () => void;
+}) {
+  const one = models.length === 1;
+  return (
+    <section
+      className="status-warn mb-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
+      data-testid="stale-models"
+    >
+      <p>
+        {one ? "One model is" : `${models.length} models are`} still running from the file{" "}
+        {one ? "it" : "they"} opened before this change. A restart opens the new path. Nothing else
+        needs restarting.
+      </p>
+      <ul className="my-2 space-y-1">
+        {models.map((m) => (
+          <li key={`${m.target}/${m.runtime}`} data-testid="stale-model">
+            <strong>{m.runtime}</strong> on {m.nodeLabel}:{" "}
+            <span className="font-mono break-all">{m.opened}</span> &rarr;{" "}
+            <span className="font-mono break-all">{m.next}</span>
+          </li>
+        ))}
+      </ul>
+      <ConfirmButton
+        label={restartLabel(models.length)}
+        confirmLabel="Restart"
+        prompt={`${one ? "It stops" : "Each stops"} answering while it loads again. That takes seconds for a small file, and minutes for a large one over a share.`}
+        onConfirm={onRestart}
+        disabled={busy}
+        className={buttonClass}
+        testId="stale-restart"
+      />
+    </section>
   );
 }
 

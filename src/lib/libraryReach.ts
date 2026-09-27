@@ -181,7 +181,9 @@ export function cellFor(folderPath: string, reach: LibraryFolderReach | null): R
       folderPath,
       localPath: null,
       source: null,
-      tone: "unknown",
+      // A node that could not read the folders applies none of their
+      // mounts: that is a fault with a fix, not an unknown.
+      tone: !reach.libraryConsulted && reach.libraryError ? "error" : "unknown",
       note: reach.libraryConsulted
         ? "not in this node's folder list"
         : age == null

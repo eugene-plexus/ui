@@ -135,7 +135,10 @@ test.describe("Library folders and their reach", () => {
 
   test("the agent's own Config names the field as overrides under Library", async ({ page }) => {
     await page.goto(`/config/?sel=agent:${NODE_B}`);
-    await expect(page.getByText("Library folder overrides")).toBeVisible({ timeout: 30_000 });
+    // Named in the field, its link and its help: any one visible says it.
+    await expect(page.getByText("Library folder overrides").first()).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(page.getByText(/No overrides\./)).toBeVisible();
   });
 });

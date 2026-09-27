@@ -3529,6 +3529,21 @@ export interface components {
             readonly localPath?: string;
             localPathSource?: components["schemas"]["RuntimeLocalPathSource"];
             /**
+             * @description The model file the **running** process was started with,
+             *     resolved exactly as `localPath` is, at that start. Null when
+             *     no process is running (`stopped`, `exited`, `crashed`,
+             *     `copying`).
+             *
+             *     `localPath` is recomputed on every read, so the two differ
+             *     exactly when the rules changed after this process started — a
+             *     Library folder's mount, this node's overrides, or its local
+             *     copy. The process keeps the file it opened; a restart opens
+             *     `localPath` instead. (2026-09-27: a folder change on ten nodes
+             *     should say which models still run from the old path, not ask
+             *     anyone to reboot the nodes.)
+             */
+            readonly openedPath?: string | null;
+            /**
              * @description Why this node is **not** opening a local copy, when it is
              *     not and the operator asked for one: not enough free space to
              *     leave the configured headroom, the copy failed, the source
@@ -4209,6 +4224,20 @@ export interface components {
             folderListAgeSeconds?: number;
             /** @description Where the library was, or was looked for. */
             libraryUrl?: string;
+            /**
+             * @description Why the library could not be read on this call, when
+             *     `libraryConsulted` is false, in the words of what failed: the
+             *     install lookup (for instance a control host registered at a
+             *     loopback address), the library's own refusal, or the
+             *     connection. Absent when the library answered.
+             *
+             *     On the wire because the failure is otherwise silent where it
+             *     matters: a worker that cannot read the folders applies no
+             *     folder's mount, and its launch is refused as "nothing exists
+             *     at" the Library's own path — the mount the operator already
+             *     set is never mentioned (2026-09-27, the live install).
+             */
+            libraryError?: string;
             folders: components["schemas"]["LibraryFolderStatus"][];
         };
         /** @description One Library folder as this host reaches it. */

@@ -130,6 +130,17 @@ describe("one node's cell for one folder", () => {
     expect(cellFor("/new", stale).note).toBe("this node's copy is 10 min old and lacks it");
     const never: LibraryFolderReach = { libraryConsulted: false, folders: [] };
     expect(cellFor("/new", never).note).toContain("never read");
+    expect(cellFor("/new", never).tone).toBe("unknown");
+  });
+
+  it("is an error when the node answered that it could not read the folders", () => {
+    // The live install, 2026-09-27: a fault with a fix, not an unknown.
+    const unread: LibraryFolderReach = {
+      libraryConsulted: false,
+      libraryError: "advertises http://127.0.0.1:8079/ -- a loopback address",
+      folders: [],
+    };
+    expect(cellFor("/models", unread)).toMatchObject({ tone: "error" });
   });
 });
 
