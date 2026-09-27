@@ -93,8 +93,8 @@ describe("the registry agrees with the website", () => {
 });
 
 describe("every screen resolves", () => {
-  it("has ten navigable screens", () => {
-    expect(SCREENS).toHaveLength(10);
+  it("has eleven navigable screens", () => {
+    expect(SCREENS).toHaveLength(11);
   });
 
   it("puts Home at the root and the playground beside it, both under Your tools", () => {
@@ -198,6 +198,7 @@ describe("the groups are the page's two halves", () => {
       "/library",
       "/discover",
       "/config",
+      "/logs",
       "/nodes",
     ]);
   });

@@ -26,6 +26,7 @@ const APP = join(SRC, "app");
 /** Pages whose whole body is one component, which scrolls for them. */
 const DELEGATES: Record<string, string> = {
   "library/folders/page.tsx": "components/LibraryFolders.tsx",
+  "logs/page.tsx": "components/LogsView.tsx",
 };
 
 function pages(dir: string): string[] {

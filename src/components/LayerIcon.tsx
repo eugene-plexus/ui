@@ -12,6 +12,7 @@ import {
   Monitor,
   Radio,
   Route,
+  ScrollText,
   Server,
   ShieldCheck,
   Terminal,
@@ -55,6 +56,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   KeyRound,
   Route,
   Blocks,
+  ScrollText,
 };
 
 export function LayerIcon({

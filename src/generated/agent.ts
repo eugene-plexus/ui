@@ -4,6 +4,64 @@
  */
 
 export interface paths {
+    "/v1/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This machine's log, newest last.
+         * @description The newest `tail` lines that match, oldest first, read from the
+         *     current file and its rotated predecessors (10 MB x 5). Every line
+         *     of this agent's stream: its own lines (`source: agent`) and each
+         *     supervised child's, under the name the supervisor prefixes it with
+         *     (`gateway`, `engine: qwen`). `update` is the in-app updater's own
+         *     log, served only when asked for by name: it has no stamps to place
+         *     it among the rest.
+         *
+         *     **Tokens and API keys are masked** (`[redacted]`). A line that
+         *     prints one is a defect where it is written; the mask is insurance.
+         *
+         *     Operator-only: a log says more about a machine than any other
+         *     read, so no service credential opens it.
+         */
+        get: operations["readLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logs/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Follow this machine's log as it is written.
+         * @description Server-sent events, one `line` event per line written from the
+         *     moment of the request (`docker logs -f`): read `GET /v1/logs` for
+         *     what came before. A comment every 15 s keeps idle proxies from
+         *     closing it. A follower that falls more than 2,000 lines behind
+         *     loses lines rather than holding the machine's memory; a `dropped`
+         *     event says how many. Same filters and masking as `GET /v1/logs`.
+         *     Operator-only.
+         */
+        get: operations["followLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/client-keys/admission": {
         parameters: {
             query?: never;
@@ -2214,6 +2272,31 @@ export interface components {
         UpdateChannelSource: "setting" | "inferred";
         /** @enum {string} */
         UpdateOutcome: "running" | "succeeded" | "failed";
+        LogLine: {
+            /**
+             * Format: date-time
+             * @description When the agent received the line, UTC. Null for a line written
+             *     before lines were stamped that carries no time of its own, and
+             *     for the updater's log.
+             */
+            time: string | null;
+            /**
+             * @description `agent`, or the supervised child the line came from as the
+             *     supervisor names it (`gateway`, `library`, `control`,
+             *     `engine: qwen`, a companion driver), or `update`.
+             */
+            source: string;
+            /** @description The line, with tokens and API keys masked. */
+            text: string;
+        };
+        LogPage: {
+            /** @description Oldest first; the last is the newest that matched. */
+            lines: components["schemas"]["LogLine"][];
+            /** @description Every source seen in the part of the log read, for a picker. */
+            sources: string[];
+            /** @description Older matching lines exist beyond `tail`. */
+            truncated: boolean;
+        };
         UpdateRequest: {
             /**
              * @description The `ref` of `NodeUpdate.newest` the caller was shown. Refused
@@ -4522,37 +4605,6 @@ export interface components {
             detail?: string;
         };
         /**
-         * @description Issued on successful login. The UI stores `sessionToken` as a
-         *     Secure / HttpOnly / SameSite=Strict cookie or in memory; every
-         *     subsequent proxy request includes it as
-         *     `Authorization: Bearer <token>`.
-         */
-        AuthLoginResponse: {
-            /**
-             * @description Opaque bearer token; the UI should never inspect its
-             *     contents. Lifetime is bounded by `expiresAt`.
-             *
-             *     An `ep-session+jwt` (see `TrustBundle` for the profile),
-             *     signed by the control root's token key. It is addressed to
-             *     the machine the operator signed in on and to the control
-             *     root (`aud: ["node:<name>", "control"]`), or to the root
-             *     alone for a login made there directly. A standalone agent
-             *     that has not joined an install signs its own. The console
-             *     acts on other machines by exchanging it
-             *     (`control.yaml`, `POST /v1/auth/token`), never by sending
-             *     it on.
-             */
-            sessionToken: string;
-            /** Format: date-time */
-            expiresAt: string;
-            /**
-             * @description The operator's display name from the constitution
-             *     (typically "operator" or whatever the operator set).
-             *     Echoed for UI welcome strings.
-             */
-            operatorName?: string;
-        };
-        /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
          *     Eugene Plexus component returns this for 4xx / 5xx responses.
          */
@@ -4591,6 +4643,37 @@ export interface components {
             retryDisposition?: "safe" | "terminal" | "indeterminate";
             /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
             retryAfterSeconds?: number;
+        };
+        /**
+         * @description Issued on successful login. The UI stores `sessionToken` as a
+         *     Secure / HttpOnly / SameSite=Strict cookie or in memory; every
+         *     subsequent proxy request includes it as
+         *     `Authorization: Bearer <token>`.
+         */
+        AuthLoginResponse: {
+            /**
+             * @description Opaque bearer token; the UI should never inspect its
+             *     contents. Lifetime is bounded by `expiresAt`.
+             *
+             *     An `ep-session+jwt` (see `TrustBundle` for the profile),
+             *     signed by the control root's token key. It is addressed to
+             *     the machine the operator signed in on and to the control
+             *     root (`aud: ["node:<name>", "control"]`), or to the root
+             *     alone for a login made there directly. A standalone agent
+             *     that has not joined an install signs its own. The console
+             *     acts on other machines by exchanging it
+             *     (`control.yaml`, `POST /v1/auth/token`), never by sending
+             *     it on.
+             */
+            sessionToken: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /**
+             * @description The operator's display name from the constitution
+             *     (typically "operator" or whatever the operator set).
+             *     Echoed for UI welcome strings.
+             */
+            operatorName?: string;
         };
         /**
          * @description Login request body sent by the UI to `POST /v1/auth/login` on
@@ -5294,6 +5377,63 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    readLogs: {
+        parameters: {
+            query?: {
+                /** @description Only these sources. Repeat the parameter for several. */
+                source?: string[];
+                /** @description Only lines stamped at or after this instant. */
+                since?: string;
+                /** @description Only lines whose text contains this, ignoring case. */
+                contains?: string;
+                /** @description How many of the newest matching lines, at most. */
+                tail?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lines. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogPage"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    followLogs: {
+        parameters: {
+            query?: {
+                source?: string[];
+                contains?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description `event: line` frames whose `data:` is a `LogLine`, and
+             *     `event: dropped` frames whose `data:` is `{"dropped": n}`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["LogLine"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
     clientAdmission: {
         parameters: {
             query?: never;

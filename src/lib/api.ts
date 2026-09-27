@@ -198,7 +198,24 @@ export async function postStream(
   body: unknown,
   options: RequestOptions = {},
 ): Promise<Response> {
-  const init: RequestInit = { method: "POST", body: JSON.stringify(body) };
+  return openStream(target, path, { method: "POST", body: JSON.stringify(body) }, options);
+}
+
+/** GET that hands back the raw `Response`: a follow, like `GET /v1/logs/stream`. */
+export async function getStream(
+  target: ProxyTarget,
+  path: string,
+  options: RequestOptions = {},
+): Promise<Response> {
+  return openStream(target, path, { method: "GET" }, options);
+}
+
+async function openStream(
+  target: ProxyTarget,
+  path: string,
+  init: RequestInit,
+  options: RequestOptions,
+): Promise<Response> {
   const sent = sessionCarried(options);
   const response = await fetch(proxyUrl(target, path), {
     ...init,

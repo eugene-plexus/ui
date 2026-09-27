@@ -47,7 +47,8 @@ export type IconName =
   | "FolderTree"
   | "KeyRound"
   | "Route"
-  | "Blocks";
+  | "Blocks"
+  | "ScrollText";
 
 /**
  * A colour *role*, not a colour. `left` and `right` resolve to the
@@ -174,7 +175,7 @@ export interface Screen {
 }
 
 /**
- * The ten navigable screens.
+ * The eleven navigable screens.
  *
  * Order within each group is the diagram's order, not alphabetical:
  * tools → gateway → drivers for the request path, then the rail's
@@ -280,6 +281,17 @@ export const SCREENS: readonly Screen[] = [
     layer: "agent",
     spans: ["gateway", "library", "control"],
     blurb: "Every component's settings, one tab per component per machine.",
+  },
+  {
+    // Every machine's log, like `docker logs` (2026-09-27). Filed under
+    // `agent`: each agent writes and serves its own machine's stream, and
+    // the page's scope is a machine or all of them.
+    href: "/logs",
+    label: "Logs",
+    icon: "ScrollText",
+    layer: "agent",
+    spans: ["engines"],
+    blurb: "Every machine's log, and every model and service each one runs, live.",
   },
   {
     href: "/nodes",

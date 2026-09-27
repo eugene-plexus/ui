@@ -269,6 +269,7 @@ describe("the root is the install, not the control root", () => {
       "playground",
       "inference",
       "apps",
+      "logs",
       "preferences",
     ]);
     expect(tree.pages.map((p) => p.route)).toEqual([
@@ -276,6 +277,7 @@ describe("the root is the install, not the control root", () => {
       "/playground",
       "/inference",
       "/apps",
+      "/logs",
       "/config",
     ]);
   });
@@ -318,7 +320,7 @@ describe("the machine level appears only once there is more than one machine", (
     expect(agent?.label).toBe("Agent");
     expect(agent?.hint).toBe("this machine");
     expect(agent?.local).toBe(true);
-    expect(agent?.pages.map((p) => p.id)).toEqual(["config"]);
+    expect(agent?.pages.map((p) => p.id)).toEqual(["config", "logs"]);
     // The leaf IS the branch, not a row under one.
     expect(tree.children.map((c) => c.sel)).toContain("agent:solo");
     expect(branchOf(tree, "Agents")).toBeUndefined();
@@ -432,7 +434,7 @@ describe("the page menu", () => {
     expect(pagesOf("library")).toEqual(["Models", "Folders", "Discover", "Config"]);
     expect(pagesOf("library:node:nas")).toEqual(["Folders"]);
     expect(pagesOf("control")).toEqual(["Nodes", "Config"]);
-    expect(pagesOf("agent:nas")).toEqual(["Config"]);
+    expect(pagesOf("agent:nas")).toEqual(["Config", "Logs"]);
     expect(pagesOf("driver:ollama-qwen@Amish_Station")).toEqual(["Config"]);
   });
 
@@ -588,6 +590,7 @@ describe("an old link still lands on the right object", () => {
       "playground",
       "inference",
       "apps",
+      "logs",
       "preferences",
     ]);
   });

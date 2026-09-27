@@ -176,6 +176,8 @@ export type DirectoryEntry = AgentComponents["schemas"]["DirectoryEntry"];
 // agent's generated types do not carry it.
 export type LibraryFolder = LibraryComponents["schemas"]["LibraryFolder"];
 export type LibraryFolderReach = AgentComponents["schemas"]["LibraryFolderReach"];
+export type LogLine = AgentComponents["schemas"]["LogLine"];
+export type LogPage = AgentComponents["schemas"]["LogPage"];
 export type LibraryFolderStatus = AgentComponents["schemas"]["LibraryFolderStatus"];
 export type FolderReachSource = AgentComponents["schemas"]["FolderReachSource"];
 

@@ -163,6 +163,8 @@ const PAGES: Record<string, PageRef[]> = {
     // install root because installing is a question about the install --
     // which machine is a picker on the page, the way Library's launch is.
     { id: "apps", label: "Apps", route: "/apps", icon: "Blocks" },
+    // Every machine's log on one timeline (2026-09-27).
+    { id: "logs", label: "Logs", route: "/logs", icon: "ScrollText" },
     // Theme and font size. Browser-local, not install-wide, and the page
     // says so -- but it has to hang somewhere in a tree of objects, and
     // the install root is the only row that is not a component.
@@ -195,7 +197,11 @@ const PAGES: Record<string, PageRef[]> = {
     { id: "nodes", label: "Nodes", route: "/nodes", icon: "ShieldCheck" },
     { id: "config", label: "Config", route: "/config", icon: "Server" },
   ],
-  agent: [{ id: "config", label: "Config", route: "/config", icon: "Server" }],
+  agent: [
+    { id: "config", label: "Config", route: "/config", icon: "Server" },
+    // That machine's own log: its agent and everything it runs.
+    { id: "logs", label: "Logs", route: "/logs", icon: "ScrollText" },
+  ],
   driver: [{ id: "config", label: "Config", route: "/config", icon: "Server" }],
   // An installed app. Settings is listed for every app, though a custom
   // app may publish none: which pages an object has depends on its kind,

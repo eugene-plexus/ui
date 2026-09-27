@@ -24,6 +24,7 @@ import {
   describeModelSource,
 } from "@/lib/issues";
 import { loadKey, recallLoadSeconds, rememberLoadSeconds } from "@/lib/loadMemory";
+import { engineLogsHref } from "@/lib/logs";
 import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib/nodeBudget";
 import { formatSelection } from "@/lib/resourceTree";
 import { useIssues } from "@/lib/useIssues";
@@ -720,6 +721,17 @@ function RowView({
             data-testid="runtime-failure"
           >
             {failure}
+          </div>
+        )}
+        {row.runtime && (
+          <div className="text-[0.6875rem]">
+            <Link
+              href={engineLogsHref(row.node, row.runtime)}
+              className="underline"
+              data-testid="runtime-logs"
+            >
+              {failure || status === "stopped" ? "what its engine said" : "its log"}
+            </Link>
           </div>
         )}
         {row.eligible === false && row.ineligibleReason && (
