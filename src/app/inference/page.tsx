@@ -14,6 +14,7 @@ import {
   type Sources,
   buildRows,
   nodeDetails,
+  runtimeFailure,
   runtimeOf,
 } from "@/lib/inferenceRows";
 import {
@@ -585,6 +586,7 @@ function RowView({
   );
   const prefix = `${row.node ?? ""}/${row.runtime ?? ""}:`;
   const missingEngine = stoppedForWantOfEngine(row, engines);
+  const failure = runtimeFailure(row.runtimeStatus, own?.lastError);
   return (
     <tr className="border-t border-[color:var(--border)]">
       <td className="py-1.5 pr-4 font-mono">
@@ -708,6 +710,15 @@ function RowView({
             title={compute.detail}
           >
             {compute.text}
+          </div>
+        )}
+        {failure && (
+          <div
+            className="text-[0.6875rem]"
+            style={{ color: "var(--status-error-fg)" }}
+            data-testid="runtime-failure"
+          >
+            {failure}
           </div>
         )}
         {row.eligible === false && row.ineligibleReason && (

@@ -8,7 +8,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { type Row, type Sources, buildRows, nodeDetails, runtimeOf } from "./inferenceRows";
+import {
+  type Row,
+  type Sources,
+  buildRows,
+  nodeDetails,
+  runtimeFailure,
+  runtimeOf,
+} from "./inferenceRows";
 
 /** `noUncheckedIndexedAccess`: say what an empty result means. */
 function first(rows: Row[]): Row {
@@ -361,5 +368,20 @@ describe("one model on two machines", () => {
 
   it("adds no third row for either machine's runtime", () => {
     expect(buildRows(TWO, "node-a").filter((r) => r.driver === null)).toHaveLength(0);
+  });
+});
+
+describe("runtimeFailure", () => {
+  it("is the agent's reason while the runtime is not serving", () => {
+    for (const status of ["crashed", "exited", "stopped", "starting", null]) {
+      expect(runtimeFailure(status, "  it could not start  ")).toBe("it could not start");
+    }
+  });
+
+  it("is nothing for a ready runtime, or with no reason to give", () => {
+    expect(runtimeFailure("ready", "an old reason")).toBeNull();
+    expect(runtimeFailure("crashed", null)).toBeNull();
+    expect(runtimeFailure("crashed", undefined)).toBeNull();
+    expect(runtimeFailure("crashed", "   ")).toBeNull();
   });
 });

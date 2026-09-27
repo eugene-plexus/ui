@@ -261,3 +261,21 @@ export function runtimeOf(
   if (!row.runtime) return null;
   return details.get(row.node)?.runtimes.get(row.runtime) ?? null;
 }
+
+/**
+ * Why a runtime is not serving, in the agent's own words, while it is not.
+ *
+ * **The reason was on the wire and no screen printed it** (2026-09-26). A
+ * friend's fresh Windows had no Visual C++ runtime, so `llama-server` died
+ * the moment it started. The agent recorded why on `Runtime.lastError`,
+ * and this screen still said only "crashed". A ready runtime has nothing
+ * to explain; the agent clears the field when the next start begins.
+ */
+export function runtimeFailure(
+  status: string | null,
+  lastError: string | null | undefined,
+): string | null {
+  const said = lastError?.trim();
+  if (!said || status === "ready") return null;
+  return said;
+}

@@ -668,3 +668,32 @@ describe("an engine install", () => {
     ).toHaveTextContent("downloading 50% of 1.0 GB");
   });
 });
+
+describe("a runtime that stopped", () => {
+  // 2026-09-26: a fresh Windows had no Visual C++ runtime, llama-server died
+  // at start, and this screen said only "crashed" while the agent had the
+  // reason on `lastError` the whole time.
+  const WHY =
+    "qwen3-5-4b-q4-k-m exited: it could not start: Windows could not find a DLL it needs (0xC0000135).";
+
+  it("says why, in the agent's own words", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: { runtimes: [nodeRuntime({ status: "crashed", lastError: WHY })] },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    const line = await within(row).findByTestId("runtime-failure");
+    expect(line).toHaveTextContent("Windows could not find a DLL it needs");
+    expect(line).toBeVisible();
+  });
+
+  it("says nothing once the runtime is serving again", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: { runtimes: [nodeRuntime({ status: "ready", lastError: WHY })] },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    await within(row).findByText("ready");
+    expect(within(row).queryByTestId("runtime-failure")).toBeNull();
+  });
+});
