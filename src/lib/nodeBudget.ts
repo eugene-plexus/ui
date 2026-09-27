@@ -57,11 +57,13 @@ export interface NodeBudget {
   vramBytes: number;
   /** What goes in `ramBytes`, when the agent reported host memory. */
   ramBytes: number | null;
-  /** Apple silicon. The library's own `unifiedMemory` flag still comes
-   * from the host the library runs on, so a Mac worker scored by a Linux
-   * library is read as a discrete GPU with `vramBytes` of memory. Right
-   * for the fits/no line, wrong about the `split` case, which does not
-   * exist on one pool. Surfaced so a screen can say so. */
+  /** The GPU computes out of host memory: an integrated GPU (an Intel
+   * Arc or Iris, an AMD Radeon 780M), Apple silicon, a GB10. Passed to
+   * the library as `unifiedMemory`, because the library's own flag comes
+   * from the host IT runs on. Before 2026-09-27 a Mac or an Arc mini PC
+   * scored by a library in a Linux container read as a card with
+   * `vramBytes` of its own, and a model too big for it as a partial
+   * offload into RAM that is the same RAM. */
   unifiedMemory: boolean;
 }
 
@@ -121,7 +123,7 @@ export function budgetFromNode(node: DeviceBearer): NodeBudget | null {
     gpuCount: accelerators.length,
     vramBytes: gpu ? memory(gpu) : 0,
     ramBytes: cpu ? memory(cpu) : null,
-    unifiedMemory: gpu?.kind === "metal",
+    unifiedMemory: gpu?.kind === "metal" || gpu?.sharedMemory === true,
   };
 }
 
@@ -132,6 +134,7 @@ export function fitQuery(budget: NodeBudget | null): Record<string, string> {
   if (budget === null) return {};
   const query: Record<string, string> = { vramBytes: String(budget.vramBytes) };
   if (budget.ramBytes !== null) query.ramBytes = String(budget.ramBytes);
+  if (budget.unifiedMemory) query.unifiedMemory = "true";
   return query;
 }
 
@@ -150,7 +153,8 @@ export function describeBudget(budget: NodeBudget | null): string {
   }
   const total = budget.gpu.totalBytes != null ? ` of ${formatMemory(budget.gpu.totalBytes)}` : "";
   const count = budget.gpuCount > 1 ? ` · ${budget.gpuCount} GPUs, largest card counts` : "";
-  return `${budget.gpu.name} · ${formatMemory(budget.gpu.freeBytes)} free${total}${count}`;
+  const shared = budget.unifiedMemory ? ", shared with system memory" : "";
+  return `${budget.gpu.name} · ${formatMemory(budget.gpu.freeBytes)} free${total}${shared}${count}`;
 }
 
 /**

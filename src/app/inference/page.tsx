@@ -28,6 +28,7 @@ import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib
 import { formatSelection } from "@/lib/resourceTree";
 import { useIssues } from "@/lib/useIssues";
 import { usePolling } from "@/lib/usePolling";
+import { expertHint } from "@/lib/vocabulary";
 import type {
   ComponentPlacementList,
   DriversInfo,
@@ -839,6 +840,9 @@ function EnginesLine({
   // the whole line with "engines: <error>" until the page was reloaded.
   const [installErrors, setInstallErrors] = useState<Record<string, string>>({});
   const [posting, setPosting] = useState<string | null>(null);
+  // The build the next install fetches, per engine; "" is the default
+  // chosen for this machine.
+  const [builds, setBuilds] = useState<Record<string, string>>({});
   const seeded = useRef(false);
 
   const load = useCallback(async () => {
@@ -896,19 +900,22 @@ function EnginesLine({
   }, [installing, Object.keys(installs).sort().join(","), load, target]);
 
   async function install(engine: string) {
+    const variant = builds[engine] || undefined;
     setPosting(engine);
     setInstallErrors((prev) => ({ ...prev, [engine]: "" }));
     try {
       const started = await api.post<EngineInstall>(
         target,
         `/v1/engines/${encodeURIComponent(engine)}/install`,
-        {},
+        variant ? { variant } : {},
       );
       setInstalls((prev) => ({ ...prev, [engine]: started }));
     } catch (err) {
-      // 422 is the honest "nothing installable for this host" answer,
-      // already rendered from the descriptor.
-      if (err instanceof ApiError && err.status === 422) return;
+      // 422 with no build chosen is the honest "nothing installable for
+      // this host" answer, already rendered from the descriptor. With one
+      // chosen it is a refusal of THAT build, and the only place it can
+      // be read is here.
+      if (err instanceof ApiError && err.status === 422 && !variant) return;
       setInstallErrors((prev) => ({ ...prev, [engine]: describeError(err) }));
     } finally {
       setPosting(null);
@@ -955,6 +962,13 @@ function EnginesLine({
             >
               {e.available ? `build ${e.version ?? "?"}` : "not installed"}
             </span>
+            {e.managed?.variant && (
+              // Which build, because "why is this slow" is often "it is
+              // the CPU one", and nothing else on the page says.
+              <span data-testid="engine-variant" className="font-mono">
+                {e.managed.variant}
+              </span>
+            )}
             {busyInstall ? (
               <span data-testid="engine-install-progress" className="tabular-nums">
                 {installProgress(state)}
@@ -966,6 +980,34 @@ function EnginesLine({
                     install failed{state.error ? `: ${state.error}` : ""}
                   </span>
                 )}
+                {(e.acquisition.alternatives?.length ?? 0) > 1 && (
+                  <select
+                    aria-label={`Build of ${e.engine} to install`}
+                    data-testid="engine-build-choice"
+                    title={expertHint(
+                      "The build chosen for this machine is first. The others are every " +
+                        "build upstream publishes for this system: try SYCL on an Intel " +
+                        "Arc, or the CPU build to rule the graphics card out.",
+                    )}
+                    value={builds[e.engine] ?? ""}
+                    onChange={(event) =>
+                      setBuilds((prev) => ({ ...prev, [e.engine]: event.target.value }))
+                    }
+                    disabled={posting !== null}
+                    className="rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-1 font-mono text-[0.6875rem]"
+                  >
+                    <option value="">
+                      {e.acquisition.variant ?? "default"} (for this machine)
+                    </option>
+                    {(e.acquisition.alternatives ?? [])
+                      .filter((v) => v !== e.acquisition?.variant)
+                      .map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                  </select>
+                )}
                 <button
                   type="button"
                   onClick={() => void install(e.engine)}
@@ -976,7 +1018,7 @@ function EnginesLine({
                     ? "starting…"
                     : failed
                       ? "try again"
-                      : e.managed
+                      : e.managed && !builds[e.engine]
                         ? "update"
                         : "install"}
                 </button>

@@ -151,3 +151,61 @@ describe("describeBudget", () => {
     expect(describeBudget(cpuOnly)).toBe("no GPU · 16.0 GiB host memory free");
   });
 });
+
+describe("a GPU that shares the machine's memory", () => {
+  // 2026-09-27: an Intel Arc mini PC read "no GPU". The agent now lists
+  // its GPU, as a `vulkan` device marked `sharedMemory`.
+  const ARC_MINI_PC: NodeIdentity = {
+    enrolled: true,
+    name: "DESKTOP-NP6TPEQ",
+    devices: [
+      {
+        kind: "vulkan",
+        name: "Intel(R) Arc(TM) Graphics",
+        index: 0,
+        memoryTotalBytes: 17314086912,
+        memoryFreeBytes: 15166603264,
+        sharedMemory: true,
+      },
+      {
+        kind: "cpu",
+        name: "Intel64 Family 6 Model 170",
+        index: 0,
+        memoryTotalBytes: 34359738368,
+        memoryFreeBytes: 28037181440,
+      },
+    ],
+  };
+
+  it("is the budget, and is told to the library as one pool", () => {
+    const budget = budgetFromNode(ARC_MINI_PC);
+    expect(budget?.gpu?.name).toBe("Intel(R) Arc(TM) Graphics");
+    expect(budget?.vramBytes).toBe(15166603264);
+    expect(budget?.unifiedMemory).toBe(true);
+    expect(fitQuery(budget)).toEqual({
+      vramBytes: "15166603264",
+      ramBytes: "28037181440",
+      unifiedMemory: "true",
+    });
+  });
+
+  it("says its memory is the machine's own", () => {
+    expect(describeBudget(budgetFromNode(ARC_MINI_PC))).toContain("shared with system memory");
+  });
+
+  it("a Mac is one pool too, which the library was never told", () => {
+    const mac: NodeIdentity = {
+      enrolled: true,
+      name: "mac",
+      devices: [{ kind: "metal", name: "Apple M4 Max", index: 0, memoryTotalBytes: 96 * 2 ** 30 }],
+    };
+    expect(fitQuery(budgetFromNode(mac)).unifiedMemory).toBe("true");
+  });
+
+  it("a card of its own is not", () => {
+    const budget = budgetFromNode(AMISH_STATION);
+    expect(budget?.unifiedMemory).toBe(false);
+    expect(fitQuery(budget)).not.toHaveProperty("unifiedMemory");
+    expect(describeBudget(budget)).not.toContain("shared");
+  });
+});

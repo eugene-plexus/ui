@@ -332,6 +332,31 @@ describe("machineStrip", () => {
     expect(strip.models).toBe("1 model on disk");
   });
 
+  it("names an integrated GPU and says its memory is the machine's own", () => {
+    // 2026-09-27: the Arc mini PC whose strip read "no GPU".
+    const strip = machineStrip({
+      node: {
+        enrolled: false,
+        devices: [
+          {
+            kind: "vulkan",
+            name: "Intel(R) Arc(TM) Graphics",
+            memoryTotalBytes: 17e9,
+            memoryFreeBytes: 15e9,
+            sharedMemory: true,
+          },
+          { kind: "cpu", name: "x86_64", memoryTotalBytes: 34e9, memoryFreeBytes: 28e9 },
+        ],
+      },
+      engines: { engines: [] },
+      library: { models: [] },
+      libraryFailed: false,
+    });
+    expect(strip.devices).toEqual([
+      "Intel(R) Arc(TM) Graphics · 17 GB · 15 GB free · shared with system memory",
+    ]);
+  });
+
   it("quotes memory the way a card's box does", () => {
     expect(gb(34190917632)).toBe("34 GB");
     expect(gb(8e9)).toBe("8.0 GB");

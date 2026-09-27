@@ -519,7 +519,13 @@ export interface paths {
          *
          *     Returns 409 when an install is already running, and 422 when
          *     this host has no installable build (see
-         *     `EngineAcquisition.reason`).
+         *     `EngineAcquisition.reason`) or when a requested `variant` is not
+         *     one the release publishes for this host.
+         *
+         *     Installing a variant other than the one already there, at the
+         *     same version, replaces that build's directory. A runtime running
+         *     from it holds its files open on Windows, so stop it first; the
+         *     install fails naming the reason otherwise.
          *
          *     **An engine with `acquisition.policy: manual` always returns
          *     422**, on every host, because we do not install that engine at
@@ -2598,6 +2604,15 @@ export interface components {
             /** @description The asset variant that would be fetched, when installable. */
             variant?: string;
             /**
+             * @description Every variant the newest usable release publishes for this
+             *     operating system and CPU, the default included, for
+             *     `EngineInstallRequest.variant`. On a Windows x64 machine that
+             *     is the CPU, CUDA, Vulkan, ROCm, SYCL and OpenVINO builds; on
+             *     Linux the same families under `ubuntu-`. Empty when no
+             *     release could be read.
+             */
+            alternatives?: string[];
+            /**
              * @description Why not, when `installable: false`. Written for the operator,
              *     naming the way forward - build from source, use a container,
              *     or point `binary` at an existing build. For a
@@ -2699,6 +2714,24 @@ export interface components {
              *     alike. `rocm` is still reported on Windows when the HIP SDK
              *     is actually installed, which is what makes
              *     `win-rocm-10.0-x64` reachable rather than dead code.
+             *
+             *     **Since 2026-09-27 the same holds on Linux**, and SYCL is
+             *     narrower there. An AMD card without ROCm, an Intel card
+             *     without oneAPI, and an NVIDIA card with no `nvidia-smi` (the
+             *     Mesa driver) get `vulkan` and `ubuntu-vulkan-*` when the
+             *     Vulkan loader is installed. Before, the AMD card got a CPU
+             *     build, and any machine with Intel graphics (so every Intel
+             *     laptop, by the `i915` driver) got `ubuntu-sycl-fp16-x64`,
+             *     which needs a oneAPI runtime that such a machine rarely
+             *     has. `sycl` now means `sycl-ls` answered.
+             *
+             *     **A Qualcomm Adreno (Snapdragon X) is `none`, and says why.**
+             *     Upstream publishes no Vulkan build for Windows on ARM. Its
+             *     `win-opencl-adreno-arm64` build is documented as tuned for
+             *     Q4_0 models, which are not what the starter set downloads,
+             *     and no one on the project has run it. So the CPU build, which
+             *     upstream tunes for ARM, is the default, and the OpenCL one is
+             *     available through `EngineInstallRequest.variant`.
              * @enum {string}
              */
             accelerator?: "none" | "cuda" | "rocm" | "metal" | "sycl" | "vulkan";
@@ -2762,6 +2795,23 @@ export interface components {
              *     version rather than just "installed".
              */
             version?: string;
+            /**
+             * @description Install this build variant instead of the one chosen for
+             *     this host, e.g. `win-sycl-x64` for an Intel Arc through
+             *     oneAPI rather than Vulkan, or `win-cpu-x64` to rule the GPU
+             *     out while diagnosing. Omit it for the default, which is what
+             *     `EngineAcquisition.variant` names. It must be one of
+             *     `EngineAcquisition.alternatives` (a variant the release
+             *     publishes for this operating system and CPU); anything else
+             *     is a 422 that lists them.
+             *
+             *     This is the expert's way past a default chosen for hardware
+             *     nobody on the project has run, which is most of it. It does
+             *     not change how this host's devices are reported: those
+             *     follow the default build, so a model is still scored against
+             *     the card the default would use.
+             */
+            variant?: string;
         };
         /**
          * @description Progress of one install. Phases are named rather than reduced to
@@ -4686,6 +4736,15 @@ export interface components {
         /**
          * @description What kind of device this is.
          *
+         *     `vulkan` is a GPU served by llama.cpp's Vulkan build, which needs
+         *     nothing but the graphics driver: an Intel Arc, an AMD Radeon or
+         *     any other vendor's card on a machine without that vendor's
+         *     compute SDK. Added 2026-09-27. Before it, such a card was
+         *     invisible to this list even when the Vulkan build was the one
+         *     installed to serve it, so every fit on that machine was scored
+         *     against host memory. `rocm` and `xpu` are for a card whose SDK
+         *     is present.
+         *
          *     A named schema rather than an inline enum because an inline one
          *     generated a bare `Kind` class, which is too generic to sit in a
          *     module every component imports.
@@ -4698,7 +4757,7 @@ export interface components {
          *     this host compute on".
          * @enum {string}
          */
-        ComputeDeviceKind: "cuda" | "rocm" | "xpu" | "metal" | "cpu";
+        ComputeDeviceKind: "cuda" | "rocm" | "xpu" | "metal" | "vulkan" | "cpu";
         /**
          * @description One compute device on one host, as that host's agent detected it.
          *
@@ -4724,7 +4783,10 @@ export interface components {
             /**
              * @description Device ordinal on its own host — what `CUDA_VISIBLE_DEVICES`
              *     or `HIP_VISIBLE_DEVICES` in a runtime's `env` selects to pin
-             *     that runtime to one card.
+             *     that runtime to one card. For a `vulkan` device it is the
+             *     order the operating system lists its adapters in, which is
+             *     not promised to be the order `GGML_VK_VISIBLE_DEVICES`
+             *     counts in.
              */
             index?: number;
             /** Format: int64 */
@@ -4737,6 +4799,22 @@ export interface components {
              *     surprising.
              */
             memoryFreeBytes?: number;
+            /**
+             * @description True when this device has no memory of its own and computes
+             *     out of the host's RAM: an integrated GPU (an Intel Arc or
+             *     Iris in a laptop or mini PC, an AMD Radeon 780M or Strix
+             *     Halo), Apple silicon, NVIDIA's GB10. Then `memoryTotalBytes`
+             *     is how much RAM the operating system lets the GPU address,
+             *     plus any carve-out reserved for it at boot, and
+             *     `memoryFreeBytes` is what is left of that. There is no second
+             *     pool for a partial offload to spill into, so a fit that also
+             *     counted host RAM would count the same memory twice.
+             *
+             *     Absent or false for a card with memory of its own. Added
+             *     2026-09-27, when an Intel Arc mini PC read "no GPU" and the
+             *     only unified-memory case the install knew was a Mac.
+             */
+            sharedMemory?: boolean;
         };
         /**
          * @description One rule for reading a path that another machine wrote.
@@ -5519,7 +5597,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Nothing installable for this host. */
+            /** @description Nothing installable for this host, or not the variant asked for. */
             422: {
                 headers: {
                     [name: string]: unknown;

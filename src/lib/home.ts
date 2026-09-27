@@ -184,6 +184,9 @@ function describeDevices(node: NodeIdentity | null): string[] {
       const parts = [d.name ?? d.kind];
       if (d.memoryTotalBytes != null) parts.push(gb(d.memoryTotalBytes));
       if (d.memoryFreeBytes != null) parts.push(`${gb(d.memoryFreeBytes)} free`);
+      // An integrated GPU's memory is the machine's own RAM, and a line
+      // that did not say so would read as a card with that much beside it.
+      if (d.sharedMemory) parts.push("shared with system memory");
       return parts.join(" · ");
     });
   }

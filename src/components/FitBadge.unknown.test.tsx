@@ -98,3 +98,29 @@ describe("the budget line under it", () => {
     expect(document.body.textContent ?? "").toMatch(/no GPU detected/i);
   });
 });
+
+describe("a budget that is one shared pool", () => {
+  // 2026-09-27: an integrated GPU (an Intel Arc in a mini PC) scored as the
+  // one pool it is. The line under a verdict is where a person reads what
+  // it was measured against, so it says the memory is the machine's own.
+  const SHARED: MemoryBudget = {
+    vramFreeBytes: 14 * GIB,
+    vramTotalBytes: 16 * GIB,
+    largestGpuFreeBytes: 14 * GIB,
+    ramAvailableBytes: 26 * GIB,
+    ramTotalBytes: 32 * GIB,
+    gpuCount: 1,
+    unifiedMemory: true,
+    source: "override",
+  };
+
+  it("says the GPU's memory is shared with the rest of the machine", () => {
+    render(<BudgetLine budget={SHARED} />);
+    expect(screen.getByText(/shares with the rest of the machine/)).toBeInTheDocument();
+  });
+
+  it("a card with memory of its own says nothing of the kind", () => {
+    const { container } = render(<BudgetLine budget={{ ...SHARED, unifiedMemory: false }} />);
+    expect(container.textContent).not.toContain("shares");
+  });
+});

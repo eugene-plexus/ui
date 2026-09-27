@@ -2462,11 +2462,14 @@ export interface components {
             ramTotalBytes?: number;
             gpuCount?: number;
             /**
-             * @description Apple silicon, where the VRAM/RAM split does not exist and
-             *     the real ceiling is the wired limit rather than a separate
-             *     pool. Reported because the naive reading of "VRAM" on a
-             *     96 GB Mac is zero, which would tell one of the better
-             *     local-inference boxes on the market that it has no GPU.
+             * @description One pool shared with host memory: Apple silicon, where the
+             *     real ceiling is the wired limit rather than a separate pool,
+             *     and since 2026-09-27 an integrated GPU (an Intel Arc or Iris,
+             *     an AMD Radeon 780M or Strix Halo) or NVIDIA's GB10. Reported
+             *     because the naive reading of "VRAM" on a 96 GB Mac is zero,
+             *     which would tell one of the better local-inference boxes on
+             *     the market that it has no GPU. Either detected or passed as
+             *     the `unifiedMemory` query parameter.
              */
             unifiedMemory?: boolean;
             /**
@@ -3576,6 +3579,17 @@ export interface operations {
                 vramBytes?: number;
                 /** @description Override the detected host-memory budget. */
                 ramBytes?: number;
+                /**
+                 * @description Score against one pool shared with host memory rather than a
+                 *     card with its own: an integrated GPU (an Intel Arc or Iris in a
+                 *     laptop or mini PC, an AMD Radeon 780M or Strix Halo), Apple
+                 *     silicon or NVIDIA's GB10, on a host this library did not
+                 *     measure. The caller passes the device's own
+                 *     `ComputeDevice.sharedMemory`. Without it a `vramBytes` override
+                 *     reads as a discrete card, and a partial offload is scored as
+                 *     spilling into RAM that is the same RAM.
+                 */
+                unifiedMemory?: boolean;
             };
             header?: never;
             path: {
@@ -3830,6 +3844,17 @@ export interface operations {
                 vramBytes?: number;
                 /** @description Override the detected host-memory budget, in bytes. */
                 ramBytes?: number;
+                /**
+                 * @description Score against one pool shared with host memory rather than a
+                 *     card with its own: an integrated GPU (an Intel Arc or Iris in a
+                 *     laptop or mini PC, an AMD Radeon 780M or Strix Halo), Apple
+                 *     silicon or NVIDIA's GB10, on a host this library did not
+                 *     measure. The caller passes the device's own
+                 *     `ComputeDevice.sharedMemory`. Without it a `vramBytes` override
+                 *     reads as a discrete card, and a partial offload is scored as
+                 *     spilling into RAM that is the same RAM.
+                 */
+                unifiedMemory?: boolean;
             };
             header?: never;
             path?: never;
@@ -3897,6 +3922,17 @@ export interface operations {
                 vramBytes?: number;
                 /** @description Override the detected host-memory budget, in bytes. */
                 ramBytes?: number;
+                /**
+                 * @description Score against one pool shared with host memory rather than a
+                 *     card with its own: an integrated GPU (an Intel Arc or Iris in a
+                 *     laptop or mini PC, an AMD Radeon 780M or Strix Halo), Apple
+                 *     silicon or NVIDIA's GB10, on a host this library did not
+                 *     measure. The caller passes the device's own
+                 *     `ComputeDevice.sharedMemory`. Without it a `vramBytes` override
+                 *     reads as a discrete card, and a partial offload is scored as
+                 *     spilling into RAM that is the same RAM.
+                 */
+                unifiedMemory?: boolean;
             };
             header?: never;
             path?: never;
@@ -3939,6 +3975,17 @@ export interface operations {
                 vramBytes?: number;
                 /** @description Override the detected host-memory budget, in bytes. */
                 ramBytes?: number;
+                /**
+                 * @description Score against one pool shared with host memory rather than a
+                 *     card with its own: an integrated GPU (an Intel Arc or Iris in a
+                 *     laptop or mini PC, an AMD Radeon 780M or Strix Halo), Apple
+                 *     silicon or NVIDIA's GB10, on a host this library did not
+                 *     measure. The caller passes the device's own
+                 *     `ComputeDevice.sharedMemory`. Without it a `vramBytes` override
+                 *     reads as a discrete card, and a partial offload is scored as
+                 *     spilling into RAM that is the same RAM.
+                 */
+                unifiedMemory?: boolean;
             };
             header?: never;
             path?: never;

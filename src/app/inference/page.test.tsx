@@ -14,7 +14,7 @@
  * took off the live worker.
  */
 
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -695,5 +695,105 @@ describe("a runtime that stopped", () => {
     const row = await rowFor("gemma-3-27b");
     await within(row).findByText("ready");
     expect(within(row).queryByTestId("runtime-failure")).toBeNull();
+  });
+});
+
+describe("another build of an engine", () => {
+  // 2026-09-27: an Intel Arc mini PC ran the Vulkan build, the default for
+  // it, and nobody here has run that on an Arc. The other builds upstream
+  // publishes for the machine are the expert's way past that default.
+  beforeEach(() => {
+    handlers.set("GET agent/v1/engines", () => ({
+      status: 200,
+      body: {
+        engines: [
+          {
+            engine: "llama_cpp",
+            available: true,
+            version: "b11211",
+            modelFormats: ["gguf"],
+            managed: {
+              version: "b11211",
+              binaryPath: "C:/Eugene/engines/llama_cpp/b11211/llama-server.exe",
+              variant: "win-vulkan-x64",
+            },
+            acquisition: {
+              installable: true,
+              variant: "win-vulkan-x64",
+              alternatives: ["win-cpu-x64", "win-sycl-x64", "win-vulkan-x64"],
+            },
+          },
+        ],
+      },
+    }));
+    handlers.set("GET agent/v1/engines/llama_cpp/install", () => ({
+      status: 404,
+      body: { detail: "no install yet" },
+    }));
+    handlers.set("POST agent/v1/engines/llama_cpp/install", () => ({
+      status: 202,
+      body: { engine: "llama_cpp", state: "downloading", variant: "win-sycl-x64" },
+    }));
+  });
+
+  function installBodies(): unknown[] {
+    return vi
+      .mocked(fetch)
+      .mock.calls.filter(([, init]) => init?.method === "POST")
+      .filter(([url]) => String(url).endsWith("/v1/engines/llama_cpp/install"))
+      .map(([, init]) => JSON.parse(String(init?.body ?? "{}")));
+  }
+
+  it("names the build that is installed", async () => {
+    render(<InferencePage />);
+    expect(await screen.findByTestId("engine-variant", {}, { timeout: 5000 })).toHaveTextContent(
+      "win-vulkan-x64",
+    );
+  });
+
+  it("installs the build chosen, not the default", async () => {
+    render(<InferencePage />);
+    const choice = await screen.findByTestId("engine-build-choice", {}, { timeout: 5000 });
+    // The default is first and is not repeated below it.
+    const options = Array.from(choice.querySelectorAll("option"), (o) => o.value);
+    expect(options).toEqual(["", "win-cpu-x64", "win-sycl-x64"]);
+    await act(async () => {
+      fireEvent.change(choice, { target: { value: "win-sycl-x64" } });
+    });
+    await act(async () => {
+      screen.getByRole("button", { name: "install" }).click();
+    });
+    await waitFor(() => expect(installBodies()).toEqual([{ variant: "win-sycl-x64" }]));
+  });
+
+  it("left on the default, asks for the default", async () => {
+    render(<InferencePage />);
+    await screen.findByTestId("engine-build-choice", {}, { timeout: 5000 });
+    await act(async () => {
+      screen.getByRole("button", { name: "update" }).click();
+    });
+    await waitFor(() => expect(installBodies()).toEqual([{}]));
+  });
+
+  it("a build the agent refuses says why", async () => {
+    handlers.set("POST agent/v1/engines/llama_cpp/install", () => ({
+      status: 422,
+      body: {
+        detail: {
+          title: "Nothing installable for this host",
+          detail: "'win-sycl-x64' is not a build release b11211 publishes for windows on x64.",
+          status: 422,
+        },
+      },
+    }));
+    render(<InferencePage />);
+    const choice = await screen.findByTestId("engine-build-choice", {}, { timeout: 5000 });
+    await act(async () => {
+      fireEvent.change(choice, { target: { value: "win-sycl-x64" } });
+    });
+    await act(async () => {
+      screen.getByRole("button", { name: "install" }).click();
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("is not a build release b11211");
   });
 });

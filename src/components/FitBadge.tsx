@@ -192,6 +192,7 @@ export function BudgetLine({ budget }: { budget: MemoryBudget }) {
           measured against {formatBytes(budget.vramFreeBytes)} free of{" "}
           {formatBytes(budget.vramTotalBytes)} on {gpus === 1 ? "the GPU" : `${gpus} GPUs`}
           {gpus > 1 && <> (largest single card: {formatBytes(budget.largestGpuFreeBytes)} free)</>}
+          {budget.unifiedMemory && <>, memory it shares with the rest of the machine</>}
         </>
       ) : (
         <>
