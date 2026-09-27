@@ -111,8 +111,16 @@ export function describeAdmission(
   const need = gib(admission.requiredBytes);
   const free = gib(admission.freeBytes);
   if (need && free) {
+    // A launch spread across several cards is measured against all of
+    // them (since 2026-09-27), and naming only the main one would print
+    // one card's name beside every card's free memory.
+    const cards = admission.devices ?? [];
+    const where =
+      cards.length > 1
+        ? `across ${cards.length} cards`
+        : `on ${admission.device?.name ?? "the device"}`;
     parts.push(
-      `Needs about ${need}; ${free} free on ${admission.device?.name ?? "the device"} (${admission.basis === "metadata" ? "from the library's metadata" : "from the file size"}).`,
+      `Needs about ${need}; ${free} free ${where} (${admission.basis === "metadata" ? "from the library's metadata" : "from the file size"}).`,
     );
   }
   // Memory promised to a launch already under way is subtracted before

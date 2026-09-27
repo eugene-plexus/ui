@@ -2460,6 +2460,11 @@ export interface components {
             largestGpuFreeBytes?: number;
             ramAvailableBytes?: number;
             ramTotalBytes?: number;
+            /**
+             * @description How many cards the budget spans. More than one means the
+             *     model is spread across them, and the overhead allowance is
+             *     counted once per card.
+             */
             gpuCount?: number;
             /**
              * @description One pool shared with host memory: Apple silicon, where the
@@ -3590,6 +3595,18 @@ export interface operations {
                  *     spilling into RAM that is the same RAM.
                  */
                 unifiedMemory?: boolean;
+                /**
+                 * @description How many cards `vramBytes` is the combined free memory of, for
+                 *     a launch that spreads one model across them (llama.cpp's
+                 *     default whenever more than one card is visible). Each card
+                 *     holds its own compute buffers and driver context, so the
+                 *     overhead allowance is counted once per card. Omitted, the
+                 *     budget is one card, which is what a caller that knows only one
+                 *     device's memory is describing. Added 2026-09-27: two 5090s
+                 *     were scored against one of them, and a 48 GB model that fits
+                 *     across both read `split`, which a launch refuses.
+                 */
+                gpuCount?: number;
             };
             header?: never;
             path: {
@@ -3855,6 +3872,18 @@ export interface operations {
                  *     spilling into RAM that is the same RAM.
                  */
                 unifiedMemory?: boolean;
+                /**
+                 * @description How many cards `vramBytes` is the combined free memory of, for
+                 *     a launch that spreads one model across them (llama.cpp's
+                 *     default whenever more than one card is visible). Each card
+                 *     holds its own compute buffers and driver context, so the
+                 *     overhead allowance is counted once per card. Omitted, the
+                 *     budget is one card, which is what a caller that knows only one
+                 *     device's memory is describing. Added 2026-09-27: two 5090s
+                 *     were scored against one of them, and a 48 GB model that fits
+                 *     across both read `split`, which a launch refuses.
+                 */
+                gpuCount?: number;
             };
             header?: never;
             path?: never;
@@ -3933,6 +3962,18 @@ export interface operations {
                  *     spilling into RAM that is the same RAM.
                  */
                 unifiedMemory?: boolean;
+                /**
+                 * @description How many cards `vramBytes` is the combined free memory of, for
+                 *     a launch that spreads one model across them (llama.cpp's
+                 *     default whenever more than one card is visible). Each card
+                 *     holds its own compute buffers and driver context, so the
+                 *     overhead allowance is counted once per card. Omitted, the
+                 *     budget is one card, which is what a caller that knows only one
+                 *     device's memory is describing. Added 2026-09-27: two 5090s
+                 *     were scored against one of them, and a 48 GB model that fits
+                 *     across both read `split`, which a launch refuses.
+                 */
+                gpuCount?: number;
             };
             header?: never;
             path?: never;
@@ -3986,6 +4027,18 @@ export interface operations {
                  *     spilling into RAM that is the same RAM.
                  */
                 unifiedMemory?: boolean;
+                /**
+                 * @description How many cards `vramBytes` is the combined free memory of, for
+                 *     a launch that spreads one model across them (llama.cpp's
+                 *     default whenever more than one card is visible). Each card
+                 *     holds its own compute buffers and driver context, so the
+                 *     overhead allowance is counted once per card. Omitted, the
+                 *     budget is one card, which is what a caller that knows only one
+                 *     device's memory is describing. Added 2026-09-27: two 5090s
+                 *     were scored against one of them, and a 48 GB model that fits
+                 *     across both read `split`, which a launch refuses.
+                 */
+                gpuCount?: number;
             };
             header?: never;
             path?: never;

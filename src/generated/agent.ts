@@ -3690,9 +3690,10 @@ export interface components {
             requiredBytes?: number;
             /**
              * Format: int64
-             * @description Free memory on the largest single target device at the
-             *     moment of measurement. Free, not total: M3 measured 2.9 GiB
-             *     of a 32 GiB card held on an idle desktop.
+             * @description Free memory on the target device at the moment of
+             *     measurement, or on every card a split launch spreads across,
+             *     summed (`devices`). Free, not total: M3 measured 2.9 GiB of
+             *     a 32 GiB card held on an idle desktop.
              *
              *     **The verdict is computed against this minus
              *     `reservedBytes`**, not against this. Reporting the reduced
@@ -3724,10 +3725,33 @@ export interface components {
              *     free.
              */
             reservedBytes?: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description The target device's memory, or every split card's, summed.
+             */
             totalBytes?: number;
-            /** @description The device the verdict is about. */
+            /**
+             * @description The device the verdict is about. For a launch spread across
+             *     several cards, the main one (`mainGpu`, else the first).
+             */
             device?: components["schemas"]["ComputeDevice"];
+            /**
+             * @description Every card a launch spreads the model across, when that is
+             *     more than one: llama.cpp splits across every visible card
+             *     unless the runtime is pinned (`CUDA_VISIBLE_DEVICES`,
+             *     `HIP_VISIBLE_DEVICES`) or `splitMode` is `none`, and vLLM
+             *     uses `tensorParallelSize` cards.
+             *
+             *     Added 2026-09-27. Before it, a launch was scored against the
+             *     largest single card, and a model that fits across two 5090s
+             *     and on neither read `split` (spilling into system RAM),
+             *     which a full-offload launch refuses. The verdict is now
+             *     computed against the cards' combined free memory, less each
+             *     card's own reservations, and each card's share of the
+             *     weights follows `tensorSplit` when one is set and each
+             *     card's free memory when not (llama.cpp's default).
+             */
+            devices?: components["schemas"]["ComputeDevice"][];
             /**
              * @description The context the KV cache was sized for — the spec's
              *     `contextSize`, or the model's own context when the spec

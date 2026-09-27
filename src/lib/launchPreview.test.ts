@@ -226,3 +226,25 @@ describe("memory promised to a launch already under way", () => {
     expect(preview.detail ?? "").not.toContain("reserved");
   });
 });
+
+describe("a launch spread across several cards", () => {
+  it("says the free memory is across the cards, not on one of them", () => {
+    // 2026-09-27: admission measures a split launch against every card it
+    // uses, and `freeBytes` is their sum. Naming only the main card put
+    // one card's name beside two cards' memory.
+    const card = { kind: "cuda" as const, name: "NVIDIA GeForce RTX 5090" };
+    const split: Admission = {
+      ...ADMIT,
+      requiredBytes: 41 * 1024 ** 3,
+      freeBytes: 58.8 * 1024 ** 3,
+      device: { ...card, index: 0 },
+      devices: [
+        { ...card, index: 0 },
+        { ...card, index: 1 },
+      ],
+    };
+    const preview = describeAdmission(split, "tower", "agent");
+    expect(preview.detail).toContain("Needs about 41.0 GiB; 58.8 GiB free across 2 cards");
+    expect(preview.detail).not.toContain("free on NVIDIA");
+  });
+});

@@ -25,13 +25,16 @@
  * the proxy target that reaches the chosen node's agent: `agent` for
  * this one, `node:<name>` for any other.
  *
- * WHY THE LARGEST CARD, NOT THE SUM: the library collapses free, total
- * and largest-card into one number when a caller overrides the budget.
- * Handing it the sum of two cards would report `fits` for a model
- * neither card can hold alone; the largest single card's free memory is
- * the number "fits on one card" needs and the conservative one. The cost
- * is that the library's multi-GPU note ("scored against N GPUs summed")
- * cannot appear, because `gpuCount` is not something a caller can pass.
+ * THE SUM OF THE CARDS, AND HOW MANY (2026-09-27). This used to be the
+ * largest single card, on the reasoning that a sum would say `fits` for
+ * a model neither card can hold alone. That is what llama.cpp does with
+ * such a model: it splits the layers across every visible card by
+ * default, and the model runs entirely in GPU memory. What a sum needed
+ * was the count, because each card holds its own compute buffers, and
+ * `gpuCount` is now something a caller can pass: the library counts
+ * its allowance once per card. The agent's admission makes the same
+ * change. Cards of one kind only, the kind the first accelerator is,
+ * because the build computes on one backend.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -104,27 +107,37 @@ export function budgetFromNode(node: DeviceBearer): NodeBudget | null {
   if (devices.length === 0) return null;
 
   const accelerators = devices.filter((d) => d.kind !== "cpu");
-  const gpu = accelerators.reduce<ComputeDevice | null>(
-    (best, d) => (best === null || memory(d) > memory(best) ? d : best),
-    null,
-  );
+  const kind = accelerators[0]?.kind;
+  const cards = accelerators.filter((d) => d.kind === kind);
+  const first = cards[0] ?? null;
   const cpu = devices.find((d) => d.kind === "cpu") ?? null;
+  const free = cards.reduce((sum, d) => sum + memory(d), 0);
+  const totals = cards.map((d) => d.memoryTotalBytes);
 
   return {
     node: node.name ?? null,
-    gpu: gpu
+    gpu: first
       ? {
-          name: gpu.name ?? gpu.kind,
-          kind: gpu.kind,
-          totalBytes: gpu.memoryTotalBytes ?? null,
-          freeBytes: memory(gpu),
+          name: cardsName(cards),
+          kind: first.kind,
+          totalBytes: totals.every((t) => t != null)
+            ? totals.reduce<number>((sum, t) => sum + (t ?? 0), 0)
+            : null,
+          freeBytes: free,
         }
       : null,
-    gpuCount: accelerators.length,
-    vramBytes: gpu ? memory(gpu) : 0,
+    gpuCount: cards.length,
+    vramBytes: free,
     ramBytes: cpu ? memory(cpu) : null,
-    unifiedMemory: gpu?.kind === "metal" || gpu?.sharedMemory === true,
+    unifiedMemory: first?.kind === "metal" || first?.sharedMemory === true,
   };
+}
+
+/** `2 × NVIDIA GeForce RTX 5090`, or the names joined when they differ. */
+function cardsName(cards: ComputeDevice[]): string {
+  const names = cards.map((d) => d.name ?? d.kind);
+  if (names.length === 1) return names[0]!;
+  return new Set(names).size === 1 ? `${names.length} × ${names[0]}` : names.join(" + ");
 }
 
 /** The query parameters that point a library fit call at this budget.
@@ -135,6 +148,7 @@ export function fitQuery(budget: NodeBudget | null): Record<string, string> {
   const query: Record<string, string> = { vramBytes: String(budget.vramBytes) };
   if (budget.ramBytes !== null) query.ramBytes = String(budget.ramBytes);
   if (budget.unifiedMemory) query.unifiedMemory = "true";
+  if (budget.gpuCount > 1) query.gpuCount = String(budget.gpuCount);
   return query;
 }
 
@@ -152,9 +166,9 @@ export function describeBudget(budget: NodeBudget | null): string {
       : "no GPU";
   }
   const total = budget.gpu.totalBytes != null ? ` of ${formatMemory(budget.gpu.totalBytes)}` : "";
-  const count = budget.gpuCount > 1 ? ` · ${budget.gpuCount} GPUs, largest card counts` : "";
+  const between = budget.gpuCount > 1 ? " between them" : "";
   const shared = budget.unifiedMemory ? ", shared with system memory" : "";
-  return `${budget.gpu.name} · ${formatMemory(budget.gpu.freeBytes)} free${total}${shared}${count}`;
+  return `${budget.gpu.name} · ${formatMemory(budget.gpu.freeBytes)} free${total}${between}${shared}`;
 }
 
 /**

@@ -42,17 +42,51 @@ describe("budgetFromNode", () => {
     expect(budget?.unifiedMemory).toBe(false);
   });
 
-  it("picks the largest single card, never the sum", () => {
-    // Two cards. The sum would say a 40 GB model fits; neither card holds it.
+  it("sums the cards a model spreads across, and says how many", () => {
+    // **Amended 2026-09-27**, from "picks the largest single card, never
+    // the sum". A 30 GB model on these two is what llama.cpp splits
+    // across both by default, entirely in GPU memory; the largest card
+    // alone called it too big. The count is what makes the sum honest:
+    // the library counts its compute-buffer allowance once per card.
     const budget = budgetFromNode({
       devices: [
         { kind: "cuda", name: "small", index: 1, memoryTotalBytes: 12e9, memoryFreeBytes: 11e9 },
         { kind: "cuda", name: "big", index: 0, memoryTotalBytes: 24e9, memoryFreeBytes: 23e9 },
       ],
     });
-    expect(budget?.gpu?.name).toBe("big");
-    expect(budget?.vramBytes).toBe(23e9);
+    expect(budget?.vramBytes).toBe(34e9);
     expect(budget?.gpuCount).toBe(2);
+    expect(budget?.gpu?.name).toBe("small + big");
+    expect(budget?.gpu?.totalBytes).toBe(36e9);
+    expect(fitQuery(budget)).toMatchObject({ vramBytes: "34000000000", gpuCount: "2" });
+  });
+
+  it("names two of the same card once, and says the memory is between them", () => {
+    const budget = budgetFromNode({
+      devices: [
+        { kind: "cuda", name: "RTX 5090", index: 0, memoryTotalBytes: 32e9, memoryFreeBytes: 30e9 },
+        { kind: "cuda", name: "RTX 5090", index: 1, memoryTotalBytes: 32e9, memoryFreeBytes: 30e9 },
+      ],
+    });
+    expect(describeBudget(budget)).toMatch(/^2 × RTX 5090 · .* free of .* between them$/);
+  });
+
+  it("one card is not sent a count", () => {
+    expect(fitQuery(budgetFromNode(AMISH_STATION))).not.toHaveProperty("gpuCount");
+    expect(describeBudget(budgetFromNode(AMISH_STATION))).not.toContain("between them");
+  });
+
+  it("counts only the cards of the kind the build computes on", () => {
+    // Linux with both vendors' tools answering: the CUDA build uses the
+    // NVIDIA cards, and a ROCm card beside them is not part of the split.
+    const budget = budgetFromNode({
+      devices: [
+        { kind: "cuda", name: "RTX 4090", index: 0, memoryTotalBytes: 24e9, memoryFreeBytes: 22e9 },
+        { kind: "rocm", name: "RX 7900", index: 0, memoryTotalBytes: 24e9, memoryFreeBytes: 22e9 },
+      ],
+    });
+    expect(budget?.gpuCount).toBe(1);
+    expect(budget?.vramBytes).toBe(22e9);
   });
 
   it("a CPU-only host is a zero VRAM budget, which the library scores against host memory", () => {
