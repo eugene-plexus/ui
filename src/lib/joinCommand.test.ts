@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkControlAddress,
   installPorts,
+  installerBase,
   isLoopbackUrl,
   joinTokenState,
   posixJoinCommand,
@@ -142,5 +143,27 @@ describe("joinTokenState", () => {
     expect(joinTokenState({ expiresAt: "2026-09-23T12:10:00Z" }, now)).toBe("usable");
     expect(joinTokenState({ expiresAt: "2026-09-23T11:59:00Z" }, now)).toBe("expired");
     expect(joinTokenState({ expiresAt: "2026-09-23T12:10:00Z", used: true }, now)).toBe("used");
+  });
+});
+
+describe("which installer a join command names", () => {
+  // A worker should install the version its root runs: a release build names
+  // its tag, and anything else follows main.
+  it("names a release tag when the build was given one", () => {
+    expect(installerBase("v0.1.0-alpha.3")).toBe(
+      "https://raw.githubusercontent.com/eugene-plexus/specs/v0.1.0-alpha.3/scripts",
+    );
+  });
+
+  it("follows main when the build was given nothing", () => {
+    expect(installerBase("")).toBe(
+      "https://raw.githubusercontent.com/eugene-plexus/specs/main/scripts",
+    );
+  });
+
+  it("never puts anything but a plain ref into a command a person pastes", () => {
+    for (const bad of ["v1; rm -rf ~", "$(whoami)", "../../evil", "a b", "-x"]) {
+      expect(installerBase(bad)).toContain("/specs/main/scripts");
+    }
   });
 });

@@ -154,8 +154,27 @@ export function isLoopbackUrl(url: string): boolean {
   }
 }
 
-/** Where the installers are served from, the address the deployment docs give. */
-const INSTALLER_BASE = "https://raw.githubusercontent.com/eugene-plexus/specs/main/scripts";
+/**
+ * Which revision of the installers a join command names: a release tag in a
+ * release build, `main` otherwise.
+ *
+ * **A worker should install the version its root runs** (2026-09-26). The
+ * card used to name the installer on `main`, so a root on a release handed
+ * out a command that installed whatever `main` had become since. A release
+ * build sets `NEXT_PUBLIC_EUGENE_PLEXUS_INSTALLER_REF` to its tag; the tag
+ * is immutable, and raw.githubusercontent.com serves the installer at it.
+ * Anything that is not a plain ref falls back to `main`, because this lands
+ * in a command a person pastes into a shell.
+ */
+const INSTALLER_REF = process.env.NEXT_PUBLIC_EUGENE_PLEXUS_INSTALLER_REF ?? "";
+
+/** Where the installers are served from, at `ref`. */
+export function installerBase(ref: string = INSTALLER_REF): string {
+  const safe = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(ref) ? ref : "main";
+  return `https://raw.githubusercontent.com/eugene-plexus/specs/${safe}/scripts`;
+}
+
+const INSTALLER_BASE = installerBase();
 
 /** What a join needs: where the root is, the token, and the name asked for. */
 export interface JoinDetails {
