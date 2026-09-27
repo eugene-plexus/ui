@@ -61,6 +61,7 @@ export type IssueKind =
   | "engine-unavailable"
   | "engine-build-stale"
   | "engine-build-cpu"
+  | "engine-build-missing-backend"
   | "runtime-on-cpu";
 
 /**
@@ -200,6 +201,7 @@ export function issuesFrom(sources: IssueSources): Issue[] {
       ...engineIssues(node),
       ...staleBuildIssues(node),
       ...cpuBuildIssues(node),
+      ...missingBackendIssues(node),
       ...cpuRuntimeIssues(node),
     );
   }
@@ -663,6 +665,41 @@ function cpuBuildIssues(node: NodeFacts): Issue[] {
       detail:
         `The build installed is ${e.managed!.variant}, which runs on the processor only. ` +
         `Install ${e.acquisition!.variant} from the Inference page, then restart the models.`,
+      href: "/inference",
+      node: node.name,
+    }));
+}
+
+const VULKAN_SUFFIX = "+vulkan";
+
+/**
+ * A second vendor's card the installed build cannot reach.
+ *
+ * Since 2026-09-27 the build for an NVIDIA machine with a discrete AMD or
+ * Intel card is the CUDA one with the Vulkan backend added, and the agent
+ * lists that card. A machine installed before, or given the plain CUDA
+ * build by hand, runs every model on the NVIDIA card alone and nothing
+ * says the other one is idle. The card is named from the device list,
+ * where the agent marks it `vulkan`.
+ */
+function missingBackendIssues(node: NodeFacts): Issue[] {
+  const second = (node.identity?.devices ?? []).find((d) => d.kind === "vulkan");
+  if (!second) return [];
+  return (node.engines?.engines ?? [])
+    .filter(
+      (e) =>
+        e.acquisition?.variant?.endsWith(VULKAN_SUFFIX) &&
+        e.managed?.variant &&
+        !e.managed.variant.endsWith(VULKAN_SUFFIX),
+    )
+    .map((e) => ({
+      id: `missing-backend:${node.name ?? "local"}:${e.engine}`,
+      kind: "engine-build-missing-backend" as const,
+      severity: "warning" as const,
+      title: `${engineName(e.engine)} on ${node.label} cannot use its ${second.name ?? "second card"}`,
+      detail:
+        `The build installed is ${e.managed!.variant}, which reaches the NVIDIA card only. ` +
+        `Install ${e.acquisition!.variant} from the Inference page to use both cards.`,
       href: "/inference",
       node: node.name,
     }));

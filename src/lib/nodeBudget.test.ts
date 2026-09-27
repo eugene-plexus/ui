@@ -76,17 +76,26 @@ describe("budgetFromNode", () => {
     expect(describeBudget(budgetFromNode(AMISH_STATION))).not.toContain("between them");
   });
 
-  it("counts only the cards of the kind the build computes on", () => {
-    // Linux with both vendors' tools answering: the CUDA build uses the
-    // NVIDIA cards, and a ROCm card beside them is not part of the split.
+  it("sums a second vendor's card beside NVIDIA, as the combined build uses it", () => {
+    // **Amended 2026-09-27**, from "counts only the cards of the kind the
+    // build computes on". The agent now lists exactly the cards the node's
+    // build uses: a ROCm card the CUDA build cannot reach is left off, and
+    // an AMD card the `+vulkan` build reaches is listed as `vulkan`.
     const budget = budgetFromNode({
       devices: [
-        { kind: "cuda", name: "RTX 4090", index: 0, memoryTotalBytes: 24e9, memoryFreeBytes: 22e9 },
-        { kind: "rocm", name: "RX 7900", index: 0, memoryTotalBytes: 24e9, memoryFreeBytes: 22e9 },
+        { kind: "cuda", name: "RTX 5090", index: 0, memoryTotalBytes: 32e9, memoryFreeBytes: 30e9 },
+        {
+          kind: "vulkan",
+          name: "RX 7900 XTX",
+          index: 0,
+          memoryTotalBytes: 24e9,
+          memoryFreeBytes: 22e9,
+        },
       ],
     });
-    expect(budget?.gpuCount).toBe(1);
-    expect(budget?.vramBytes).toBe(22e9);
+    expect(budget?.gpuCount).toBe(2);
+    expect(budget?.vramBytes).toBe(52e9);
+    expect(budget?.gpu?.name).toBe("RTX 5090 + RX 7900 XTX");
   });
 
   it("a CPU-only host is a zero VRAM budget, which the library scores against host memory", () => {

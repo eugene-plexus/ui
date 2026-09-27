@@ -33,8 +33,9 @@
  * was the count, because each card holds its own compute buffers, and
  * `gpuCount` is now something a caller can pass: the library counts
  * its allowance once per card. The agent's admission makes the same
- * change. Cards of one kind only, the kind the first accelerator is,
- * because the build computes on one backend.
+ * change. Every card the node lists, whatever its kind: the agent lists
+ * what the node's build uses, which since the `+vulkan` build can be an
+ * NVIDIA card and an AMD one together.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -106,9 +107,11 @@ export function budgetFromNode(node: DeviceBearer): NodeBudget | null {
   const devices = node.devices ?? [];
   if (devices.length === 0) return null;
 
-  const accelerators = devices.filter((d) => d.kind !== "cpu");
-  const kind = accelerators[0]?.kind;
-  const cards = accelerators.filter((d) => d.kind === kind);
+  // Every card the node lists, whatever its kind. Since 2026-09-27 the
+  // agent lists exactly what the build chosen for the node uses, and the
+  // `+vulkan` build uses an AMD or Intel card beside the NVIDIA one; a
+  // card the build cannot reach is left off the list rather than here.
+  const cards = devices.filter((d) => d.kind !== "cpu");
   const first = cards[0] ?? null;
   const cpu = devices.find((d) => d.kind === "cpu") ?? null;
   const free = cards.reduce((sum, d) => sum + memory(d), 0);

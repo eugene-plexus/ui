@@ -1347,3 +1347,55 @@ describe("an engine build that cannot use the machine's card", () => {
     expect(issuesFrom({ ...NOTHING, perNode: [node] })).toEqual([]);
   });
 });
+
+describe("a second vendor's card the installed build cannot reach", () => {
+  // 2026-09-27: the build for an NVIDIA machine with a discrete AMD card
+  // is the CUDA one with the Vulkan backend added.
+  const PAIR = body<NodeIdentity>(
+    '{"enrolled":false,"devices":[' +
+      '{"kind":"cuda","name":"NVIDIA GeForce RTX 5090","index":0,"memoryTotalBytes":32e9},' +
+      '{"kind":"vulkan","name":"AMD Radeon RX 7900 XTX","index":0,"memoryTotalBytes":24e9},' +
+      '{"kind":"cpu","name":"x86_64","index":0}]}',
+  );
+  const engines = (installed: string, fallback: string): EngineList =>
+    body<EngineList>(
+      '{"engines":[{"engine":"llama_cpp","available":true,"modelFormats":["gguf"],' +
+        `"managed":{"version":"b11211","binaryPath":"x","variant":"${installed}"},` +
+        `"acquisition":{"policy":"managed","installable":true,"variant":"${fallback}"}}]}`,
+    );
+
+  it("names the idle card and the build that would use it", () => {
+    const node = facts({
+      name: null,
+      label: "this machine",
+      identity: PAIR,
+      engines: engines("win-cuda-13.4-x64", "win-cuda-13.4-x64+vulkan"),
+    });
+    const [issue] = issuesFrom({ ...NOTHING, perNode: [node] });
+    expect(issue!.kind).toBe("engine-build-missing-backend");
+    expect(issue!.title).toBe("llama.cpp on this machine cannot use its AMD Radeon RX 7900 XTX");
+    expect(issue!.detail).toContain("Install win-cuda-13.4-x64+vulkan");
+  });
+
+  it("the combined build installed is not an issue", () => {
+    const node = facts({
+      name: null,
+      label: "this machine",
+      identity: PAIR,
+      engines: engines("win-cuda-13.4-x64+vulkan", "win-cuda-13.4-x64+vulkan"),
+    });
+    expect(issuesFrom({ ...NOTHING, perNode: [node] })).toEqual([]);
+  });
+
+  it("no second card listed is not an issue", () => {
+    const node = facts({
+      name: null,
+      label: "this machine",
+      identity: body<NodeIdentity>(
+        '{"enrolled":false,"devices":[{"kind":"cuda","name":"NVIDIA GeForce RTX 5090","index":0}]}',
+      ),
+      engines: engines("win-cuda-13.4-x64", "win-cuda-13.4-x64+vulkan"),
+    });
+    expect(issuesFrom({ ...NOTHING, perNode: [node] })).toEqual([]);
+  });
+});
