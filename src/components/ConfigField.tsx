@@ -5,12 +5,13 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { FolderPicker } from "@/components/FolderPicker";
 import {
+  type MountBoxes,
   type MountShape,
   libraryFoldersHref,
-  mountFor,
+  mountBoxProblem,
+  mountBoxes,
   parseFolders,
-  shapeOf,
-  withMount,
+  withMountBoxes,
 } from "@/lib/libraryReach";
 import type {
   Component,
@@ -952,6 +953,10 @@ function LibraryFoldersInput({
 }) {
   const incoming = parseFolders(value);
   const [rows, setRows] = useState<LibraryFolder[]>(incoming);
+  // The mount boxes as typed, one entry per row, filled on the row's first
+  // edit. See `MountBoxes`: read back through the saved list, a Windows
+  // box lost its first keystroke.
+  const [boxes, setBoxes] = useState<(MountBoxes | undefined)[]>([]);
   const mirrored = useRef<string>(JSON.stringify(incoming));
   const [browsing, setBrowsing] = useState<number | null>(null);
 
@@ -960,8 +965,13 @@ function LibraryFoldersInput({
     if (serialized !== mirrored.current) {
       mirrored.current = serialized;
       setRows(parseFolders(value));
+      setBoxes([]);
     }
   }, [value]);
+
+  function boxesFor(index: number): MountBoxes {
+    return boxes[index] ?? mountBoxes(rows[index] ?? { path: "", mounts: [] });
+  }
 
   function update(next: LibraryFolder[]) {
     setRows(next);
@@ -974,7 +984,13 @@ function LibraryFoldersInput({
   }
 
   function setMount(index: number, shape: MountShape, text: string) {
-    update(rows.map((f, i) => (i === index ? withMount(f, shape, text) : f)));
+    const next = { ...boxesFor(index), [shape]: text };
+    setBoxes((prev) => {
+      const copy = [...prev];
+      copy[index] = next;
+      return copy;
+    });
+    update(rows.map((f, i) => (i === index ? withMountBoxes(f, next) : f)));
   }
 
   const inputClass =
@@ -1034,7 +1050,10 @@ function LibraryFoldersInput({
             )}
             <button
               type="button"
-              onClick={() => update(rows.filter((_, i) => i !== index))}
+              onClick={() => {
+                setBoxes((prev) => prev.filter((_, i) => i !== index));
+                update(rows.filter((_, i) => i !== index));
+              }}
               disabled={pending}
               className={buttonClass}
               title="Stop cataloguing this folder. Nothing on disk is touched."
@@ -1046,14 +1065,14 @@ function LibraryFoldersInput({
             <span className="w-full sm:w-auto">mounted on Linux/macOS nodes at</span>
             <input
               type="text"
-              value={mountFor(folder, "posix") ?? ""}
+              value={boxesFor(index).posix}
               spellCheck={false}
               placeholder="/mnt/models  (blank: same path, or not reachable)"
               aria-label="Mount on Linux and macOS nodes"
               onChange={(e) => setMount(index, "posix", e.target.value)}
               disabled={pending}
               className={`${inputClass} ${
-                mountFor(folder, "posix") && shapeOf(mountFor(folder, "posix") ?? "") !== "posix"
+                mountBoxProblem(boxesFor(index).posix, "posix")
                   ? "border-[color:var(--status-error-border)]"
                   : ""
               }`}
@@ -1061,15 +1080,32 @@ function LibraryFoldersInput({
             <span className="w-full sm:w-auto">on Windows nodes at</span>
             <input
               type="text"
-              value={mountFor(folder, "windows") ?? ""}
+              value={boxesFor(index).windows}
               spellCheck={false}
               placeholder="\\\\NAS\\models"
               aria-label="Mount on Windows nodes"
               onChange={(e) => setMount(index, "windows", e.target.value)}
               disabled={pending}
-              className={inputClass}
+              className={`${inputClass} ${
+                mountBoxProblem(boxesFor(index).windows, "windows")
+                  ? "border-[color:var(--status-error-border)]"
+                  : ""
+              }`}
             />
           </div>
+          {(["posix", "windows"] as const).map((shape) => {
+            const problem = mountBoxProblem(boxesFor(index)[shape], shape);
+            return problem ? (
+              <p
+                key={shape}
+                className="pl-2 text-[0.6875rem]"
+                style={{ color: "var(--status-error-fg)" }}
+                data-testid={`mount-problem-${shape}`}
+              >
+                {problem}
+              </p>
+            ) : null;
+          })}
         </div>
       ))}
       <div className="flex flex-wrap items-center gap-3">

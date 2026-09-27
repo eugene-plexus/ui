@@ -11,12 +11,14 @@ import {
   cellFor,
   describeAge,
   foldersProblem,
-  isAbsolutePath,
   libraryFoldersHref,
-  mountFor,
+  type MountBoxes,
+  mountBoxProblem,
+  mountBoxes,
   parseFolders,
   shapeOf,
   withMount,
+  withMountBoxes,
 } from "@/lib/libraryReach";
 import { type TargetNode, useTargetNode } from "@/lib/nodeBudget";
 import type { LibraryFolder, LibraryFolderReach, PathMapping } from "@/lib/types";
@@ -71,6 +73,9 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
   // The library's folders: the server's copy and the operator's draft.
   const [serverFolders, setServerFolders] = useState<LibraryFolder[] | null>(null);
   const [draft, setDraft] = useState<LibraryFolder[]>([]);
+  // Bumped whenever the draft is replaced from outside the grid (a load, a
+  // reset, a pick), so the grid's typed mount boxes start again from it.
+  const [draftEpoch, setDraftEpoch] = useState(0);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [copyNote, setCopyNote] = useState<string | null>(null);
   // Each node's check answer, by proxy target.
@@ -90,6 +95,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
       const folders = parseFolders(list.folders);
       setServerFolders(folders);
       setDraft(folders);
+      setDraftEpoch((n) => n + 1);
       setLibraryError(null);
       setCopyNote(null);
     } catch (err) {
@@ -264,6 +270,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
       setDraft((prev) =>
         prev.map((f, i) => (i === browsing.index ? withMount(f, shapeOf(path), path) : f)),
       );
+      setDraftEpoch((n) => n + 1);
     } else {
       const folder = draft[browsing.index];
       if (folder) setOverrideDraft((prev) => ({ ...prev, [folder.path]: path }));
@@ -339,6 +346,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
         <p className="text-sm text-[color:var(--muted)]">Reading the Library&rsquo;s folders…</p>
       ) : gridView ? (
         <FolderGrid
+          key={draftEpoch}
           draft={draft}
           nodes={nodes}
           reaches={reaches}
@@ -393,7 +401,11 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
               type="button"
               className={buttonClass}
               disabled={busy !== null}
-              onClick={() => serverFolders && setDraft(serverFolders)}
+              onClick={() => {
+                if (!serverFolders) return;
+                setDraft(serverFolders);
+                setDraftEpoch((n) => n + 1);
+              }}
             >
               revert
             </button>
@@ -477,8 +489,20 @@ function FolderGrid({
   onChange: (folders: LibraryFolder[]) => void;
   onBrowse: (state: PickerState) => void;
 }) {
+  // The mount boxes as typed; see `MountBoxes`. Read back through the
+  // saved list, a Windows box lost its first keystroke.
+  const [boxes, setBoxes] = useState<(MountBoxes | undefined)[]>([]);
+  function boxesFor(index: number): MountBoxes {
+    return boxes[index] ?? mountBoxes(draft[index] ?? { path: "", mounts: [] });
+  }
   function setMount(index: number, shape: MountShape, value: string) {
-    onChange(draft.map((f, i) => (i === index ? withMount(f, shape, value) : f)));
+    const next = { ...boxesFor(index), [shape]: value };
+    setBoxes((prev) => {
+      const copy = [...prev];
+      copy[index] = next;
+      return copy;
+    });
+    onChange(draft.map((f, i) => (i === index ? withMountBoxes(f, next) : f)));
   }
   const browseTarget = mountBrowseNode || nodes[0]?.target || "";
 
@@ -553,7 +577,7 @@ function FolderGrid({
                 </div>
               </td>
               <MountCell
-                value={mountFor(folder, "posix") ?? ""}
+                value={boxesFor(index).posix}
                 shape="posix"
                 placeholder="/mnt/models"
                 disabled={busy || !libraryEditable}
@@ -561,7 +585,7 @@ function FolderGrid({
                 testId="mount-posix"
               />
               <MountCell
-                value={mountFor(folder, "windows") ?? ""}
+                value={boxesFor(index).windows}
                 shape="windows"
                 placeholder="\\\\NAS\\models"
                 disabled={busy || !libraryEditable}
@@ -595,7 +619,10 @@ function FolderGrid({
                   type="button"
                   className={smallButtonClass}
                   disabled={busy || !libraryEditable}
-                  onClick={() => onChange(draft.filter((_, i) => i !== index))}
+                  onClick={() => {
+                    setBoxes((prev) => prev.filter((_, i) => i !== index));
+                    onChange(draft.filter((_, i) => i !== index));
+                  }}
                   title="Stop cataloguing this folder. Nothing on disk is touched."
                 >
                   remove
@@ -654,7 +681,8 @@ function MountCell({
   onChange: (value: string) => void;
   testId: string;
 }) {
-  const wrongShape = value.trim().length > 0 && isAbsolutePath(value) && shapeOf(value) !== shape;
+  const problem = mountBoxProblem(value, shape);
+  const wrongShape = problem !== null;
   return (
     <td className="px-2 py-1.5">
       <input
@@ -667,12 +695,17 @@ function MountCell({
         aria-label={shape === "posix" ? "Mount on Linux and macOS nodes" : "Mount on Windows nodes"}
         onChange={(e) => onChange(e.target.value)}
         className={`${inputClass} ${wrongShape ? "border-[color:var(--status-error-border)]" : ""}`}
-        title={
-          wrongShape
-            ? `${value} is ${shapeOf(value)}-shaped; this box is for ${shape} nodes`
-            : "Blank means: reached at the folder's own path, or not at all"
-        }
+        title={problem ?? "Blank means: reached at the folder's own path, or not at all"}
       />
+      {problem && (
+        <p
+          className="mt-1 text-[0.6875rem]"
+          style={{ color: "var(--status-error-fg)" }}
+          data-testid={`${testId}-problem`}
+        >
+          {problem}
+        </p>
+      )}
     </td>
   );
 }

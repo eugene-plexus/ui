@@ -66,6 +66,46 @@ export function mountFor(folder: LibraryFolder, shape: MountShape): string | nul
 }
 
 /**
+ * What the two mount boxes of one folder hold, as typed.
+ *
+ * **A box is not its mount's shape** (found 2026-09-26). The editors
+ * used to read each box back as `mountFor(folder, shape)`, so the box
+ * showed only a path that already had its box's shape. A Windows path
+ * is not Windows-shaped until its second character -- `C` before `C:`,
+ * `\` before `\\` -- so the first keystroke read back as empty and was
+ * lost. Worse, it was kept as a Linux/macOS mount. The editors now hold
+ * the boxes' text themselves and build `mounts` from it.
+ */
+export interface MountBoxes {
+  posix: string;
+  windows: string;
+}
+
+/** The boxes as a saved folder fills them. */
+export function mountBoxes(folder: LibraryFolder): MountBoxes {
+  return { posix: mountFor(folder, "posix") ?? "", windows: mountFor(folder, "windows") ?? "" };
+}
+
+/** The folder with its mounts taken from the boxes, blanks dropped. */
+export function withMountBoxes(folder: LibraryFolder, boxes: MountBoxes): LibraryFolder {
+  return {
+    path: folder.path,
+    mounts: [boxes.posix, boxes.windows].map((m) => m.trim()).filter((m) => m.length > 0),
+  };
+}
+
+/** Why a box holds the other kind of path, or null. The saved list says
+ * which nodes a mount is for by its shape alone, so a Linux path typed
+ * into the Windows box would reach Linux nodes. */
+export function mountBoxProblem(text: string, shape: MountShape): string | null {
+  const value = text.trim();
+  if (!value || !isAbsolutePath(value) || shapeOf(value) === shape) return null;
+  return shape === "windows"
+    ? `${value} is a Linux/macOS path; this box takes a Windows one, such as Z:\\models or \\\\NAS\\models`
+    : `${value} is a Windows path; this box takes a Linux/macOS one, such as /mnt/models`;
+}
+
+/**
  * The folder with its `shape` mount replaced by `path` (or removed when
  * `path` is blank). Other-shape mounts are kept in place. Keeps at most
  * one mount per shape, which is also what the library accepts.

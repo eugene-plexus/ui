@@ -6,9 +6,12 @@ import {
   isWindowsShaped,
   libraryFoldersHref,
   librarySelectionFor,
+  mountBoxProblem,
+  mountBoxes,
   mountFor,
   parseFolders,
   withMount,
+  withMountBoxes,
 } from "./libraryReach";
 import type { LibraryFolderReach } from "./types";
 
@@ -137,5 +140,33 @@ describe("the selection for a node under Library", () => {
     expect(libraryFoldersHref("Amish_Station")).toBe(
       "/library/folders?sel=library%3Anode%3AAmish_Station",
     );
+  });
+});
+
+describe("the mount boxes", () => {
+  it("fill from a saved folder, and build its mounts back without blanks", () => {
+    const folder = { path: "/models", mounts: ["/mnt/models", String.raw`\\NAS\models`] };
+    expect(mountBoxes(folder)).toEqual({ posix: "/mnt/models", windows: String.raw`\\NAS\models` });
+    expect(withMountBoxes(folder, { posix: " ", windows: String.raw` Z:\models ` })).toEqual({
+      path: "/models",
+      mounts: [String.raw`Z:\models`],
+    });
+  });
+
+  it("keep a half-typed Windows path in its own box", () => {
+    // `\` is not yet Windows-shaped; before 2026-09-26 it became a
+    // Linux/macOS mount and the Windows box read back empty.
+    const folder = withMountBoxes({ path: "/models", mounts: [] }, { posix: "", windows: "\\" });
+    expect(folder.mounts).toEqual(["\\"]);
+  });
+
+  it("name a path in the wrong box, and only then", () => {
+    expect(mountBoxProblem("/mnt/models", "windows")).toContain("is a Linux/macOS path");
+    expect(mountBoxProblem(String.raw`Z:\models`, "posix")).toContain("is a Windows path");
+    expect(mountBoxProblem(String.raw`Z:\models`, "windows")).toBeNull();
+    expect(mountBoxProblem("/mnt/models", "posix")).toBeNull();
+    expect(mountBoxProblem("", "windows")).toBeNull();
+    // Half-typed is not wrong yet: `\` is neither kind.
+    expect(mountBoxProblem("\\", "windows")).toBeNull();
   });
 });
