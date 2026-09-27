@@ -62,7 +62,10 @@ export type IssueKind =
   | "engine-build-stale"
   | "engine-build-cpu"
   | "engine-build-missing-backend"
-  | "runtime-on-cpu";
+  | "runtime-on-cpu"
+  | "update-available"
+  | "update-failed"
+  | "versions-differ";
 
 /**
  * `blocking` means the install is not doing its job right now;
@@ -193,6 +196,8 @@ export function issuesFrom(sources: IssueSources): Issue[] {
     ...nodeDownIssues(sources.nodes),
     ...clockSkewIssues(sources.perNode),
   ];
+  const updates = sources.perNode.flatMap(updateIssues);
+  issues.push(...updates, ...(updates.length === 0 ? versionsDifferIssues(sources.perNode) : []));
   for (const node of sources.perNode) {
     issues.push(
       ...componentDownIssues(node),
@@ -385,6 +390,72 @@ function clockSkewIssues(perNode: NodeFacts[]): Issue[] {
         `past that they start refusing each other's sign-ins, which looks like a machine being ` +
         `down for no reason. Turn on automatic time setting on both` +
         (blocking ? " — this install is close to the limit." : "."),
+      href: "/nodes",
+    },
+  ];
+}
+
+/**
+ * A newer version is out for a machine, or its last update did not finish.
+ *
+ * In-app updates (2026-09-27). The machine checked its own channel; this
+ * says so where a person looks first, and the fix -- an Update button, or
+ * the steps for a container -- is on Nodes.
+ */
+function updateIssues(node: NodeFacts): Issue[] {
+  const update = node.identity?.update;
+  if (!update || node.identity?.install?.development) return [];
+  const last = update.last;
+  if (last?.outcome === "failed" && update.available) {
+    return [
+      {
+        id: `update-failed:${node.name ?? node.label}`,
+        kind: "update-failed",
+        severity: "warning",
+        title: `The last update of ${node.label} did not finish`,
+        detail: last.detail ?? "It left no record of why. Try again from Nodes.",
+        href: "/nodes",
+        node: node.name,
+      },
+    ];
+  }
+  if (!update.available || !update.newest) return [];
+  const label = update.newest.release ?? `edge ${update.newest.ref.slice(0, 7)}`;
+  return [
+    {
+      id: `update-available:${node.name ?? node.label}`,
+      kind: "update-available",
+      severity: "warning",
+      title: `A newer version of Eugene is ready for ${node.label}: ${label}`,
+      detail: update.apply.possible
+        ? "Update it from Nodes. Eugene restarts there, and its models stop for a minute or two."
+        : `${update.apply.reason ?? "It cannot update itself."} Nodes says how.`,
+      href: "/nodes",
+      node: node.name,
+    },
+  ];
+}
+
+/** Machines that each say they are up to date, on different versions: two
+ * channels, most likely. Only said when nothing is simply behind, which
+ * already explains a difference. */
+function versionsDifferIssues(perNode: NodeFacts[]): Issue[] {
+  const versions = new Map<string, string[]>();
+  for (const node of perNode) {
+    const agent = node.identity?.install?.components.find((c) => c.name === "agent");
+    if (agent?.state !== "stamped" || !agent.commit) continue;
+    const key = agent.commit.slice(0, 7);
+    versions.set(key, [...(versions.get(key) ?? []), node.label]);
+  }
+  if (versions.size < 2) return [];
+  const which = [...versions.entries()].map(([v, names]) => `${names.join(", ")}: ${v}`).join("; ");
+  return [
+    {
+      id: "versions-differ",
+      kind: "versions-differ",
+      severity: "warning",
+      title: "Machines in this install run different versions of Eugene",
+      detail: `${which}. Check which update channel each follows, under Config, Agent, Updates.`,
       href: "/nodes",
     },
   ];

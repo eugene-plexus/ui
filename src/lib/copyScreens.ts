@@ -28,5 +28,5 @@ export const COPY_SCREENS: Record<string, string[]> = {
   playground: ["app/playground"],
   // Not on the golden path, but a screen a person with two machines
   // meets, and it carried "epoch", "Mint" and "topology" in plain view.
-  nodes: ["app/nodes"],
+  nodes: ["app/nodes", "components/NodeUpdateCard.tsx", "lib/updates.ts"],
 };

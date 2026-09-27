@@ -156,7 +156,10 @@ describe("nodes page, sealed control root", () => {
     await userEvent.type(screen.getByLabelText(/operator passphrase/i), "correct-horse");
     await userEvent.click(screen.getByRole("button", { name: /unlock/i }));
 
-    await waitFor(() => expect(screen.getByText("Amish_Station")).toBeTruthy());
+    // In the table; since 2026-09-27 its version card names it too.
+    await waitFor(() =>
+      expect(within(screen.getByRole("table")).getByText("Amish_Station")).toBeTruthy(),
+    );
     expect(screen.queryByText(/this control root is locked/i)).toBeNull();
 
     // Addressed to the control root, not the agent -- the whole point.
@@ -559,5 +562,144 @@ describe("the join command", () => {
     expect(await screen.findByTestId("join-token-spent")).toHaveTextContent("This token was used");
     expect(screen.queryByTestId("join-command-windows")).toBeNull();
     expect(screen.queryByTestId("join-command-posix")).toBeNull();
+  });
+});
+
+describe("versions, and updating a machine from here (2026-09-27)", () => {
+  // Troy: "My NAS is updated, I'd like to force update my Amish_Station
+  // from the NAS UI." This page is served by the NAS's agent, so the local
+  // node is `unraid` and Amish_Station is reached through `node:`.
+  const EDGE = "b8b30bd18a790a4af55e9b44786b61be4783adaa";
+  const behind = {
+    enrolled: true,
+    name: "Amish_Station",
+    os: "windows",
+    install: {
+      mechanism: "windows_service",
+      development: false,
+      components: [
+        { name: "agent", state: "stamped", commit: "2dcf64522a5cdd5d6756cb89ed2fc832994e5dc9" },
+      ],
+    },
+    update: {
+      enabled: true,
+      channel: "edge",
+      channelSource: "inferred",
+      checkedAt: new Date().toISOString(),
+      available: true,
+      behind: ["agent", "gateway"],
+      newest: { channel: "edge", ref: EDGE, components: {} },
+      apply: { possible: true },
+    },
+  };
+  const container = {
+    enrolled: true,
+    name: "unraid",
+    os: "linux",
+    install: {
+      mechanism: "container",
+      development: false,
+      components: [
+        { name: "agent", state: "stamped", commit: "06c321b6c9599419a602c6d6d7c5773eb53cdff2" },
+      ],
+      container: { image: "ghcr.io/eugene-plexus/control-plane:edge", host: "unraid" },
+    },
+    update: {
+      enabled: true,
+      channel: "edge",
+      channelSource: "inferred",
+      checkedAt: new Date().toISOString(),
+      available: false,
+      behind: [],
+      newest: { channel: "edge", ref: EDGE, components: {} },
+      apply: {
+        possible: false,
+        reason: "This machine runs in a container, which cannot update itself.",
+        steps: [{ text: "On Unraid's Docker tab, choose Force Update for this container." }],
+      },
+    },
+  };
+  let posted: { url: string; body: unknown }[];
+
+  beforeEach(() => {
+    sealed = false;
+    posted = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        calls.push({ url, method });
+        const json = (body: unknown, status = 200) =>
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { "content-type": "application/json" },
+          });
+        if (method === "POST" && url.includes("/v1/node/update")) {
+          posted.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+          return json(
+            { target: EDGE, startedAt: new Date().toISOString(), outcome: "running" },
+            url.endsWith("/check") ? 200 : 202,
+          );
+        }
+        if (url.includes("/node:Amish_Station/v1/node")) return json(behind);
+        if (url.includes("/agent/v1/node")) return json(container);
+        if (url.includes("/v1/nodes/join-tokens")) return json({ tokens: [] });
+        if (url.includes("/v1/nodes")) return json(NODES);
+        if (url.includes("/v1/control/status")) return json({ role: "control", epoch: 1 });
+        return json({});
+      }),
+    );
+  });
+
+  async function card(name: string): Promise<HTMLElement> {
+    const find = () =>
+      document.querySelector<HTMLElement>(`[data-testid="node-update"][data-node="${name}"]`);
+    // The card exists as soon as the node list does; its answer comes after.
+    await waitFor(() => {
+      const found = find();
+      expect(found).not.toBeNull();
+      expect(found?.getAttribute("data-state")).not.toBe("unknown");
+    });
+    return find() as HTMLElement;
+  }
+
+  it("updates another machine through its own agent, after asking", async () => {
+    const user = userEvent.setup();
+    render(<NodesPage />);
+    const amish = await card("Amish_Station");
+    expect(amish).toHaveAttribute("data-state", "available");
+    expect(within(amish).getByTestId("node-update-headline")).toHaveTextContent(
+      "A newer version is ready: edge b8b30bd",
+    );
+    await user.click(within(amish).getByTestId("node-update-now"));
+    // Nothing is sent on the first click: it asks, and says what it costs.
+    expect(posted).toEqual([]);
+    expect(amish).toHaveTextContent("the models on it stop for a minute or two");
+    await user.click(within(amish).getByRole("button", { name: "Update Amish_Station" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]?.url).toContain("/api/proxy/node:Amish_Station/v1/node/update");
+    // Exactly what that machine said it found.
+    expect(posted[0]?.body).toEqual({ target: EDGE });
+    await waitFor(() => expect(amish).toHaveAttribute("data-state", "running"));
+  });
+
+  it("gives a container its steps and no button", async () => {
+    render(<NodesPage />);
+    const unraid = await card("unraid");
+    expect(unraid).toHaveAttribute("data-state", "current");
+    expect(within(unraid).queryByTestId("node-update-now")).toBeNull();
+  });
+
+  it("checks again when asked, on that machine", async () => {
+    const user = userEvent.setup();
+    render(<NodesPage />);
+    const amish = await card("Amish_Station");
+    await user.click(within(amish).getByTestId("node-update-check"));
+    await waitFor(() =>
+      expect(posted.map((p) => p.url)).toContain(
+        "/api/proxy/node:Amish_Station/v1/node/update/check",
+      ),
+    );
   });
 });

@@ -119,6 +119,12 @@ export type EngineDescriptor = AgentComponents["schemas"]["EngineDescriptor"];
 // built; `nodeBudget.ts` turns it into the numbers a fit verdict needs,
 // so guidance is scored against the machine a launch will actually reach.
 export type NodeIdentity = AgentComponents["schemas"]["NodeIdentity"];
+// What a node runs and whether a newer version is out (in-app updates,
+// 2026-09-27; specs docs/design/in-app-updates.md).
+export type NodeInstall = AgentComponents["schemas"]["NodeInstall"];
+export type NodeUpdate = AgentComponents["schemas"]["NodeUpdate"];
+export type UpdateRun = AgentComponents["schemas"]["UpdateRun"];
+export type UpdateStep = AgentComponents["schemas"]["UpdateStep"];
 export type ComputeDevice = AgentComponents["schemas"]["ComputeDevice"];
 
 // Whether anything else on the network can get to this machine (S5).

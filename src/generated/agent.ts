@@ -1381,6 +1381,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node/update/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Look for a newer version on this node's channel now.
+         * @description The six-hourly check, run now. Answers the same `NodeUpdate`
+         *     `GET /v1/node` carries. A check that cannot reach GitHub is not an
+         *     error response: it is a 200 whose `error` says what could not be
+         *     reached, beside whatever the last good check found.
+         *
+         *     Operator-only.
+         */
+        post: operations["checkNodeUpdate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/node/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install the newest version on this node's channel.
+         * @description Starts the installer for `target` outside this agent, and answers
+         *     before it begins. **The agent stops during the update, and so does
+         *     every model on this machine**; it comes back on its own when the
+         *     installer finishes, and `NodeUpdate.last` then says how it went.
+         *
+         *     **Outside this agent, on purpose.** The installer's first act on an
+         *     upgrade is to stop the agent, and the agent's children die with it.
+         *     So on Windows it runs as a one-shot scheduled task (as SYSTEM for
+         *     the service, as the person for a per-user install), and on Linux
+         *     as a transient unit, or, for a system install whose account cannot
+         *     write its own code, as a root unit the installer set up that
+         *     downloads and checks the installer itself.
+         *
+         *     Refused, with the reason and what to do instead, for an install
+         *     that cannot update itself: a container, which updates by pulling
+         *     a new image; a machine nothing starts automatically; a
+         *     development checkout.
+         *
+         *     Operator-only. Reached from any console through `node:<name>`.
+         */
+        post: operations["updateNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node/trust-bundle": {
         parameters: {
             query?: never;
@@ -1984,6 +2047,182 @@ export interface components {
              */
             time?: string;
             reach?: components["schemas"]["NodeReach"];
+            install?: components["schemas"]["NodeInstall"];
+            update?: components["schemas"]["NodeUpdate"];
+        };
+        /**
+         * @description What is installed on this machine, read from the code itself.
+         *
+         *     **Each component reports the commit it was built from**, stamped
+         *     into its `_build.py` by `git archive` when GitHub made the source
+         *     archive the installer downloaded (`export-subst`). Nothing of ours
+         *     writes it and there is no record file to edit, so it says what is
+         *     actually installed rather than what an installer meant to install:
+         *     a package that half-failed to upgrade reports its old commit, and a
+         *     mixed install is visible as one.
+         */
+        NodeInstall: {
+            /** @description The six packages, in the installers' order. */
+            components: components["schemas"]["InstalledComponent"][];
+            mechanism: components["schemas"]["InstallMechanism"];
+            /**
+             * @description A development checkout: at least one component is a git
+             *     checkout rather than an archive, so it has no commit to
+             *     compare and is never offered an update.
+             */
+            development: boolean;
+            container?: components["schemas"]["ContainerInstall"];
+        };
+        InstalledComponent: {
+            name: components["schemas"]["ComponentName"];
+            state: components["schemas"]["InstalledComponentState"];
+            /** @description The full commit id, when `state` is `stamped`. */
+            commit?: string;
+        };
+        /**
+         * @description One of the six packages an install is made of. Named rather than
+         *     inline: an inline enum here renamed the engine install's `State`
+         *     to `State1` in the agent's generated models (the S6 trap again).
+         * @enum {string}
+         */
+        ComponentName: "agent" | "control" | "gateway" | "inference-driver" | "library" | "ui";
+        /**
+         * @description `stamped`: built from a GitHub archive, `commit` is its commit.
+         *     `development`: a git checkout, which keeps the placeholder.
+         *     `unrecorded`: installed before components recorded their
+         *     commit (before 2026-09-27), so its version is unknown.
+         *     `missing`: not installed in this agent's environment.
+         * @enum {string}
+         */
+        InstalledComponentState: "stamped" | "development" | "unrecorded" | "missing";
+        /**
+         * @description What keeps this install running, which decides whether and how it
+         *     can update itself. `container` never can: its code is its image,
+         *     and an update is a new image. `none` means somebody started the
+         *     agent by hand.
+         * @enum {string}
+         */
+        InstallMechanism: "windows_service" | "windows_task" | "systemd_system" | "systemd_user" | "launchd" | "container" | "none";
+        ContainerInstall: {
+            /** @description The image this container was built as, e.g. `ghcr.io/eugene-plexus/control-plane:edge`. */
+            image: string;
+            /**
+             * @description What runs the container, when its own template says so
+             *     (`unraid`, `compose`). Absent otherwise: from inside a
+             *     container nothing reliable says what launched it, and the
+             *     general Docker steps are given instead.
+             */
+            host?: string;
+        };
+        /**
+         * @description Whether this install is behind its channel, and whether it can
+         *     update itself.
+         *
+         *     **Two channels.** `edge` is the head of `main`, gated: the newest
+         *     `main` commit on which every workflow that ran succeeded, CI among
+         *     them -- the same commit the `:edge` container image was built from,
+         *     so a native install is never offered what the container was not.
+         *     `releases` is the newest published release, checked against the
+         *     checksums in its own `manifest.json`.
+         *
+         *     Checked when the agent starts and every six hours, and on
+         *     `POST /v1/node/update/check`. Off with `updateChecks: false` on
+         *     this agent's config.
+         */
+        NodeUpdate: {
+            enabled: boolean;
+            channel: components["schemas"]["UpdateChannel"];
+            channelSource: components["schemas"]["UpdateChannelSource"];
+            /** Format: date-time */
+            checkedAt?: string;
+            /** @description Why the last check could not finish, and what it was trying to reach. */
+            error?: string;
+            newest?: components["schemas"]["UpdateTarget"];
+            /**
+             * @description `newest` differs from what is installed. Never true for a
+             *     development checkout.
+             */
+            available: boolean;
+            /** @description The components whose installed commit is not the one in `newest`. */
+            behind: string[];
+            apply: components["schemas"]["UpdateApply"];
+            running?: components["schemas"]["UpdateRun"];
+            last?: components["schemas"]["UpdateRun"];
+        };
+        UpdateTarget: {
+            channel: components["schemas"]["UpdateChannel"];
+            /**
+             * @description What `POST /v1/node/update` must name: the specs commit for
+             *     `edge`, the release tag for `releases`.
+             */
+            ref: string;
+            /** @description The release tag, on the `releases` channel. */
+            release?: string;
+            specsCommit?: string;
+            /** Format: date-time */
+            publishedAt?: string;
+            /** @description Component name to the commit its installer pins. */
+            components: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * @description Whether this install can update itself from the app, and when it
+         *     cannot, what a person does instead.
+         */
+        UpdateApply: {
+            possible: boolean;
+            /** @description Why it cannot, in a sentence. */
+            reason?: string;
+            /**
+             * @description What to do instead, for an install that cannot update itself
+             *     -- a container (pull the new image and recreate it, with the
+             *     words for the platform its template names), or a machine
+             *     nothing starts automatically.
+             */
+            steps?: components["schemas"]["UpdateStep"][];
+        };
+        UpdateStep: {
+            text: string;
+            /** @description A command to copy, when the step is one. */
+            command?: string;
+        };
+        UpdateRun: {
+            /** @description The `ref` being installed. */
+            target: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            outcome: components["schemas"]["UpdateOutcome"];
+            /**
+             * @description What happened, in words; on a failure, the installer's own
+             *     last lines and what state the machine was left in.
+             */
+            detail?: string;
+            /** @description Where the whole installer output is, on this machine. */
+            log?: string;
+        };
+        /** @enum {string} */
+        UpdateChannel: "edge" | "releases";
+        /**
+         * @description `setting`: `updateChannel` on this agent's config.
+         *     `inferred`: not set, so `releases` when the installed commits
+         *     are exactly one of the recent releases, and `edge` otherwise.
+         * @enum {string}
+         */
+        UpdateChannelSource: "setting" | "inferred";
+        /** @enum {string} */
+        UpdateOutcome: "running" | "succeeded" | "failed";
+        UpdateRequest: {
+            /**
+             * @description The `ref` of `NodeUpdate.newest` the caller was shown. Refused
+             *     unless it is still the newest this agent found, so a click is
+             *     never an update to something the person did not see -- and
+             *     the only thing a caller can ask for is what this agent itself
+             *     found on its channel.
+             */
+            target: string;
         };
         /**
          * @description Whether other devices can reach this machine, as **evidence**
@@ -6604,6 +6843,66 @@ export interface operations {
             401: components["responses"]["Problem"];
             /** @description The supplied `url` is not a URL, or is a loopback address. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    checkNodeUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeUpdate"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    updateNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The installer has been started. The agent will go away and come back. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateRun"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /**
+             * @description Nothing to do, or not now: `target` is not the newest this
+             *     agent found (check again and look), nothing is newer, an update
+             *     is already running, or this install cannot update itself -- the
+             *     detail names which, and for the last one what to do instead.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

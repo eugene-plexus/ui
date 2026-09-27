@@ -30,10 +30,11 @@
  */
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { CopyButton } from "@/components/CopyButton";
+import { NodeUpdateCard } from "@/components/NodeUpdateCard";
 import { ApiError, api } from "@/lib/api";
 import { isLockedError } from "@/lib/controlUnlock";
 import {
@@ -47,6 +48,7 @@ import {
 } from "@/lib/joinCommand";
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
 import { timeAgo, timeUntil } from "@/lib/relativeTime";
+import { useNodeUpdates } from "@/lib/useNodeUpdates";
 import { usePolling } from "@/lib/usePolling";
 import { expertHint } from "@/lib/vocabulary";
 
@@ -188,6 +190,28 @@ export default function NodesPage() {
   const [controlUrl, setControlUrl] = useState("");
   /** The control root's own machine, as the registry lists it: what every port guess starts from. */
   const [rootAgentUrl, setRootAgentUrl] = useState<string | null>(null);
+  // Which machines this page has started updating, so their reads come
+  // every few seconds until they are back.
+  const [updating, setUpdating] = useState<ReadonlySet<string>>(new Set());
+  // Keyed by the names, not the array: the node list is read every two
+  // seconds and is a new array each time, which would restart the version
+  // reads on every one of them.
+  const nameKey = nodes ? nodes.map((n) => n.name).join("\n") : null;
+  const nodeNames = useMemo(() => (nameKey === null ? null : nameKey.split("\n")), [nameKey]);
+  const { readings, refresh: refreshVersions } = useNodeUpdates(
+    locked ? null : nodeNames,
+    updating.size > 0,
+  );
+  const markUpdating = useCallback(
+    (name: string) => (on: boolean) =>
+      setUpdating((current) => {
+        const next = new Set(current);
+        if (on) next.add(name);
+        else next.delete(name);
+        return next;
+      }),
+    [],
+  );
 
   /**
    * The node list, on a two-second loop.
@@ -570,6 +594,35 @@ export default function NodesPage() {
               </div>
             )}
           </section>
+
+          {/* Versions, and updating a machine from here: the Update on
+              each card runs on that machine, through its own agent. */}
+          {!locked && nodes && nodes.length > 0 && (
+            <section className="mb-8" data-testid="node-versions">
+              <h2 className="font-ui mb-1 text-base font-semibold">Versions</h2>
+              <p className="mb-3 text-sm text-[color:var(--muted)]">
+                Each machine checks for a newer version of Eugene a minute after it starts and every
+                six hours. Nothing is installed until you press Update.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {nodes.map((n) => {
+                  const reading = readings[n.name];
+                  return (
+                    <NodeUpdateCard
+                      key={n.name}
+                      name={n.name}
+                      target={reading?.target ?? `node:${n.name}`}
+                      identity={reading?.identity ?? null}
+                      loaded={reading?.loaded ?? false}
+                      now={Date.now()}
+                      onChanged={refreshVersions}
+                      onUpdating={markUpdating(n.name)}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* Hidden rather than disabled while locked: minting a join token
           is a control-root write, so the button could only produce the
