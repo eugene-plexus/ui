@@ -1534,6 +1534,23 @@ export interface components {
              */
             stream_options?: {
                 include_usage?: boolean;
+                /**
+                 * @description **An Eugene Plexus extension, not OpenAI's.** With streaming,
+                 *     true adds progress chunks saying what the backend is doing
+                 *     while it is not producing output: `choices: []` and an
+                 *     `x_eugene_plexus` carrying only `progress`. Local and cloud
+                 *     backends alike report what they can observe -- llama.cpp how
+                 *     far it has read the prompt, any HTTP backend that the service
+                 *     has the request, Claude Code and Codex the tools they run.
+                 *     See `StreamProgress`. A client that sets it must tolerate a
+                 *     chunk with no choices, as it already must for
+                 *     `include_usage`.
+                 *
+                 *     A progress chunk is not output: failover to another backend
+                 *     is still possible after one, and a second backend's progress
+                 *     starts again from its own beginning.
+                 */
+                include_progress?: boolean;
             };
             /**
              * @description Tools the model may call. Passed through to the backend
@@ -1687,7 +1704,10 @@ export interface components {
              * @description Set on the **final frame only**, alongside `usage` — the
              *     same place OpenAI puts its own end-of-stream extras.
              *     Absent on every earlier frame, because the values are not
-             *     known until the completion is done.
+             *     known until the completion is done. **One exception, asked
+             *     for:** with `stream_options.include_progress`, a progress
+             *     chunk before the first token carries an `x_eugene_plexus`
+             *     holding only `progress`, with `choices: []`.
              *
              *     Added at M8. Until then a streaming client could see no
              *     routing information at all: the non-streaming response
@@ -1979,6 +1999,53 @@ export interface components {
              *     refusal is exact and is passed straight through as a 400.
              */
             prompt_truncated?: boolean;
+            progress?: components["schemas"]["StreamProgress"];
+        };
+        /**
+         * @description What the backend is doing while it is not producing output, on a
+         *     progress chunk (`stream_options.include_progress`). The only
+         *     thing such a chunk carries: its `x_eugene_plexus` has this and
+         *     nothing else, and its `choices` is empty. It can arrive at any
+         *     point before the final chunk -- an agent backend runs a tool
+         *     between two bursts of thinking.
+         *
+         *     What each backend can report is in `inference-driver.yaml`'s
+         *     `StreamProgress`: llama.cpp's prompt reading, a hosted API
+         *     accepting the request and its keepalives, Claude Code's and
+         *     Codex's own tools. Nothing is estimated here.
+         *
+         *     **Why it exists (2026-09-27).** Until the first token a stream
+         *     said nothing. On the processor a long prompt takes minutes to
+         *     read -- measured, 35 s for 7,795 tokens with a 0.6B -- and a
+         *     tester who saw nothing for that long concluded the request had
+         *     failed. A cloud agent is the same shape from the other end.
+         */
+        StreamProgress: {
+            /**
+             * @description `prompt`: reading the prompt, with the token counts below.
+             *     `working`: the backend says it is working and not how far.
+             *     `tool`: an agent backend is running one of its own tools,
+             *     named in `tool`.
+             * @enum {string}
+             */
+            stage: "prompt" | "working" | "tool";
+            /** @description On `tool`, the tool's name as the backend gives it. */
+            tool?: string;
+            /** @description On `prompt`, tokens in the whole prompt. */
+            prompt_tokens?: number;
+            /**
+             * @description Of those, reused from the backend's cache and not read again.
+             *     The fraction still to read is
+             *     `(prompt_tokens - processed_tokens) / (prompt_tokens - cached_tokens)`.
+             */
+            cached_tokens?: number;
+            /** @description Read so far, the cached ones included. */
+            processed_tokens?: number;
+            /**
+             * @description The backend's time on this prompt so far, from which a client
+             *     can estimate what is left.
+             */
+            elapsed_ms?: number;
         };
         EmbeddingRequest: {
             /**

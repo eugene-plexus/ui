@@ -535,3 +535,129 @@ describe("one turn's numbers", () => {
     expect(text).not.toContain("32768 ctx");
   });
 });
+
+/** A stream that sends these frames and then stays open, the way a model
+ * still reading or thinking does, until the request's own signal aborts. */
+function openSse(frames: unknown[]): Handler {
+  return (init) => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        for (const f of frames)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(f)}\n\n`));
+        const signal = init?.signal;
+        const abort = () => controller.error(new DOMException("Aborted", "AbortError"));
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, { once: true });
+      },
+    });
+    return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+}
+
+const PROGRESS = (progress: Record<string, unknown>) => ({
+  choices: [],
+  x_eugene_plexus: { progress },
+});
+const DELTA = (delta: Record<string, unknown>) => ({ choices: [{ index: 0, delta }] });
+
+describe("while the model works (2026-09-27)", () => {
+  it("asks for progress and says how far the model has read", async () => {
+    handlers.set(
+      "POST gateway/v1/chat/completions",
+      openSse([
+        PROGRESS({ stage: "working" }),
+        PROGRESS({
+          stage: "prompt",
+          prompt_tokens: 3694,
+          cached_tokens: 0,
+          processed_tokens: 1792,
+          elapsed_ms: 4000,
+        }),
+      ]),
+    );
+    await renderReady();
+    send("hello");
+    await waitFor(() =>
+      expect(screen.getByTestId("working-headline")).toHaveTextContent("Reading your message: 48%"),
+    );
+    expect(screen.getByTestId("working-detail")).toHaveTextContent("1,792 of 3,694 tokens");
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "48");
+    expect(chatCalls()[0]?.body?.stream_options).toEqual({ include_progress: true });
+    fireEvent.click(screen.getByTestId("stop-turn"));
+  });
+
+  it("shows the thinking as it arrives, and says it is thinking", async () => {
+    handlers.set(
+      "POST gateway/v1/chat/completions",
+      openSse([
+        DELTA({ role: "assistant" }),
+        DELTA({ reasoning_content: "Which way does it flow" }),
+      ]),
+    );
+    await renderReady();
+    send("hello");
+    await waitFor(() =>
+      expect(screen.getByTestId("thinking-text")).toHaveTextContent("Which way does it flow"),
+    );
+    expect(screen.getByTestId("working-headline")).toHaveTextContent("Thinking");
+    // Not yet "no text": the answer has not had its chance.
+    expect(screen.queryByTestId("empty-reply")).toBeNull();
+    fireEvent.click(screen.getByTestId("stop-turn"));
+  });
+
+  it("says a sleeping model is being started before anything comes back", async () => {
+    handlers.set("GET gateway/v1/models", () =>
+      json(200, {
+        object: "list",
+        data: [
+          {
+            id: "qwen3-14b",
+            object: "model",
+            owned_by: "eugene-plexus",
+            x_eugene_plexus: { surfaces: ["chat"], on_demand: true, ready_backends: 0 },
+          },
+        ],
+      }),
+    );
+    handlers.set("POST gateway/v1/chat/completions", hangingSse(""));
+    await renderReady();
+    send("hello");
+    await waitFor(() =>
+      expect(screen.getByTestId("working-headline")).toHaveTextContent("Starting the model"),
+    );
+    fireEvent.click(screen.getByTestId("stop-turn"));
+  });
+
+  it("folds the thinking away once answered, and never sends it back", async () => {
+    handlers.set("POST gateway/v1/chat/completions", () => {
+      const frames = [
+        JSON.stringify(DELTA({ reasoning_content: "East, surely." })),
+        JSON.stringify(DELTA({ content: "East" })),
+        JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }),
+        "[DONE]",
+      ];
+      return new Response(frames.map((f) => `data: ${f}\n\n`).join(""), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    await renderReady();
+    send("Which way?");
+    await waitFor(() => expect(screen.getByText("East")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument());
+    const thinking = screen.getByTestId("thinking");
+    expect(thinking).toHaveAttribute("data-live", "false");
+    expect(thinking).toHaveTextContent(/Thought for \d+ s/);
+    expect(screen.queryByTestId("thinking-text")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Thought for/ }));
+    expect(screen.getByTestId("thinking-text")).toHaveTextContent("East, surely.");
+
+    send("And the other way?");
+    await waitFor(() => expect(chatCalls()).toHaveLength(2));
+    const history = JSON.stringify(chatCalls()[1]?.body?.messages);
+    expect(history).toContain("East");
+    expect(history).not.toContain("East, surely.");
+    expect(history).not.toContain("reasoning");
+  });
+});

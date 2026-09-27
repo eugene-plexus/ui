@@ -32,6 +32,7 @@ import type {
   CompletionUsage,
   ModelList,
   ResponseFormat,
+  StreamProgress,
   Tool,
   ToolCall,
   ToolCallDelta,
@@ -160,6 +161,16 @@ export interface CompletionOptions {
   onReport?: (report: RequestReport) => void;
   /** Called as tool-call fragments accumulate, with the calls so far. */
   onToolCalls?: (calls: ToolCall[]) => void;
+  /** Called with each fragment of the model's reasoning, which a reasoning
+   * model sends before its answer (`delta.reasoning_content`). Before
+   * 2026-09-27 it was read past, so a model that thought for a minute
+   * showed nothing for that minute. */
+  onReasoning?: (delta: string) => void;
+  /** Called with what the backend says it is doing while it sends no
+   * output. Given, the request asks for it
+   * (`stream_options.include_progress`); a stream never carries it
+   * unasked. */
+  onProgress?: (progress: StreamProgress) => void;
 }
 
 /**
@@ -183,6 +194,9 @@ export function buildChatRequest(opts: CompletionOptions, stream: boolean): Chat
   if (opts.tools && opts.tools.length > 0) body.tools = opts.tools;
   if (opts.toolChoice != null) body.tool_choice = opts.toolChoice;
   if (opts.responseFormat != null) body.response_format = opts.responseFormat;
+  // Only when something will read it: a progress chunk has no choices,
+  // and the body the report shows should be what this caller needs.
+  if (stream && opts.onProgress) body.stream_options = { include_progress: true };
   return body;
 }
 
@@ -211,12 +225,18 @@ export interface RequestReport {
    * usable response, or the stream's error frame when it failed after. */
   error: string | null;
   elapsedMs: number | null;
-  /** From send to the first parsed `data:` frame — a clock, because a
-   * frame count cannot tell a streaming path from a buffering one. */
+  /** From send to the first parsed `data:` frame of output — a clock,
+   * because a frame count cannot tell a streaming path from a buffering
+   * one. Progress frames are not output and do not stop it: a prompt
+   * read on the processor would otherwise make every first frame look
+   * instant, and the rate the page works out from it wrong. */
   firstFrameMs: number | null;
   frames: number;
   contentDeltas: number;
+  reasoningDeltas: number;
   toolCallDeltas: number;
+  /** Progress chunks, counted apart from `frames`. */
+  progressFrames: number;
   finishReason: string | null;
   model: string | null;
   usage?: CompletionUsage;
@@ -251,7 +271,9 @@ function newReport(
     firstFrameMs: null,
     frames: 0,
     contentDeltas: 0,
+    reasoningDeltas: 0,
     toolCallDeltas: 0,
+    progressFrames: 0,
     finishReason: null,
     model: null,
     streamed,
@@ -373,10 +395,17 @@ export async function createChatCompletion(
  *     model chose not to call anything". Fragments are accumulated by
  *     index now and returned on the message.
  */
+export type StreamedCompletion = ChatCompletionResponse & {
+  truncatedBy?: string;
+  report: RequestReport;
+  /** The model's reasoning for this turn, as it streamed; "" when none. */
+  reasoning: string;
+};
+
 export async function streamChatCompletion(
   opts: CompletionOptions,
   onToken: (delta: string) => void,
-): Promise<ChatCompletionResponse & { truncatedBy?: string; report: RequestReport }> {
+): Promise<StreamedCompletion> {
   const controller = new AbortController();
   const cancel = () => controller.abort();
   opts.signal?.addEventListener("abort", cancel, { once: true });
@@ -403,7 +432,7 @@ export async function streamChatCompletion(
 async function readChatCompletion(
   opts: CompletionOptions,
   onToken: (delta: string) => void,
-): Promise<ChatCompletionResponse & { truncatedBy?: string; report: RequestReport }> {
+): Promise<StreamedCompletion> {
   const transport = opts.transport ?? PROXY;
   const body = buildChatRequest(opts, true);
   const serialized = JSON.stringify(body);
@@ -439,6 +468,7 @@ async function readChatCompletion(
   const decoder = new TextDecoder();
   let buffered = "";
   let content = "";
+  let reasoning = "";
   let toolCalls: ToolCall[] = [];
   let finishReason: string | null = null;
   let model = opts.model;
@@ -462,10 +492,6 @@ async function readChatCompletion(
         if (!dataLine) continue;
         const payload = dataLine.slice(5).trim();
         if (!payload || payload === "[DONE]") continue;
-        if (report.firstFrameMs === null) {
-          report.firstFrameMs = Math.round(performance.now() - started);
-        }
-        report.frames += 1;
 
         let parsed: Record<string, unknown>;
         try {
@@ -473,6 +499,26 @@ async function readChatCompletion(
         } catch {
           continue;
         }
+
+        // What the backend is doing, not output: no choices, and an
+        // `x_eugene_plexus` with nothing but `progress` in it -- which
+        // must not be mistaken for the routing envelope the final frame
+        // carries.
+        const progress = (parsed as { x_eugene_plexus?: { progress?: StreamProgress } })
+          .x_eugene_plexus?.progress;
+        const noChoices =
+          Array.isArray((parsed as { choices?: unknown }).choices) &&
+          (parsed as { choices: unknown[] }).choices.length === 0;
+        if (progress && noChoices) {
+          report.progressFrames += 1;
+          opts.onProgress?.(progress);
+          continue;
+        }
+
+        if (report.firstFrameMs === null) {
+          report.firstFrameMs = Math.round(performance.now() - started);
+        }
+        report.frames += 1;
 
         if (parsed.error) {
           const err = parsed.error as { message?: string };
@@ -488,6 +534,12 @@ async function readChatCompletion(
         const choice = chunk.choices?.[0];
         if (!choice) continue;
         if (choice.finish_reason) finishReason = choice.finish_reason;
+        const thought = choice.delta?.reasoning_content;
+        if (thought) {
+          reasoning += thought;
+          report.reasoningDeltas += 1;
+          opts.onReasoning?.(thought);
+        }
         const delta = choice.delta?.content;
         if (delta) {
           content += delta;
@@ -518,7 +570,9 @@ async function readChatCompletion(
     opts.onReport?.(report);
   }
 
-  if (streamError && !content && toolCalls.length === 0) {
+  // A turn that only thought is still a turn: the thinking is on screen
+  // and the page says no answer came. Throwing here would take it away.
+  if (streamError && !content && toolCalls.length === 0 && !reasoning) {
     // Nothing was delivered, so this is an ordinary failure and should
     // read like one rather than as an empty assistant message.
     throw new Error(streamError);
@@ -552,6 +606,7 @@ async function readChatCompletion(
     // presenting a truncated answer as a finished one.
     truncatedBy: streamError ?? undefined,
     report,
+    reasoning,
   };
 }
 

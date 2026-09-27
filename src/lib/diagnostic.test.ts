@@ -171,6 +171,8 @@ function report(overrides: Partial<RequestReport>): RequestReport {
     frames: 0,
     contentDeltas: 0,
     toolCallDeltas: 0,
+    reasoningDeltas: 0,
+    progressFrames: 0,
     finishReason: null,
     model: null,
     streamed: true,

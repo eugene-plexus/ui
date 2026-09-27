@@ -8,11 +8,22 @@ import { Pencil, RotateCcw } from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
 import { JumpToBottomButton } from "@/components/JumpToBottomButton";
 import { argumentsParse, exampleResultFor } from "@/lib/diagnostic";
-import type { ToolCall } from "@/lib/types";
+import type { StreamProgress, ToolCall } from "@/lib/types";
 import type { PlaygroundMessage } from "@/lib/playgroundTranscript";
 import { useAutoScroll } from "@/lib/useAutoScroll";
 
-import { WorkingIndicator } from "./WorkingIndicator";
+import { WorkingIndicator, formatElapsed } from "./WorkingIndicator";
+
+/** What the page knows about the turn in flight, for the indicator. */
+export interface TurnWork {
+  /** When the turn was sent, so the clock survives the indicator leaving
+   * and coming back. */
+  since?: number;
+  /** The model was asleep when it was sent. */
+  starting?: boolean;
+  /** The newest progress since the last output, or null. */
+  progress?: StreamProgress | null;
+}
 
 export interface ToolResult {
   tool_call_id: string;
@@ -42,9 +53,12 @@ export function ChatLog({
   onRegenerate,
   onEditUserMessage,
   onToolResults,
+  work,
 }: {
   messages: PlaygroundMessage[];
   pending: boolean;
+  /** What the turn in flight is doing, from the stream. */
+  work?: TurnWork;
   /** Re-run the last turn. Omitted while there is nothing to re-run. */
   onRegenerate?: () => void;
   /** Put a previous message back in the composer, dropping everything after
@@ -73,6 +87,13 @@ export function ChatLog({
   }
 
   const last = visible[visible.length - 1];
+  const lastText = last ? textOf(last) : "";
+  const answering =
+    last?.role === "assistant" && (lastText !== "" || (last.tool_calls?.length ?? 0) > 0);
+  // Before the answer starts, and again whenever the backend says it is
+  // doing something between two parts of it (Claude Code running a tool
+  // after a sentence).
+  const showWork = pending && (!answering || (work?.progress ?? null) !== null);
   const awaitingResults =
     !pending &&
     onToolResults !== undefined &&
@@ -95,6 +116,7 @@ export function ChatLog({
           <ChatBubble
             key={i}
             message={msg}
+            live={pending && i === visible.length - 1 && msg.role === "assistant"}
             // Only the newest assistant turn can be regenerated: re-running
             // an older one would silently discard everything after it.
             onRegenerate={
@@ -123,11 +145,22 @@ export function ChatLog({
             onSubmit={onToolResults}
           />
         )}
-        {/* Only until the answer starts: it sat under a reply that was
-            visibly streaming, saying the opposite of what was on screen.
-            Moving and counting since 2026-09-27, when one still line of
-            text read as a request that had died. */}
-        {pending && last?.role !== "assistant" && <WorkingIndicator />}
+        {/* Until the answer starts, and while the backend says it is
+            busy between two parts of it: under a reply that is visibly
+            streaming it would say the opposite of what is on screen.
+            Since 2026-09-27 it says what the backend is doing -- reading
+            the prompt and how far, thinking, a tool -- rather than only
+            that time is passing. */}
+        {showWork && (
+          <WorkingIndicator
+            since={work?.since}
+            state={{
+              starting: work?.starting,
+              progress: work?.progress ?? null,
+              thinking: last?.role === "assistant" && !answering && Boolean(last.reasoning),
+            }}
+          />
+        )}
       </div>
       {!isAtBottom && <JumpToBottomButton onClick={scrollToBottom} />}
     </div>
@@ -140,12 +173,24 @@ export function ChatLog({
 const COLLAPSE_LINES = 40;
 const SHOWN_LINES = 16;
 
+/** The text of a message, whichever shape its content takes. */
+function textOf(message: PlaygroundMessage): string {
+  if (Array.isArray(message.content)) {
+    return message.content.map((part) => (part.type === "text" ? part.text : "")).join("");
+  }
+  return typeof message.content === "string" ? message.content : "";
+}
+
 function ChatBubble({
   message,
+  live = false,
   onRegenerate,
   onEdit,
 }: {
   message: PlaygroundMessage;
+  /** The answer still arriving: its thinking shows open, and an empty
+   * answer is not yet "no text". */
+  live?: boolean;
   onRegenerate?: () => void;
   onEdit?: () => void;
 }) {
@@ -172,6 +217,7 @@ function ChatBubble({
   // fault -- and it is common: a reasoning model that spends its whole
   // budget thinking sends its thinking elsewhere and no text at all.
   const empty = message.role === "assistant" && !text && images.length === 0 && calls.length === 0;
+  const thinking = message.role === "assistant" ? (message.reasoning ?? "") : "";
   const generated = typeof message.generatedAt === "string" ? new Date(message.generatedAt) : null;
   const generationTime = generated && Number.isFinite(generated.getTime()) ? generated : null;
   const timestamp =
@@ -191,6 +237,7 @@ function ChatBubble({
           {timestamp}
         </time>
       )}
+      {thinking && <Thinking text={thinking} live={live && !text} ms={message.thoughtMs} />}
       {isTool ? (
         <div
           data-testid="tool-result-message"
@@ -202,7 +249,9 @@ function ChatBubble({
           <pre className="font-mono break-all whitespace-pre-wrap">{text}</pre>
         </div>
       ) : (
-        (text || images.length > 0 || calls.length === 0) && (
+        // Not while the answer is still arriving: an empty box under the
+        // thinking would say "no text" before the answer had its chance.
+        (text || images.length > 0 || (calls.length === 0 && !live)) && (
           // `break-words`: a URL, a path or a hash has no space to wrap at,
           // and ran out past the bubble's edge and gave the whole
           // transcript a sideways scrollbar. Code blocks and tables keep
@@ -248,7 +297,7 @@ function ChatBubble({
                 className="text-[color:var(--muted)] italic"
                 title="A reasoning model can spend its whole token budget thinking. Raising Max tokens usually helps."
               >
-                The model sent no text.
+                {thinking ? "The model thought, but sent no answer." : "The model sent no text."}
               </p>
             ) : isUser ? (
               <Collapsible text={text} />
@@ -310,6 +359,47 @@ function ChatBubble({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The model's thinking, above its answer.
+ *
+ * Open while it is arriving, because until the answer starts it is the
+ * only sign the model is doing anything -- a reasoning model on the
+ * processor can think for minutes. Closed once the answer has begun,
+ * with how long it took, because the answer is what the person asked
+ * for. Its own scroll box, so a long think does not push the answer off
+ * the screen.
+ */
+function Thinking({ text, live, ms }: { text: string; live: boolean; ms?: number }) {
+  const [open, setOpen] = useState(false);
+  const shown = live || open;
+  const label = live
+    ? "Thinking"
+    : ms != null
+      ? `Thought for ${formatElapsed(Math.max(1, Math.round(ms / 1000)))}`
+      : "The model's thinking";
+  return (
+    <div data-testid="thinking" data-live={live} className="mb-1 max-w-[80%] min-w-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={live}
+        aria-expanded={shown}
+        className="font-ui text-[0.6875rem] text-[color:var(--muted)] underline decoration-dotted disabled:no-underline"
+      >
+        {label}
+      </button>
+      {shown && (
+        <div
+          data-testid="thinking-text"
+          className="mt-1 max-h-40 overflow-y-auto rounded-[var(--radius)] border border-dashed border-[color:var(--border)] px-3 py-2 text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-[color:var(--muted)]"
+        >
+          {text}
+        </div>
+      )}
     </div>
   );
 }

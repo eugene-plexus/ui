@@ -414,12 +414,15 @@ describe("Home with a model routable", () => {
     expect(info).toHaveTextContent("qwen3-14b · qwen-driver · 1.2 s");
 
     // What was sent is what a harness would send: the model, the history,
-    // and `stream: true`, through the proxy.
+    // and `stream: true`, through the proxy -- **amended 2026-09-27** with
+    // the one extension a harness would not send, `include_progress`,
+    // because the card shows what the model is doing while it waits.
     const sent = calls.find((c) => key(c) === "POST gateway/v1/chat/completions");
     expect(sent?.body).toEqual({
       model: "qwen3-14b",
       messages: [{ role: "user", content: "Reply with the single word: ok" }],
       stream: true,
+      stream_options: { include_progress: true },
     });
 
     // The exchange is in the playground's own slot, in the playground's

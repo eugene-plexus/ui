@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
-import { ChatLog } from "@/components/ChatLog";
+import { ChatLog, type TurnWork } from "@/components/ChatLog";
 import { describeError } from "@/lib/api";
 import { PROXY, streamChatCompletion } from "@/lib/completions";
 import { isComposing } from "@/lib/composing";
@@ -11,6 +11,7 @@ import { homeReadiness } from "@/lib/homeReadiness";
 import {
   type PlaygroundMessage,
   readPlaygroundTranscript,
+  thinkingOf,
   writePlaygroundTranscript,
 } from "@/lib/playgroundTranscript";
 import type { ChatCompletionMessage, Model, RoutingTableView } from "@/lib/types";
@@ -54,6 +55,7 @@ export function TryItCard({
   const [hydrated, setHydrated] = useState(false);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
+  const [work, setWork] = useState<TurnWork | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [turn, setTurn] = useState<TurnInfo | null>(null);
   const active = useRef<{
@@ -131,18 +133,21 @@ export function TryItCard({
     const outgoing: ChatCompletionMessage[] = [...messages, { role: "user", content }];
     setMessages(outgoing);
     setPending(true);
+    setWork({ since: Date.now(), starting: readiness.kind === "on-demand", progress: null });
     try {
       // Appended empty and grown in place, as the playground does: the
       // reply appears as it is generated, which is what a first token
       // looks like to the person waiting for one.
       let streamed = "";
       let generatedAt: string | undefined;
+      const thinking = thinkingOf();
+      const output = () => setWork((w) => (w && w.progress ? { ...w, progress: null } : w));
       const upsert = (message: ChatCompletionMessage) => {
         if (active.current !== request || request.controller.signal.aborted) return;
         generatedAt ??= new Date().toISOString();
         request.delivered = true;
         setText("");
-        setMessages([...outgoing, { ...message, generatedAt }]);
+        setMessages([...outgoing, thinking.attach({ ...message, generatedAt })]);
       };
       const response = await streamChatCompletion(
         {
@@ -151,12 +156,23 @@ export function TryItCard({
           timeoutMs: REQUEST_TIMEOUT_MS,
           transport: PROXY,
           signal: request.controller.signal,
+          // The same signals the playground shows: how far the model has
+          // read, what it is doing, and its thinking as it arrives.
+          onReasoning: (delta) => {
+            thinking.think(delta);
+            output();
+            upsert({ role: "assistant", content: streamed });
+          },
+          onProgress: (progress) => setWork((w) => (w ? { ...w, progress } : w)),
         },
         (delta) => {
+          thinking.stop();
+          output();
           streamed += delta;
           upsert({ role: "assistant", content: streamed });
         },
       );
+      thinking.stop();
       if (active.current !== request) return;
       const choice = response.choices?.[0];
       if (choice) upsert(choice.message);
@@ -181,6 +197,7 @@ export function TryItCard({
       if (active.current === request) {
         active.current = null;
         setPending(false);
+        setWork(null);
       }
     }
   }
@@ -289,7 +306,7 @@ export function TryItCard({
       </form>
       {messages.length > 0 && (
         <div className="mt-3 h-64 overflow-hidden rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)]">
-          <ChatLog messages={messages} pending={pending} />
+          <ChatLog messages={messages} pending={pending} work={work ?? undefined} />
         </div>
       )}
       {turn && (

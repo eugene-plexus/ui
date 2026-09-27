@@ -265,7 +265,9 @@ describe("the conversation, to a screen reader", () => {
     const { rerender } = render(
       <ChatLog messages={[{ role: "user", content: "hi" }]} pending={true} />,
     );
-    expect(screen.getByTestId("working-indicator")).toHaveTextContent("The model is working on it");
+    // Amended 2026-09-27: with nothing from the stream yet, it says only
+    // what is known.
+    expect(screen.getByTestId("working-indicator")).toHaveTextContent("Waiting for the model");
     rerender(
       <ChatLog
         messages={[
@@ -291,8 +293,10 @@ describe("the conversation, to a screen reader", () => {
       expect(screen.queryByTestId("working-still")).toBeNull();
       act(() => vi.advanceTimersByTime(66_000));
       expect(screen.getByTestId("working-elapsed")).toHaveTextContent("1 min 25 s");
+      // Amended 2026-09-27: a hosted model can be slow too, so the
+      // sentence no longer assumes the processor.
       expect(screen.getByTestId("working-still")).toHaveTextContent(
-        "On the processor, a first reply can take a few minutes",
+        "A large model, or one running on the processor, can take a few minutes to start",
       );
     } finally {
       vi.useRealTimers();
@@ -327,5 +331,40 @@ describe("an answer with nothing in it", () => {
       />,
     );
     expect(screen.queryByTestId("empty-reply")).toBeNull();
+  });
+});
+
+describe("what the model is doing (2026-09-27)", () => {
+  it("comes back between two parts of an answer when the backend says it is busy", () => {
+    // Claude Code writes a sentence, runs a tool, writes again.
+    const messages = [
+      { role: "user" as const, content: "What is in a.txt?" },
+      { role: "assistant" as const, content: "Let me look." },
+    ];
+    const { rerender } = render(<ChatLog messages={messages} pending={true} />);
+    expect(screen.queryByTestId("working-indicator")).toBeNull();
+    rerender(
+      <ChatLog
+        messages={messages}
+        pending={true}
+        work={{ progress: { stage: "tool", tool: "Read" } }}
+      />,
+    );
+    expect(screen.getByTestId("working-headline")).toHaveTextContent("Using a tool: Read");
+  });
+
+  it("says a model that only thought sent no answer, with its thinking kept", () => {
+    render(
+      <ChatLog
+        messages={[
+          { role: "assistant", content: "", reasoning: "Round and round", thoughtMs: 61_000 },
+        ]}
+        pending={false}
+      />,
+    );
+    expect(screen.getByTestId("empty-reply")).toHaveTextContent(
+      "The model thought, but sent no answer.",
+    );
+    expect(screen.getByTestId("thinking")).toHaveTextContent("Thought for 1 min 1 s");
   });
 });

@@ -64,6 +64,9 @@ export type ChatCompletionChunk = GatewayComponents["schemas"]["ChatCompletionCh
 export type ChatCompletionMessage = GatewayComponents["schemas"]["ChatCompletionMessage"];
 export type CompletionUsage = GatewayComponents["schemas"]["CompletionUsage"];
 export type CompletionRoutingInfo = GatewayComponents["schemas"]["CompletionRoutingInfo"];
+/** What the backend is doing while it produces no output, on a progress
+ * chunk (`stream_options.include_progress`). Since specs 807024d. */
+export type StreamProgress = GatewayComponents["schemas"]["StreamProgress"];
 
 // Tool calling and structured output, on the same wire contract. `Tool`
 // is what a harness sends; `ToolCall` is what comes back on an assistant

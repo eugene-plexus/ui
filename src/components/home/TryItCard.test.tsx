@@ -98,9 +98,38 @@ describe("after an answer", () => {
     const input = screen.getByTestId("home-composer");
     fireEvent.change(input, { target: { value: "hello" } });
     fireEvent.submit(input.closest("form")!);
+    // Amended 2026-09-27: before the stream says anything, it says only
+    // what is known -- the message went and nothing has come back.
     expect(await screen.findByTestId("working-indicator")).toHaveTextContent(
-      "The model is working on it",
+      "Waiting for the model",
     );
+  });
+
+  it("says what the model is doing, and shows its thinking", async () => {
+    // 2026-09-27: the same signals the playground shows, on the first
+    // screen a person reaches -- where the tester who gave up was.
+    let options: { onProgress?: (p: unknown) => void; onReasoning?: (d: string) => void } = {};
+    stream.mockImplementationOnce((opts: typeof options) => {
+      options = opts;
+      return deferred().promise;
+    });
+    render(<TryItCard models={MODELS} routing={READY} />);
+    const input = screen.getByTestId("home-composer");
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.submit(input.closest("form")!);
+    await screen.findByTestId("working-indicator");
+    act(() =>
+      options.onProgress?.({
+        stage: "prompt",
+        prompt_tokens: 200,
+        cached_tokens: 0,
+        processed_tokens: 50,
+      }),
+    );
+    expect(screen.getByTestId("working-headline")).toHaveTextContent("Reading your message: 25%");
+    act(() => options.onReasoning?.("Hmm, a greeting."));
+    expect(await screen.findByTestId("thinking-text")).toHaveTextContent("Hmm, a greeting.");
+    expect(screen.getByTestId("working-headline")).toHaveTextContent("Thinking");
   });
 
   it("announces a failed send", async () => {

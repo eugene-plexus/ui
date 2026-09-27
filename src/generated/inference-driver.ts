@@ -88,6 +88,11 @@ export interface paths {
          *     - `event: token` — `data` is a JSON `StreamToken`: `text` for a
          *       text fragment, `reasoning` for a reasoning fragment,
          *       `toolCalls` for tool-call fragments, exactly one per frame
+         *     - `event: progress` — `data` is a JSON `StreamProgress`: what
+         *       the backend is doing between outputs. Only when the request
+         *       set `reportProgress`, and at any point before `done`. **Not
+         *       output**: not a commit point one layer up, not a first token,
+         *       and it never arms the stall clock (`streamStallSeconds`)
          *     - `event: done`  — `data` is the final `GenerateResponse` JSON
          *     - `event: error` — `data` is a `Problem` JSON
          *
@@ -570,6 +575,26 @@ export interface components {
              */
             toolChoice?: ("none" | "auto" | "required") | components["schemas"]["NamedToolChoice"];
             responseFormat?: components["schemas"]["ResponseFormat"];
+            /**
+             * @description On `POST /v1/generate/stream` only: emit `event: progress`
+             *     frames saying what the backend is doing when it is not yet,
+             *     or not at the moment, producing output -- see
+             *     `StreamProgress` for what each backend reports. Ignored by
+             *     `POST /v1/generate`. Not an output setting: it changes what
+             *     the stream says about the work, never what the model says.
+             *
+             *     llama.cpp's own `return_progress` flag is sent only once the
+             *     backend has answered as `llama-server` (its `/props`), since
+             *     a hosted API refuses a field it does not know.
+             *
+             *     **The 200 commits at the first progress frame**, where it
+             *     otherwise commits at the first token, so a backend that
+             *     fails partway through reading the prompt fails as an
+             *     `event: error` frame instead of a status code. That is why
+             *     it is asked for rather than sent by default.
+             * @default false
+             */
+            reportProgress: boolean;
         };
         TokenCount: {
             /**
@@ -678,6 +703,60 @@ export interface components {
             reasoning?: string;
             /** @description Fragments of one or more tool calls, accumulated by `index`. */
             toolCalls?: components["schemas"]["ToolCallDelta"][];
+        };
+        /**
+         * @description One `event: progress` payload: what the backend is doing while
+         *     it is not producing output. Each backend reports what it can
+         *     observe and nothing it has to guess:
+         *
+         *     - **llama.cpp**: `prompt`, from its own `prompt_progress`
+         *       (`return_progress: true`), one frame per batch it reads.
+         *     - **Any HTTP backend, a hosted API included**: `working` when
+         *       the response opens (the service has the request), and again
+         *       at an SSE keepalive comment (OpenRouter's `: OPENROUTER
+         *       PROCESSING`), at most every two seconds.
+         *     - **Claude Code**: `working` when the CLI starts and when it
+         *       sends the request; `tool` when the agent starts one of its own
+         *       tools. Its thinking is `reasoning` output, not progress.
+         *     - **Codex**: `working` at `turn.started`; `tool` when an item
+         *       that runs something starts.
+         *
+         *     **Why it exists (2026-09-27).** Before the first token a stream
+         *     said nothing at all: measured on llama.cpp b11215 with a 7,795
+         *     token prompt on the processor, 35 s passed with no frame, then
+         *     the answer began. A person watching that reads a dead request,
+         *     and one did. A cloud agent is the same shape from the other end:
+         *     Claude Code can run tools for a minute before it writes a word.
+         */
+        StreamProgress: {
+            /**
+             * @description `prompt`: reading the prompt, with the token counts below.
+             *     `working`: the backend says it is working and not how far.
+             *     `tool`: an agent backend is running one of its own tools,
+             *     named in `tool`.
+             * @enum {string}
+             */
+            stage: "prompt" | "working" | "tool";
+            /**
+             * @description On `tool`: the tool's name as the backend gives it (`Read`,
+             *     `Bash`, `command`). Its arguments are not carried.
+             */
+            tool?: string;
+            /** @description Tokens in the whole prompt, as the backend counted them. */
+            promptTokens?: number;
+            /**
+             * @description Of those, the tokens reused from the backend's cache and so
+             *     not read again. A follow-up turn in a conversation is mostly
+             *     cache.
+             */
+            cachedTokens?: number;
+            /**
+             * @description Read so far, the cached ones included, so it starts at
+             *     `cachedTokens` and ends at `promptTokens`.
+             */
+            processedTokens?: number;
+            /** @description Time the backend has spent reading this prompt so far. */
+            elapsedMs?: number;
         };
         Tool: {
             /** @constant */

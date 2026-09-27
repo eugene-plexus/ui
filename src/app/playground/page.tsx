@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ChatInput } from "@/components/ChatInput";
-import { ChatLog, type ToolResult } from "@/components/ChatLog";
+import { ChatLog, type ToolResult, type TurnWork } from "@/components/ChatLog";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
 import { DecisionPanel } from "@/components/DecisionPanel";
@@ -34,6 +34,7 @@ import {
   type PlaygroundMessage,
   readPlaygroundTranscript,
   requestMessages,
+  thinkingOf,
   writePlaygroundTranscript,
 } from "@/lib/playgroundTranscript";
 import {
@@ -56,6 +57,7 @@ import type {
   ToolChoice,
 } from "@/lib/types";
 import { useSetupGate } from "@/lib/useSetupGate";
+import { isAsleep } from "@/lib/workingState";
 
 /**
  * The playground: a reference client and a diagnostic.
@@ -164,6 +166,8 @@ export default function PlaygroundPage() {
   const [turnInfo, setTurnInfo] = useState<TurnInfo | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [pending, setPending] = useState(false);
+  // What the turn in flight is doing, from the stream, for the indicator.
+  const [work, setWork] = useState<TurnWork | null>(null);
   const [error, setError] = useState<string | null>(null);
   // A deliberate stop is not a failure and must not read like one.
   const [notice, setNotice] = useState<string | null>(null);
@@ -376,6 +380,11 @@ export default function PlaygroundPage() {
     setTurnInfo(null);
     setMessages(outgoing);
     setPending(true);
+    setWork({
+      since: Date.now(),
+      starting: isAsleep(models.find((m) => m.id === chosen)),
+      progress: null,
+    });
     const controller = new AbortController();
     abortRef.current = controller;
     // Outside the try, so a Stop can tell "kept what arrived" from "nothing
@@ -390,10 +399,14 @@ export default function PlaygroundPage() {
       // appears as it is generated instead of arriving all at once after
       // a long silence.
       let streamed = "";
+      let calls: ChatCompletionMessage["tool_calls"];
       let generatedAt: string | undefined;
+      const thinking = thinkingOf();
+      // Output of any kind ends whatever the backend said it was doing.
+      const output = () => setWork((w) => (w && w.progress ? { ...w, progress: null } : w));
       const upsert = (message: ChatCompletionMessage) => {
         generatedAt ??= new Date().toISOString();
-        const recorded = { ...message, generatedAt };
+        const recorded = thinking.attach({ ...message, generatedAt });
         setMessages((prev) => {
           if (!appended) {
             appended = true;
@@ -429,14 +442,28 @@ export default function PlaygroundPage() {
           signal: controller.signal,
           onReport: setReport,
           // Cards fill in as fragments land, the way the text does.
-          onToolCalls: (calls) =>
-            upsert({ role: "assistant", content: streamed || null, tool_calls: calls }),
+          onToolCalls: (next) => {
+            calls = next;
+            output();
+            upsert({ role: "assistant", content: streamed || null, tool_calls: next });
+          },
+          // The thinking shows as it arrives: until the answer starts it is
+          // the only sign a reasoning model is doing anything.
+          onReasoning: (delta) => {
+            thinking.think(delta);
+            output();
+            upsert({ role: "assistant", content: streamed, tool_calls: calls });
+          },
+          onProgress: (progress) => setWork((w) => (w ? { ...w, progress } : w)),
         },
         (delta) => {
+          thinking.stop();
+          output();
           streamed += delta;
-          upsert({ role: "assistant", content: streamed });
+          upsert({ role: "assistant", content: streamed, tool_calls: calls });
         },
       );
+      thinking.stop();
       const choice = response.choices?.[0];
       if (choice) {
         // The assembled message, tool calls and all -- what a harness
@@ -490,6 +517,7 @@ export default function PlaygroundPage() {
     } finally {
       abortRef.current = null;
       setPending(false);
+      setWork(null);
     }
   }
 
@@ -679,6 +707,7 @@ export default function PlaygroundPage() {
           <ChatLog
             messages={messages}
             pending={pending}
+            work={work ?? undefined}
             onRegenerate={handleRegenerate}
             onEditUserMessage={handleEditUserMessage}
             onToolResults={handleToolResults}

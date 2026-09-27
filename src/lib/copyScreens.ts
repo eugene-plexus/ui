@@ -1,6 +1,15 @@
 /** The golden path and the shared components that carry its visible copy. */
 export const COPY_SCREENS: Record<string, string[]> = {
-  home: ["app/page.tsx", "components/home", "components/SetupGateScreen.tsx"],
+  home: [
+    "app/page.tsx",
+    "components/home",
+    "components/SetupGateScreen.tsx",
+    // Home's Try it card renders both, and the wait is where a first-time
+    // person reads the most words (2026-09-27).
+    "components/ChatLog.tsx",
+    "components/WorkingIndicator.tsx",
+    "lib/workingState.ts",
+  ],
   wizard: ["app/setup"],
   discover: [
     "app/discover",

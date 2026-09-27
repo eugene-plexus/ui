@@ -46,6 +46,7 @@ export function RequestReport({
         data-status={report.status ?? ""}
         data-frames={report.frames}
         data-tool-call-deltas={report.toolCallDeltas}
+        data-progress-frames={report.progressFrames}
         data-prompt-tokens={report.usage?.prompt_tokens ?? ""}
         data-driver={report.routing?.driver ?? ""}
         className={`cursor-pointer select-none ${failed ? "status-error" : "text-[color:var(--muted)]"}`}
@@ -76,7 +77,8 @@ export function RequestReport({
             {report.streamed && (
               <Row label="stream">
                 {report.frames} frames · {report.contentDeltas} content deltas ·{" "}
-                {report.toolCallDeltas} tool-call deltas
+                {report.reasoningDeltas} reasoning deltas · {report.toolCallDeltas} tool-call deltas
+                · {report.progressFrames} progress frames
               </Row>
             )}
             <Row label="finish">{report.finishReason ?? "—"}</Row>

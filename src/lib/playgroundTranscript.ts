@@ -53,12 +53,20 @@ export const PLAYGROUND_STORAGE_KEY = "eugene-playground";
 export type PlaygroundMessage = ChatCompletionMessage & {
   /** Browser time when the first part of this response arrived; never sent to a model. */
   generatedAt?: string;
+  /** The model's thinking before this answer, for display; never sent back. It
+   * rides the wire as `reasoning_content`, and a playground that replayed it
+   * would send a model its own earlier thinking where no harness does. */
+  reasoning?: string;
+  /** How long it thought, from its first thought to its first word. */
+  thoughtMs?: number;
 };
 
 export function requestMessages(messages: PlaygroundMessage[]): ChatCompletionMessage[] {
   return messages.map((message) => {
     const wire = { ...message };
     delete wire.generatedAt;
+    delete wire.reasoning;
+    delete wire.thoughtMs;
     return wire;
   });
 }
@@ -126,4 +134,34 @@ export function writePlaygroundTranscript(transcript: PlaygroundTranscript): voi
       // The conversation just does not survive a reload.
     }
   }
+}
+
+/**
+ * A turn's thinking as it streams: the text, and how long it took.
+ *
+ * One place for both pages that stream a turn (the playground and Home's
+ * card), so "how long did it think" is measured the same way on each:
+ * from the first thought to the first word of the answer, or to the end
+ * of a turn that only thought.
+ */
+export function thinkingOf(now: () => number = Date.now) {
+  let text = "";
+  let startedAt: number | undefined;
+  let ms: number | undefined;
+  const stop = () => {
+    if (startedAt !== undefined && ms === undefined) ms = now() - startedAt;
+  };
+  return {
+    /** A fragment of reasoning arrived. */
+    think(delta: string): void {
+      startedAt ??= now();
+      text += delta;
+    },
+    /** The answer started, or the turn ended: thinking is over. */
+    stop,
+    /** The message with its thinking attached, when there was any. */
+    attach<T extends PlaygroundMessage>(message: T): T {
+      return text ? { ...message, reasoning: text, thoughtMs: ms } : message;
+    },
+  };
 }
