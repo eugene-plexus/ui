@@ -12,6 +12,8 @@ import type { ToolCall } from "@/lib/types";
 import type { PlaygroundMessage } from "@/lib/playgroundTranscript";
 import { useAutoScroll } from "@/lib/useAutoScroll";
 
+import { WorkingIndicator } from "./WorkingIndicator";
+
 export interface ToolResult {
   tool_call_id: string;
   content: string;
@@ -122,12 +124,10 @@ export function ChatLog({
           />
         )}
         {/* Only until the answer starts: it sat under a reply that was
-            visibly streaming, saying the opposite of what was on screen. */}
-        {pending && last?.role !== "assistant" && (
-          <p role="status" className="font-ui text-sm text-[color:var(--muted)]">
-            Waiting on the backend…
-          </p>
-        )}
+            visibly streaming, saying the opposite of what was on screen.
+            Moving and counting since 2026-09-27, when one still line of
+            text read as a request that had died. */}
+        {pending && last?.role !== "assistant" && <WorkingIndicator />}
       </div>
       {!isAtBottom && <JumpToBottomButton onClick={scrollToBottom} />}
     </div>

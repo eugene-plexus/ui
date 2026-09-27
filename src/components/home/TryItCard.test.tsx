@@ -89,6 +89,20 @@ describe("after an answer", () => {
     await waitFor(() => expect(screen.getByTestId("home-composer")).toHaveFocus());
   });
 
+  it("shows that the model is working while the first word is slow", async () => {
+    // 2026-09-27: on the processor the first word can take minutes, and
+    // Home said only "Waiting for the answer…". A tester read that as a
+    // failure and left while the answer was being written.
+    stream.mockReturnValueOnce(deferred().promise);
+    render(<TryItCard models={MODELS} routing={READY} />);
+    const input = screen.getByTestId("home-composer");
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(await screen.findByTestId("working-indicator")).toHaveTextContent(
+      "The model is working on it",
+    );
+  });
+
   it("announces a failed send", async () => {
     stream.mockRejectedValueOnce(new Error("The backend fell over."));
     render(<TryItCard models={MODELS} routing={READY} />);

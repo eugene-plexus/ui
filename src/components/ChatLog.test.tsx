@@ -10,7 +10,7 @@
  * has to show it.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ChatLog } from "./ChatLog";
@@ -261,11 +261,11 @@ describe("the conversation, to a screen reader", () => {
     expect(log).toHaveAttribute("aria-busy", "false");
   });
 
-  it("says it is waiting only until the answer starts", () => {
+  it("says it is working only until the answer starts", () => {
     const { rerender } = render(
       <ChatLog messages={[{ role: "user", content: "hi" }]} pending={true} />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent("Waiting on the backend");
+    expect(screen.getByTestId("working-indicator")).toHaveTextContent("The model is working on it");
     rerender(
       <ChatLog
         messages={[
@@ -275,7 +275,28 @@ describe("the conversation, to a screen reader", () => {
         pending={true}
       />,
     );
-    expect(screen.queryByText(/Waiting on the backend/)).toBeNull();
+    expect(screen.queryByTestId("working-indicator")).toBeNull();
+  });
+
+  it("counts, and after twenty seconds says why it can take this long", () => {
+    // 2026-09-27: a prompt to a model on the processor showed one still
+    // line, read as a failure, and was abandoned while the answer came.
+    vi.useFakeTimers();
+    try {
+      render(<ChatLog messages={[{ role: "user", content: "hi" }]} pending={true} />);
+      expect(screen.getByTestId("working-elapsed")).toHaveTextContent("0 s");
+      expect(screen.queryByTestId("working-still")).toBeNull();
+      act(() => vi.advanceTimersByTime(19_000));
+      expect(screen.getByTestId("working-elapsed")).toHaveTextContent("19 s");
+      expect(screen.queryByTestId("working-still")).toBeNull();
+      act(() => vi.advanceTimersByTime(66_000));
+      expect(screen.getByTestId("working-elapsed")).toHaveTextContent("1 min 25 s");
+      expect(screen.getByTestId("working-still")).toHaveTextContent(
+        "On the processor, a first reply can take a few minutes",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
