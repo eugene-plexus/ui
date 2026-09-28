@@ -340,6 +340,20 @@ export function ConfigFieldInput({
       );
     }
 
+    // `string_list` (P1): the same widget once more, for plain values the
+    // field's own description explains -- first, a provider account's
+    // model patterns (`anthropic/*`, `*:free`).
+    if (field.valueType === "string_list") {
+      return (
+        <StringListInput
+          value={Array.isArray(value) ? (value as unknown[]).map(String) : []}
+          pending={pending}
+          onChange={onChange}
+          copy={STRING_LIST_COPY}
+        />
+      );
+    }
+
     // `model_slots` (M6): the gateway's priority lists. Edited on their
     // own page since 2026-09-21 — they grow with the install, and the
     // structured editor needs the routing table beside the form. This
@@ -571,6 +585,7 @@ function formatDefault(field: ConfigFieldDef): string {
 const COMPOUND_VALUE_TYPES = new Set<string>([
   "path_list",
   "url_list",
+  "string_list",
   "library_folders",
   "path_mappings",
   "share_credentials",
@@ -615,8 +630,17 @@ const URL_LIST_COPY: ListCopy = {
   mono: false,
 };
 
+const STRING_LIST_COPY: ListCopy = {
+  empty: "None.",
+  placeholder: "anthropic/*",
+  addLabel: "add pattern",
+  removeTitle: "Remove this entry.",
+  mono: true,
+};
+
 /**
- * Editor for an ordered list of strings — `path_list` and `url_list`.
+ * Editor for an ordered list of strings — `path_list`, `url_list` and
+ * `string_list`.
  *
  * Rows are keyed by index deliberately. Entries are edited in place and
  * the list is short; a synthetic id would have to survive a round-trip

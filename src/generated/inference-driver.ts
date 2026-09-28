@@ -185,7 +185,8 @@ export interface paths {
          *     embedding field at all, and an Ollama runner started for chat
          *     answers `This server does not support embeddings. Start it with
          *     --embeddings`. So a driver determines it by *trying*, once, and
-         *     reports the result as `capabilities.embeddings` on `/v1/info`.
+         *     reports the result as the model's `embeddings` surface on
+         *     `/v1/info`.
          *     The negative case is cheap: llama.cpp refuses a non-pooling
          *     model in 45 ms, before any compute.
          */
@@ -250,11 +251,18 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Report which backend and model this driver serves.
-         * @description The gateway polls this to build its routing table: `modelId` is
-         *     the key it routes on, `capabilities` says what the backend can
-         *     do, and `backend` / `provider` are what the UI labels. A driver
-         *     reports only what it serves — never where it sits.
+         * Report which backend and models this driver serves.
+         * @description The gateway polls this to build its routing table: each entry
+         *     of `models` is a model it routes on, with that model's
+         *     `capabilities`, and `backend` / `provider` are what the UI
+         *     labels. A driver reports only what it serves — never where it
+         *     sits.
+         *
+         *     An account's list can run to hundreds of entries (OpenRouter's
+         *     is 625). `models=false` leaves the list out and keeps every
+         *     driver-level field, `catalogue` included, for a caller that only
+         *     needs those — the gateway's per-request re-check of locality is
+         *     the one that exists.
          */
         get: operations["info"];
         put?: never;
@@ -424,6 +432,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         GenerateRequest: {
+            model?: components["schemas"]["RequestModel"];
             /**
              * @description Internal routing policy. When true the driver must refuse before
              *     forwarding any prompt/image unless its active engine is classified
@@ -844,6 +853,7 @@ export interface components {
          *     control plane's own overhead by the size of a document set.
          */
         EmbedRequest: {
+            model?: components["schemas"]["RequestModel"];
             /**
              * @description Internal policy; require a local active engine before forwarding any input.
              * @default false
@@ -889,6 +899,7 @@ export interface components {
          *     alone, not against the other questions' answers.
          */
         DecisionRequest: {
+            model?: components["schemas"]["RequestModel"];
             /**
              * @description What is being judged — plain text, or structured data (an
              *     object or array such as a ticket record or a chat log)
@@ -995,10 +1006,10 @@ export interface components {
             requestId?: string;
         };
         /**
-         * @description Present on `/v1/info` iff this driver serves `POST /v1/decide`.
-         *     Its absence is how the gateway knows not to route decisions
-         *     here; `chatCapable: false` beside it is how a decision-only
-         *     backend refuses chat with a reason.
+         * @description Present on a model's `capabilities` iff it serves
+         *     `POST /v1/decide`. Its absence is how the gateway knows not to
+         *     route decisions there; a `surfaces` of `[decisions]` alone is how
+         *     a decision-only backend refuses chat with a reason.
          */
         DecisionCapability: {
             /** @description Question kinds the backend supports. */
@@ -1019,6 +1030,232 @@ export interface components {
              *     holds capacity nobody can free.
              */
             maxConcurrent?: number;
+        };
+        /**
+         * @description Which of this driver's models the request is for: an `id` from
+         *     `DriverInfo.models`, **unprefixed** — the gateway strips the
+         *     `<driver name>/` it added. Optional so a caller from before P1
+         *     still works against a single-model driver, which serves its one
+         *     model when this is absent. An account driver refuses a request
+         *     without it (400, `#model-required`), and every driver refuses a
+         *     model it does not list (404, `#model-not-served`) before calling
+         *     its backend.
+         */
+        RequestModel: string;
+        /**
+         * @description One model a driver serves, with what that model can do.
+         *     Everything the gateway used to read off the driver as a whole
+         *     now sits here per model, because an account's six hundred
+         *     models do not share one answer.
+         */
+        DriverModel: {
+            /**
+             * @description What a request names in `model`. A single-model driver's is
+             *     the public id; an account's is the backend's own id, which
+             *     the gateway prefixes. May contain `/`, `:` and `~`
+             *     (`anthropic/claude-opus-5.5`, `qwen3:8b`,
+             *     `~openai/gpt-sol-latest`).
+             */
+            id: string;
+            /** @description The backend's display name for the model, when it gives one. */
+            name?: string;
+            /**
+             * @description What this driver actually sends to its backend, when that
+             *     differs from `id`. Exists because some backends' served name
+             *     is not ours to choose: `mlx_lm.server` answers only to
+             *     upstream's `default_model` sentinel or to the model's
+             *     absolute path — the first collides across every MLX runtime
+             *     in an install and the second publishes the operator's
+             *     directory layout — so the supervised runtime's companion
+             *     driver advertises the public alias as `id` and translates to
+             *     the sentinel at the backend boundary, nowhere else.
+             *
+             *     Diagnostic, never a routing key: the gateway routes and
+             *     authorizes on `id` alone, and this value must not appear in
+             *     any public model list. Absent means the same as `id`.
+             *     Responses report `id` (`GenerateResponse`, `EmbedResponse`
+             *     and `DecisionResponse` `modelId`), so two runtimes serving
+             *     different models behind one upstream sentinel stay
+             *     distinguishable everywhere a caller looks — and so does an
+             *     account's alias, which the backend answers under its
+             *     target's id (`~z-ai/glm-flash-latest` answers as
+             *     `z-ai/glm-5.3-flash`, measured 2026-09-27).
+             */
+            upstreamId?: string;
+            /**
+             * @description Which requests this model answers. The values so far:
+             *
+             *     * `chat` (`/v1/generate`), `embeddings` (`/v1/embed`) and
+             *       `decisions` (`/v1/decide`), which have doors today;
+             *     * `completion`, `speech`, `transcription`, `image`, `video`,
+             *       `moderation` and `rerank`, which name OpenAI's and
+             *       OpenRouter's doors Eugene has not built yet.
+             *
+             *     A driver reports those anyway, so a model's id does not
+             *     change on the day its door arrives, and the gateway lists a
+             *     model on `GET /v1/models` only once a door serves one of its
+             *     surfaces (P1-4).
+             *
+             *     **Strings, not an enum, on purpose.** A newer driver
+             *     reporting a surface an older gateway has never heard of must
+             *     not fail that gateway's validation of the whole `/v1/info`,
+             *     which would make every model on the driver unreachable over
+             *     one unknown word. A reader ignores a surface it does not
+             *     know. Empty only for a model whose kind neither the backend
+             *     nor the driver could decide, which serves nothing.
+             *
+             *     **Replaces `capabilities.embeddings` and
+             *     `capabilities.chatCapable`**, which said the same thing once
+             *     for the whole driver. Where they came from still holds for a
+             *     single-model driver: `embeddings` is **a property of the
+             *     running backend, not of the model**, and not readable from
+             *     anything (`llama-server`'s `/props` carries no pooling
+             *     field, and an Ollama runner started for chat refuses with
+             *     *"This server does not support embeddings"*), so it is
+             *     determined by trying once and cached for the driver's
+             *     lifetime. A System One backend serves `decisions` alone. An
+             *     account takes each model's surfaces from its catalogue.
+             */
+            surfaces: string[];
+            /**
+             * @description What the model takes in, in the spelling of OpenRouter's
+             *     `architecture.input_modalities` (`text`, `image`, `file`,
+             *     `audio`, `video`), when the backend says. Absent means
+             *     unknown. Strings for the reason `surfaces` gives.
+             */
+            inputModalities?: string[];
+            /**
+             * @description What the model gives back, in OpenRouter's spelling of
+             *     `output_modalities` (`text`, `image`, `audio`, `video`,
+             *     `speech`, `transcription`, `embeddings`, `rerank`,
+             *     `decisions`), when the backend says. Absent means unknown.
+             */
+            outputModalities?: string[];
+            /**
+             * @description The voices a speech model offers, when the backend lists
+             *     them (OpenRouter's `supported_voices`). For P3's
+             *     `/v1/audio/speech`; reported now so nothing changes shape
+             *     later.
+             */
+            voices?: string[];
+            capabilities?: components["schemas"]["Capabilities"];
+        };
+        /**
+         * @description Present only on a **provider account**, and its presence is what
+         *     makes the gateway prefix this driver's model ids. Says where the
+         *     list came from and whether the last read of it worked, because a
+         *     list that silently stopped refreshing looks exactly like one
+         *     that did.
+         */
+        DriverCatalogue: {
+            /**
+             * @description Which listing was read: `openrouter` (`/models/user` with
+             *     every output modality — the account's own list, not the
+             *     public one), `ollama` (`/api/tags` plus `/api/show`),
+             *     `lmstudio` (`/api/v0/models`), or `openai` (the OpenAI
+             *     `/v1/models` shape, which says nothing per model).
+             */
+            source: string;
+            /** @description How many models the last good read listed, before include/exclude. */
+            total: number;
+            /** @description How many of those the patterns kept, which is the length of `models`. */
+            exposed: number;
+            /**
+             * @description The driver's `catalogueInclude` patterns: a model is kept when
+             *     its id matches one. `*` is the only wildcard and matches any
+             *     run of characters, `/` included. Default `["*"]`: an
+             *     aggregator exposes everything (call #2).
+             */
+            include?: string[];
+            /** @description The `catalogueExclude` patterns, applied after `include`. */
+            exclude?: string[];
+            /**
+             * Format: date-time
+             * @description When the list in force was read. Null when no read has ever
+             *     worked. It survives a restart: the last good list is kept on
+             *     disk beside the driver's config, so an upstream that is down
+             *     at boot still leaves its models routable.
+             */
+            refreshedAt?: string | null;
+            /** @description How often the list is read again (`catalogueRefreshMinutes`). */
+            refreshSeconds?: number;
+            /**
+             * @description Why the most recent read failed, in the backend's own words
+             *     where it gave any (*"missing the permission models_read"* is
+             *     not *"invalid key"*). Null after a read that worked. A
+             *     failed read never empties the list: the previous one stays
+             *     in force (R2.1's rule).
+             */
+            error?: string | null;
+        };
+        /**
+         * @description What one model can do behind this driver, which the gateway keys
+         *     off when routing. Was one object for the whole driver until P1;
+         *     each `DriverModel` carries its own now. For a backend whose
+         *     listing says nothing per model, each model inherits the answer
+         *     the driver would give for itself (P1-3).
+         */
+        Capabilities: {
+            /**
+             * @description Explicit callerSettings this active adapter can carry without
+             *     dropping them. This does not promise the provider accepts every
+             *     possible value. Absent means unknown; ineligible for requests
+             *     requiring explicit settings. The driver still validates before
+             *     execution, including after a configuration change.
+             */
+            supportedSettings?: string[];
+            /** @description Whether `/v1/generate/stream` emits true incremental tokens. */
+            streaming?: boolean;
+            /**
+             * @description Whether the loaded model is confirmed to accept inline PNG/JPEG
+             *     images. Unknown or unverified backends report false. Rechecked
+             *     before image generation; never inferred from the provider name.
+             */
+            imageInput?: boolean;
+            /**
+             * @description Whether this driver can carry `tools` to its backend and
+             *     report `toolCalls` back.
+             *
+             *     The gateway reads it to answer a question a harness
+             *     cannot otherwise ask: a plain answer where a tool call
+             *     was expected looks identical whether the model declined
+             *     or the backend never saw the tools. A driver that says
+             *     `false` here is failed at the front door with a reason
+             *     instead.
+             */
+            toolCalling?: boolean;
+            /**
+             * @description The context window the backend **resolved**, read back
+             *     from the backend itself — not the model's trained
+             *     maximum, and never an estimate.
+             *
+             *     Null means unknown, and unknown is a real answer: a
+             *     hosted provider exposes nothing to read, and a CLI
+             *     subscription has no window of its own to report. The
+             *     gateway's `_smallest_context` folds this together with
+             *     the window a supervised runtime reports and publishes
+             *     the smallest as `x_eugene_plexus.context_length` on
+             *     `GET /v1/models`, so a harness can size a prompt
+             *     against the number that will actually apply.
+             *
+             *     **Populated by a probe of the backend, which is why it
+             *     exists at all.** A supervised runtime already tells the
+             *     agent its window; this field is for the backend nobody
+             *     supervises — an Ollama or an LM Studio the operator
+             *     points us at — which until now reported no window
+             *     anywhere. Contracted since M0 and populated by nothing
+             *     until then, exactly as `streaming` was until M10.
+             *
+             *     **Advertising, not enforcement.** Nothing here counts a
+             *     prompt: the window is published so a caller can respect
+             *     it, and a caller that does not is refused by the engine
+             *     itself, whose count is exact. A backend that truncates
+             *     silently instead of refusing is caught after the fact —
+             *     see `x_eugene_plexus.prompt_truncated` in
+             *     `gateway.yaml`.
+             */
+            maxContextTokens?: number;
+            decision?: components["schemas"]["DecisionCapability"];
         };
         /**
          * @description Driver self-description, and the gateway's only source of truth
@@ -1058,36 +1295,31 @@ export interface components {
              */
             provider?: string;
             /**
-             * @description The **public** model identifier — what the gateway routes
-             *     on and what callers name (e.g. `"claude-opus-4-7"`).
-             *     Optional — omitted when the driver is configured to use the
-             *     adapter's built-in default rather than pinning a specific
-             *     model. When `upstreamModelId` is unset this is also what
-             *     the backend is asked for, which is every install that
-             *     predates the split.
-             */
-            modelId?: string;
-            /**
-             * @description What this driver actually sends to its backend, when that
-             *     differs from the public `modelId`. Exists because some
-             *     backends' served name is not ours to choose:
-             *     `mlx_lm.server` answers only to upstream's `default_model`
-             *     sentinel or to the model's absolute path — the first
-             *     collides across every MLX runtime in an install and the
-             *     second publishes the operator's directory layout — so the
-             *     supervised runtime's companion driver advertises the public
-             *     alias here as `modelId` and translates to the sentinel at
-             *     the backend boundary, nowhere else.
+             * @description **Every model this driver serves, and the gateway's routing
+             *     key.** Replaces the single `modelId` (P1, 2026-09-27, Troy's
+             *     call #3): one list for one model and for six hundred.
              *
-             *     Diagnostic, never a routing key: the gateway routes and
-             *     authorizes on `modelId` alone, and this value must not
-             *     appear in any public model list. Defaults to `modelId` when
-             *     unset. Responses report the public id (`GenerateResponse`
-             *     and `EmbedResponse` `modelId`), so two runtimes serving
-             *     different models behind one upstream sentinel stay
-             *     distinguishable everywhere a caller looks.
+             *     * **A driver with a model configured** reports one entry,
+             *       whose `id` is that model's public id (a local runtime's
+             *       alias, `claude-opus-5-5`, …), with no prefix.
+             *     * **An account** (`catalogue` present) reports one entry per
+             *       model its catalogue and its include/exclude patterns keep.
+             *       Their `id`s are the backend's own ids, and the gateway
+             *       publishes each as `<driver name>/<id>`.
+             *     * **Empty** is a real answer: a single-model driver with no
+             *       model chosen yet, or an account whose first catalogue read
+             *       failed (`catalogue.error` says why). The gateway routes
+             *       nothing here.
+             *     * **Absent** — the key missing from the body — means a driver
+             *       from before this field existed. The gateway names it,
+             *       with its machine, as one to update, and never sends it a
+             *       `model`: an older driver ignores unknown fields and would
+             *       answer with its one model whatever was asked.
+             *
+             *     Omitted, deliberately, when the caller passed `models=false`.
              */
-            upstreamModelId?: string;
+            models?: components["schemas"]["DriverModel"][];
+            catalogue?: components["schemas"]["DriverCatalogue"];
             /**
              * @description The supervised engine runtime this driver is following, when
              *     it was configured with `runtimeName` rather than a literal
@@ -1104,100 +1336,6 @@ export interface components {
              *     by reading two components' configs side by side.
              */
             runtime?: string;
-            /** @description Backend capabilities the gateway keys off when routing. */
-            capabilities?: {
-                /**
-                 * @description Explicit callerSettings this active adapter can carry without
-                 *     dropping them. This does not promise the provider accepts every
-                 *     possible value. Absent means unknown; ineligible for requests
-                 *     requiring explicit settings. The driver still validates before
-                 *     execution, including after a configuration change.
-                 */
-                supportedSettings?: string[];
-                /** @description Whether `/v1/generate/stream` emits true incremental tokens. */
-                streaming?: boolean;
-                /**
-                 * @description Whether the loaded model is confirmed to accept inline PNG/JPEG
-                 *     images. Unknown or unverified backends report false. Rechecked
-                 *     before image generation; never inferred from the provider name.
-                 */
-                imageInput?: boolean;
-                /**
-                 * @description Whether this driver can carry `tools` to its backend and
-                 *     report `toolCalls` back.
-                 *
-                 *     The gateway reads it to answer a question a harness
-                 *     cannot otherwise ask: a plain answer where a tool call
-                 *     was expected looks identical whether the model declined
-                 *     or the backend never saw the tools. A driver that says
-                 *     `false` here is failed at the front door with a reason
-                 *     instead.
-                 */
-                toolCalling?: boolean;
-                /**
-                 * @description Whether this driver can serve `POST /v1/embed`.
-                 *
-                 *     **A property of the running backend, not of the model**,
-                 *     and not readable from anything: `llama-server`'s
-                 *     `/props` carries no pooling or embedding field, and an
-                 *     Ollama runner started for chat refuses with "This server
-                 *     does not support embeddings". So it is determined by
-                 *     trying once and cached for the driver's lifetime — which
-                 *     is the right lifetime, since it cannot change without
-                 *     the backend restarting.
-                 *
-                 *     The gateway reads it to mark which surface each model
-                 *     serves on `GET /v1/models`, and to refuse a chat request
-                 *     against an embeddings-only model with a reason instead
-                 *     of passing it down to fail obscurely.
-                 */
-                embeddings?: boolean;
-                /**
-                 * @description The context window the backend **resolved**, read back
-                 *     from the backend itself — not the model's trained
-                 *     maximum, and never an estimate.
-                 *
-                 *     Null means unknown, and unknown is a real answer: a
-                 *     hosted provider exposes nothing to read, and a CLI
-                 *     subscription has no window of its own to report. The
-                 *     gateway's `_smallest_context` folds this together with
-                 *     the window a supervised runtime reports and publishes
-                 *     the smallest as `x_eugene_plexus.context_length` on
-                 *     `GET /v1/models`, so a harness can size a prompt
-                 *     against the number that will actually apply.
-                 *
-                 *     **Populated by a probe of the backend, which is why it
-                 *     exists at all.** A supervised runtime already tells the
-                 *     agent its window; this field is for the backend nobody
-                 *     supervises — an Ollama or an LM Studio the operator
-                 *     points us at — which until now reported no window
-                 *     anywhere. Contracted since M0 and populated by nothing
-                 *     until then, exactly as `streaming` was until M10.
-                 *
-                 *     **Advertising, not enforcement.** Nothing here counts a
-                 *     prompt: the window is published so a caller can respect
-                 *     it, and a caller that does not is refused by the engine
-                 *     itself, whose count is exact. A backend that truncates
-                 *     silently instead of refusing is caught after the fact —
-                 *     see `x_eugene_plexus.prompt_truncated` in
-                 *     `gateway.yaml`.
-                 */
-                maxContextTokens?: number;
-                /**
-                 * @description Whether this driver serves `POST /v1/generate` at all.
-                 *     True for every backend that existed before decisions —
-                 *     absent means chat-capable, so no existing driver changes
-                 *     meaning — and **false for a System One backend**, whose
-                 *     only surface is `POST /v1/decide`. The gateway reads it
-                 *     to refuse a chat request against a decision-only model
-                 *     with a sentence naming `/v1/systemone`, instead of
-                 *     letting the request die as a protocol error inside a
-                 *     backend that never spoke chat.
-                 * @default true
-                 */
-                chatCapable: boolean;
-                decision?: components["schemas"]["DecisionCapability"];
-            };
             /** @description inference-driver semver. */
             version?: string;
         };
@@ -1501,9 +1639,19 @@ export interface components {
          *     one. UIs render it as rows of host / user / password, with the
          *     password a password input, and must not display a redacted
          *     entry as though its password were empty.
+         *
+         *     `string_list` (P1, 2026-09-27) is an ordered JSON array of
+         *     strings with no further meaning to the type: a list of plain
+         *     values the field's own description explains. Its first users are
+         *     the inference-driver's `catalogueInclude` and `catalogueExclude`,
+         *     model-id patterns for a provider account. It exists for the
+         *     reason `url_list` does: a comma-separated text field is a bug
+         *     report, and reusing `path_list` or `url_list` would tell every UI
+         *     to open a directory picker or an address field. UIs render it as
+         *     an add/remove list of text fields.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials" | "string_list";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
@@ -1787,6 +1935,24 @@ export interface components {
         };
     };
     responses: {
+        /**
+         * @description The request named a `model` this driver does not serve: not in
+         *     `DriverInfo.models`, or dropped from an account's catalogue since
+         *     the caller last read it. `type` ends `#model-not-served`. **No
+         *     backend was called**, so nothing was computed and the gateway may
+         *     try another backend at once; it also re-reads this driver's list.
+         *     An account driver asked with no `model` at all answers **400**,
+         *     `type` ending `#model-required`, since it has no one model to
+         *     assume.
+         */
+        ModelNotServed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description Error response in RFC 7807 problem+json format. */
         Problem: {
             headers: {
@@ -1841,6 +2007,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            404: components["responses"]["ModelNotServed"];
             /**
              * @description The caller disconnected while this was running. The backend
              *     call was cancelled rather than left to finish into a closed
@@ -1922,6 +2089,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            404: components["responses"]["ModelNotServed"];
             /**
              * @description The caller went away during the PREFILL -- the first chunk
              *     is awaited before the 200 is committed, and on a cold
@@ -2000,6 +2168,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            404: components["responses"]["ModelNotServed"];
             /** @description The caller disconnected; the count was abandoned. */
             499: {
                 headers: {
@@ -2058,8 +2227,8 @@ export interface operations {
             /**
              * @description This backend cannot embed, or rejected the request in a way
              *     another backend would reject identically. Does not cascade.
-             *     A driver whose `capabilities.embeddings` is false fails here
-             *     rather than returning something that is not an embedding.
+             *     A model without the `embeddings` surface fails here rather
+             *     than returning something that is not an embedding.
              */
             400: {
                 headers: {
@@ -2069,6 +2238,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            404: components["responses"]["ModelNotServed"];
             /** @description The caller went away; the backend call was cancelled. */
             499: {
                 headers: {
@@ -2146,6 +2316,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            404: components["responses"]["ModelNotServed"];
             /**
              * @description The caller went away. **Capacity stays occupied while known
              *     local work continues**: a single-slot backend that is still
@@ -2195,7 +2366,22 @@ export interface operations {
     };
     info: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description `false` omits `models`. A driver from before P1 ignores the
+                 *     parameter, which is harmless: it has no list to omit.
+                 */
+                models?: boolean;
+                /**
+                 * @description Only this model's entry in `models` — an empty list when it is
+                 *     not served. For the gateway's per-request re-check of one
+                 *     candidate's settings and tools before it wakes or sends
+                 *     anything, which would otherwise re-read an account's entire
+                 *     list on every request that carries a setting. Unprefixed, as
+                 *     a request's `model` is.
+                 */
+                model?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

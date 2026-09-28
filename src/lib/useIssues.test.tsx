@@ -217,9 +217,10 @@ describe("useIssues on a healthy standalone install", () => {
     expect(result.current.worst).toBeNull();
   });
 
-  it("asks the five per-node reads, plus the routing view and the roster", async () => {
+  it("asks the five per-node reads, plus the routing view, the drivers and the roster", async () => {
     // `/v1/components` is the fifth, added by R1.5: a crash-looping
-    // component's own `lastError` exists nowhere else.
+    // component's own `lastError` exists nowhere else. The drivers list is
+    // P1's: an account whose model list failed says so only there.
     await poll();
     expect(routes().sort()).toEqual([
       "GET agent/v1/components",
@@ -227,6 +228,7 @@ describe("useIssues on a healthy standalone install", () => {
       "GET agent/v1/node",
       "GET agent/v1/runtimes",
       "GET control/v1/nodes",
+      "GET gateway/v1/admin/drivers",
       "GET gateway/v1/admin/routing",
       "POST agent/v1/library/folders/check",
     ]);

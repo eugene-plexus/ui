@@ -37,7 +37,19 @@ export interface Row {
   inFlight: number | null;
   idleSeconds: number | null;
   error: string | null;
+  /**
+   * A provider account (P1): one driver serving every model its backend
+   * lists, each published as `<driver>/<model>`. `count` is how many.
+   */
+  account?: { count: number } | null;
+  /** A driver from before P1, which serves nothing until its machine is updated. */
+  outdated?: boolean;
 }
+
+/** What an outdated driver's row says, in words a person can act on. */
+export const OUTDATED_DRIVER_TEXT =
+  "This connection is from an older version and serves nothing until its machine is " +
+  "updated (Nodes, Versions).";
 
 export type Sources = {
   drivers: DriversInfo | null;
@@ -137,7 +149,7 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
     const runtimeName = d.runtime ?? routing?.runtime ?? null;
     // Which machine: the gateway's own view of this backend first (it
     // is keyed by node since R1.6), then the control root's placement.
-    const placedNode = routing?.node ?? placedNodeFor(d.name, d.url);
+    const placedNode = routing?.node ?? d.node ?? placedNodeFor(d.name, d.url);
     const runtime = runtimeName ? runtimeFor(placedNode, runtimeName) : null;
     const node = placedNode ?? runtime?.node ?? null;
     if (runtimeName) seenRuntimes.add(onNode(runtime?.node ?? node, runtimeName));
@@ -145,7 +157,9 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
       key: `driver:${onNode(node, d.name)}@${d.url ?? ""}`,
       node,
       driver: d.name,
-      model: d.modelId ?? runtime?.model ?? null,
+      model: d.account ? null : (d.modelId ?? runtime?.model ?? null),
+      account: d.account ? { count: d.modelCount ?? 0 } : null,
+      outdated: d.outdated === true,
       backend: d.backend ?? null,
       url: d.url ?? null,
       runtime: runtimeName,
@@ -157,7 +171,9 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
       ineligibleReason: routing?.ineligible_reason ?? null,
       inFlight: routing?.in_flight ?? null,
       idleSeconds: routing?.idle_seconds ?? null,
-      error: d.error ?? null,
+      // An account whose list could not be read keeps serving the last
+      // good one; the reason still belongs on its row.
+      error: d.outdated ? OUTDATED_DRIVER_TEXT : (d.error ?? d.catalogueError ?? null),
     });
   }
 

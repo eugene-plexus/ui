@@ -134,6 +134,8 @@ async function servedByNode(): Promise<Record<string, Served[]>> {
           reachable: boolean;
           modelId?: string | null;
           runtime?: string | null;
+          account?: boolean | null;
+          modelCount?: number | null;
         }[];
       }>("gateway", "/v1/admin/drivers")
       .catch(() => null),
@@ -163,7 +165,8 @@ async function servedByNode(): Promise<Record<string, Served[]>> {
     const d = liveFor(c.name, c.url);
     (out[c.node] ??= []).push({
       driver: c.name,
-      model: d?.modelId ?? null,
+      // An account serves every model its provider lists (P1): say how many.
+      model: d?.account ? `${c.name}/… (${d.modelCount ?? 0} models)` : (d?.modelId ?? null),
       runtime: d?.runtime ?? null,
       reachable: d ? d.reachable : null,
       status: d?.runtime ? (runtimeStatus.get(`${c.node}/${d.runtime}`) ?? null) : null,

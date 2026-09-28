@@ -42,6 +42,7 @@ import type {
   EngineList,
   LibraryFolderReach,
   NodeIdentity,
+  DriversInfo,
   RoutingTableView,
   RuntimeList,
 } from "./types";
@@ -252,8 +253,9 @@ export function useIssues(): IssuesState {
     const options = reads(token);
     const mine = (sequence.current += 1);
 
-    const [routing, local, roster] = await Promise.all([
+    const [routing, drivers, local, roster] = await Promise.all([
       api.get<RoutingTableView>("gateway", "/v1/admin/routing", options).catch(() => null),
+      api.get<DriversInfo>("gateway", "/v1/admin/drivers", options).catch(() => null),
       readIdentity("agent", options),
       readRoster(options),
     ]);
@@ -293,6 +295,8 @@ export function useIssues(): IssuesState {
         controlLocked: roster.locked,
         nodes: roster.nodes,
         perNode,
+        routing,
+        drivers: drivers?.drivers ?? null,
       }),
     );
     setLoaded(true);

@@ -73,6 +73,9 @@ interface SaveState {
   requiresRestart: boolean;
 }
 
+/** How many unrouted models get a button before the rest wait for a search. */
+const UNCONFIGURED_SHOWN = 12;
+
 export default function RoutingPage() {
   const [serverSlots, setServerSlots] = useState<ModelSlot[]>([]);
   const [rawValue, setRawValue] = useState<unknown>(null);
@@ -152,6 +155,14 @@ export default function RoutingPage() {
   useUnsavedChanges(dirty);
   const known = useMemo(() => knownModelIds(routing), [routing]);
   const unconfigured = useMemo(() => unconfiguredServedModels(routing, draft), [routing, draft]);
+  // A provider account puts hundreds of models here (P1), so the buttons
+  // are filtered by what is typed in the name box and capped; the box's
+  // own suggestions reach the rest.
+  const typed = newListName.trim().toLowerCase();
+  const matchingUnconfigured = typed
+    ? unconfigured.filter((model) => model.toLowerCase().includes(typed))
+    : unconfigured;
+  const shownUnconfigured = matchingUnconfigured.slice(0, UNCONFIGURED_SHOWN);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -390,8 +401,8 @@ export default function RoutingPage() {
                         <p className="mb-1 text-sm text-[color:var(--muted)]">
                           Running now with no fallbacks configured:
                         </p>
-                        <ul className="flex flex-wrap gap-2">
-                          {unconfigured.map((model) => (
+                        <ul className="flex flex-wrap gap-2" data-testid="unconfigured-models">
+                          {shownUnconfigured.map((model) => (
                             <li key={model}>
                               <button
                                 type="button"
@@ -405,6 +416,12 @@ export default function RoutingPage() {
                             </li>
                           ))}
                         </ul>
+                        {matchingUnconfigured.length > shownUnconfigured.length && (
+                          <p className="mt-1 text-sm text-[color:var(--muted)]">
+                            and {matchingUnconfigured.length - shownUnconfigured.length} more. Type
+                            part of a name above to find one.
+                          </p>
+                        )}
                       </div>
                     )}
                   </section>

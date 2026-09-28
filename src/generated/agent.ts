@@ -2739,7 +2739,20 @@ export interface components {
              * @default false
              */
             localOnly: boolean;
-            /** @description Null permits all. Empty permits none. Exact alias and actual target IDs must both be allowed. */
+            /**
+             * @description Null permits all. Empty permits none. Both the id the caller
+             *     asked for and every model actually tried (a slot's fallback
+             *     targets) must be allowed.
+             *
+             *     An entry is an exact id, or a pattern with `*` (P1,
+             *     2026-09-27): `*` matches any run of characters, `/` included,
+             *     and is the only wildcard, so `openrouter/*` allows every
+             *     model of the account named `openrouter`
+             *     (`openrouter/anthropic/claude-opus-5.5`) and nothing else.
+             *     Without it, scoping a key to one account means typing out
+             *     hundreds of names. The same matcher runs in the gateway, the
+             *     agent and the control root.
+             */
             allowedModels?: string[] | null;
             /** @default 2 */
             maxConcurrentRequests: number;
@@ -4945,9 +4958,19 @@ export interface components {
          *     one. UIs render it as rows of host / user / password, with the
          *     password a password input, and must not display a redacted
          *     entry as though its password were empty.
+         *
+         *     `string_list` (P1, 2026-09-27) is an ordered JSON array of
+         *     strings with no further meaning to the type: a list of plain
+         *     values the field's own description explains. Its first users are
+         *     the inference-driver's `catalogueInclude` and `catalogueExclude`,
+         *     model-id patterns for a provider account. It exists for the
+         *     reason `url_list` does: a comma-separated text field is a bug
+         *     report, and reusing `path_list` or `url_list` would tell every UI
+         *     to open a directory picker or an address field. UIs render it as
+         *     an add/remove list of text fields.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials" | "string_list";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field

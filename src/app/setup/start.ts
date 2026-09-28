@@ -205,6 +205,61 @@ export async function fetchBackendModels(driverName: string): Promise<string[]> 
   return field?.suggestions ?? [];
 }
 
+/** What a provider account says about its model list (P1). */
+export type AccountList = {
+  /** Models the provider lists, before this driver's patterns. */
+  total: number;
+  /** Models this driver will serve. */
+  exposed: number;
+  /** Why the last read of the list failed, in the provider's words. */
+  error: string | null;
+};
+
+/**
+ * Whether this driver became a provider ACCOUNT -- one serving every model
+ * its backend lists -- and how many models that is (P1, 2026-09-27).
+ *
+ * An API provider or local server with no model set is one: the driver
+ * reads the backend's own list in the background after it starts, so this
+ * waits a bounded while for that first read to land. Null for a driver
+ * that is not an account (a Claude or ChatGPT subscription), which is
+ * picked one model at a time as before.
+ */
+export async function readAccountList(
+  driverName: string,
+  attempts = 20,
+  delayMs = 500,
+): Promise<AccountList | null> {
+  for (let i = 0; i < attempts; i++) {
+    let info: {
+      catalogue?: {
+        total: number;
+        exposed: number;
+        refreshedAt?: string | null;
+        error?: string | null;
+      } | null;
+    } | null = null;
+    try {
+      info = await api.get(driverName, "/v1/info?models=false");
+    } catch (e) {
+      // It answered, and refused: an older driver, or one that is not an
+      // account. Only a driver that has not come up yet is worth waiting for.
+      if (typeof (e as { status?: unknown }).status === "number") return null;
+    }
+    const catalogue = info?.catalogue;
+    if (info && !catalogue) return null;
+    if (catalogue && (catalogue.refreshedAt || catalogue.error)) {
+      return {
+        total: catalogue.total,
+        exposed: catalogue.exposed,
+        error: catalogue.error ?? null,
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return { total: 0, exposed: 0, error: "It has not read its model list yet." };
+}
+
 /**
  * Whether a chosen backend carries the credentials its provider needs.
  * "None chosen" is false here: the caller is a form whose button does

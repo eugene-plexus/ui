@@ -613,7 +613,9 @@ describe("a hidden tab", () => {
       await act(async () => {
         document.dispatchEvent(new Event("visibilitychange"));
       });
-      expect(driverReads()).toBe(before + 1);
+      // Once for this page's own poll and once for the Issues poll, which
+      // reads the same list for an account's model-list status (P1).
+      expect(driverReads()).toBe(before + 2);
     } finally {
       hidden.mockRestore();
       vi.useRealTimers();

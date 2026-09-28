@@ -1399,3 +1399,74 @@ describe("a second vendor's card the installed build cannot reach", () => {
     expect(issuesFrom({ ...NOTHING, perNode: [node] })).toEqual([]);
   });
 });
+
+// --- P1: accounts, older drivers and routing choices --------------------
+
+describe("a driver from before P1", () => {
+  it("is named with its machine, as one to update", () => {
+    const issues = issuesFrom({
+      ...NOTHING,
+      routing: {
+        slots: [],
+        outdated_drivers: [
+          { name: "old-driver", node: "Amish_Station", url: "http://x:8081/", modelId: "llama3" },
+        ],
+      },
+    });
+    expect(kinds(issues)).toEqual(["backend-outdated"]);
+    expect(issues[0]!.node).toBe("Amish_Station");
+    expect(issues[0]!.title).toContain("old-driver on Amish_Station");
+    expect(issues[0]!.detail).toContain("llama3");
+    expect(issues[0]!.href).toBe("/nodes");
+  });
+});
+
+describe("a provider account whose model list could not be read", () => {
+  it("says what the provider said, and nothing for one that read fine", () => {
+    const issues = issuesFrom({
+      ...NOTHING,
+      drivers: [
+        {
+          name: "openrouter",
+          reachable: true,
+          account: true,
+          catalogueError: "openrouter refused the model list (401): missing the permission",
+        },
+        { name: "fine", reachable: true, account: true, catalogueError: null },
+        { name: "single", reachable: true, modelId: "qwen", catalogueError: "ignored" },
+      ],
+    });
+    expect(kinds(issues)).toEqual(["account-list-failed"]);
+    expect(issues[0]!.detail).toContain("missing the permission");
+  });
+});
+
+describe("a routing choice nothing serves", () => {
+  it("is named, except a list's own first choice, which other checks own", () => {
+    const issues = issuesFrom({
+      ...NOTHING,
+      routing: {
+        slots: [
+          {
+            model: "qwen3-8b",
+            configured: true,
+            tiers: [
+              { target: "qwen3-8b", backends: [] },
+              { target: "openrouter/gone/model", backends: [] },
+              {
+                target: "openrouter/here/model",
+                backends: [{ driver: "openrouter", eligible: true }],
+              },
+            ],
+          },
+          // Not configured: the implicit one-tier slot every model gets.
+          { model: "x", configured: false, tiers: [{ target: "x", backends: [] }] },
+        ],
+        outdated_drivers: [],
+      },
+    });
+    expect(kinds(issues)).toEqual(["routing-target-unserved"]);
+    expect(issues[0]!.title).toContain("openrouter/gone/model");
+    expect(issues[0]!.href).toBe("/routing?sel=gateway");
+  });
+});

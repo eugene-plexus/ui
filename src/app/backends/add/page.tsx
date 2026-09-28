@@ -40,9 +40,11 @@ import {
   backendCredentialsComplete,
   buildBackendPatch,
   driverNameFor,
+  type AccountList,
   fetchBackendModels,
   formatStartError,
   freeDriverPort,
+  readAccountList,
   withRetry,
 } from "@/app/setup/start";
 
@@ -51,8 +53,8 @@ import { PickModel } from "./PickModel";
 
 type Phase =
   | { kind: "form" }
-  | { kind: "pick"; name: string; models: string[] }
-  | { kind: "done"; name: string; modelId: string | null };
+  | { kind: "pick"; name: string; models: string[]; account: AccountList | null }
+  | { kind: "done"; name: string; modelId: string | null; account: AccountList | null };
 
 export default function AddBackendPage() {
   const gate = useSetupGate();
@@ -66,6 +68,8 @@ export default function AddBackendPage() {
   // taken, and create a SECOND one (ollama-2 on the next port) beside a
   // half-configured first that kept restarting.
   const [created, setCreated] = useState<{ name: string; provider: string } | null>(null);
+  // For a provider account: every model it lists (the default), or one.
+  const [useEvery, setUseEvery] = useState(true);
 
   function patch(p: Partial<BackendDraft>) {
     setBackend((prev) => ({ ...prev, ...p }));
@@ -122,8 +126,12 @@ export default function AddBackendPage() {
       // the modelId field of its own config schema - the same list Config
       // renders as a dropdown.
       setMessage("Asking it which models it has…");
+      // With no model set, an API provider or local server is an account
+      // serving every model it lists (P1); a subscription is not.
+      const account = await readAccountList(name);
       const models = await withRetry(() => fetchBackendModels(name));
-      setPhase({ kind: "pick", name, models });
+      setUseEvery(account !== null && account.error === null && account.exposed > 0);
+      setPhase({ kind: "pick", name, models, account });
       setCreated(null);
       setMessage(null);
     } catch (e) {
@@ -147,7 +155,7 @@ export default function AddBackendPage() {
       await withRetry(() =>
         api.post("agent", `/v1/components/${encodeURIComponent(name)}/restart`, {}),
       );
-      setPhase({ kind: "done", name, modelId });
+      setPhase({ kind: "done", name, modelId, account: null });
       setMessage(null);
     } catch (e) {
       setError(formatStartError(e));
@@ -199,36 +207,95 @@ export default function AddBackendPage() {
 
           {phase.kind === "pick" && (
             <section>
-              <h2 className="font-ui mb-2 text-base font-semibold">Which model?</h2>
-              <PickModel
-                driverName={phase.name}
-                models={phase.models}
-                value={backend.modelId}
-                disabled={working}
-                onChange={(v) => patch({ modelId: v })}
-              />
+              <h2 className="font-ui mb-2 text-base font-semibold">
+                {phase.account ? "Which models?" : "Which model?"}
+              </h2>
+              {phase.account && (
+                <fieldset className="mb-4 space-y-2" data-testid="account-choice">
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="account-choice"
+                      checked={useEvery}
+                      disabled={working || phase.account.exposed === 0}
+                      onChange={() => setUseEvery(true)}
+                      data-testid="account-every"
+                    />
+                    <span>
+                      Every model it lists{" "}
+                      <span className="text-[color:var(--muted)]">
+                        ({phase.account.exposed} {phase.account.exposed === 1 ? "model" : "models"},
+                        each named <span className="font-mono">{phase.name}/…</span>)
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="account-choice"
+                      checked={!useEvery}
+                      disabled={working}
+                      onChange={() => setUseEvery(false)}
+                      data-testid="account-one"
+                    />
+                    <span>One model</span>
+                  </label>
+                  {phase.account.error && (
+                    <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm">
+                      It could not read its model list: {phase.account.error}
+                    </p>
+                  )}
+                </fieldset>
+              )}
+              {(!phase.account || !useEvery) && (
+                <PickModel
+                  driverName={phase.name}
+                  models={phase.models}
+                  value={backend.modelId}
+                  disabled={working}
+                  onChange={(v) => patch({ modelId: v })}
+                />
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => void save(phase.name)}
-                  disabled={working || backend.modelId.trim() === ""}
+                  onClick={() =>
+                    phase.account && useEvery
+                      ? setPhase({
+                          kind: "done",
+                          name: phase.name,
+                          modelId: null,
+                          account: phase.account,
+                        })
+                      : void save(phase.name)
+                  }
+                  disabled={
+                    working || (!(phase.account && useEvery) && backend.modelId.trim() === "")
+                  }
                   className={primary}
+                  data-testid="backend-save"
                 >
                   {working ? "Saving…" : "Save"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setPhase({ kind: "done", name: phase.name, modelId: null })}
-                  disabled={working}
-                  className={secondary}
-                >
-                  Choose later
-                </button>
+                {!phase.account && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPhase({ kind: "done", name: phase.name, modelId: null, account: null })
+                    }
+                    disabled={working}
+                    className={secondary}
+                  >
+                    Choose later
+                  </button>
+                )}
               </div>
-              <p className="mt-3 text-sm leading-relaxed text-[color:var(--muted)]">
-                Choosing later is fine. The app will not answer anything until a model is set, under
-                Config.
-              </p>
+              {!phase.account && (
+                <p className="mt-3 text-sm leading-relaxed text-[color:var(--muted)]">
+                  Choosing later is fine. The app will not answer anything until a model is set,
+                  under Config.
+                </p>
+              )}
             </section>
           )}
 
@@ -236,7 +303,15 @@ export default function AddBackendPage() {
             <section data-testid="backend-added">
               <p className="mb-4 text-sm leading-relaxed">
                 <span className="font-mono">{phase.name}</span> is added
-                {phase.modelId ? (
+                {phase.account ? (
+                  <>
+                    {" "}
+                    and serves {phase.account.exposed}{" "}
+                    {phase.account.exposed === 1 ? "model" : "models"}, each named{" "}
+                    <span className="font-mono">{phase.name}/</span> and the name the app gives it.
+                    Keep fewer under Config, in Models to use.
+                  </>
+                ) : phase.modelId ? (
                   <>
                     {" "}
                     and answers for <span className="font-mono">{phase.modelId}</span>.

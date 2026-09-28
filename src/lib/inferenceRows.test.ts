@@ -385,3 +385,52 @@ describe("runtimeFailure", () => {
     expect(runtimeFailure("crashed", "   ")).toBeNull();
   });
 });
+
+describe("a provider account (P1)", () => {
+  it("is one row saying how many models it serves, not a model id", () => {
+    const rows = buildRows(
+      {
+        ...LIVE,
+        drivers: {
+          drivers: [
+            {
+              name: "openrouter",
+              reachable: true,
+              backend: "openai_compat_http",
+              node: "nas",
+              account: true,
+              modelCount: 625,
+              catalogueError: null,
+            },
+          ],
+        },
+        routing: null,
+        placement: null,
+        runtimes: null,
+      },
+      "nas",
+    );
+    const row = first(rows.filter((r) => r.driver === "openrouter"));
+    expect(row.account).toEqual({ count: 625 });
+    expect(row.model).toBeNull();
+    expect(row.node).toBe("nas");
+  });
+
+  it("an outdated driver says to update its machine", () => {
+    const rows = buildRows(
+      {
+        ...LIVE,
+        drivers: {
+          drivers: [{ name: "old", reachable: true, node: "amish", outdated: true, modelId: "x" }],
+        },
+        routing: null,
+        placement: null,
+        runtimes: null,
+      },
+      "nas",
+    );
+    const row = first(rows.filter((r) => r.driver === "old"));
+    expect(row.outdated).toBe(true);
+    expect(row.error).toContain("updated");
+  });
+});

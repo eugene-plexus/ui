@@ -592,7 +592,20 @@ function RowView({
   return (
     <tr className="border-t border-[color:var(--border)]">
       <td className="py-1.5 pr-4 font-mono">
-        {row.model ?? <span className="text-[color:var(--muted)]">no model reported</span>}
+        {row.account ? (
+          <span className="font-ui" data-testid="account-models">
+            every model it lists{" "}
+            <span className="text-[color:var(--muted)]">
+              ({row.account.count}, named <span className="font-mono">{row.driver}/…</span>)
+            </span>
+          </span>
+        ) : (
+          (row.model ?? (
+            <span className="text-[color:var(--muted)]">
+              {row.outdated ? "an older version" : "no model reported"}
+            </span>
+          ))
+        )}
       </td>
       <td className="py-1.5 pr-4">
         {row.runtime ? (

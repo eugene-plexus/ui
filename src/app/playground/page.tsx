@@ -780,6 +780,9 @@ export default function PlaygroundPage() {
   );
 }
 
+/** More models than this and the picker gets a filter. */
+const PICKER_FILTER_FROM = 20;
+
 function ModelPicker({
   models,
   value,
@@ -795,6 +798,7 @@ function ModelPicker({
   error: string | null;
   mode: GatewayMode;
 }) {
+  const [filter, setFilter] = useState("");
   if (error) {
     return (
       <p className="font-ui truncate text-sm text-[color:var(--muted)]" title={error}>
@@ -815,8 +819,26 @@ function ModelPicker({
   }
   const selected = models.find((m) => m.id === value);
   const replicas = selected?.x_eugene_plexus?.drivers?.length ?? 0;
+  // A provider account lists hundreds of models (P1); past a screenful the
+  // list gets a filter. The chosen model stays in it whatever is typed.
+  const needle = filter.trim().toLowerCase();
+  const shown =
+    needle && models.length > PICKER_FILTER_FROM
+      ? models.filter((m) => m.id === value || m.id.toLowerCase().includes(needle))
+      : models;
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
+      {models.length > PICKER_FILTER_FROM && (
+        <input
+          type="search"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={`Filter ${models.length} models`}
+          aria-label="Filter models"
+          data-testid="model-filter"
+          className="font-ui max-w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 text-sm outline-none hover:border-[color:var(--border-hover)] sm:max-w-[420px]"
+        />
+      )}
       <select
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
@@ -824,7 +846,7 @@ function ModelPicker({
         aria-label="Model"
         className="font-ui max-w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-1 text-sm outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50 sm:max-w-[420px]"
       >
-        {models.map((m) => (
+        {shown.map((m) => (
           <option key={m.id} value={m.id}>
             {m.id}
           </option>

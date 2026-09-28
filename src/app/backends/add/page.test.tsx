@@ -68,6 +68,24 @@ function installWithOllama(): Map<string, Handler> {
     ["POST agent/v1/components", () => ({ status: 201, body: {} })],
     ["PATCH ollama/v1/config", () => ({ status: 200, body: {} })],
     ["POST agent/v1/components/ollama/restart", () => ({ status: 200, body: {} })],
+    // An Ollama with no model set is a provider account since P1: it
+    // serves every model it has pulled.
+    [
+      "GET ollama/v1/info?models=false",
+      () => ({
+        status: 200,
+        body: {
+          backend: "openai_compat_http",
+          catalogue: {
+            source: "ollama",
+            total: 2,
+            exposed: 2,
+            refreshedAt: "2026-09-27T12:00:00Z",
+            error: null,
+          },
+        },
+      }),
+    ],
     [
       "GET ollama/v1/config/schema",
       () => ({
@@ -161,7 +179,9 @@ describe("/backends/add", () => {
     expect(add).toBeEnabled();
     await user.click(add);
 
-    await screen.findByRole("heading", { name: "Which model?" });
+    await screen.findByRole("heading", { name: "Which models?" });
+    expect(screen.getByTestId("account-every")).toBeChecked();
+    await user.click(screen.getByTestId("account-one"));
     expect(screen.getByRole("option", { name: "qwen3-coder:30b" })).toBeInTheDocument();
     expectPlainWords();
 
@@ -174,6 +194,7 @@ describe("/backends/add", () => {
       "POST agent/v1/components",
       "PATCH ollama/v1/config",
       "POST agent/v1/components/ollama/restart",
+      "GET ollama/v1/info?models=false",
       "GET ollama/v1/config/schema",
     ]);
     const created = calls.find((c) => key(c) === "POST agent/v1/components");
@@ -197,7 +218,8 @@ describe("/backends/add", () => {
       "ollama_local",
     );
     await user.click(screen.getByRole("button", { name: "Add" }));
-    await screen.findByRole("heading", { name: "Which model?" });
+    await screen.findByRole("heading", { name: "Which models?" });
+    await user.click(screen.getByTestId("account-one"));
 
     // No model, no Save: a saved empty id is an app that answers nothing.
     const save = screen.getByRole("button", { name: "Save" });
@@ -273,7 +295,7 @@ describe("pressing Add again after a later step failed", () => {
 
     failSettings = false;
     await user.click(screen.getByRole("button", { name: "Add" }));
-    await screen.findByRole("heading", { name: "Which model?" });
+    await screen.findByRole("heading", { name: "Which models?" });
     // One driver: the second press used to find "ollama" taken and make
     // "ollama-2" on the next port beside the half-configured first.
     expect(calls.filter((c) => key(c) === "POST agent/v1/components")).toHaveLength(1);
@@ -289,7 +311,8 @@ describe("a model the list does not have", () => {
       "ollama_local",
     );
     await user.click(screen.getByRole("button", { name: "Add" }));
-    await screen.findByRole("heading", { name: "Which model?" });
+    await screen.findByRole("heading", { name: "Which models?" });
+    await user.click(screen.getByTestId("account-one"));
     return user;
   }
 
@@ -315,5 +338,78 @@ describe("a model the list does not have", () => {
     await user.clear(box);
     expect(screen.getByLabelText("Model id")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+});
+
+describe("a provider account (P1)", () => {
+  it("uses every model it lists, without setting one, in one restart", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<AddBackendPage />);
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Which app" }),
+      "ollama_local",
+    );
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await screen.findByRole("heading", { name: "Which models?" });
+    expect(screen.getByTestId("account-choice")).toHaveTextContent("2 models");
+    // Every model is the default, and needs no model chosen to save.
+    expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("backend-save"));
+
+    const done = await screen.findByTestId("backend-added");
+    expect(done).toHaveTextContent("ollama is added and serves 2 models");
+    expectPlainWords();
+    const patches = calls.filter((c) => key(c) === "PATCH ollama/v1/config").map((c) => c.body);
+    expect(patches).toEqual([{ provider: "ollama_local" }]);
+    expect(calls.filter((c) => key(c) === "POST agent/v1/components/ollama/restart")).toHaveLength(
+      1,
+    );
+  });
+
+  it("asks for one model when the driver is not an account", async () => {
+    handlers.set("GET ollama/v1/info?models=false", () => ({
+      status: 200,
+      body: { backend: "claude_code_cli", models: [] },
+    }));
+    const user = userEvent.setup({ delay: null });
+    render(<AddBackendPage />);
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Which app" }),
+      "ollama_local",
+    );
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await screen.findByRole("heading", { name: "Which model?" });
+    expect(screen.queryByTestId("account-choice")).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "qwen3-coder:30b" })).toBeInTheDocument();
+  });
+
+  it("says why when the account could not read its list", async () => {
+    handlers.set("GET ollama/v1/info?models=false", () => ({
+      status: 200,
+      body: {
+        backend: "openai_compat_http",
+        catalogue: {
+          source: "openrouter",
+          total: 0,
+          exposed: 0,
+          refreshedAt: null,
+          error: "missing the permission models_read",
+        },
+      },
+    }));
+    const user = userEvent.setup({ delay: null });
+    render(<AddBackendPage />);
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Which app" }),
+      "ollama_local",
+    );
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await screen.findByRole("heading", { name: "Which models?" });
+    expect(screen.getByTestId("account-choice")).toHaveTextContent(
+      "missing the permission models_read",
+    );
+    // Nothing to use every one of, so one model is the choice offered.
+    expect(screen.getByTestId("account-every")).toBeDisabled();
+    expect(screen.getByTestId("account-one")).toBeChecked();
   });
 });

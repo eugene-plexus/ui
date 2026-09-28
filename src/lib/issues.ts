@@ -43,9 +43,11 @@ import type {
   ComponentList,
   ComputeDevice,
   ControlRootView,
+  DriverHealth,
   EngineList,
   LibraryFolderReach,
   NodeIdentity,
+  RoutingTableView,
   Runtime,
   RuntimeList,
 } from "./types";
@@ -65,7 +67,10 @@ export type IssueKind =
   | "runtime-on-cpu"
   | "update-available"
   | "update-failed"
-  | "versions-differ";
+  | "versions-differ"
+  | "backend-outdated"
+  | "account-list-failed"
+  | "routing-target-unserved";
 
 /**
  * `blocking` means the install is not doing its job right now;
@@ -162,6 +167,14 @@ export interface IssueSources {
   nodes: ControlNodeRow[] | null;
   /** One entry per node the console can reach. */
   perNode: NodeFacts[];
+  /**
+   * The gateway's routing table, for what only it knows (P1): a driver
+   * too old to be routed to, and a routing choice nothing serves.
+   * Optional so every caller from before P1 needs no change.
+   */
+  routing?: Pick<RoutingTableView, "slots" | "outdated_drivers"> | null;
+  /** The gateway's view of each driver, for an account's list status. */
+  drivers?: DriverHealth[] | null;
 }
 
 /**
@@ -195,6 +208,9 @@ export function issuesFrom(sources: IssueSources): Issue[] {
     ...sealedRootIssue(sources),
     ...nodeDownIssues(sources.nodes),
     ...clockSkewIssues(sources.perNode),
+    ...outdatedDriverIssues(sources.routing),
+    ...accountListIssues(sources.drivers),
+    ...unservedTargetIssues(sources.routing),
   ];
   const updates = sources.perNode.flatMap(updateIssues);
   issues.push(...updates, ...(updates.length === 0 ? versionsDifferIssues(sources.perNode) : []));
@@ -402,6 +418,82 @@ function clockSkewIssues(perNode: NodeFacts[]): Issue[] {
  * says so where a person looks first, and the fix -- an Update button, or
  * the steps for a container -- is on Nodes.
  */
+/**
+ * A connection from before P1, which the gateway routes nothing to.
+ *
+ * It reports a single model and would ignore the model a request names,
+ * so the gateway leaves it out rather than let it answer for another --
+ * and says so here, with the machine to update, because otherwise a model
+ * simply vanishes the day the gateway is updated ahead of its worker.
+ */
+export function outdatedDriverIssues(routing: IssueSources["routing"]): Issue[] {
+  return (routing?.outdated_drivers ?? []).map((driver) => {
+    const where = driver.node ?? "this machine";
+    const missing = driver.modelId ? `, so ${driver.modelId} is not available until then` : "";
+    return {
+      id: `backend-outdated:${driver.node ?? ""}/${driver.name}`,
+      kind: "backend-outdated" as const,
+      severity: "warning" as const,
+      title: `${driver.name} on ${where} is from an older version`,
+      detail: `It answers nothing until ${where} is updated${missing}. Update it from Nodes, under Versions.`,
+      href: "/nodes",
+      node: driver.node ?? null,
+    };
+  });
+}
+
+/**
+ * A provider account whose model list could not be read. It keeps serving
+ * the last list it read, which is why this is a warning: the models are
+ * there, and new ones -- or a key that stopped working -- are not seen.
+ */
+export function accountListIssues(drivers: IssueSources["drivers"]): Issue[] {
+  return (drivers ?? [])
+    .filter((d) => d.account === true && typeof d.catalogueError === "string")
+    .map((d) => ({
+      id: `account-list-failed:${d.node ?? ""}/${d.name}`,
+      kind: "account-list-failed" as const,
+      severity: "warning" as const,
+      title: `${d.name} could not read its list of models`,
+      detail:
+        `It keeps using the list it last read. It said: ${d.catalogueError}. ` +
+        "Check its key or address under Config.",
+      href: "/inference",
+      node: d.node ?? null,
+    }));
+}
+
+/**
+ * A routing choice nothing serves -- most often a model that left its
+ * provider's list. Nothing is deleted when that happens: the choice keeps
+ * its place and requests move on to the next one, so the only sign is
+ * here and on the Routing page.
+ *
+ * A list's own first choice is left to the component and model checks:
+ * an empty one there is a model that is stopped or down, which they name.
+ */
+export function unservedTargetIssues(routing: IssueSources["routing"]): Issue[] {
+  const out: Issue[] = [];
+  for (const slot of routing?.slots ?? []) {
+    if (!slot.configured) continue;
+    slot.tiers.forEach((tier, index) => {
+      if (index === 0 && tier.target === slot.model) return;
+      if (tier.backends.length > 0) return;
+      out.push({
+        id: `routing-target-unserved:${slot.model}/${tier.target}`,
+        kind: "routing-target-unserved",
+        severity: "warning",
+        title: `Nothing serves ${tier.target}, one of the choices for ${slot.model}`,
+        detail:
+          "Requests skip it and try the next choice. If its provider stopped listing it, " +
+          "remove or replace it on the Routing page.",
+        href: "/routing?sel=gateway",
+      });
+    });
+  }
+  return out;
+}
+
 function updateIssues(node: NodeFacts): Issue[] {
   const update = node.identity?.update;
   if (!update || node.identity?.install?.development) return [];

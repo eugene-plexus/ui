@@ -1272,7 +1272,46 @@ export interface components {
              */
             url?: string;
             backend?: components["schemas"]["BackendKind"];
+            /**
+             * @description The machine this driver runs on, as the agent that declares
+             *     it names it. Null on a standalone install whose agent has no
+             *     node name yet.
+             */
+            node?: string | null;
+            /**
+             * @description The one model a single-model driver serves, as published.
+             *     Absent for an account (see `account`) and for a driver
+             *     serving nothing yet.
+             */
             modelId?: string;
+            /**
+             * @description How many models this driver serves (`DriverInfo.models`).
+             *     One for a single-model driver; hundreds for an aggregator
+             *     account. Absent for an outdated driver.
+             */
+            modelCount?: number;
+            /**
+             * @description True when the driver is a provider account, whose models are
+             *     published as `<name>/<model id>`.
+             */
+            account?: boolean;
+            /**
+             * Format: date-time
+             * @description When the account's model list in force was read.
+             */
+            catalogueRefreshedAt?: string | null;
+            /**
+             * @description Why the account's most recent catalogue read failed, in the
+             *     backend's words. The previous list stays in force.
+             */
+            catalogueError?: string | null;
+            /**
+             * @description True when the driver answered `/v1/info` without a `models`
+             *     list: a driver from before P1, on a machine that has not
+             *     been updated. It routes nothing until updated, and appears
+             *     in `RoutingTableView.outdated_drivers`.
+             */
+            outdated?: boolean;
             /**
              * @description The supervised engine runtime this driver follows, straight
              *     off its `/v1/info`. Absent for a backend that is not a
@@ -1305,7 +1344,16 @@ export interface components {
              * @description What the client puts in `ChatCompletionRequest.model`. For a
              *     local runtime this is its `modelAlias`, which defaults to
              *     the model's own filename — so the name a user sees is the
-             *     name of the file they downloaded.
+             *     name of the file they downloaded. For a provider account
+             *     it is `<driver name>/<the provider's id>`
+             *     (`openrouter/anthropic/claude-opus-5.5`, `ollama/qwen3:8b`),
+             *     so two accounts never collide and one model through two
+             *     providers stays two ids.
+             *
+             *     Listed only when a door serves one of the model's surfaces
+             *     (P1-4): an account's speech, image, video and transcription
+             *     models appear as their doors are built, under the ids they
+             *     already have.
              */
             id: string;
             /** @constant */
@@ -2130,7 +2178,28 @@ export interface components {
             slots: components["schemas"]["RoutingSlotView"][];
             /** @description Drivers in the topology that did not answer `/v1/info`. */
             unreachable_drivers?: string[];
+            /**
+             * @description Drivers that answered `/v1/info` in the shape from before P1
+             *     (a single `modelId`, no `models`). The gateway routes nothing
+             *     to one: it would ignore the `model` a request names and
+             *     answer with its own. Listed so the console can say which
+             *     machine to update, rather than a model silently vanishing
+             *     after its gateway was updated and its worker was not.
+             */
+            outdated_drivers?: components["schemas"]["OutdatedDriver"][];
             control_root?: components["schemas"]["ControlRootView"];
+        };
+        OutdatedDriver: {
+            /** @description The driver's name, as its agent declares it. */
+            name: string;
+            /** @description The machine it runs on; null on a standalone install. */
+            node?: string | null;
+            /** Format: uri */
+            url?: string;
+            /** @description The driver's own version, as it reported it. */
+            version?: string;
+            /** @description The one model it said it serves, so the console can name what is missing. */
+            modelId?: string;
         };
         /**
          * @description Where the routing table's node list comes from, and whether that
@@ -2191,6 +2260,12 @@ export interface components {
         };
         RoutingBackendView: {
             driver: string;
+            /**
+             * @description The driver's own id for the model this row serves: the tier's
+             *     target for a single-model driver, and the target without its
+             *     `<driver>/` prefix for an account.
+             */
+            model?: string;
             /** Format: uri */
             url?: string;
             /** @description Whether a request could be sent here right now. */
@@ -2212,7 +2287,11 @@ export interface components {
              *     the agent owns the enum.
              */
             runtime_status?: string;
-            /** @description The node the runtime runs on, when the agent reports one. */
+            /**
+             * @description The machine the driver runs on. Was the runtime's node only,
+             *     which left a cloud driver's row with none although its agent
+             *     is known.
+             */
             node?: string;
             /** @description The agent's `Runtime.stopReason`, when the runtime is stopped. */
             stop_reason?: string;
@@ -3237,6 +3316,13 @@ export interface components {
             promptTokens?: number;
             completionTokens?: number;
             driver: string;
+            /**
+             * @description The published id of the model this attempt asked for — a
+             *     slot's target, prefixed for an account — since one account's
+             *     driver serves hundreds. Null on rows recorded before metrics
+             *     schema v6.
+             */
+            model?: string | null;
             runtime?: string | null;
             node?: string | null;
             backend?: components["schemas"]["BackendKind"];
@@ -3689,9 +3775,19 @@ export interface components {
          *     one. UIs render it as rows of host / user / password, with the
          *     password a password input, and must not display a redacted
          *     entry as though its password were empty.
+         *
+         *     `string_list` (P1, 2026-09-27) is an ordered JSON array of
+         *     strings with no further meaning to the type: a list of plain
+         *     values the field's own description explains. Its first users are
+         *     the inference-driver's `catalogueInclude` and `catalogueExclude`,
+         *     model-id patterns for a provider account. It exists for the
+         *     reason `url_list` does: a comma-separated text field is a bug
+         *     report, and reusing `path_list` or `url_list` would tell every UI
+         *     to open a directory picker or an address field. UIs render it as
+         *     an add/remove list of text fields.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials" | "string_list";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
