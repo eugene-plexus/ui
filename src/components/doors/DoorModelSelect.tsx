@@ -1,5 +1,6 @@
 "use client";
 
+import { contextOf, withContext } from "@/lib/modelContext";
 import type { Model } from "@/lib/types";
 
 import { fieldLabel, inputClass } from "./doorStyles";
@@ -28,7 +29,7 @@ export function DoorModelSelect({
       >
         {models.map((m) => (
           <option key={m.id} value={m.id}>
-            {m.id}
+            {withContext(m.id, contextOf(m))}
           </option>
         ))}
       </select>

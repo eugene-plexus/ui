@@ -16,6 +16,7 @@
 import { useMemo, useState } from "react";
 
 import { api, describeError } from "@/lib/api";
+import { type ContextLookup, withContext } from "@/lib/modelContext";
 import {
   REGISTER_SERVER_RECIPE,
   SAMPLE_TICKET,
@@ -35,7 +36,14 @@ const buttonClass =
 const textareaClass =
   "w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-2 font-mono text-xs";
 
-export function DecisionPanel({ models }: { models: string[] }) {
+export function DecisionPanel({
+  models,
+  contexts,
+}: {
+  models: string[];
+  /** Each model's context window, said beside its name. */
+  contexts?: ContextLookup;
+}) {
   const [model, setModel] = useState(models[0] ?? "");
   const [stateText, setStateText] = useState(JSON.stringify(SAMPLE_TICKET, null, 2));
   const [questionsText, setQuestionsText] = useState(JSON.stringify(sampleQuestions(), null, 2));
@@ -105,7 +113,7 @@ export function DecisionPanel({ models }: { models: string[] }) {
         >
           {models.map((m) => (
             <option key={m} value={m}>
-              {m}
+              {withContext(m, contexts?.(m))}
             </option>
           ))}
         </select>

@@ -5,7 +5,8 @@ import { useState } from "react";
 import { CopyButton } from "@/components/CopyButton";
 import type { RequestReport as Report } from "@/lib/completions";
 import { type PageLocation, buildCurl, explainFailure, summarizeReport } from "@/lib/diagnostic";
-import { seconds, tokenCount } from "@/lib/turnFormat";
+import { contextText } from "@/lib/modelContext";
+import { seconds } from "@/lib/turnFormat";
 
 /**
  * What one request did on the wire, from this browser's side.
@@ -99,7 +100,7 @@ export function RequestReport({
                   report.routing.latency_ms != null &&
                     `${seconds(report.routing.latency_ms)} at the gateway`,
                   report.routing.context_length != null &&
-                    `${tokenCount(report.routing.context_length)} ctx`,
+                    contextText(report.routing.context_length),
                   report.routing.prompt_truncated === true && "INPUT TRUNCATED",
                 ]
                   .filter(Boolean)

@@ -417,3 +417,37 @@ describe("removing a list", () => {
     expect(screen.getByLabelText("Add a fallback to writer")).toHaveValue("half-typed");
   });
 });
+
+describe("each model's context window, beside its name", () => {
+  beforeEach(() => {
+    handlers.set("GET gateway/v1/models", () => ({
+      status: 200,
+      body: {
+        object: "list",
+        data: [
+          { id: "coder", object: "model", x_eugene_plexus: { context_length: 131072 } },
+          { id: "qwen3-coder-30b", object: "model", x_eugene_plexus: { context_length: 40960 } },
+          { id: "claude", object: "model", x_eugene_plexus: {} },
+          { id: "gemma-3-27b", object: "model", x_eugene_plexus: { context_length: 75520 } },
+        ],
+      },
+    }));
+  });
+
+  it("on the self tier, on every served fallback, and nowhere for a model nothing serves", async () => {
+    const card = await renderPage();
+    const self = within(card).getByTestId("self-tier");
+    await waitFor(() => expect(self).toHaveTextContent("coder · 128k context"));
+    const rows = within(card).getAllByTestId("target-row");
+    expect(within(rows[0]!).getByTestId("model-context")).toHaveTextContent("40k context");
+    expect(within(rows[1]!).getByTestId("model-context")).toHaveTextContent("context unknown");
+    // Not served, so nothing is claimed about its window.
+    expect(within(rows[2]!).queryByTestId("model-context")).toBeNull();
+  });
+
+  it("on a running model offered a list, with a window that is not a round number", async () => {
+    await renderPage();
+    const offered = await screen.findByTestId("unconfigured-models");
+    await waitFor(() => expect(offered).toHaveTextContent("gemma-3-27b · 75,520 context"));
+  });
+});

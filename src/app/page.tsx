@@ -13,6 +13,7 @@ import { TryItCard } from "@/components/home/TryItCard";
 import { UseFromAppsCard } from "@/components/home/UseFromAppsCard";
 import { api } from "@/lib/api";
 import { PROXY, listModels } from "@/lib/completions";
+import { contextLookup } from "@/lib/modelContext";
 import { guessGatewayBaseUrl } from "@/lib/diagnostic";
 import { chatModels, firstModelState, machineStrip } from "@/lib/home";
 import { type Sources, buildRows } from "@/lib/inferenceRows";
@@ -204,6 +205,7 @@ export default function HomePage() {
   usePolling(loadFast, FAST_POLL_MS, ready);
 
   const chat = useMemo(() => chatModels(models), [models]);
+  const contexts = useMemo(() => contextLookup(models), [models]);
   // Null until the gateway has answered once; a gateway that fails on the
   // first read counts as "routes to nothing", because waiting on it would
   // leave a person with models on disk looking at an empty page.
@@ -283,7 +285,7 @@ export default function HomePage() {
               wireframe; a lone half-width card reads as a mistake, so
               the second column only exists when both are there. */}
           <div className={`grid items-start gap-4 ${rows.length > 0 ? "lg:grid-cols-2" : ""}`}>
-            <RunningCard rows={rows} />
+            <RunningCard rows={rows} contexts={contexts} />
             <NeedsAttentionCard
               issues={issues}
               loaded={issuesLoaded}

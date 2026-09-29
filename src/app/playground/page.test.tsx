@@ -517,6 +517,8 @@ describe("one turn's numbers", () => {
       });
     });
     await renderReady();
+    // The picker says the window before anything is sent.
+    expect(screen.getByRole("option", { name: "qwen3-14b · 32k context" })).toBeInTheDocument();
     send("hello");
     await waitFor(() => expect(screen.getByTestId("request-report")).toBeInTheDocument());
 
@@ -530,9 +532,11 @@ describe("one turn's numbers", () => {
     expect(text).not.toMatch(/\d ms\b/);
     // The gateway's own figure is labelled as the gateway's, in seconds.
     expect(text).toContain("2.50 s at the gateway");
-    // The window reads one way wherever it is shown.
-    expect(text).toContain("32,768 ctx");
-    expect(text).not.toContain("32768 ctx");
+    // The window reads one way wherever it is shown, beside the model's
+    // name in the bar, and in the report.
+    expect(text).toContain("qwen3-14b · 32k context · driver qwen-driver");
+    expect(text).toContain("at the gateway · 32k context");
+    expect(text).not.toMatch(/\bctx\b/);
   });
 });
 
@@ -659,5 +663,27 @@ describe("while the model works (2026-09-27)", () => {
     expect(history).toContain("East");
     expect(history).not.toContain("East, surely.");
     expect(history).not.toContain("reasoning");
+  });
+});
+
+describe("the decision panel's picker", () => {
+  it("says each decision model's window beside its name", async () => {
+    handlers.set("GET gateway/v1/models", () =>
+      json(200, {
+        object: "list",
+        data: [
+          { id: "qwen3-14b", object: "model", x_eugene_plexus: { surfaces: ["chat"] } },
+          {
+            id: "jev",
+            object: "model",
+            x_eugene_plexus: { surfaces: ["decisions"], context_length: 16384 },
+          },
+        ],
+      }),
+    );
+    await renderReady();
+    fireEvent.click(screen.getByTestId("toggle-diagnostic"));
+    const picker = await screen.findByLabelText("Model", { selector: "#decision-model" });
+    expect(picker).toHaveTextContent("jev · 16k context");
   });
 });

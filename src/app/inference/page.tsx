@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
 import { offeredOnThisNode } from "@/lib/engineCompat";
 import { describeControlRoot } from "@/lib/controlRoot";
@@ -26,8 +27,10 @@ import {
 import { loadKey, recallLoadSeconds, rememberLoadSeconds } from "@/lib/loadMemory";
 import { engineLogsHref } from "@/lib/logs";
 import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib/nodeBudget";
+import type { ContextLookup } from "@/lib/modelContext";
 import { formatSelection } from "@/lib/resourceTree";
 import { useIssues } from "@/lib/useIssues";
+import { useServedContexts } from "@/lib/useServedContexts";
 import { usePolling } from "@/lib/usePolling";
 import { expertHint } from "@/lib/vocabulary";
 import type {
@@ -124,6 +127,7 @@ const BACKEND_LABEL: Record<string, string> = {
 export default function InferencePage() {
   const picker = useTargetNode();
   const localName = picker.nodes.find((n) => n.local)?.name ?? null;
+  const contexts = useServedContexts();
 
   const [sources, setSources] = useState<Sources | null>(null);
   // The Issues poll already reads every node's own `/v1/runtimes` and
@@ -392,6 +396,7 @@ export default function InferencePage() {
               busy={busy}
               onAct={act}
               onRemove={remove}
+              contexts={contexts}
             />
           ))}
         </div>
@@ -441,6 +446,7 @@ function NodeSection({
   busy,
   onAct,
   onRemove,
+  contexts,
 }: {
   name: string | null;
   node: TargetNode | null;
@@ -453,6 +459,8 @@ function NodeSection({
   busy: string | null;
   onAct: (node: string | null, runtime: string, action: "start" | "stop" | "restart") => void;
   onRemove: (row: Row) => void;
+  /** Each served model's context window, said beside its name. */
+  contexts: ContextLookup;
 }) {
   const label = name ?? node?.label ?? "this host";
   // The node's engines, lifted here from the engines line so a stopped
@@ -509,6 +517,7 @@ function NodeSection({
                   busy={busy}
                   onAct={onAct}
                   onRemove={onRemove}
+                  contexts={contexts}
                 />
               ))}
             </tbody>
@@ -527,6 +536,7 @@ function RowView({
   busy,
   onAct,
   onRemove,
+  contexts,
 }: {
   row: Row;
   /** The node's engines, or null while unknown. */
@@ -541,6 +551,8 @@ function RowView({
   busy: string | null;
   onAct: (node: string | null, runtime: string, action: "start" | "stop" | "restart") => void;
   onRemove: (row: Row) => void;
+  /** Each served model's context window, said beside its name. */
+  contexts: ContextLookup;
 }) {
   const status = row.runtimeStatus as RuntimeStatus | null;
   const known = status !== null && status in STATUS_TONE;
@@ -599,12 +611,12 @@ function RowView({
               ({row.account.count}, named <span className="font-mono">{row.driver}/…</span>)
             </span>
           </span>
+        ) : row.model ? (
+          <ModelName name={row.model} context={contexts(row.model)} />
         ) : (
-          (row.model ?? (
-            <span className="text-[color:var(--muted)]">
-              {row.outdated ? "an older version" : "no model reported"}
-            </span>
-          ))
+          <span className="text-[color:var(--muted)]">
+            {row.outdated ? "an older version" : "no model reported"}
+          </span>
         )}
       </td>
       <td className="py-1.5 pr-4">

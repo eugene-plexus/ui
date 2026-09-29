@@ -54,8 +54,9 @@ import {
   withSystemPrompt,
 } from "@/lib/sampling";
 import { type DoorId, availableDoors, doorFromParam, modelsForDoor } from "@/lib/doors";
+import { contextLookup, contextOf, contextText, withContext } from "@/lib/modelContext";
 import { getSessionToken } from "@/lib/session";
-import { seconds, tokenCount } from "@/lib/turnFormat";
+import { seconds } from "@/lib/turnFormat";
 import { usePolling } from "@/lib/usePolling";
 import type {
   ChatCompletionMessage,
@@ -786,7 +787,7 @@ function PlaygroundPageInner() {
             )}
             {chat && decisionModels.length > 0 && (
               <div className="sm:col-span-2">
-                <DecisionPanel models={decisionModels} />
+                <DecisionPanel models={decisionModels} contexts={contextLookup(allModels)} />
               </div>
             )}
           </div>
@@ -995,14 +996,13 @@ function ModelPicker({
       >
         {shown.map((m) => (
           <option key={m.id} value={m.id}>
-            {m.id}
+            {withContext(m.id, contextOf(m))}
           </option>
         ))}
       </select>
       <p className="font-ui truncate text-[0.6875rem] text-[color:var(--muted)]">
         {selected?.owned_by ?? "unknown provider"}
-        {selected?.x_eugene_plexus?.context_length != null &&
-          ` · ${tokenCount(selected.x_eugene_plexus.context_length)} ctx`}
+        {selected && ` · ${contextText(contextOf(selected))}`}
         {selected?.x_eugene_plexus?.tool_calling === true && " · tools"}
         {selected?.x_eugene_plexus?.image_input === true && " · images"}
         {replicas > 1 && ` · ${replicas} replicas`}
@@ -1015,7 +1015,13 @@ function ModelPicker({
  * thing worth knowing when a reply looks wrong. */
 function RoutingBar({ info }: { info: TurnInfo }) {
   const parts: string[] = [];
-  if (info.model) parts.push(info.model);
+  // The window that applied to *this* turn, beside the model it names --
+  // not the smallest across every replica, which is on the picker above.
+  if (info.model) {
+    parts.push(
+      info.context_length != null ? withContext(info.model, info.context_length) : info.model,
+    );
+  }
   if (info.driver) parts.push(`driver ${info.driver}`);
   if (info.runtime) parts.push(`runtime ${info.runtime}`);
   if (info.backend) parts.push(info.backend);
@@ -1030,11 +1036,6 @@ function RoutingBar({ info }: { info: TurnInfo }) {
   // only (after the first frame), and approximate — hence the tilde.
   if (info.firstFrameMs != null) parts.push(`first token ${seconds(info.firstFrameMs)}`);
   if (info.tokPerSec != null) parts.push(`~${info.tokPerSec.toFixed(1)} tok/s`);
-  // The window that applied to *this* turn, which is not the smallest
-  // across every replica -- that one is on the model picker above.
-  if (info.context_length != null) {
-    parts.push(`${tokenCount(info.context_length)} ctx`);
-  }
   return (
     <div className="flex items-center gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[0.6875rem] text-[color:var(--muted)]">
       <span className="truncate">{parts.join(" · ")}</span>

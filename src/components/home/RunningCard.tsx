@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 
+import { ModelName } from "@/components/ModelName";
 import type { Row } from "@/lib/inferenceRows";
+import type { ContextLookup } from "@/lib/modelContext";
 
 /**
  * "Running": what is serving right now, in four columns.
@@ -18,7 +20,7 @@ import type { Row } from "@/lib/inferenceRows";
  * here only as a tooltip on the model, for the operator who wants the
  * name the API uses.
  */
-export function RunningCard({ rows }: { rows: Row[] }) {
+export function RunningCard({ rows, contexts }: { rows: Row[]; contexts: ContextLookup }) {
   if (rows.length === 0) return null;
   return (
     <section
@@ -50,7 +52,11 @@ export function RunningCard({ rows }: { rows: Row[] }) {
                     className="py-1.5 pr-4 font-mono"
                     title={row.runtime ? `Runtime ${row.runtime}` : undefined}
                   >
-                    {row.model ?? row.driver ?? "—"}
+                    {row.model ? (
+                      <ModelName name={row.model} context={contexts(row.model)} />
+                    ) : (
+                      (row.driver ?? "—")
+                    )}
                   </td>
                   <td className="py-1.5 pr-4">{row.node ?? "this machine"}</td>
                   <td className={`py-1.5 pr-4 ${state.className}`} title={row.error ?? undefined}>

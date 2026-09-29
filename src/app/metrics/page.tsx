@@ -47,10 +47,13 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { HourChart, StatTile } from "@/components/MetricsCharts";
 import { CopyButton } from "@/components/CopyButton";
+import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
 import { compact, hourlyPoints, msLabel, tilesFrom } from "@/lib/metricsCharts";
+import { withContext } from "@/lib/modelContext";
 import type { ClientUsageSummary } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
+import { useServedContexts } from "@/lib/useServedContexts";
 import { clockTime, formatTimestamp } from "@/lib/relativeTime";
 
 interface Percentiles {
@@ -194,6 +197,7 @@ function settle<T>(p: Promise<T>): Promise<Settled<T>> {
 }
 
 export default function MetricsPage() {
+  const contexts = useServedContexts();
   const [hours, setHours] = useState(24);
   const [model, setModel] = useState<string>("");
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
@@ -325,12 +329,12 @@ export default function MetricsPage() {
             value={model}
             onChange={(e) => setModel(e.target.value)}
             aria-label="Model"
-            className="font-ui max-w-48 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-1 text-sm"
+            className="font-ui max-w-72 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-1 text-sm"
           >
             <option value="">All models</option>
             {models.map((m) => (
               <option key={m} value={m}>
-                {m}
+                {withContext(m, contexts(m))}
               </option>
             ))}
           </select>
@@ -586,7 +590,13 @@ export default function MetricsPage() {
                           key={groupKey(g)}
                           className="border-b border-[color:var(--border)] align-top"
                         >
-                          <td className="py-2 pr-3 font-mono break-all">{g.model ?? "—"}</td>
+                          <td className="py-2 pr-3 font-mono break-all">
+                            {g.model ? (
+                              <ModelName name={g.model} context={contexts(g.model)} />
+                            ) : (
+                              "—"
+                            )}
+                          </td>
                           <td className="py-2 pr-3">
                             <span className="font-mono">{g.driver ?? "—"}</span>
                             {/* By runtime NAME, so two replicas of one model stay
@@ -857,7 +867,11 @@ export default function MetricsPage() {
                             {r.clientKeyName ?? r.clientKeyId}
                           </span>
                         )}
-                        <span className="break-all">{r.requestedModel}</span>{" "}
+                        <ModelName
+                          name={r.requestedModel}
+                          context={contexts(r.requestedModel)}
+                          className="break-all"
+                        />{" "}
                         <span className="text-[color:var(--muted)]">
                           {ms(r.elapsedMs ?? r.totalMs)}
                           {r.completionTokens != null && ` · ${r.completionTokens} tok`}

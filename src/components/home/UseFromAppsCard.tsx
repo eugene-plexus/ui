@@ -12,6 +12,7 @@ import {
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api, describeError } from "@/lib/api";
+import { contextOf, contextText, withContext } from "@/lib/modelContext";
 import {
   blockers,
   clientKeyTarget,
@@ -135,6 +136,7 @@ export function UseFromAppsCard({
     setEditing(false);
   }
   const [model, setModel] = useState<string | null>(null);
+  const selectedModel = models.find((m) => m.id === model) ?? null;
   const [openRecipe, setOpenRecipe] = useState<string | null>(null);
 
   const where = useMemo(() => clientKeyTarget(placement, localNode), [placement, localNode]);
@@ -473,14 +475,25 @@ export function UseFromAppsCard({
             >
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.id}
+                  {withContext(m.id, contextOf(m))}
                 </option>
               ))}
             </select>
           ) : (
-            <code data-testid="app-model" className="min-w-0 flex-1 font-mono text-xs break-all">
-              {model ?? "nothing is running"}
-            </code>
+            <>
+              <code data-testid="app-model" className="min-w-0 font-mono text-xs break-all">
+                {model ?? "nothing is running"}
+              </code>
+              {/* Beside the id, never inside it: the id is what gets copied. */}
+              {selectedModel && (
+                <span
+                  data-testid="model-context"
+                  className="flex-1 text-xs text-[color:var(--muted)]"
+                >
+                  {contextText(contextOf(selectedModel))}
+                </span>
+              )}
+            </>
           )}
           {model && <CopyButton text={model} title="Copy the model id" />}
         </Row>

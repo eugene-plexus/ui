@@ -141,7 +141,7 @@ describe("the door picker", () => {
     const options = within(screen.getByTestId("door-model"))
       .getAllByRole("option")
       .map((o) => o.textContent);
-    expect(options).toEqual(["coder", "vcoder"]);
+    expect(options).toEqual(["coder · context unknown", "vcoder · context unknown"]);
 
     fireEvent.click(screen.getByTestId("door-chat"));
     expect(nav.replace).toHaveBeenLastCalledWith("/playground", { scroll: false });

@@ -35,6 +35,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
 import {
   addSlot,
@@ -55,8 +56,10 @@ import {
   unconfiguredServedModels,
   type ModelSlot,
 } from "@/lib/modelSlots";
+import { type ContextLookup, contextText, withContext } from "@/lib/modelContext";
 import type { ConfigUpdateResult, RoutingTableView } from "@/lib/types";
 import { clockTime } from "@/lib/relativeTime";
+import { useServedContexts } from "@/lib/useServedContexts";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 const DATALIST_ID = "routing-known-models";
@@ -77,6 +80,7 @@ interface SaveState {
 const UNCONFIGURED_SHOWN = 12;
 
 export default function RoutingPage() {
+  const contexts = useServedContexts();
   const [serverSlots, setServerSlots] = useState<ModelSlot[]>([]);
   const [rawValue, setRawValue] = useState<unknown>(null);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -298,7 +302,7 @@ export default function RoutingPage() {
 
               <datalist id={DATALIST_ID}>
                 {known.map((id) => (
-                  <option key={id} value={id} />
+                  <option key={id} value={id} label={withContext(id, contexts(id))} />
                 ))}
               </datalist>
 
@@ -338,6 +342,7 @@ export default function RoutingPage() {
                         key={slotKey(index)}
                         slot={slot}
                         routing={routing}
+                        contexts={contexts}
                         disabled={saving}
                         onRename={(name) => setDraft((d) => renameSlot(d, index, name))}
                         onRemove={() => {
@@ -411,7 +416,7 @@ export default function RoutingPage() {
                                 className={`${smallButtonClass} font-mono`}
                                 title={`Add a priority list for ${model}`}
                               >
-                                {model} +
+                                <ModelName name={model} context={contexts(model)} /> +
                               </button>
                             </li>
                           ))}
@@ -519,6 +524,7 @@ export default function RoutingPage() {
 function SlotCard({
   slot,
   routing,
+  contexts,
   disabled,
   onRename,
   onRemove,
@@ -529,6 +535,8 @@ function SlotCard({
 }: {
   slot: ModelSlot;
   routing: RoutingTableView | null;
+  /** Each served model's context window, said beside its name. */
+  contexts: ContextLookup;
   disabled: boolean;
   onRename: (name: string) => void;
   onRemove: () => void;
@@ -602,7 +610,11 @@ function SlotCard({
           className="flex flex-wrap items-baseline gap-2 rounded-[var(--radius)] border border-dashed border-[color:var(--border)] px-3 py-2"
         >
           <span className="font-ui text-xs text-[color:var(--muted)]">tried first</span>
-          <span className="font-mono text-sm">{slot.model.trim() || "…"}</span>
+          <ModelName
+            name={slot.model.trim() || "…"}
+            context={contexts(slot.model.trim())}
+            className="font-mono text-sm"
+          />
           <SelfResolutionLine self={self} />
         </li>
         {slot.targets.map((target, j) => (
@@ -620,6 +632,11 @@ function SlotCard({
               disabled={disabled}
               className={`${inputClass} w-64 max-w-full`}
             />
+            {contexts(target.trim()) !== undefined && (
+              <span data-testid="model-context" className="text-xs text-[color:var(--muted)]">
+                {contextText(contexts(target.trim()))}
+              </span>
+            )}
             <span className="flex gap-1">
               <button
                 type="button"

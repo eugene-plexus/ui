@@ -411,7 +411,8 @@ describe("Home with a model routable", () => {
     fireEvent.submit(composer.closest("form")!);
 
     const info = await screen.findByTestId("home-turn-info");
-    expect(info).toHaveTextContent("qwen3-14b · qwen-driver · 1.2 s");
+    // The fixture lists no window, which is said rather than left out.
+    expect(info).toHaveTextContent("qwen3-14b · context unknown · qwen-driver · 1.2 s");
 
     // What was sent is what a harness would send: the model, the history,
     // and `stream: true`, through the proxy -- **amended 2026-09-27** with
@@ -496,6 +497,47 @@ describe("Home's Running card", () => {
       "/inference",
     );
     expectPlainWords();
+  });
+});
+
+describe("Home says each served model's context window", () => {
+  it("in Try it's picker, in Use it from your apps, and on the Running card", async () => {
+    handlers.set("GET library/v1/models", () => ({ status: 200, body: LIBRARY_WITH_TWO }));
+    handlers.set("GET gateway/v1/models", () => ({
+      status: 200,
+      body: {
+        ...ROUTABLE,
+        data: [
+          {
+            ...ROUTABLE.data[0]!,
+            x_eugene_plexus: { ...ROUTABLE.data[0]!.x_eugene_plexus, context_length: 40960 },
+          },
+        ],
+      },
+    }));
+    handlers.set("GET gateway/v1/admin/drivers", () => ({
+      status: 200,
+      body: {
+        drivers: [
+          {
+            name: "qwen-driver",
+            reachable: true,
+            backend: "openai_compat_http",
+            modelId: "qwen3-14b",
+          },
+        ],
+      },
+    }));
+    render(<HomePage />);
+    const running = await screen.findByTestId("home-running");
+    expect(within(running).getByTestId("model-context")).toHaveTextContent("40k context");
+    expect(running).toHaveTextContent("qwen3-14b · 40k context");
+    const picker = await screen.findByTestId("home-model");
+    expect(within(picker).getByRole("option")).toHaveTextContent("qwen3-14b · 40k context");
+    // One model: the id is shown as code to copy, and the window beside it, not in it.
+    const id = await screen.findByTestId("app-model");
+    expect(id).toHaveTextContent(/^qwen3-14b$/);
+    expect(id.parentElement).toHaveTextContent("40k context");
   });
 });
 

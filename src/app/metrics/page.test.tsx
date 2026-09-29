@@ -38,11 +38,14 @@ let held: Promise<void>;
 let olderSummary: unknown;
 /** URL fragments whose reads answer 404, as an older gateway's would. */
 let failPaths: string[];
+/** What the gateway serves now, for each name's context window. */
+let modelList: unknown;
 
 beforeEach(() => {
   holdOlderThan = null;
   olderSummary = null;
   failPaths = [];
+  modelList = { object: "list", data: [] };
   held = new Promise((resolve) => {
     releaseHeld = resolve;
   });
@@ -124,13 +127,15 @@ beforeEach(() => {
           headers: { "content-type": "application/json" },
         });
       }
-      const body = url.includes("/metrics/requests")
-        ? requests
-        : url.includes("/metrics/clients")
-          ? clientUsage
-          : older && olderSummary !== null
-            ? olderSummary
-            : summary;
+      const body = url.endsWith("/gateway/v1/models")
+        ? modelList
+        : url.includes("/metrics/requests")
+          ? requests
+          : url.includes("/metrics/clients")
+            ? clientUsage
+            : older && olderSummary !== null
+              ? olderSummary
+              : summary;
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -503,4 +508,43 @@ it("shows per-key usage with incomplete accounting and retention limits", async 
   expect(screen.getByText(/Older per-key history has expired/)).toBeInTheDocument();
   expect(screen.getByText(/Per-key totals are incomplete/)).toBeInTheDocument();
   expect(screen.getByText(/This is not a billing total/)).toBeInTheDocument();
+});
+
+describe("each model's context window, beside its name", () => {
+  it("on a group row, a recent request and the filter, for a model still served", async () => {
+    modelList = {
+      object: "list",
+      data: [{ id: "dolphin3-8b", object: "model", x_eugene_plexus: { context_length: 8192 } }],
+    };
+    requests = {
+      requests: [
+        {
+          startedAt: new Date().toISOString(),
+          requestedModel: "dolphin3-8b",
+          attempts: 1,
+          totalMs: 50,
+          requestId: "req-ctx",
+          outcome: "served",
+          tries: [],
+        },
+      ],
+    };
+    render(<MetricsPage />);
+    const request = (await screen.findByText("Request req-ctx")).closest("li") as HTMLElement;
+    await waitFor(() => expect(request).toHaveTextContent("dolphin3-8b · 8k context"));
+    const group = screen
+      .getAllByText("dolphin3-8b")
+      .map((el) => el.closest("tr"))
+      .find((tr): tr is HTMLTableRowElement => tr !== null)!;
+    expect(within(group).getByTestId("model-context")).toHaveTextContent("8k context");
+    const filter = screen.getByRole("combobox", { name: "Model" });
+    expect(within(filter).getByRole("option", { name: "dolphin3-8b · 8k context" })).toBeTruthy();
+  });
+
+  it("claims nothing about a model the metrics remember and the gateway no longer serves", async () => {
+    render(<MetricsPage />);
+    await screen.findAllByText("claude-via-cli");
+    await waitFor(() => expect(urls.some((u) => u.endsWith("/gateway/v1/models"))).toBe(true));
+    expect(screen.queryByTestId("model-context")).toBeNull();
+  });
 });

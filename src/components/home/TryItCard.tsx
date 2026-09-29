@@ -8,6 +8,7 @@ import { describeError } from "@/lib/api";
 import { PROXY, streamChatCompletion } from "@/lib/completions";
 import { isComposing } from "@/lib/composing";
 import { homeReadiness } from "@/lib/homeReadiness";
+import { contextLookup, contextOf, withContext } from "@/lib/modelContext";
 import {
   type PlaygroundMessage,
   readPlaygroundTranscript,
@@ -261,11 +262,11 @@ export function TryItCard({
           disabled={pending}
           aria-label="Model"
           data-testid="home-model"
-          className="font-ui max-w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-2 text-sm outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50 sm:max-w-[220px]"
+          className="font-ui max-w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-2 text-sm outline-none hover:border-[color:var(--border-hover)] disabled:opacity-50 sm:max-w-[320px]"
         >
           {models.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.id}
+              {withContext(m.id, contextOf(m))}
             </option>
           ))}
         </select>
@@ -314,8 +315,12 @@ export function TryItCard({
           data-testid="home-turn-info"
           className="mt-2 font-mono text-[0.6875rem] text-[color:var(--muted)]"
         >
-          {[turn.model, turn.driver, turn.seconds !== null ? `${turn.seconds.toFixed(1)} s` : null]
-            .filter((part): part is string => part !== null)
+          {[
+            turn.model && withContext(turn.model, contextLookup(models)(turn.model)),
+            turn.driver,
+            turn.seconds !== null ? `${turn.seconds.toFixed(1)} s` : null,
+          ]
+            .filter((part): part is string => Boolean(part))
             .join(" · ")}
         </p>
       )}

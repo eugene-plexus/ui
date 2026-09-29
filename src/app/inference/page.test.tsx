@@ -799,3 +799,35 @@ describe("another build of an engine", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("is not a build release b11211");
   });
 });
+
+describe("a served model's context window", () => {
+  /** What the gateway lists: the one model, with or without its window. */
+  function listed(model: Record<string, unknown>) {
+    handlers.set("GET gateway/v1/models", () => ({
+      status: 200,
+      body: { object: "list", data: [{ id: "gemma-3-27b", object: "model", ...model }] },
+    }));
+  }
+
+  async function modelCell() {
+    render(<InferencePage />);
+    const context = await screen.findByTestId("model-context", {}, { timeout: 5000 });
+    return context.closest("td") as HTMLElement;
+  }
+
+  it("sits beside the model's name, as the gateway reports it", async () => {
+    listed({ x_eugene_plexus: { context_length: 32768 } });
+    expect(await modelCell()).toHaveTextContent(/^gemma-3-27b · 32k context$/);
+  });
+
+  it("says it is unknown when the gateway serves the model and gives no window", async () => {
+    listed({ x_eugene_plexus: {} });
+    expect(await modelCell()).toHaveTextContent(/^gemma-3-27b · context unknown$/);
+  });
+
+  it("says nothing when the gateway does not answer, and the name still shows", async () => {
+    const row = await rowFor("gemma-3-27b");
+    expect(row).toBeInTheDocument();
+    expect(screen.queryByTestId("model-context")).toBeNull();
+  });
+});
