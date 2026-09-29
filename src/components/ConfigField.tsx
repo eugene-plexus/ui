@@ -204,14 +204,24 @@ export function ConfigFieldInput({
 
     if (field.valueType === "enum" && field.enumValues) {
       const labels = field.enumLabels ?? [];
+      // An optional enum with no default can be unset, and unset means
+      // something (`updateChannel` unset follows how the machine was
+      // installed). Without an option for it, `value=""` matched nothing
+      // and the browser showed the FIRST option -- Troy's worker read
+      // "Edge" while it followed releases (2026-09-29).
+      const unsettable =
+        !field.required &&
+        (field.default === null || field.default === undefined) &&
+        !field.enumValues.includes("");
       return (
         <select
           {...controlProps}
           value={(value as string | undefined) ?? ""}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => onChange(unsettable && e.target.value === "" ? null : e.target.value)}
           disabled={pending}
           className={baseInputClass}
         >
+          {unsettable && <option value="">Not set</option>}
           {field.enumValues.map((v, i) => (
             <option key={v} value={v}>
               {/* "" in enumValues is the "(use default)" sentinel for

@@ -5,7 +5,7 @@
  * Every agent checks its channel, `edge` or `releases`, a minute after it
  * starts and every six hours, and reports on `GET /v1/node`:
  *
- * - `install`: the commit each of the six parts was built from, stamped
+ * - `install`: the commit each part (seven since P8) was built from, stamped
  *   into the code by git, and what keeps the install running;
  * - `update`: the newest found, whether this machine is behind, and
  *   whether it can update itself or needs a person to do it (a container
@@ -175,7 +175,9 @@ export function describeUpdate(identity: NodeIdentity | null, now: number): Upda
       last,
       state: failed ? "failed" : "available",
       headline: failed ? "The last update did not finish" : `A newer version is ready: ${label}`,
-      detail: failed?.detail ?? `${partsBehind(update.behind.length)} ${RESTART}`,
+      detail:
+        failed?.detail ??
+        `${partsBehind(update.behind.length, identity.install?.components.length || 6)} ${RESTART}`,
       canUpdate: true,
       target: update.newest?.ref ?? null,
     };
@@ -205,12 +207,43 @@ export function describeUpdate(identity: NodeIdentity | null, now: number): Upda
     last,
     state: failed ? "failed" : "current",
     headline: failed ? "The last update did not finish" : `Up to date on ${update.channel}`,
-    detail: failed?.detail ?? checkNote,
+    detail: failed?.detail ?? joined(checkNote, inferredNote(update)),
   };
 }
 
-function partsBehind(count: number): string {
-  if (count >= 6) return "All six parts of Eugene are behind.";
-  if (count === 1) return "One of the six parts of Eugene is behind.";
-  return `${count} of the six parts of Eugene are behind.`;
+/**
+ * Why this channel, when nobody chose it. An unset channel follows how the
+ * machine was installed, so a release install reads "up to date on
+ * releases" while edge moves on -- and until 2026-09-29 nothing on the page
+ * said the channel was a guess (found on Troy's worker, installed from
+ * alpha.5, whose Settings dropdown showed Edge for an unset value).
+ */
+function inferredNote(update: NonNullable<NodeIdentity["update"]>): string | null {
+  if (update.channelSource !== "inferred") return null;
+  const from =
+    update.channel === "releases"
+      ? "it was installed from a release"
+      : "it was not installed from a release";
+  return (
+    `It follows ${update.channel} because ${from}. ` +
+    "To choose, set Update channel under Settings › Updates."
+  );
+}
+
+function joined(...parts: (string | null)[]): string | null {
+  const kept = parts.filter((p): p is string => Boolean(p));
+  return kept.length ? kept.join(" ") : null;
+}
+
+function partsBehind(count: number, total: number): string {
+  const all = numberWord(total);
+  if (count >= total) return `All ${all} parts of Eugene are behind.`;
+  if (count === 1) return `One of the ${all} parts of Eugene is behind.`;
+  return `${count} of the ${all} parts of Eugene are behind.`;
+}
+
+function numberWord(n: number): string {
+  return (
+    ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][n] ?? `${n}`
+  );
 }

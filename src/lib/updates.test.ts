@@ -49,15 +49,26 @@ function identity(update: Partial<Update> | null, extra: Partial<NodeIdentity> =
 
 const NEWEST = { channel: "edge" as const, ref: EDGE, components: { agent: NEW_AGENT } };
 
+/** A whole install: seven parts since P8 added the tool-driver. */
+const SEVEN: NonNullable<NodeIdentity["install"]> = {
+  mechanism: "windows_service",
+  development: false,
+  components: (
+    ["agent", "control", "gateway", "inference-driver", "library", "tool-driver", "ui"] as const
+  ).map((name) => ({ name, state: "stamped" as const, commit: "c".repeat(40) })),
+};
+
 describe("describeUpdate", () => {
   it("offers the update, and says what it costs", () => {
     const view = describeUpdate(
-      identity({ available: true, behind: ["agent", "ui"], newest: NEWEST }),
+      identity({ available: true, behind: ["agent", "ui"], newest: NEWEST }, { install: SEVEN }),
       NOW,
     );
     expect(view.state).toBe("available");
     expect(view.headline).toBe("A newer version is ready: edge b8b30bd");
-    expect(view.detail).toMatch(/^2 of the six parts of Eugene are behind\. Updating restarts/);
+    // Counted from the install, not written into the sentence: "six"
+    // outlived P8's seventh part by a day.
+    expect(view.detail).toMatch(/^2 of the seven parts of Eugene are behind\. Updating restarts/);
     expect(view.canUpdate).toBe(true);
     // What the button sends is exactly what the agent found.
     expect(view.target).toBe(EDGE);
@@ -102,10 +113,21 @@ describe("describeUpdate", () => {
   });
 
   it("says up to date, and when it last looked", () => {
-    const view = describeUpdate(identity({}), NOW);
+    const view = describeUpdate(identity({ channelSource: "setting" }), NOW);
     expect(view.state).toBe("current");
     expect(view.headline).toBe("Up to date on edge");
     expect(view.detail).toBe("Checked 5 minutes ago.");
+  });
+
+  it("says when a channel was not chosen but followed from the install", () => {
+    // Troy's worker, 2026-09-29: installed from alpha.5, channel never set,
+    // so it followed releases and read "up to date" while edge had moved.
+    const view = describeUpdate(identity({ channel: "releases", channelSource: "inferred" }), NOW);
+    expect(view.headline).toBe("Up to date on releases");
+    expect(view.detail).toBe(
+      "Checked 5 minutes ago. It follows releases because it was installed from a release. " +
+        "To choose, set Update channel under Settings › Updates.",
+    );
   });
 
   it("says why a check could not finish", () => {
