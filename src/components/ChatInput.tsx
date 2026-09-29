@@ -15,13 +15,22 @@ import { isComposing } from "@/lib/composing";
 import { type AttachmentText, checkAttachment, inlineAttachments } from "@/lib/diagnostic";
 import {
   type ImageAttachment,
-  buildMessageContent,
   checkImageAttachment,
   checkImageSet,
   imageDimensions,
   isImageMime,
   toDataUrl,
 } from "@/lib/imageAttachments";
+import {
+  type AudioAttachment,
+  type PdfAttachment,
+  buildMessageParts,
+  checkAllAttachments,
+  looksLikeAudio,
+  looksLikePdf,
+  readAudioAttachment,
+  readPdfAttachment,
+} from "@/lib/mediaAttachments";
 import { formatBytesShort } from "@/lib/tasks";
 import type { MessageContentPart } from "@/lib/types";
 
@@ -44,8 +53,9 @@ import type { MessageContentPart } from "@/lib/types";
  * naming each one -- what a coding harness does when it pastes a file.
  * PNG and JPEG images become inline `image_url` content parts, the
  * only image form the contract carries (remote URLs are never
- * fetched). A message with no images is still a plain string, so
- * text-only requests are byte-for-byte what they always were.
+ * fetched). WAV and MP3 recordings become `input_audio` parts and PDFs
+ * `file` parts (P2a). A message with none of these is still a plain
+ * string, so text-only requests are byte-for-byte what they always were.
  */
 export function ChatInput({
   onSend,
@@ -54,6 +64,8 @@ export function ChatInput({
   pending = false,
   onStop,
   imageNote,
+  audioNote,
+  fileNote,
 }: {
   onSend: (content: string | MessageContentPart[]) => void;
   disabled: boolean;
@@ -66,10 +78,15 @@ export function ChatInput({
    * null. Shown only while images are attached: it is about the
    * combination, not about either half alone. */
   imageNote?: string | null;
+  /** The same, for an attached recording and an attached PDF. */
+  audioNote?: string | null;
+  fileNote?: string | null;
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<AttachmentText[]>([]);
   const [images, setImages] = useState<ImageAttachment[]>([]);
+  const [audio, setAudio] = useState<AudioAttachment[]>([]);
+  const [pdfs, setPdfs] = useState<PdfAttachment[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -128,20 +145,28 @@ export function ChatInput({
     el.style.height = `${el.scrollHeight + border}px`;
   }, [value]);
 
-  const hasContent = value.trim() !== "" || files.length > 0 || images.length > 0;
+  const hasContent =
+    value.trim() !== "" ||
+    files.length > 0 ||
+    images.length > 0 ||
+    audio.length > 0 ||
+    pdfs.length > 0;
   // The request-level image limits (count, total bytes) belong to the
   // set, not to any one file, so they are checked here where the set
   // is known and they block Send rather than surfacing as the
   // gateway's 400 after megabytes crossed the wire.
-  const imageSetError = checkImageSet(images);
+  const imageSetError =
+    checkImageSet(images) ?? checkAllAttachments([...images, ...audio, ...pdfs]);
 
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!hasContent || disabled || imageSetError !== null) return;
-    onSend(buildMessageContent(inlineAttachments(value, files), images));
+    onSend(buildMessageParts(inlineAttachments(value, files), images, audio, pdfs));
     setValue("");
     setFiles([]);
     setImages([]);
+    setAudio([]);
+    setPdfs([]);
     setFileError(null);
   }
 
@@ -175,6 +200,8 @@ export function ChatInput({
     if (!list) return;
     const added: AttachmentText[] = [];
     const addedImages: ImageAttachment[] = [];
+    const addedAudio: AudioAttachment[] = [];
+    const addedPdfs: PdfAttachment[] = [];
     let error: string | null = null;
     for (const file of Array.from(list)) {
       // MIME decides the route: a PNG or JPEG becomes an inline image
@@ -200,6 +227,18 @@ export function ChatInput({
         });
         continue;
       }
+      if (looksLikeAudio(file.name, file.type)) {
+        const read = readAudioAttachment(file.name, new Uint8Array(await file.arrayBuffer()));
+        if (typeof read === "string") error = read;
+        else addedAudio.push(read);
+        continue;
+      }
+      if (looksLikePdf(file.name, file.type)) {
+        const read = readPdfAttachment(file.name, new Uint8Array(await file.arrayBuffer()));
+        if (typeof read === "string") error = read;
+        else addedPdfs.push(read);
+        continue;
+      }
       const text = new TextDecoder("utf-8").decode(await file.arrayBuffer());
       const refusal = checkAttachment(file.name, file.size, text);
       if (refusal) {
@@ -210,6 +249,8 @@ export function ChatInput({
     }
     setFiles((current) => [...current, ...added]);
     setImages((current) => [...current, ...addedImages]);
+    setAudio((current) => [...current, ...addedAudio]);
+    setPdfs((current) => [...current, ...addedPdfs]);
     setFileError(error);
     if (fileInput.current) fileInput.current.value = "";
   }, []);
@@ -254,7 +295,11 @@ export function ChatInput({
       onSubmit={submit}
       className="flex flex-col gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] p-3"
     >
-      {(files.length > 0 || images.length > 0 || fileError) && (
+      {(files.length > 0 ||
+        images.length > 0 ||
+        audio.length > 0 ||
+        pdfs.length > 0 ||
+        fileError) && (
         <div className="font-ui flex flex-wrap items-center gap-2 text-[0.6875rem]">
           {images.map((img, i) => (
             <span
@@ -276,6 +321,46 @@ export function ChatInput({
                 title="Remove this image"
                 className="px-1 hover:text-[color:var(--foreground)]"
                 aria-label={`Remove ${img.name}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {audio.map((clip, i) => (
+            <span
+              key={`${clip.name}-${i}`}
+              data-testid="audio-chip"
+              className="flex items-center gap-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-0.5 text-[color:var(--muted)]"
+            >
+              <span className="font-mono text-[color:var(--foreground)]">{clip.name}</span>
+              <span>
+                {clip.format.toUpperCase()} · {formatBytesShort(clip.size)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setAudio((current) => current.filter((_, j) => j !== i))}
+                title="Remove this recording"
+                className="px-1 hover:text-[color:var(--foreground)]"
+                aria-label={`Remove ${clip.name}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {pdfs.map((pdf, i) => (
+            <span
+              key={`${pdf.name}-${i}`}
+              data-testid="pdf-chip"
+              className="flex items-center gap-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-2 py-0.5 text-[color:var(--muted)]"
+            >
+              <span className="font-mono text-[color:var(--foreground)]">{pdf.name}</span>
+              <span>PDF · {formatBytesShort(pdf.size)}</span>
+              <button
+                type="button"
+                onClick={() => setPdfs((current) => current.filter((_, j) => j !== i))}
+                title="Remove this document"
+                className="px-1 hover:text-[color:var(--foreground)]"
+                aria-label={`Remove ${pdf.name}`}
               >
                 ×
               </button>
@@ -321,6 +406,22 @@ export function ChatInput({
               {imageNote}
             </span>
           )}
+          {audio.length > 0 && !imageSetError && audioNote && (
+            <span
+              data-testid="audio-model-note"
+              className="status-warn rounded-[var(--radius)] px-2 py-0.5"
+            >
+              {audioNote}
+            </span>
+          )}
+          {pdfs.length > 0 && !imageSetError && fileNote && (
+            <span
+              data-testid="file-model-note"
+              className="status-warn rounded-[var(--radius)] px-2 py-0.5"
+            >
+              {fileNote}
+            </span>
+          )}
         </div>
       )}
       <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
@@ -336,7 +437,7 @@ export function ChatInput({
           placeholder={
             disabled
               ? "Waiting…"
-              : "Send a message… (Enter to send, Shift+Enter for newline; attach, drop or paste text files or PNG/JPEG images)"
+              : "Send a message… (Enter to send, Shift+Enter for newline; attach, drop or paste text files, PNG/JPEG images, WAV/MP3 recordings or PDFs)"
           }
           disabled={disabled}
           className="max-h-[calc(10lh_+_1rem_+_2px)] min-w-0 basis-full resize-none overflow-y-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50 sm:flex-1 sm:basis-auto"
@@ -354,7 +455,7 @@ export function ChatInput({
           type="button"
           onClick={() => fileInput.current?.click()}
           disabled={disabled}
-          title="Attach text files (inlined into the message, as a harness would paste them) or PNG/JPEG images (sent inline, up to 4 per request, 5 MB each)"
+          title="Attach text files (inlined into the message, as a harness would paste them), PNG/JPEG images (up to 4, 5 MB each), WAV/MP3 recordings or PDFs (10 MB each; 11 MB for everything attached)"
           className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
         >
           Attach

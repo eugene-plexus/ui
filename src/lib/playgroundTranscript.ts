@@ -23,6 +23,8 @@ import type { ChatCompletionMessage } from "./types";
 
 /** A data URL that is valid, empty, and eight bytes long. */
 const STRIPPED_IMAGE_URL = "data:,";
+/** Where a recording's or a document's bytes were, once stripped. */
+export const STRIPPED_MEDIA = "";
 
 /**
  * The same messages with every inline image's bytes removed.
@@ -36,13 +38,22 @@ const STRIPPED_IMAGE_URL = "data:,";
  */
 export function stripImageBytes(messages: PlaygroundMessage[]): PlaygroundMessage[] {
   return messages.map((message) => {
-    if (!Array.isArray(message.content)) return message;
+    // A spoken reply's audio goes the same way; its words are the
+    // message's content and stay.
+    const kept: PlaygroundMessage = message.spoken
+      ? { ...message, spoken: { ...message.spoken, data: STRIPPED_MEDIA } }
+      : message;
+    if (!Array.isArray(kept.content)) return kept;
     return {
-      ...message,
-      content: message.content.map((part) =>
+      ...kept,
+      content: kept.content.map((part) =>
         part.type === "image_url"
           ? { ...part, image_url: { ...part.image_url, url: STRIPPED_IMAGE_URL } }
-          : part,
+          : part.type === "input_audio"
+            ? { ...part, input_audio: { ...part.input_audio, data: STRIPPED_MEDIA } }
+            : part.type === "file"
+              ? { ...part, file: { ...part.file, file_data: STRIPPED_IMAGE_URL } }
+              : part,
       ),
     };
   });
@@ -59,6 +70,11 @@ export type PlaygroundMessage = ChatCompletionMessage & {
   reasoning?: string;
   /** How long it thought, from its first thought to its first word. */
   thoughtMs?: number;
+  /** A spoken reply's audio, for the player; never sent back. The
+   * contract refuses an assistant message carrying audio, and says to
+   * send the words as `content` instead, which is what this message's
+   * content already is. */
+  spoken?: { format: string; data: string };
 };
 
 export function requestMessages(messages: PlaygroundMessage[]): ChatCompletionMessage[] {
@@ -67,6 +83,7 @@ export function requestMessages(messages: PlaygroundMessage[]): ChatCompletionMe
     delete wire.generatedAt;
     delete wire.reasoning;
     delete wire.thoughtMs;
+    delete wire.spoken;
     return wire;
   });
 }

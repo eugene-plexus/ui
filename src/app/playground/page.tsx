@@ -14,6 +14,7 @@ import { DiagnosticPanel, type GatewayMode } from "@/components/DiagnosticPanel"
 import { RequestReport } from "@/components/RequestReport";
 import { SamplingPanel } from "@/components/SamplingPanel";
 import { SetupGateScreen } from "@/components/SetupGateScreen";
+import { SpokenReplyPanel } from "@/components/SpokenReplyPanel";
 import { CompletionDoor } from "@/components/doors/CompletionDoor";
 import { DoorPicker } from "@/components/doors/DoorPicker";
 import { EXAMPLE_TOOLS_TEXT, type ResponseFormatChoice, ToolsPanel } from "@/components/ToolsPanel";
@@ -76,6 +77,7 @@ import { isAsleep } from "@/lib/workingState";
 const DIAGNOSTIC_KEY = "eugene-playground-diagnostic";
 const TOOLS_KEY = "eugene-playground-tools";
 const SAMPLING_KEY = "eugene-playground-sampling";
+const SPOKEN_KEY = "eugene-playground-spoken";
 
 // Generation on a large local quant is slow but not unbounded. Past
 // this, something is wedged and the operator wants an error rather than
@@ -94,6 +96,11 @@ interface PersistedDiagnostic {
   mode?: GatewayMode;
   baseUrl?: string;
   open?: boolean;
+}
+
+interface PersistedSpoken {
+  enabled?: boolean;
+  voice?: string;
 }
 
 interface PersistedTools {
@@ -222,6 +229,10 @@ function PlaygroundPageInner() {
   // line uses.
   const [sampling, setSampling] = useState<SamplingDraft>(EMPTY_SAMPLING);
 
+  // A spoken reply (P2b), asked for on every turn while on.
+  const [spokenOn, setSpokenOn] = useState(false);
+  const [voice, setVoice] = useState("alloy");
+
   const page = useMemo(pageLocation, []);
   const parsedTools = useMemo(() => parseToolDefinitions(toolDefs), [toolDefs]);
   const toolNames = "tools" in parsedTools ? parsedTools.tools.map((t) => t.function.name) : [];
@@ -264,6 +275,9 @@ function PlaygroundPageInner() {
     if (typeof tools?.definitions === "string" && tools.definitions.trim()) {
       setToolDefs(tools.definitions);
     }
+    const spoken = readJson<PersistedSpoken>(SPOKEN_KEY);
+    if (spoken?.enabled) setSpokenOn(true);
+    if (typeof spoken?.voice === "string") setVoice(spoken.voice);
     const storedSampling = readJson<unknown>(SAMPLING_KEY);
     if (storedSampling !== null) setSampling(normalizeSamplingDraft(storedSampling));
     let cancelled = false;
@@ -300,6 +314,11 @@ function PlaygroundPageInner() {
     if (setupGate !== "ready") return;
     writeJson(SAMPLING_KEY, sampling);
   }, [setupGate, sampling]);
+
+  useEffect(() => {
+    if (setupGate !== "ready") return;
+    writeJson(SPOKEN_KEY, { enabled: spokenOn, voice } satisfies PersistedSpoken);
+  }, [setupGate, spokenOn, voice]);
 
   // The model list is the gateway's routing table, so it changes as
   // runtimes come and go. Refresh on a slow interval rather than once at
@@ -459,6 +478,7 @@ function PlaygroundPageInner() {
           tools: toolsOn && "tools" in parsedTools ? parsedTools.tools : undefined,
           toolChoice: toolsOn ? toolChoice : undefined,
           responseFormat: responseFormat === "json_object" ? { type: "json_object" } : undefined,
+          audio: spokenOn ? { voice: voice.trim() || "alloy" } : undefined,
           transport: transportRef.current,
           reproduceBaseUrl,
           signal: controller.signal,
@@ -492,7 +512,12 @@ function PlaygroundPageInner() {
         // would replay verbatim on the next turn. A backend that answered
         // without emitting a single delta (a batching backend, whose
         // stream is one event) lands here too.
-        upsert(choice.message);
+        // A spoken reply keeps its sound for the player, beside the words
+        // that are its content; `requestMessages` never sends it back.
+        const reply: PlaygroundMessage = response.spoken
+          ? { ...choice.message, spoken: response.spoken }
+          : choice.message;
+        upsert(reply);
       }
       if (response.truncatedBy) {
         // The text above is real but incomplete. Showing it without
@@ -649,7 +674,7 @@ function PlaygroundPageInner() {
             onClick={() => setPanelsOpen((o) => !o)}
             aria-pressed={panelsOpen}
             className={`font-ui rounded-[var(--radius)] border px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] ${
-              panelsOpen || mode === "direct" || toolsOn || samplingCount > 0
+              panelsOpen || mode === "direct" || toolsOn || samplingCount > 0 || spokenOn
                 ? "border-[color:var(--accent-left)]"
                 : "border-[color:var(--border)]"
             }`}
@@ -661,6 +686,7 @@ function PlaygroundPageInner() {
                 set would otherwise change every answer with nothing on
                 screen saying why. */}
             {samplingCount > 0 ? " · settings" : ""}
+            {spokenOn ? " · spoken" : ""}
           </button>
           {/* The transcript is the one thing this page keeps across a
               reload, and New sat beside the model picker wiping it on one
@@ -741,6 +767,17 @@ function PlaygroundPageInner() {
             {chat && (
               <div className="flex sm:col-span-2">
                 <SamplingPanel draft={sampling} onDraft={setSampling} error={samplingError} />
+              </div>
+            )}
+            {chat && (
+              <div className="flex sm:col-span-2">
+                <SpokenReplyPanel
+                  enabled={spokenOn}
+                  onEnabled={setSpokenOn}
+                  voice={voice}
+                  onVoice={setVoice}
+                  modelAudioOutput={selected?.x_eugene_plexus?.audio_output}
+                />
               </div>
             )}
             {chat && decisionModels.length > 0 && (
@@ -831,6 +868,18 @@ function PlaygroundPageInner() {
                 selected?.x_eugene_plexus?.image_input === false
                   ? "The selected model does not take images: no backend serving it confirmed image " +
                     "input, so the gateway will refuse this request rather than drop the pictures."
+                  : null
+              }
+              audioNote={
+                selected?.x_eugene_plexus?.audio_input === false
+                  ? "The selected model cannot hear recordings. The gateway will refuse this " +
+                    "request rather than drop the recording."
+                  : null
+              }
+              fileNote={
+                selected?.x_eugene_plexus?.file_input === false
+                  ? "The selected model cannot read PDFs. The gateway will refuse this request " +
+                    "rather than drop the document."
                   : null
               }
             />

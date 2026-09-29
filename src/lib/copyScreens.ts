@@ -27,7 +27,13 @@ export const COPY_SCREENS: Record<string, string[]> = {
   ],
   // The other doors (playground-doors.md) are a person's first look at
   // speech, pictures and video, so their words are held to the same rules.
-  playground: ["app/playground", "components/doors", "lib/completionDoor.ts"],
+  playground: [
+    "app/playground",
+    "components/doors",
+    "components/SpokenReplyPanel.tsx",
+    "lib/completionDoor.ts",
+    "lib/mediaAttachments.ts",
+  ],
   // Not on the golden path, but a screen a person with two machines
   // meets, and it carried "epoch", "Mint" and "topology" in plain view.
   nodes: ["app/nodes", "components/NodeUpdateCard.tsx", "lib/updates.ts"],

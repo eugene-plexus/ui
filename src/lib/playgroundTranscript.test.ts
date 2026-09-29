@@ -122,6 +122,49 @@ describe("the storage fallback for image bytes", () => {
     });
   });
 
+  it("stripImageBytes empties recordings, documents and a spoken reply's sound, keeping the words", () => {
+    const stripped = stripImageBytes([
+      {
+        role: "user",
+        content: [
+          { type: "input_audio", input_audio: { data: "UklGRg==", format: "wav" } },
+          {
+            type: "file",
+            file: { filename: "p.pdf", file_data: "data:application/pdf;base64,JVBERi0=" },
+          },
+        ],
+      },
+      { role: "assistant", content: "Hello", spoken: { format: "pcm16", data: "AAAA" } },
+    ]);
+    expect(stripped[0]?.content).toEqual([
+      { type: "input_audio", input_audio: { data: "", format: "wav" } },
+      { type: "file", file: { filename: "p.pdf", file_data: "data:," } },
+    ]);
+    expect(stripped[1]).toEqual({
+      role: "assistant",
+      content: "Hello",
+      spoken: { format: "pcm16", data: "" },
+    });
+  });
+
+  it("never sends a spoken reply's sound back: the contract refuses audio on an assistant message", () => {
+    const body = buildChatRequest(
+      {
+        model: "m",
+        messages: [
+          { role: "user", content: "hi" },
+          {
+            role: "assistant",
+            content: "Hello",
+            spoken: { format: "pcm16", data: "AAAA" },
+          } as never,
+        ],
+      },
+      true,
+    );
+    expect(body.messages[1]).toEqual({ role: "assistant", content: "Hello" });
+  });
+
   it("a quota failure retries with the pixels stripped, so the words survive", () => {
     const real = sessionStorage.setItem.bind(sessionStorage);
     let threw = false;

@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, isValidElement, useState, type ReactNode } from "react";
+import { Children, isValidElement, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Pencil, RotateCcw } from "lucide-react";
@@ -8,11 +8,38 @@ import { Pencil, RotateCcw } from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
 import { JumpToBottomButton } from "@/components/JumpToBottomButton";
 import { argumentsParse, exampleResultFor } from "@/lib/diagnostic";
+import { bytesToBase64 } from "@/lib/imageAttachments";
+import { playableAudio } from "@/lib/mediaAttachments";
 import type { StreamProgress, ToolCall } from "@/lib/types";
 import type { PlaygroundMessage } from "@/lib/playgroundTranscript";
 import { useAutoScroll } from "@/lib/useAutoScroll";
 
 import { WorkingIndicator, formatElapsed } from "./WorkingIndicator";
+
+const STRIPPED_CLASS =
+  "font-ui rounded-[var(--radius)] border border-dashed border-[color:var(--border)] px-2 py-1 text-[0.6875rem] text-[color:var(--muted)]";
+
+/**
+ * A spoken reply's player. The stream's `pcm16` is raw samples, which a
+ * browser plays only once a WAV header is in front; an MP3 (Lyria) plays
+ * as itself. A stripped reply (the storage fallback) says so rather than
+ * showing a player with nothing in it.
+ */
+function SpokenReply({ spoken }: { spoken: { format: string; data: string } }) {
+  const src = useMemo(() => {
+    if (!spoken.data) return null;
+    const { bytes, mime } = playableAudio(spoken.format, spoken.data);
+    return `data:${mime};base64,${bytesToBase64(bytes)}`;
+  }, [spoken.format, spoken.data]);
+  if (src === null) {
+    return (
+      <span data-testid="spoken-reply-stripped" className={`mb-2 block ${STRIPPED_CLASS}`}>
+        spoken reply; the sound was not kept across the reload
+      </span>
+    );
+  }
+  return <audio data-testid="spoken-reply" controls src={src} className="mb-2 block max-w-full" />;
+}
 
 /** What the page knows about the turn in flight, for the indicator. */
 export interface TurnWork {
@@ -211,12 +238,19 @@ function ChatBubble({
   // URLs only -- so this renders bytes already in the transcript, not
   // a fetch. The bytes still never appear as TEXT anywhere.
   const images = parts?.filter((part) => part.type === "image_url") ?? [];
+  // Recordings and PDFs (P2a) are shown as what they are: a player and
+  // the document's name. A spoken reply (P2b) gets a player above its
+  // words, which are the message's text.
+  const recordings = parts?.filter((part) => part.type === "input_audio") ?? [];
+  const documents = parts?.filter((part) => part.type === "file") ?? [];
+  const spoken = message.role === "assistant" ? message.spoken : undefined;
+  const media = images.length + recordings.length + documents.length + (spoken ? 1 : 0);
   const calls = message.role === "assistant" ? (message.tool_calls ?? []) : [];
   // An answer that finished with nothing in it. A 200 with no content
   // was a bordered box with nothing inside, which reads as a rendering
   // fault -- and it is common: a reasoning model that spends its whole
   // budget thinking sends its thinking elsewhere and no text at all.
-  const empty = message.role === "assistant" && !text && images.length === 0 && calls.length === 0;
+  const empty = message.role === "assistant" && !text && media === 0 && calls.length === 0;
   const thinking = message.role === "assistant" ? (message.reasoning ?? "") : "";
   const generated = typeof message.generatedAt === "string" ? new Date(message.generatedAt) : null;
   const generationTime = generated && Number.isFinite(generated.getTime()) ? generated : null;
@@ -251,7 +285,7 @@ function ChatBubble({
       ) : (
         // Not while the answer is still arriving: an empty box under the
         // thinking would say "no text" before the answer had its chance.
-        (text || images.length > 0 || (calls.length === 0 && !live)) && (
+        (text || media > 0 || (calls.length === 0 && !live)) && (
           // `break-words`: a URL, a path or a hash has no space to wrap at,
           // and ran out past the bubble's edge and gave the whole
           // transcript a sideways scrollbar. Code blocks and tables keep
@@ -289,6 +323,38 @@ function ChatBubble({
                     </span>
                   ),
                 )}
+              </span>
+            )}
+            {spoken && <SpokenReply spoken={spoken} />}
+            {recordings.length > 0 && (
+              <span className={`flex flex-col gap-1 ${text ? "mb-2" : ""}`}>
+                {recordings.map((part, i) =>
+                  part.input_audio.data ? (
+                    <audio
+                      key={i}
+                      data-testid="message-audio"
+                      controls
+                      src={`data:${part.input_audio.format === "mp3" ? "audio/mpeg" : "audio/wav"};base64,${part.input_audio.data}`}
+                      className="max-w-full"
+                    />
+                  ) : (
+                    <span key={i} data-testid="message-audio-stripped" className={STRIPPED_CLASS}>
+                      recording sent; not kept across the reload
+                    </span>
+                  ),
+                )}
+              </span>
+            )}
+            {documents.length > 0 && (
+              <span className={`flex flex-wrap gap-2 ${text ? "mb-2" : ""}`}>
+                {documents.map((part, i) => (
+                  <span key={i} data-testid="message-file" className={STRIPPED_CLASS}>
+                    PDF: {part.file.filename ?? "document"}
+                    {part.file.file_data && part.file.file_data.length > 8
+                      ? ""
+                      : " (sent; not kept across the reload)"}
+                  </span>
+                ))}
               </span>
             )}
             {empty ? (

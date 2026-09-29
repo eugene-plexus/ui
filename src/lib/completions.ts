@@ -22,6 +22,7 @@
 
 import { ApiError, api, postStream, problemMessage } from "./api";
 import { normalizeBaseUrl } from "./diagnostic";
+import { joinBase64 } from "./mediaAttachments";
 import { requestMessages } from "./playgroundTranscript";
 import type {
   ChatCompletionChunk,
@@ -171,6 +172,10 @@ export interface CompletionOptions {
    * (`stream_options.include_progress`); a stream never carries it
    * unasked. */
   onProgress?: (progress: StreamProgress) => void;
+  /** Ask for a spoken reply (P2b): `modalities: ["text", "audio"]` with
+   * this voice. A streamed request can only take `pcm16`, so that is the
+   * format asked; `wav` is for a request that is not streamed. */
+  audio?: { voice: string };
 }
 
 /**
@@ -197,6 +202,10 @@ export function buildChatRequest(opts: CompletionOptions, stream: boolean): Chat
   // Only when something will read it: a progress chunk has no choices,
   // and the body the report shows should be what this caller needs.
   if (stream && opts.onProgress) body.stream_options = { include_progress: true };
+  if (opts.audio) {
+    body.modalities = ["text", "audio"];
+    body.audio = { voice: opts.audio.voice, format: stream ? "pcm16" : "wav" };
+  }
   return body;
 }
 
@@ -400,6 +409,10 @@ export type StreamedCompletion = ChatCompletionResponse & {
   report: RequestReport;
   /** The model's reasoning for this turn, as it streamed; "" when none. */
   reasoning: string;
+  /** A spoken reply's audio, its fragments joined, and what the bytes
+   * are. Its words arrived as `transcript` and are the message's
+   * `content`, which is what a replay sends back. */
+  spoken?: { format: string; data: string };
 };
 
 export async function streamChatCompletion(
@@ -475,6 +488,8 @@ async function readChatCompletion(
   let usage: ChatCompletionResponse["usage"];
   let routing: ChatCompletionResponse["x_eugene_plexus"];
   let streamError: string | null = null;
+  const audioFragments: string[] = [];
+  let audioFormat: string | null = null;
 
   try {
     for (;;) {
@@ -546,6 +561,20 @@ async function readChatCompletion(
           report.contentDeltas += 1;
           onToken(delta);
         }
+        // A spoken reply: base64 audio fragments, and its words as
+        // `transcript` rather than `content`. The words stream into the
+        // bubble like any answer and become the message's content, which
+        // is what the contract says to send back in place of the audio.
+        const audio = choice.delta?.audio;
+        if (audio) {
+          if (audio.format) audioFormat = audio.format;
+          if (audio.data) audioFragments.push(audio.data);
+          if (audio.transcript) {
+            content += audio.transcript;
+            report.contentDeltas += 1;
+            onToken(audio.transcript);
+          }
+        }
         const fragments = choice.delta?.tool_calls;
         if (fragments && fragments.length > 0) {
           report.toolCallDeltas += 1;
@@ -607,6 +636,9 @@ async function readChatCompletion(
     truncatedBy: streamError ?? undefined,
     report,
     reasoning,
+    ...(audioFragments.length > 0
+      ? { spoken: { format: audioFormat ?? "pcm16", data: joinBase64(audioFragments) } }
+      : {}),
   };
 }
 
