@@ -246,6 +246,15 @@ function ChatBubble({
   const spoken = message.role === "assistant" ? message.spoken : undefined;
   const media = images.length + recordings.length + documents.length + (spoken ? 1 : 0);
   const calls = message.role === "assistant" ? (message.tool_calls ?? []) : [];
+  // The pages a web search gave and the answer cites (P8, P2c), each once.
+  const sources =
+    message.role === "assistant"
+      ? [
+          ...new Map(
+            (message.annotations ?? []).map((a) => [a.url_citation.url, a.url_citation]),
+          ).values(),
+        ]
+      : [];
   // An answer that finished with nothing in it. A 200 with no content
   // was a bordered box with nothing inside, which reads as a rendering
   // fault -- and it is common: a reasoning model that spends its whole
@@ -377,6 +386,19 @@ function ChatBubble({
         <div className="mt-1 flex max-w-[80%] flex-col gap-1">
           {calls.map((call, i) => (
             <ToolCallCard key={call.id || i} call={call} />
+          ))}
+        </div>
+      )}
+      {sources.length > 0 && (
+        <div data-testid="message-sources" className="mt-1 max-w-[80%] text-[0.6875rem]">
+          <span className="text-[color:var(--muted)]">Sources: </span>
+          {sources.map((source, i) => (
+            <span key={source.url}>
+              {i > 0 && <span className="text-[color:var(--muted)]"> · </span>}
+              <a href={source.url} target="_blank" rel="noreferrer" className="underline">
+                {source.title || source.url}
+              </a>
+            </span>
           ))}
         </div>
       )}

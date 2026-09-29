@@ -519,11 +519,12 @@ function BackendSettings({
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const target = configTabFor(selection, localNode) ?? "agent";
-  const node =
-    selection.node ??
-    topology.components.find((c) => c.kind === "inference-driver" && c.name === selection.name)
-      ?.node ??
-    localNode;
+  const declared = topology.components.find(
+    (c) => (c.kind === "inference-driver" || c.kind === "tool-driver") && c.name === selection.name,
+  );
+  const node = selection.node ?? declared?.node ?? localNode;
+  // A search account (P8) is removed the same way, and called what it is.
+  const search = declared?.kind === "tool-driver";
   const multiNode = topology.nodes.length > 1;
   const label =
     multiNode && node ? `${selection.name ?? "Backend"} @ ${node}` : (selection.name ?? "Backend");
@@ -586,8 +587,14 @@ function BackendSettings({
           {/* Asked inline, like every other irreversible action here;
               this was the browser's modal dialog. */}
           <ConfirmButton
-            label={removing ? "removing…" : "Remove this backend"}
-            prompt="Its process stops and nothing is routed to it. What it fronts is untouched."
+            label={
+              removing ? "removing…" : search ? "Remove this search account" : "Remove this backend"
+            }
+            prompt={
+              search
+                ? "Its process stops and no search runs on it. The provider account itself is untouched."
+                : "Its process stops and nothing is routed to it. What it fronts is untouched."
+            }
             onConfirm={removeDriver}
             disabled={removing}
             className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error-border)] hover:text-[color:var(--status-error-fg)] disabled:opacity-30"

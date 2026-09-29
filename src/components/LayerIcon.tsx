@@ -13,6 +13,7 @@ import {
   Radio,
   Route,
   ScrollText,
+  Search,
   Server,
   ShieldCheck,
   Terminal,
@@ -44,6 +45,7 @@ import { accentVar, type AccentRole, type IconName } from "@/lib/navigation";
 const ICONS: Record<IconName, LucideIcon> = {
   Terminal,
   Radio,
+  Search,
   Cpu,
   Cloud,
   HardDrive,

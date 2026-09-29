@@ -187,6 +187,7 @@ describe("the branches", () => {
     expect(backends?.pages.map((p) => [p.label, p.route])).toEqual([
       ["Overview", "/inference"],
       ["Add a backend", "/backends/add"],
+      ["Add a search account", "/backends/search"],
     ]);
   });
 });
@@ -490,7 +491,7 @@ describe("the page menu", () => {
     expect(pagesOf("gateway")).toEqual(["Metrics", "Routing", "Settings"]);
     expect(pagesOf("library")).toEqual(["Models", "Discover", "Folders", "Settings"]);
     expect(pagesOf("library:node:nas")).toEqual(["Folders"]);
-    expect(pagesOf("backends")).toEqual(["Overview", "Add a backend"]);
+    expect(pagesOf("backends")).toEqual(["Overview", "Add a backend", "Add a search account"]);
     expect(pagesOf("backends:node:nas")).toEqual(["Overview"]);
     expect(pagesOf("control")).toEqual(["Overview", "Settings"]);
     expect(pagesOf("agent:nas")).toEqual(["Settings", "Logs"]);
@@ -776,5 +777,27 @@ describe("a selection that under-specifies still finds its row", () => {
       const locals = flatten(buildTree(t)).filter((n) => n.local);
       expect(locals, "there is one machine the browser is talking to").toHaveLength(1);
     }
+  });
+});
+
+describe("search accounts (P8)", () => {
+  it("lists a search account under Backends with its settings, and no Inference row", () => {
+    const tree = buildTree({
+      ...STANDALONE,
+      components: [
+        ...STANDALONE.components,
+        { name: "ollama-qwen", kind: "inference-driver", node: null },
+        { name: "searxng", kind: "tool-driver", node: null },
+      ],
+    });
+    const backends = branchOf(tree, "Backends")!;
+    expect(labels(backends)).toEqual(["ollama-qwen", "searxng"]);
+    const search = backends.children.find((c) => c.label === "searxng")!;
+    expect(search.sel).toBe("driver:searxng");
+    expect(search.icon).toBe("Search");
+    expect(search.hint).toBe("web search");
+    expect(search.pages.map((p) => p.label)).toEqual(["Settings"]);
+    // Its settings page reaches it through the proxy by name.
+    expect(configTabFor(parseSelection(search.sel)!, null)).toBe("searxng");
   });
 });

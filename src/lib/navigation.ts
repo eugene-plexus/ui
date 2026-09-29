@@ -48,7 +48,8 @@ export type IconName =
   | "KeyRound"
   | "Route"
   | "Blocks"
-  | "ScrollText";
+  | "ScrollText"
+  | "Search";
 
 /**
  * A colour *role*, not a colour. `left` and `right` resolve to the

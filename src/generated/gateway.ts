@@ -427,9 +427,18 @@ export interface paths {
          *     blocks, and a client that asked for them would read an answer
          *     with none as uncited.
          *
+         *     ### Web search runs here (P8)
+         *
+         *     A `web_search_<8 digits>` server tool is run by this install's
+         *     search account, as "Server-run tools" above says, and answered
+         *     with `server_tool_use` and `web_search_tool_result` blocks.
+         *     Claude Code's WebSearch is its own request offering exactly this
+         *     tool (`web_search_20250305`, `max_uses: 8`, measured); when no
+         *     search can run for it, the 400 names why.
+         *
          *     ### What is refused, with a 400 naming the field
          *
-         *     Server-side tool types, `mcp_servers`, more than four
+         *     Every other server-side tool type, `mcp_servers`, more than four
          *     `stop_sequences`, a missing `max_tokens`, and the image and
          *     document cases above. Each is refused rather than dropped
          *     because each changes what the answer would be: a model that
@@ -630,11 +639,14 @@ export interface paths {
          *     that requires alternating roles would refuse them.
          *
          *     `web_search` is on **every** Codex request as
-         *     `{"type": "web_search", "external_web_access": false}`. It is
-         *     accepted, removed, and named on the ignored-settings header:
-         *     this gateway has no search to run, and refusing it would refuse
+         *     `{"type": "web_search", "external_web_access": false}`. Since P8
+         *     it **runs** when a search can run here ("Server-run tools") and
+         *     `external_web_access` is not `false`; otherwise it is accepted,
+         *     removed, and named on the ignored-settings header, with the
+         *     reason in `x-eugene-plexus-web-search`. Refusing it would refuse
          *     the first request of every session, as `/v1/messages` once did
-         *     with `output_config`. Every other server-side tool (file search,
+         *     with `output_config`. `filters.allowed_domains`, `user_location`
+         *     and `search_context_size` are honoured. Every other server-side tool (file search,
          *     code interpreter, computer use, image generation, MCP, a custom
          *     or local-shell tool) is refused with a 400 naming its type.
          *
@@ -761,9 +773,10 @@ export interface paths {
          *     `service_tier`, `truncation: "auto"` (this gateway never drops
          *     input to make it fit; the engine refuses instead),
          *     `stream_options.include_obfuscation`, `text.verbosity`, and the
-         *     `include` values that ask for server-side tool output nothing
-         *     here produces. `max_tool_calls` bounds built-in tools, of which
-         *     none run here, and is accepted. Refused with a 400 naming the
+         *     `include` values that ask for server-side tool output
+         *     (`web_search_call.action.sources` is always included on a search
+         *     that ran). `max_tool_calls` bounds the searches one response may
+         *     run (P8). Refused with a 400 naming the
          *     field: every stateful field above, `top_logprobs` above 0 and the
          *     `message.output_text.logprobs` include, an `input_file` with a
          *     `file_id` or a `file_url`, `tool_choice` forcing a tool that is
@@ -3139,6 +3152,11 @@ export interface components {
              */
             attempts?: number;
             /**
+             * @description How many web searches this install ran for the request (P8).
+             *     Absent when none ran, and when the backend searched itself.
+             */
+            web_searches?: number;
+            /**
              * @description Which tier of the slot answered, 1-based. Greater than 1
              *     means every backend in an earlier tier was ineligible or
              *     failed — a cloud target answering for a local model, say.
@@ -3711,7 +3729,12 @@ export interface components {
          *     `signature`) -- returned ahead of the answer when the request
          *     enabled thinking, and read back on an assistant turn as that
          *     turn's reasoning. `redacted_thinking` is accepted on the way in
-         *     and dropped.
+         *     and dropped. `server_tool_use` and `web_search_tool_result` (P8)
+         *     are returned for a search this install ran and, handed back on
+         *     an assistant turn, become that turn's history: the query, and
+         *     each result's title, address and the excerpt the model read,
+         *     which `encrypted_content` carries (readable only here, as a
+         *     thinking block's `signature` is).
          *
          *     `document` was refused with a 400 until 2026-09-28, and `image`
          *     until 2026-09-23, on one reasoning: a model that never received
@@ -3791,10 +3814,11 @@ export interface components {
          *
          *     A definition carrying a `type` naming a server-side tool —
          *     anything this gateway would have to execute itself, rather than
-         *     hand back to the caller — is refused with a 400. This control
-         *     plane routes to local engines; it has no web search to run and
-         *     no sandbox to run code in, and pretending otherwise would fail
-         *     at the moment the model chose to use one.
+         *     hand back to the caller — is refused with a 400, **except web
+         *     search** (`web_search_<date>`), which this install's search
+         *     account runs since P8. There is no sandbox to run code in, and
+         *     pretending otherwise would fail at the moment the model chose to
+         *     use one.
          */
         AnthropicToolDefinition: {
             name: string;
@@ -3906,6 +3930,13 @@ export interface components {
             cache_creation_input_tokens: number;
             /** @default 0 */
             cache_read_input_tokens: number;
+            /**
+             * @description Present when this install ran searches for the request (P8):
+             *     `{"web_search_requests": N}`, as Anthropic reports its own.
+             */
+            server_tool_use?: {
+                web_search_requests?: number;
+            };
         };
         /**
          * @description One frame of the Anthropic event stream. Each SSE frame carries
@@ -4098,7 +4129,9 @@ export interface components {
          *     (`call_id`, `name`, `arguments` as a JSON string),
          *     `function_call_output` (`call_id`, `output` as a string or a list
          *     of `input_text` / `input_image` parts), and `reasoning`
-         *     (`content` of `reasoning_text` parts, `encrypted_content`).
+         *     (`content` of `reasoning_text` parts, `encrypted_content`), and a
+         *     `web_search_call` handed back (P8), which becomes a line of the
+         *     assistant's history naming the search and its sources.
          *     Codex drops `id` and `status` when it sends items back
          *     (measured), so neither is required. Refused: `item_reference` and
          *     any other type.
@@ -4122,8 +4155,9 @@ export interface components {
         };
         /**
          * @description A `function` tool (`name`, `description`, `parameters`, `strict`)
-         *     maps onto an OpenAI chat function. `web_search` is accepted and
-         *     removed (see the endpoint); any other `type` is refused.
+         *     maps onto an OpenAI chat function. `web_search` runs on this
+         *     install's search account, or is removed and named when it cannot
+         *     (see the endpoint); any other `type` is refused.
          */
         ResponsesTool: {
             type: string;
@@ -4172,12 +4206,14 @@ export interface components {
          *     [{"type": "reasoning_text", "text"}], "encrypted_content"?}`,
          *     `{"type": "message", "id", "role": "assistant", "status",
          *     "content": [{"type": "output_text", "text", "annotations": []}]}`,
-         *     or `{"type": "function_call", "id", "status", "call_id", "name",
-         *     "arguments"}`.
+         *     `{"type": "function_call", "id", "status", "call_id", "name",
+         *     "arguments"}`, or, for a search this install ran (P8),
+         *     `{"type": "web_search_call", "id", "status", "action": {"type":
+         *     "search", "query", "sources": [{"type": "url", "url"}]}}`.
          */
         ResponsesOutputItem: {
             /** @enum {string} */
-            type: "reasoning" | "message" | "function_call";
+            type: "reasoning" | "message" | "function_call" | "web_search_call";
             id?: string;
         } & {
             [key: string]: unknown;
@@ -4631,6 +4667,39 @@ export interface components {
             /** @enum {string} */
             outcome: "served" | "error";
             tries: components["schemas"]["MetricAttempt"][];
+            /**
+             * @description Each search this install ran for the request (P8, schema v10),
+             *     in order. **No query text is kept**, by A5's rule that no prompt
+             *     is kept: a query is made from the prompt.
+             */
+            webSearches?: components["schemas"]["MetricToolExecution"][];
+        };
+        /**
+         * @description `over_limit` is a call past the request's limit, answered without
+         *     running. Named rather than inline: an inline `outcome` enum here
+         *     generated as `Outcome1` beside the request's own `Outcome` (the S6
+         *     trap).
+         * @enum {string}
+         */
+        MetricToolOutcome: "ok" | "error" | "over_limit";
+        MetricToolExecution: {
+            /** @description The tool that ran -- `web_search`. */
+            tool: string;
+            /** @description The tool-driver (search account) that ran it; null when none was asked. */
+            driver?: string | null;
+            node?: string | null;
+            /** @description The account's provider, `searxng` or `brave`. */
+            provider?: string | null;
+            /**
+             * @description How the caller named the tool: `web_search_options`,
+             *     `web_search`, or Anthropic's dated `web_search_20250305` -- kept
+             *     so a new date is noticed rather than discovered.
+             */
+            version?: string | null;
+            outcome: components["schemas"]["MetricToolOutcome"];
+            /** @description How many results the model was given. */
+            results?: number | null;
+            elapsedMs: number;
         };
         /**
          * @description One backend the balancer considered for a request, and what it
@@ -5203,7 +5272,11 @@ export interface components {
          *     `gateway` is the one OpenAI-compatible front door and there is
          *     exactly one. `inference-driver` instances are the per-backend
          *     wrappers and there are N — one per backend, wherever that
-         *     backend lives. `library` scans the operator's model
+         *     backend lives. `tool-driver` instances (P8, 2026-09-29) run the
+         *     tools the hub runs itself — `web_search` — one per tool provider
+         *     account (a SearXNG, a Brave subscription), and there are zero or
+         *     more; the gateway runs the loop that offers a tool to a model and
+         *     calls a tool-driver when the model uses it. `library` scans the operator's model
          *     directories and holds per-model launch profiles; there is
          *     exactly one, and it is deliberately not in the request path.
          *
@@ -5216,7 +5289,7 @@ export interface components {
          *     second copy of the supervision machinery.
          * @enum {string}
          */
-        ComponentKind: "control" | "gateway" | "inference-driver" | "library";
+        ComponentKind: "control" | "gateway" | "inference-driver" | "library" | "tool-driver";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -5726,7 +5799,8 @@ export interface operations {
             /**
              * @description The request names something this gateway cannot carry —
              *     a document or image it cannot carry or no ready backend can
-             *     read, a server-side tool,
+             *     read, a server-side tool other than web search, a web search
+             *     that cannot run (the message says why),
              *     `mcp_servers`, more than four `stop_sequences`, a missing
              *     `max_tokens` — **or names a model nothing serves**, which is
              *     a 400 here rather than a 404 because Claude Code discards a

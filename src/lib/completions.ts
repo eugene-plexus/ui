@@ -176,6 +176,10 @@ export interface CompletionOptions {
    * this voice. A streamed request can only take `pcm16`, so that is the
    * format asked; `wav` is for a request that is not streamed. */
   audio?: { voice: string };
+  /** Ask for a web search before the answer (P8): `web_search_options`.
+   * This install runs it on its search account when the model does not
+   * search itself, and the sources come back as `annotations`. */
+  webSearch?: boolean;
 }
 
 /**
@@ -206,6 +210,7 @@ export function buildChatRequest(opts: CompletionOptions, stream: boolean): Chat
     body.modalities = ["text", "audio"];
     body.audio = { voice: opts.audio.voice, format: stream ? "pcm16" : "wav" };
   }
+  if (opts.webSearch) body.web_search_options = {};
   return body;
 }
 
@@ -490,6 +495,8 @@ async function readChatCompletion(
   let streamError: string | null = null;
   const audioFragments: string[] = [];
   let audioFormat: string | null = null;
+  // Sources, as the stream delivers them just before the end (P8, P2c).
+  const annotations: NonNullable<ChatCompletionMessage["annotations"]> = [];
 
   try {
     for (;;) {
@@ -575,6 +582,8 @@ async function readChatCompletion(
             onToken(audio.transcript);
           }
         }
+        const cited = choice.delta?.annotations;
+        if (cited && cited.length > 0) annotations.push(...cited);
         const fragments = choice.delta?.tool_calls;
         if (fragments && fragments.length > 0) {
           report.toolCallDeltas += 1;
@@ -615,6 +624,7 @@ async function readChatCompletion(
     content: content || (toolCalls.length > 0 ? null : ""),
   };
   if (toolCalls.length > 0) message.tool_calls = toolCalls;
+  if (annotations.length > 0) message.annotations = annotations;
 
   return {
     id: "streamed",

@@ -45,6 +45,9 @@ const SPECS = [
   { input: "openapi/library.yaml", output: "library.ts" },
   { input: "openapi/agent.yaml", output: "agent.ts" },
   { input: "openapi/control.yaml", output: "control.ts" },
+  // P8: a search account's /v1/info and its web-search shapes, read by the
+  // page that adds one.
+  { input: "openapi/tool-driver.yaml", output: "tool-driver.ts" },
 ];
 
 function fail(msg) {

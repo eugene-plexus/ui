@@ -230,6 +230,10 @@ const PAGES: Record<string, PageRef[]> = {
   backends: [
     { id: "overview", label: "Overview", route: "/inference", icon: "Cpu" },
     { id: "add", label: "Add a backend", route: "/backends/add", icon: "Cloud" },
+    // P8: the account a local model's web searches run on. Here because a
+    // search account answers requests the way a backend does, and the
+    // person looking for "make my model search the web" looks here.
+    { id: "search", label: "Add a search account", route: "/backends/search", icon: "Search" },
   ],
   // A machine's group under Backends: the same page, that machine only.
   backendsNode: [{ id: "overview", label: "Overview", route: "/inference", icon: "Cpu" }],
@@ -242,6 +246,9 @@ const PAGES: Record<string, PageRef[]> = {
   // A backend: its row on the Inference page, with the actions, and its
   // own settings.
   driver: [{ id: "overview", label: "Overview", route: "/inference", icon: "Cpu" }, SETTINGS],
+  // A search account (P8): a tool-driver. It serves no model, so it has no
+  // row on the Inference page; its settings are the whole of it.
+  search: [SETTINGS],
   // An installed app. Settings is listed for every app, though a custom
   // app may publish none: which pages an object has depends on its kind,
   // never on data that arrives later (see `pagesForSelection`), and the
@@ -270,7 +277,7 @@ export function pageRoutes(): string[] {
 export function buildTree(topology: Topology): TreeNode {
   const { localNode, components } = topology;
   const nodes = allNodes(topology);
-  const drivers = components.filter((c) => c.kind === "inference-driver");
+  const drivers = components.filter(isBackendKind);
   // Taken once, here, so the three branches that show machines cannot
   // disagree about how many there are.
   const machines = machineKeys(nodes, drivers, localNode);
@@ -383,9 +390,18 @@ export function machineKeys(
 export function machineCount(topology: Topology): number {
   return machineKeys(
     allNodes(topology),
-    topology.components.filter((c) => c.kind === "inference-driver"),
+    topology.components.filter(isBackendKind),
     topology.localNode,
   ).length;
+}
+
+/**
+ * The kinds listed under Backends: a driver per backend and, since P8, a
+ * tool-driver per search account. Both are addressed by name through the
+ * agent's proxy, so one `driver:` selection serves both.
+ */
+export function isBackendKind(component: ComponentPlacement): boolean {
+  return component.kind === "inference-driver" || component.kind === "tool-driver";
 }
 
 /**
@@ -584,17 +600,31 @@ function driverBranch(
 ): TreeNode {
   const keyOf = (d: ComponentPlacement): string | null => d.node ?? localNode;
   const byName = (a: ComponentPlacement, b: ComponentPlacement) => a.name.localeCompare(b.name);
-  const leaf = (d: ComponentPlacement, key: string | null): TreeNode => ({
-    sel: key ? `driver:${d.name}@${key}` : `driver:${d.name}`,
-    kind: "leaf",
-    label: d.name,
-    layer: layer.id,
-    icon: layer.icon,
-    node: key,
-    children: [],
-    pages: PAGES.driver ?? [],
-    expert: "inference driver",
-  });
+  const leaf = (d: ComponentPlacement, key: string | null): TreeNode =>
+    d.kind === "tool-driver"
+      ? {
+          sel: key ? `driver:${d.name}@${key}` : `driver:${d.name}`,
+          kind: "leaf",
+          label: d.name,
+          layer: layer.id,
+          icon: "Search",
+          node: key,
+          children: [],
+          pages: PAGES.search ?? [],
+          hint: "web search",
+          expert: "tool driver (search account)",
+        }
+      : {
+          sel: key ? `driver:${d.name}@${key}` : `driver:${d.name}`,
+          kind: "leaf",
+          label: d.name,
+          layer: layer.id,
+          icon: layer.icon,
+          node: key,
+          children: [],
+          pages: PAGES.driver ?? [],
+          expert: "inference driver",
+        };
   const hintFor = (key: string | null, count: number): string | undefined =>
     !(key === null || nodes.includes(key))
       ? "no node in the registry"

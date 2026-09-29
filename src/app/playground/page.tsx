@@ -236,6 +236,9 @@ function PlaygroundPageInner() {
 
   // A spoken reply (P2b), asked for on every turn while on.
   const [spokenOn, setSpokenOn] = useState(false);
+  // P8: search the web before answering. On from the search-account
+  // page's "Try a search" link (`?search=1`); off otherwise.
+  const [searchOn, setSearchOn] = useState(() => searchParams.get("search") === "1");
   const [voice, setVoice] = useState("alloy");
 
   const page = useMemo(pageLocation, []);
@@ -484,6 +487,7 @@ function PlaygroundPageInner() {
           toolChoice: toolsOn ? toolChoice : undefined,
           responseFormat: responseFormat === "json_object" ? { type: "json_object" } : undefined,
           audio: spokenOn ? { voice: voice.trim() || "alloy" } : undefined,
+          webSearch: searchOn || undefined,
           transport: transportRef.current,
           reproduceBaseUrl,
           signal: controller.signal,
@@ -672,6 +676,21 @@ function PlaygroundPageInner() {
               error={modelsError}
               mode={mode}
             />
+          )}
+          {chat && (
+            <label
+              className="font-ui flex items-center gap-1.5 text-sm"
+              title="Search the web before answering. Runs on your search account when the model does not search itself; the words searched for go to the internet."
+            >
+              <input
+                type="checkbox"
+                checked={searchOn}
+                onChange={(e) => setSearchOn(e.target.checked)}
+                disabled={pending}
+                data-testid="playground-web-search"
+              />
+              Search the web
+            </label>
           )}
           <button
             type="button"
@@ -1036,6 +1055,11 @@ function RoutingBar({ info }: { info: TurnInfo }) {
   // only (after the first frame), and approximate — hence the tilde.
   if (info.firstFrameMs != null) parts.push(`first token ${seconds(info.firstFrameMs)}`);
   if (info.tokPerSec != null) parts.push(`~${info.tokPerSec.toFixed(1)} tok/s`);
+  // Searches this install ran for the turn (P8); absent when the backend
+  // searched itself, which it reports through its citations alone.
+  if (info.web_searches) {
+    parts.push(`${info.web_searches} web search${info.web_searches === 1 ? "" : "es"}`);
+  }
   return (
     <div className="flex items-center gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-1 font-mono text-[0.6875rem] text-[color:var(--muted)]">
       <span className="truncate">{parts.join(" · ")}</span>

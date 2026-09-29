@@ -85,6 +85,7 @@ it("makes a scoped key with the chosen limits", async () => {
       limits: {
         localOnly: true,
         allowedModels: ["alias", "actual"],
+        allowedTools: null,
         maxConcurrentRequests: 1,
         requestsPerMinute: 12,
       },
@@ -129,6 +130,7 @@ it("makes legacy access explicit and edits limits without minting another token"
       limits: {
         localOnly: false,
         allowedModels: [],
+        allowedTools: null,
         maxConcurrentRequests: 2,
         requestsPerMinute: 60,
       },

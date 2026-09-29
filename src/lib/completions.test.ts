@@ -12,7 +12,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { streamChatCompletion } from "./completions";
+import { buildChatRequest, streamChatCompletion } from "./completions";
+import { requestMessages } from "./playgroundTranscript";
 
 /** A `Response` whose body yields exactly these string chunks. */
 function sseResponse(chunks: string[]): Response {
@@ -153,5 +154,46 @@ describe("streamChatCompletion", () => {
     expect(result.usage?.total_tokens).toBe(4);
     expect(result.x_eugene_plexus?.tier).toBe(2);
     expect(result.choices?.[0]?.finish_reason).toBe("stop");
+  });
+});
+
+describe("web search (P8)", () => {
+  it("asks for a search only when switched on", () => {
+    const base = { model: "m", messages: [{ role: "user" as const, content: "q" }] };
+    expect(buildChatRequest(base, false).web_search_options).toBeUndefined();
+    expect(buildChatRequest({ ...base, webSearch: true }, true).web_search_options).toEqual({});
+  });
+});
+
+describe("sources (P8)", () => {
+  it("keeps the streamed citations on the message, and never sends them back", async () => {
+    const cite = {
+      type: "url_citation",
+      url_citation: { url: "https://a.example", title: "A", start_index: 0, end_index: 5 },
+    };
+    mockFetch(
+      sseResponse([
+        frame(contentChunk("See A.")),
+        frame({
+          ...contentChunk(""),
+          choices: [{ index: 0, delta: { annotations: [cite] }, finish_reason: null }],
+        }),
+        frame({
+          ...contentChunk(""),
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          x_eugene_plexus: { web_searches: 1 },
+        }),
+        "data: [DONE]\n\n",
+      ]),
+    );
+    const response = await streamChatCompletion(
+      { model: "m", messages: [{ role: "user", content: "q" }], webSearch: true },
+      () => undefined,
+    );
+    const message = response.choices[0]!.message;
+    expect(message.annotations).toEqual([cite]);
+    expect(response.x_eugene_plexus?.web_searches).toBe(1);
+    const wire = requestMessages([message]);
+    expect("annotations" in wire[0]!).toBe(false);
   });
 });

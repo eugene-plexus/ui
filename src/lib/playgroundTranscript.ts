@@ -84,6 +84,9 @@ export function requestMessages(messages: PlaygroundMessage[]): ChatCompletionMe
     delete wire.reasoning;
     delete wire.thoughtMs;
     delete wire.spoken;
+    // The sources a search gave (P8) are for the reader, not the model:
+    // the answer already cites them, and no harness sends them back.
+    delete wire.annotations;
     return wire;
   });
 }

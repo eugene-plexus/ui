@@ -921,6 +921,22 @@ export interface components {
              *     agent and the control root.
              */
             allowedModels?: string[] | null;
+            /**
+             * @description The tools the hub runs itself (P8) that this key may have run
+             *     on its behalf -- `web_search` today. **Null permits every tool
+             *     the install runs** (design call #5: a key is allowed search once
+             *     a search account exists, and can be denied it here). Empty
+             *     permits none. An entry is a tool name or a pattern with `*`,
+             *     matched by the same matcher as `allowedModels`.
+             *
+             *     A key denied a tool is not refused for asking: the door says
+             *     why the search did not run, as it does for an install with no
+             *     search account (`gateway.yaml`, "Server-run tools"). A
+             *     `localOnly` key never has a tool run whatever this says,
+             *     because a search sends a query derived from the prompt to the
+             *     public internet.
+             */
+            allowedTools?: string[] | null;
             /** @default 2 */
             maxConcurrentRequests: number;
             /** @default 60 */
@@ -1955,7 +1971,11 @@ export interface components {
          *     `gateway` is the one OpenAI-compatible front door and there is
          *     exactly one. `inference-driver` instances are the per-backend
          *     wrappers and there are N — one per backend, wherever that
-         *     backend lives. `library` scans the operator's model
+         *     backend lives. `tool-driver` instances (P8, 2026-09-29) run the
+         *     tools the hub runs itself — `web_search` — one per tool provider
+         *     account (a SearXNG, a Brave subscription), and there are zero or
+         *     more; the gateway runs the loop that offers a tool to a model and
+         *     calls a tool-driver when the model uses it. `library` scans the operator's model
          *     directories and holds per-model launch profiles; there is
          *     exactly one, and it is deliberately not in the request path.
          *
@@ -1968,7 +1988,7 @@ export interface components {
          *     second copy of the supervision machinery.
          * @enum {string}
          */
-        ComponentKind: "control" | "gateway" | "inference-driver" | "library";
+        ComponentKind: "control" | "gateway" | "inference-driver" | "library" | "tool-driver";
         /**
          * @description An operator session signed out anywhere in the install. A
          *     verifier refuses a session whose `jti` is listed, and an

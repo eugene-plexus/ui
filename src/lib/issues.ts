@@ -596,12 +596,17 @@ const COMPONENT_LABELS: Record<string, string> = {
   library: "The model library",
   control: "The control root",
   "inference-driver": "A backend connection",
+  "tool-driver": "A search account",
 };
 
 /** Where each kind is configured. A driver's port and command live on
  * the Inference screen; the three singletons have a Config page each. */
 function componentHref(component: Component): string {
   if (component.kind === "inference-driver") return "/inference";
+  // A search account has no Inference row; its settings are where it is fixed.
+  if (component.kind === "tool-driver") {
+    return `/config?sel=${encodeURIComponent(`driver:${component.name}`)}`;
+  }
   return `/config?sel=${encodeURIComponent(String(component.kind))}`;
 }
 

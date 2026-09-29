@@ -8,6 +8,7 @@ import type { ClientKeyLimits } from "@/lib/types";
 export const DEFAULT_CLIENT_LIMITS: ClientKeyLimits = {
   localOnly: false,
   allowedModels: null,
+  allowedTools: null,
   maxConcurrentRequests: 2,
   requestsPerMinute: 60,
 };
@@ -52,6 +53,25 @@ export function ClientKeyLimitsEditor({
         />
         Allow all models, including models added later
       </label>
+      {/* P8: web search is on for a key unless it is turned off here (design
+          call #5). A local-only key never searches whatever this says. */}
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={value.allowedTools == null && value.localOnly !== true}
+          disabled={value.localOnly === true}
+          onChange={(e) => onChange({ ...value, allowedTools: e.target.checked ? null : [] })}
+          data-testid="key-web-search"
+        />
+        Let apps using this key search the web
+      </label>
+      <p className="text-[color:var(--muted)]">
+        When a model is asked to search, Eugene runs the search on your search account and sends the
+        words searched for to the internet.{" "}
+        {value.localOnly === true
+          ? "A local-only key never searches."
+          : "Turn this off to keep a key's prompts on this network."}
+      </p>
       {selected && (
         <label className="block" htmlFor={`${id}-models`}>
           Allowed model IDs (one per line)
@@ -124,5 +144,9 @@ export function describeClientLimits(value?: ClientKeyLimits | null): string {
       : value.allowedModels.length === 0
         ? "No models allowed"
         : value.allowedModels.join(", ");
-  return `${models}${value.localOnly ? " · Local-only" : ""} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute`;
+  const search =
+    value.localOnly || (value.allowedTools != null && !value.allowedTools.length)
+      ? " · No web search"
+      : "";
+  return `${models}${value.localOnly ? " · Local-only" : ""}${search} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute`;
 }
