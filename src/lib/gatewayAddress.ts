@@ -354,7 +354,7 @@ export function describeVerdict(
             `the ports on this machine are published differently (below), so this is most likely ` +
             `the wrong port with another service on it. Correct the address above.`
           : `Something is listening at ${baseUrl}, but it would not answer this page. Either the ` +
-            `gateway has browser clients turned off (Config → Gateway → corsEnabled), in which ` +
+            `gateway has browser clients turned off (Settings › Access & security › Answer browser clients, corsEnabled), in which ` +
             `case a non-browser app would still work — or this is not the gateway at all, in ` +
             `which case nothing will. Correct the address above if you are not sure.`,
       };

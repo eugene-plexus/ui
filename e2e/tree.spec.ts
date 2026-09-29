@@ -88,20 +88,25 @@ test.describe("the resource tree", () => {
     await loaded(page);
     const t = tree(page);
     await expect(t).toContainText("Eugene Plexus");
-    for (const branch of ["Gateway", "Inference drivers", "Library", "Control root"]) {
+    // The four branches, in the order of a hobbyist's questions
+    // (ui-settings-reorganisation.md, decision #5).
+    for (const branch of ["Library", "Backends", "Gateway", "Machines"]) {
       await expect(t, `the tree has no ${branch}`).toContainText(branch);
     }
-    // The fifth branch is plural only when there is more than one
-    // machine; alone, it is the machine's one Agent leaf, and "Agent" is
-    // a substring of "Agents", so the singular case asserts the row.
-    if ((await machineCount(page)) > 1) {
-      await expect(t, "the tree has no Agents").toContainText("Agents");
-    } else {
-      const agent = t.locator('a[data-tree-sel^="agent"]');
-      await expect(agent, "one machine has one Agent leaf").toHaveCount(1);
-      await expect(agent).toContainText("Agent");
-      await expect(t, "one machine is not a fleet").not.toContainText("Agents");
+    // The implementation nouns left the labels for hover text.
+    for (const noun of ["Inference drivers", "Control root", "Agents"]) {
+      await expect(t, `${noun} is still a visible label`).not.toContainText(noun);
     }
+    // Machines lists one row per machine, on a one-box install too: the
+    // leaf carries the `agent` token the Config page always used.
+    const machines = t.locator('a[data-tree-sel^="agent"]');
+    await expect(machines, "one leaf per machine under Machines").toHaveCount(
+      await machineCount(page),
+    );
+    await expect(
+      t.locator('[data-tree-children="control"]').locator('a[data-tree-sel^="agent"]').first(),
+      "the machine leaf is not under Machines",
+    ).toBeVisible();
   });
 
   test("every object in the tree selects and arrives", async ({ page }) => {
@@ -132,10 +137,11 @@ test.describe("the resource tree", () => {
 
   test("the page menu lists the pages each object owns", async ({ page }) => {
     const cases: [string, string[]][] = [
-      ["install", ["home", "playground", "inference", "preferences"]],
-      ["library", ["models", "folders", "discover", "config"]],
-      ["control", ["nodes", "config"]],
-      ["gateway", ["metrics", "config"]],
+      ["install", ["home", "playground", "apps", "logs", "config"]],
+      ["library", ["models", "discover", "folders", "config"]],
+      ["backends", ["overview", "add"]],
+      ["control", ["overview", "config"]],
+      ["gateway", ["metrics", "routing", "config"]],
     ];
     for (const [sel, pages] of cases) {
       await page.goto(`/?sel=${sel}`);
@@ -165,7 +171,7 @@ test.describe("the resource tree", () => {
     );
   });
 
-  test("a driver sits under its machine once there are two, straight under its type with one, and opens its own settings", async ({
+  test("a backend sits under its machine once there are two, straight under Backends with one, and opens its own row", async ({
     page,
   }) => {
     await page.goto("/");
@@ -179,52 +185,105 @@ test.describe("the resource tree", () => {
       // version of this test asserted only that the leaf existed, and so
       // passed against a tree with the node level removed entirely — a
       // check that did not test the thing its name claims. The node group
-      // is the row whose `sel` the leaf's own `sel` names after the `@`.
+      // is the row whose `sel` the leaf's own `sel` names after the `@`,
+      // and since 2026-09-29 the group is selectable, keyed by its token.
       const node = sel!.slice(sel!.lastIndexOf("@") + 1);
       expect(node, "the driver's sel carries no machine").toBeTruthy();
-      const group = tree(page).locator(`[data-tree-children$="/nodeGroup:${node}"]`);
+      const group = tree(page).locator(`[data-tree-children="backends:node:${node}"]`);
       await expect(
         group.locator(`a[data-tree-sel="${sel}"]`),
         `${DRIVER} is not nested under ${node}`,
       ).toBeVisible();
     } else {
       // **One machine: no node level, by design** (hobbyist-ux.md §6.4).
-      // The leaf is a direct child of the type branch — the wrapper names
-      // the branch, and a nested leaf would sit two rows deeper — and no
-      // node row exists anywhere in the tree. A leaf that merely exists
-      // would pass either shape, which is the check this replaced.
-      const branch = tree(page).locator('[data-tree-children$="/branch:Inference drivers"]');
+      // The leaf is a direct child of the Backends branch — the wrapper
+      // names the branch, and a nested leaf would sit two rows deeper —
+      // and no group row exists anywhere in the tree. A leaf that merely
+      // exists would pass either shape, which is the check this replaced.
+      const branch = tree(page).locator('[data-tree-children="backends"]');
       await expect(
         branch.locator(`:scope > div > div > a[data-tree-sel="${sel}"]`),
-        `${DRIVER} is not a direct child of Inference drivers`,
+        `${DRIVER} is not a direct child of Backends`,
       ).toBeVisible();
       await expect(
-        tree(page).locator('[data-tree-group*="/nodeGroup:"]'),
-        "a node row rendered on a one-machine install",
+        tree(page).locator('a[data-tree-sel^="backends:node"]'),
+        "a machine group rendered on a one-machine install",
       ).toHaveCount(0);
     }
 
+    // The leaf's first page is its Overview: the Backends page opened on
+    // this backend, its row marked, with start/stop on it. Troy's report
+    // was that the leaf held only config while the actions were on the
+    // install root.
     await leaf.click();
+    await expect(page).toHaveURL(/\/inference/);
+    await expect(page.getByTestId("inference-scope")).toContainText(DRIVER);
+    // The row arrives once the gateway's routing refresh has seen the
+    // driver, which is its own cadence, not the page's.
+    await expect(page.locator(`tr[data-driver="${DRIVER}"]`)).toHaveAttribute(
+      "data-marked",
+      "true",
+      { timeout: 60_000 },
+    );
+    // And its Settings is one menu entry away, addressing this backend.
+    await page.getByTestId("page-menu").locator('a[data-page="config"]').click();
     await expect(page).toHaveURL(/\/config/);
     // The editor is addressing this driver, not a component that merely
     // shares a page with it.
     await expect(page.getByTestId("page-menu")).toContainText(DRIVER);
   });
 
-  test("a bare /config lands on this machine's agent", async ({ page }) => {
-    // `defaultSelectionFor` gives the bare token `agent`; on an enrolled
-    // node the tree's row is `agent:<name>`, and resolving one to the
-    // other is what keeps the page from opening with nothing selected.
+  test("a bare /config is every setting on the install, by topic, with a search box", async ({
+    page,
+  }) => {
+    // Since 2026-09-29 (ui-settings-reorganisation.md). It used to be
+    // this machine's agent, and the defect this test guarded -- a page
+    // opening with nothing selected -- is guarded the same way: the menu
+    // and the tree agree on the install root.
     await page.goto("/config/");
     await loaded(page);
     const menu = page.getByTestId("page-menu");
-    const sel = await menu.getAttribute("data-sel");
-    expect(sel, "a bare /config selected nothing").toMatch(/^agent/);
-    await expect(tree(page).locator(`a[data-tree-sel="${sel}"]`)).toHaveAttribute(
-      "aria-current",
-      "page",
+    await expect(menu).toHaveAttribute("data-sel", "install");
+    await expect(row(page, "install")).toHaveAttribute("aria-current", "page");
+    await expect(menu.locator('a[data-page="config"]')).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("settings-search")).toBeVisible();
+    // The gateway's, the library's and this machine's settings, on one
+    // page, filed by topic rather than by process.
+    const cards = page.getByTestId("settings-card");
+    await expect(cards.first()).toBeVisible({ timeout: 30_000 });
+    for (const topic of ["models", "answers", "serving", "engines", "access"]) {
+      await expect(
+        page.locator(`[data-testid="settings-card"][data-topic="${topic}"]`),
+        `no ${topic} card`,
+      ).toBeVisible({ timeout: 30_000 });
+    }
+    // A search shrinks the page to the answer, and a field behind Show
+    // more is opened for the person who searched for it.
+    await page.getByTestId("settings-search").fill("catalogue token");
+    await expect(page.locator('[data-testid="settings-card"][data-topic="models"]')).toBeVisible();
+    await expect(page.locator('[data-testid="settings-card"][data-topic="access"]')).toHaveCount(0);
+    await expect(page.locator('[data-config-key="hfToken"]')).toBeVisible();
+  });
+
+  test("a machine's own Settings is that machine's share of the same page", async ({ page }) => {
+    await page.goto("/");
+    await loaded(page);
+    const leaf = tree(page).locator('a[data-tree-sel^="agent"]').first();
+    const sel = await leaf.getAttribute("data-tree-sel");
+    await leaf.click();
+    await expect(page).toHaveURL(/\/config/);
+    await expect(page.getByTestId("page-menu")).toHaveAttribute("data-sel", sel!);
+    await expect(page.getByTestId("settings-scope")).toContainText(/only/);
+    // Its engines and updates, and nothing of the gateway's.
+    await expect(page.locator('[data-testid="settings-card"][data-topic="engines"]')).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.locator('[data-testid="settings-card"][data-topic="answers"]')).toHaveCount(
+      0,
     );
-    await expect(menu.locator('a[data-page="config"]')).toBeVisible();
+    // The dead knobs are shown nowhere: no Theme on a machine's page.
+    await expect(page.getByLabel("Theme")).toHaveCount(0);
+    await expect(page.getByLabel("First-run setup complete")).toHaveCount(0);
   });
 
   test("a legacy ?tab= link still lands on its subject", async ({ page }) => {
@@ -237,7 +296,13 @@ test.describe("the resource tree", () => {
   });
 
   test("the layer colours are still the architecture page's", async ({ page }) => {
+    // The literals below are the modern theme's, which is the website's
+    // palette; the default theme has been plexus (apricot on the right
+    // roles) since 2026-09-17, so the check chooses modern first. Found
+    // failing on 2026-09-29's run: it had been asserting the default.
     await page.goto("/");
+    await page.evaluate(() => localStorage.setItem("eugene-theme", "modern"));
+    await page.reload();
     await loaded(page);
     const colourOf = (sel: string) =>
       row(page, sel)

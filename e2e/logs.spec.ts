@@ -40,7 +40,7 @@ test.describe("Logs", () => {
     await expect(page.getByTestId("logs-unanswered")).toHaveCount(0);
   });
 
-  test("a machine's page under Agents shows that machine alone", async ({ page }) => {
+  test("a machine's page under Machines shows that machine alone", async ({ page }) => {
     await page.goto(`/logs/?sel=agent:${NODE_B}`);
     await expect(page.getByRole("heading", { name: `Logs on ${NODE_B}` })).toBeVisible();
     await expect(lines(page).first()).toBeVisible({ timeout: 30_000 });

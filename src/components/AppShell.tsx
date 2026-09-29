@@ -9,8 +9,8 @@ import { api } from "@/lib/api";
 import {
   accentVar,
   activeScreen,
-  installSubrouteSelection,
   layerOf,
+  subrouteSelection,
   unlistedPageTitle,
 } from "@/lib/navigation";
 import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
@@ -30,7 +30,7 @@ import { clearSessionToken } from "@/lib/session";
 
 import { LayerIcon } from "./LayerIcon";
 import { LayerMap } from "./LayerMap";
-import { pageHref, ResourceTree, useTopology } from "./ResourceTree";
+import { pageHref, ResourceTree, TopologyContext, useTopology } from "./ResourceTree";
 import { RunDialog } from "./RunDialog";
 import { IssuesBadge } from "./IssuesBadge";
 import { TasksTray } from "./TasksTray";
@@ -83,13 +83,12 @@ function AppShellInner({
   // An explicit `sel` wins; otherwise the route says which object it is
   // about, so every URL that worked before the tree still works — a
   // bookmark, the launch panel's `?tab=` link, the `/runtimes` redirect.
-  // A page under the install root that is not in its menu (`/backends/add`)
-  // is answered last, by the registry, so it lights the root rather than
-  // nothing.
+  // A page under an object that is not in its menu is answered last, by
+  // the registry, so it lights that object's row rather than nothing.
   const requested =
     searchParams.get("sel") ??
     defaultSelectionFor(pathname, searchParams.get("tab")) ??
-    installSubrouteSelection(pathname);
+    subrouteSelection(pathname);
 
   // One topology, one tree, both consumers reading the same object. The
   // first build had the tree and the page menu fetch separately, and
@@ -104,16 +103,19 @@ function AppShellInner({
 
   // The tab says which page, and on a multi-host install which machine
   // -- see `pageTitle.ts`. The page name is the page MENU's label rather
-  // than the screen registry's, because `/config` is "Preferences" under
-  // the install root and "Config" under a component, and the menu is the
-  // thing that already knows which. `activeScreen` answers for a screen
-  // reached by a route with no menu slot, and `unlistedPageTitle` for a
-  // page that is in neither (`/backends/add`). None of the three
-  // answering leaves the brand alone, rather than a guess.
+  // than the screen registry's, because `/library/folders` is "Folders"
+  // in the menu and "Library" in the registry, and the menu is the thing
+  // that already knows which. An Overview is named after its object
+  // instead -- three objects have one, and a tab reading "Overview" says
+  // nothing. `activeScreen` answers for a screen reached by a route with
+  // no menu slot, and `unlistedPageTitle` for a page that is in neither.
+  // None of the three answering leaves the brand alone, rather than a
+  // guess.
   const selection = useMemo(() => parseSelection(sel), [sel]);
   const menuPage = activePage(sel ? pagesForSelection(selection) : [], pathname);
+  const menuLabel = menuPage?.id === "overview" ? (node?.label ?? null) : (menuPage?.label ?? null);
   const title = pageTitle({
-    page: menuPage?.label ?? activeScreen(pathname)?.label ?? unlistedPageTitle(pathname),
+    page: menuLabel ?? activeScreen(pathname)?.label ?? unlistedPageTitle(pathname),
     // The selected object's machine first: two `/config` tabs differ only
     // by which node they address, and this console's own host is the same
     // string on both.
@@ -267,7 +269,12 @@ function AppShellInner({
             controls={controls}
           />
           <div id="main-content" tabIndex={-1} className="flex min-h-0 flex-1 flex-col">
-            {children}
+            {/* The page reads the same topology the tree was built from,
+                so a page that lists the install's machines (Settings)
+                cannot disagree with the tree beside it. */}
+            <TopologyContext.Provider value={{ topology, ready }}>
+              {children}
+            </TopologyContext.Provider>
           </div>
         </div>
       </div>

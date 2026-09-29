@@ -885,7 +885,7 @@ function NodeColumn({
           <>
             <span className="font-mono">{nodeName}</span> is not in the node registry as this
             console sees it. If it was just enrolled, reload; if the control root is sealed, unlock
-            it under Control root → Nodes.
+            it under Machines.
           </>
         ) : (
           "Reading this machine's identity…"

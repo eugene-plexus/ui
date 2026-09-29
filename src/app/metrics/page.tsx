@@ -391,8 +391,8 @@ export default function MetricsPage() {
               <p className="text-sm leading-relaxed text-[color:var(--muted)]">
                 This gateway is not retaining request metrics. Turn on{" "}
                 <span className="font-mono">Retain request metrics</span> on the{" "}
-                <Link href="/config?sel=gateway" className="underline">
-                  Config page
+                <Link href="/config?sel=gateway#metricsEnabled" className="underline">
+                  Settings page
                 </Link>{" "}
                 and restart the gateway. Recording starts from then on — nothing reconstructs
                 traffic served while it was off.

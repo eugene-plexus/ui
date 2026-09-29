@@ -277,10 +277,9 @@ function DownloadRow({
             <>
               {" "}
               Accept the licence on the model&rsquo;s own page, then set a catalogue token on the{" "}
-              {/* The Library's own settings, where `hfToken` lives. A bare
-                  `/config` selects nothing and opens an empty page. */}
-              <Link href="/config?sel=library" className="underline">
-                Config
+              {/* The Library's own settings, opened on `hfToken` itself. */}
+              <Link href="/config?sel=library#hfToken" className="underline">
+                Settings
               </Link>{" "}
               page.
             </>

@@ -186,7 +186,7 @@ export function describeUpdate(identity: NodeIdentity | null, now: number): Upda
       last,
       state: "off",
       headline: "Update checks are off",
-      detail: "Turn them on under Config, Agent, Updates.",
+      detail: "Turn them on under Settings › Updates.",
     };
   }
   if (!update.checkedAt) {

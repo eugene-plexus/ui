@@ -41,11 +41,11 @@ export function describeControlRoot(
     return {
       tone: "muted",
       text: "No control root: the gateway reads only this host's agent, which is not enrolled and runs none.",
-      detail: "Set the gateway's Control root under Config to override that.",
+      detail: "Set the gateway's Control root under Settings › Machines to override that.",
     };
   }
 
-  const from = root.source === "config" ? "set under Config" : "found through this node's agent";
+  const from = root.source === "config" ? "set under Settings" : "found through this node's agent";
   const where = url ? `Control root ${url}` : "Control root";
 
   if (!root.reachable) {

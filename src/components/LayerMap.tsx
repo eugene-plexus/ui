@@ -82,7 +82,8 @@ export function LayerMap({
       </div>
 
       <p className="font-ui mt-3 text-[0.6875rem] text-[color:var(--muted)]">
-        Select a component in the tree, then open Config to change its settings on that machine.
+        Select a row in the tree, then open Settings to change what it holds on that machine. The
+        install root’s Settings shows every setting by topic, with a search box.
       </p>
       <Glossary />
 

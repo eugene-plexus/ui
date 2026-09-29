@@ -173,16 +173,30 @@ describe("more than one machine", () => {
     // print "nas" on both.
     pathname = "/config";
     search = new URLSearchParams("sel=agent:Amish_Station");
-    expect(await titleFor()).toBe("Config · Amish_Station · Eugene Plexus");
+    expect(await titleFor()).toBe("Settings · Amish_Station · Eugene Plexus");
   });
 
-  it("takes the page name from the menu, which knows /config twice over", async () => {
-    // `/config` is Preferences under the install root and Config under a
-    // component. The screen registry has one entry for the route and
-    // would call both of them "Config".
+  it("names the Backends Overview after its object, not 'Overview'", async () => {
+    // Three objects have an Overview (2026-09-29): Backends, a backend,
+    // Machines. A tab reading "Overview" says nothing; the object's own
+    // name is what the person clicked.
+    pathname = "/inference";
+    search = new URLSearchParams("sel=backends");
+    expect(await titleFor()).toBe("Backends · nas · Eugene Plexus");
+  });
+
+  it("names the Machines Overview after its object too", async () => {
+    pathname = "/nodes";
+    search = new URLSearchParams("sel=control");
+    expect(await titleFor()).toBe("Machines · nas · Eugene Plexus");
+  });
+
+  it("takes the page name from the menu, which knows /config as Settings", async () => {
+    // The screen registry has one entry for the route; the menu's label
+    // is what the person clicked. Both say Settings since 2026-09-29.
     pathname = "/config";
     search = new URLSearchParams("sel=install");
-    expect(await titleFor()).toBe("Preferences · nas · Eugene Plexus");
+    expect(await titleFor()).toBe("Settings · nas · Eugene Plexus");
   });
 
   it("names a machine under the Library by the page menu's own label", async () => {
@@ -194,12 +208,13 @@ describe("more than one machine", () => {
     expect(await titleFor()).toBe("Folders · Amish_Station · Eugene Plexus");
   });
 
-  it("names a page that is in no menu and no nav group", async () => {
-    // `/backends/add` renders under the install root with no menu slot
-    // and no screen entry, so both lookups answer null and the title
-    // registry answers third. It read as the bare brand before.
+  it("names a page reached by its route alone from the object's menu", async () => {
+    // `/backends/add` carries no `?sel=` from Home's link. The route is
+    // the Backends branch's second page since 2026-09-29, so the shell
+    // resolves the object from the route and the menu names the page.
+    // It read as the bare brand before the title work of 2026-09-17.
     pathname = "/backends/add";
     search = new URLSearchParams();
-    expect(await titleFor()).toBe("Add an app you already run · nas · Eugene Plexus");
+    expect(await titleFor()).toBe("Add a backend · nas · Eugene Plexus");
   });
 });

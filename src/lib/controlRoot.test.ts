@@ -33,7 +33,9 @@ describe("describeControlRoot", () => {
         '{"source":"config","url":"http://192.168.16.252:8283","reachable":true,"error":null,"nodes":1}',
       ),
     );
-    expect(line?.text).toBe("Control root http://192.168.16.252:8283 · set under Config · 1 node");
+    expect(line?.text).toBe(
+      "Control root http://192.168.16.252:8283 · set under Settings · 1 node",
+    );
   });
 
   it("warns when the root did not answer, names the reason, and keeps the last count", () => {
@@ -61,7 +63,7 @@ describe("describeControlRoot", () => {
     expect(line?.text).toBe(
       "Control root http://nowhere:1 did not answer on the gateway's last refresh (HTTP 404): showing the last node list it had.",
     );
-    expect(line?.detail).toContain("set under Config");
+    expect(line?.detail).toContain("set under Settings");
     expect(line?.detail).not.toContain("Nodes page");
   });
 
@@ -71,7 +73,7 @@ describe("describeControlRoot", () => {
     );
     expect(line?.tone).toBe("muted");
     expect(line?.text).toMatch(/^No control root/);
-    expect(line?.detail).toContain("Config");
+    expect(line?.detail).toContain("Settings");
   });
 
   it("says nothing for a gateway older than the field", () => {

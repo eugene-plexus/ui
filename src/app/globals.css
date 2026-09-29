@@ -526,3 +526,14 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* A settings row a deep link (`/config?sel=gateway#defaultMaxTokens`)
+   landed on: marked for a moment so the eye finds it after the scroll.
+   The attribute is set and removed by ConfigEditor; the colour is the
+   theme's own accent, so it reads the same in all three. */
+[data-config-key][data-focused="true"] {
+  outline: 2px solid var(--accent-left);
+  outline-offset: 4px;
+  border-radius: var(--radius);
+  transition: outline-color 600ms ease-out;
+}

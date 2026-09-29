@@ -457,7 +457,7 @@ export function accountListIssues(drivers: IssueSources["drivers"]): Issue[] {
       title: `${d.name} could not read its list of models`,
       detail:
         `It keeps using the list it last read. It said: ${d.catalogueError}. ` +
-        "Check its key or address under Config.",
+        "Check its key or address under its Settings.",
       href: "/inference",
       node: d.node ?? null,
     }));
@@ -547,7 +547,7 @@ function versionsDifferIssues(perNode: NodeFacts[]): Issue[] {
       kind: "versions-differ",
       severity: "warning",
       title: "Machines in this install run different versions of Eugene",
-      detail: `${which}. Check which update channel each follows, under Config, Agent, Updates.`,
+      detail: `${which}. Check which update channel each follows, under Settings › Updates.`,
       href: "/nodes",
     },
   ];

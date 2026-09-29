@@ -155,7 +155,7 @@ export function describeAdmission(
   };
 }
 
-/** The Config page's tab for a node's agent, as a link. */
+/** The Settings page for a node's agent, opened on its folder overrides. */
 export function configTabHref(target: string): string {
-  return `/config?tab=${encodeURIComponent(target)}`;
+  return `/config?tab=${encodeURIComponent(target)}#pathMappings`;
 }

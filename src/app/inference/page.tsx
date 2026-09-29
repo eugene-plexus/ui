@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -28,7 +29,7 @@ import { loadKey, recallLoadSeconds, rememberLoadSeconds } from "@/lib/loadMemor
 import { engineLogsHref } from "@/lib/logs";
 import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib/nodeBudget";
 import type { ContextLookup } from "@/lib/modelContext";
-import { formatSelection } from "@/lib/resourceTree";
+import { formatSelection, parseSelection } from "@/lib/resourceTree";
 import { useIssues } from "@/lib/useIssues";
 import { useServedContexts } from "@/lib/useServedContexts";
 import { usePolling } from "@/lib/usePolling";
@@ -124,10 +125,49 @@ const BACKEND_LABEL: Record<string, string> = {
   codex_cli: "Codex CLI",
 };
 
+/**
+ * What the tree asked to see (2026-09-29): everything (the Backends
+ * branch), one machine's backends (`backends:node:<name>`), or one
+ * backend (`driver:<name>@<node>`), whose row is marked and whose machine
+ * is the only section shown. The page is the same page in every case;
+ * a backend's Overview in the tree is this page opened on it.
+ */
+interface Scope {
+  node: string | null;
+  /** Set for one backend: the driver's name. */
+  driver: string | null;
+  /** True when the token named no machine (a legacy bare driver name). */
+  anyNode: boolean;
+}
+
+function scopeOf(sel: string | null): Scope | null {
+  const selection = parseSelection(sel);
+  if (!selection) return null;
+  if (selection.type === "driver") {
+    return { node: selection.node, driver: selection.name, anyNode: selection.node === null };
+  }
+  if (selection.type === "backendsNode") {
+    return { node: selection.node, driver: null, anyNode: false };
+  }
+  return null;
+}
+
 export default function InferencePage() {
+  // `useSearchParams` suspends during prerender, so the boundary is
+  // required rather than decorative.
+  return (
+    <Suspense fallback={null}>
+      <InferencePageInner />
+    </Suspense>
+  );
+}
+
+function InferencePageInner() {
   const picker = useTargetNode();
   const localName = picker.nodes.find((n) => n.local)?.name ?? null;
   const contexts = useServedContexts();
+  const searchParams = useSearchParams();
+  const scope = useMemo(() => scopeOf(searchParams.get("sel")), [searchParams]);
 
   const [sources, setSources] = useState<Sources | null>(null);
   // The Issues poll already reads every node's own `/v1/runtimes` and
@@ -244,11 +284,30 @@ export default function InferencePage() {
   // Every node the install knows of, local first, then any node a row
   // named that the picker did not (a control root that answered
   // /v1/components but whose /v1/nodes read failed).
-  const nodeOrder = useMemo(() => {
+  const allNodes = useMemo(() => {
     const names: (string | null)[] = picker.nodes.map((n) => n.name);
     for (const name of byNode.keys()) if (!names.includes(name)) names.push(name);
     return names;
   }, [picker.nodes, byNode]);
+  // Narrowed to the scope the tree asked for. A machine is its own
+  // section, kept whole -- the engines line and the budget are what
+  // explain a row -- with the one backend's row marked. A bare driver
+  // name (a legacy link) is looked for on every machine.
+  const nodeOrder = useMemo(() => {
+    if (!scope) return allNodes;
+    const owns = (name: string | null) =>
+      scope.driver === null
+        ? (name ?? null) === (scope.node ?? null)
+        : (byNode.get(name) ?? []).some(
+            (r) => r.driver === scope.driver && (scope.anyNode || (r.node ?? null) === scope.node),
+          );
+    const mine = allNodes.filter(owns);
+    // A backend the rows do not carry yet -- the gateway has not seen it,
+    // or the machine is down -- still names its machine, so the section
+    // says "nothing serving" rather than the page saying nothing at all.
+    if (mine.length === 0 && scope.driver !== null && !scope.anyNode) return [scope.node];
+    return mine;
+  }, [scope, allNodes, byNode]);
 
   /**
    * Forget a backend. A runtime takes its companion driver with it; an
@@ -378,6 +437,16 @@ export default function InferencePage() {
         )}
 
         <div className="flex-1 space-y-6 overflow-y-auto p-4">
+          {scope && (
+            <p className="text-sm text-[color:var(--muted)]" data-testid="inference-scope">
+              {scope.driver
+                ? `Showing ${scope.driver}${scope.node ? ` on ${scope.node}` : ""}.`
+                : `Showing ${scope.node ?? localName ?? "this machine"} only.`}{" "}
+              <Link href="/inference?sel=backends" className="underline">
+                Show everything
+              </Link>
+            </p>
+          )}
           {sources === null ? (
             <p className="text-sm text-[color:var(--muted)]">Loading…</p>
           ) : rows.length === 0 && picker.loaded ? (
@@ -397,6 +466,7 @@ export default function InferencePage() {
               onAct={act}
               onRemove={remove}
               contexts={contexts}
+              marked={scope?.driver ?? null}
             />
           ))}
         </div>
@@ -447,6 +517,7 @@ function NodeSection({
   onAct,
   onRemove,
   contexts,
+  marked,
 }: {
   name: string | null;
   node: TargetNode | null;
@@ -461,6 +532,8 @@ function NodeSection({
   onRemove: (row: Row) => void;
   /** Each served model's context window, said beside its name. */
   contexts: ContextLookup;
+  /** The driver whose row the tree selected, if one. */
+  marked?: string | null;
 }) {
   const label = name ?? node?.label ?? "this host";
   // The node's engines, lifted here from the engines line so a stopped
@@ -518,6 +591,7 @@ function NodeSection({
                   onAct={onAct}
                   onRemove={onRemove}
                   contexts={contexts}
+                  marked={marked !== null && marked !== undefined && row.driver === marked}
                 />
               ))}
             </tbody>
@@ -537,6 +611,7 @@ function RowView({
   onAct,
   onRemove,
   contexts,
+  marked,
 }: {
   row: Row;
   /** The node's engines, or null while unknown. */
@@ -553,6 +628,8 @@ function RowView({
   onRemove: (row: Row) => void;
   /** Each served model's context window, said beside its name. */
   contexts: ContextLookup;
+  /** This is the row the tree selected. */
+  marked?: boolean;
 }) {
   const status = row.runtimeStatus as RuntimeStatus | null;
   const known = status !== null && status in STATUS_TONE;
@@ -602,7 +679,11 @@ function RowView({
   const missingEngine = stoppedForWantOfEngine(row, engines);
   const failure = runtimeFailure(row.runtimeStatus, own?.lastError);
   return (
-    <tr className="border-t border-[color:var(--border)]">
+    <tr
+      className={`border-t border-[color:var(--border)] ${marked ? "bg-[color:var(--panel-hover)]" : ""}`}
+      data-driver={row.driver ?? undefined}
+      data-marked={marked ? "true" : undefined}
+    >
       <td className="py-1.5 pr-4 font-mono">
         {row.account ? (
           <span className="font-ui" data-testid="account-models">
@@ -828,7 +909,7 @@ function RowView({
                   formatSelection({ type: "driver", node: row.node, name: row.driver }),
                 )}`}
                 className={smallButton}
-                title="An external backend is not ours to start or stop. Its driver's settings — the URL, the model id, the API key — are on the Config page."
+                title="An external backend is not ours to start or stop. Its driver's settings — the URL, the model id, the API key — are on its Settings page."
               >
                 config
               </Link>

@@ -61,7 +61,7 @@ test.describe("Library folders and their reach", () => {
       .getByTestId("page-menu")
       .locator("a[data-page]")
       .evaluateAll((els) => els.map((e) => e.getAttribute("data-page")!));
-    expect(ids).toEqual(["models", "folders", "discover", "config"]);
+    expect(ids).toEqual(["models", "discover", "folders", "config"]);
   });
 
   test("the grid shows every node's column, and the worker's cell is inherited", async ({

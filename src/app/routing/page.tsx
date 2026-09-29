@@ -268,11 +268,11 @@ export default function RoutingPage() {
             These lists are the gateway&rsquo;s <span className="font-mono">modelSlots</span>{" "}
             setting — the rest of its settings are on{" "}
             <Link href="/config?tab=gateway&sel=gateway" className="underline">
-              the gateway&rsquo;s Config page
+              the gateway&rsquo;s Settings page
             </Link>
             . What is actually running is on{" "}
             <Link href="/inference" className="underline">
-              Inference
+              Backends
             </Link>
             ; which tier served each request is on{" "}
             <Link href="/metrics?sel=gateway" className="underline">

@@ -71,9 +71,9 @@ describe("a download of a gated model", () => {
         onChanged={() => {}}
       />,
     );
-    expect(screen.getByRole("link", { name: "Config" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
       "href",
-      "/config?sel=library",
+      "/config?sel=library#hfToken",
     );
   });
 });

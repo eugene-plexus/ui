@@ -22,14 +22,14 @@ import { describe, expect, it } from "vitest";
 import {
   accentVar,
   activeScreen,
-  installSubrouteSelection,
   LAYERS,
   layerOf,
   layersOf,
   NAV_GROUPS,
   normalizePath,
-  ROUTES_UNDER_INSTALL,
+  ROUTES_UNDER_OBJECT,
   ROUTES_WITHOUT_NAV,
+  subrouteSelection,
   unlistedPageTitle,
   unlistedTitledRoutes,
   SCREENS,
@@ -37,6 +37,8 @@ import {
   type IconName,
   type LayerId,
 } from "./navigation";
+
+const ROUTES_UNDER_OBJECTS = Object.keys(ROUTES_UNDER_OBJECT);
 
 /**
  * Transcribed by hand from `website/src/pages/architecture.astro` at
@@ -221,11 +223,11 @@ describe("every route under src/app is accounted for", () => {
       .sort();
   }
 
-  it("lists every route as either navigable, under the install, or deliberately nav-less", () => {
+  it("lists every route as either navigable, under an object, or deliberately nav-less", () => {
     const known = new Set<string>([
       ...SCREENS.map((s) => s.href),
       ...ROUTES_WITHOUT_NAV,
-      ...ROUTES_UNDER_INSTALL,
+      ...ROUTES_UNDER_OBJECTS,
     ]);
     const unaccounted = routeDirectories().filter((route) => !known.has(route));
     expect(unaccounted, `routes with no entry in navigation.ts: ${unaccounted.join(", ")}`).toEqual(
@@ -239,10 +241,10 @@ describe("every route under src/app is accounted for", () => {
     expect(missing, `registry entries with no page: ${missing.join(", ")}`).toEqual([]);
   });
 
-  it("points every route under the install at a directory that exists", () => {
+  it("points every route under an object at a directory that exists", () => {
     const routes = new Set(routeDirectories());
-    const missing = ROUTES_UNDER_INSTALL.filter((route) => !routes.has(route));
-    expect(missing, `install sub-routes with no page: ${missing.join(", ")}`).toEqual([]);
+    const missing = ROUTES_UNDER_OBJECTS.filter((route) => !routes.has(route));
+    expect(missing, `object sub-routes with no page: ${missing.join(", ")}`).toEqual([]);
   });
 
   it("excludes exactly login, setup and the runtimes redirect", () => {
@@ -273,31 +275,32 @@ describe("every route under src/app is accounted for", () => {
     // A route in two sets would be answered by whichever the shell asks
     // first, and the disagreement would be invisible until a tree row
     // failed to light.
-    const all = [...SCREENS.map((s) => s.href), ...ROUTES_WITHOUT_NAV, ...ROUTES_UNDER_INSTALL];
+    const all = [...SCREENS.map((s) => s.href), ...ROUTES_WITHOUT_NAV, ...ROUTES_UNDER_OBJECTS];
     expect(new Set(all).size).toBe(all.length);
   });
 });
 
-describe("a page under the install that is not in its menu", () => {
-  it("selects the install root for /backends/add, however the export spells it", () => {
+describe("a page under an object that is not a screen", () => {
+  it("selects the Backends branch for /backends/add, however the export spells it", () => {
     // S2's add-an-app form: the shell asks `defaultSelectionFor` first,
     // which knows only the pages in a menu, and this second. Without it
     // the tree lit nothing and the page menu rendered empty — silently.
-    expect(installSubrouteSelection("/backends/add")).toBe("install");
-    expect(installSubrouteSelection("/backends/add/")).toBe("install");
-    expect(installSubrouteSelection("/backends/add/?from=home")).toBe("install");
-    expect(installSubrouteSelection("/backends")).toBe("install");
+    // Under the Backends branch since 2026-09-29; the install root before.
+    expect(subrouteSelection("/backends/add")).toBe("backends");
+    expect(subrouteSelection("/backends/add/")).toBe("backends");
+    expect(subrouteSelection("/backends/add/?from=home")).toBe("backends");
+    expect(subrouteSelection("/backends")).toBe("backends");
   });
 
   it("answers nothing for every other route", () => {
     // Segment boundary, not string prefix: verified the same way
     // `activeScreen`'s case was — `/backendsmith` starts with `/backends`.
     expect("/backendsmith".startsWith("/backends")).toBe(true);
-    expect(installSubrouteSelection("/backendsmith")).toBeNull();
-    expect(installSubrouteSelection("/login")).toBeNull();
-    expect(installSubrouteSelection("/")).toBeNull();
-    expect(installSubrouteSelection(null)).toBeNull();
-    expect(installSubrouteSelection("")).toBeNull();
+    expect(subrouteSelection("/backendsmith")).toBeNull();
+    expect(subrouteSelection("/login")).toBeNull();
+    expect(subrouteSelection("/")).toBeNull();
+    expect(subrouteSelection(null)).toBeNull();
+    expect(subrouteSelection("")).toBeNull();
   });
 });
 

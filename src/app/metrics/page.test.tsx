@@ -188,8 +188,8 @@ describe("metrics page", () => {
     status = 503;
     render(<MetricsPage />);
     // A bare `/config` has no `?sel=` and renders "Nothing selected".
-    const link = await screen.findByRole("link", { name: "Config page" });
-    expect(link).toHaveAttribute("href", "/config?sel=gateway");
+    const link = await screen.findByRole("link", { name: "Settings page" });
+    expect(link).toHaveAttribute("href", "/config?sel=gateway#metricsEnabled");
   });
 
   it("shows the gateway's own sentence when a read fails, not the status line", async () => {

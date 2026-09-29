@@ -84,6 +84,8 @@ export function ReachCard({
 
   return (
     <section
+      // The Settings page's search answers "firewall" or "advertise" with a link here.
+      id="reach"
       data-testid="home-reach"
       className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3"
     >
@@ -223,8 +225,8 @@ export function ReachCard({
             link is a defect. */}
         To type the address yourself — a machine with several networks, or a container published on
         a different port —{" "}
-        <a href="/config?sel=agent" className="underline">
-          set the advertise address in this machine&rsquo;s Config
+        <a href="/config?sel=agent#advertiseUrl" className="underline">
+          set the advertise address in this machine&rsquo;s Settings
         </a>
         .
       </p>

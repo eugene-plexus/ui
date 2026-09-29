@@ -5,8 +5,10 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { api, describeError } from "@/lib/api";
-import { configGroups } from "@/lib/configPresentation";
+import { configGroups, isFieldVisible } from "@/lib/configPresentation";
+import { invalidateConfigTrio, loadConfigTrio } from "@/lib/configTrio";
 import { parseFolders } from "@/lib/libraryReach";
+import { HIDDEN_KEYS } from "@/lib/settingsTopics";
 import { formatBytesShort } from "@/lib/tasks";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import type { ProxyTarget } from "@/lib/config";
@@ -81,15 +83,56 @@ function componentEndpoints(target: ProxyTarget): ConfigEndpoints {
   };
 }
 
+/**
+ * What a section of the Settings page tells the page about itself, so a
+ * bar at the foot can count unsaved changes across sections and save
+ * them in turn. The functions are stable wrappers over the section's
+ * latest `save` and `discard`; only `dirty` changes.
+ */
+export interface SectionHandle {
+  dirty: number;
+  save: () => Promise<void>;
+  discard: () => void;
+}
+
 export function ConfigEditor({
   target,
   label,
   endpoints,
+  only,
+  compact = false,
+  hint,
+  expandMore = false,
+  focusKey = null,
+  sectionId,
+  onSection,
 }: {
   target: ProxyTarget;
   label: string;
   /** Omitted for a component; see `ConfigEndpoints`. */
   endpoints?: ConfigEndpoints;
+  /**
+   * Render only these keys (a topic's share of the component), in the
+   * schema's order. Absent, every field. The *Show more* fold is decided
+   * on the whole schema either way, so a field folds on the topic page
+   * exactly when it folds on the component's own.
+   */
+  only?: readonly string[];
+  /**
+   * A section of the Settings page: no page header, the owner's name as
+   * a heading, Save and Discard shown only while there is something to
+   * save, and a category heading only where the section spans two.
+   */
+  compact?: boolean;
+  /** Hover text for the compact heading: the implementation noun. */
+  hint?: string;
+  /** Open the fold: a search matched a field behind it. */
+  expandMore?: boolean;
+  /** A field to open on, scroll to and mark: the `#key` of a deep link. */
+  focusKey?: string | null;
+  /** With `onSection`, this section's id in the page's save-all bar. */
+  sectionId?: string;
+  onSection?: (id: string, handle: SectionHandle | null) => void;
 }) {
   const ends = useMemo(() => endpoints ?? componentEndpoints(target), [endpoints, target]);
   const [schema, setSchema] = useState<ConfigSchema | null>(null);
@@ -158,10 +201,9 @@ export function ConfigEditor({
       setSaveError(null);
       setSaveStatus(null);
       try {
-        const [schemaResp, docResp] = await Promise.all([
-          api.get<ConfigSchema>(target, `${ends.config}/schema`),
-          api.get<ConfigDocument>(target, ends.config),
-        ]);
+        // Shared with every other section of the Settings page that is
+        // reading the same component at the same moment.
+        const { schema: schemaResp, doc: docResp } = await loadConfigTrio(target, ends.config);
         if (cancelled) return;
         setSchema(schemaResp);
         setServerDoc(docResp);
@@ -232,6 +274,30 @@ export function ConfigEditor({
 
   useUnsavedChanges(dirtyKeys.size > 0);
 
+  // A search matched a field behind the fold: open it for the person who
+  // searched. Never closes it -- that is theirs to do.
+  useEffect(() => {
+    if (expandMore) setShowMore(true);
+  }, [expandMore]);
+
+  // The page's save-all bar. The handle's functions read the latest
+  // `save`/`discard` through a ref, so the page is told again only when
+  // the count changes rather than on every render.
+  const latest = useRef<{ save: () => Promise<void>; discard: () => void }>({
+    save: async () => {},
+    discard: () => {},
+  });
+  useEffect(() => {
+    if (!sectionId || !onSection) return;
+    const id = sectionId;
+    onSection(id, {
+      dirty: dirtyKeys.size,
+      save: () => latest.current.save(),
+      discard: () => latest.current.discard(),
+    });
+    return () => onSection(id, null);
+  }, [sectionId, onSection, dirtyKeys.size]);
+
   const labels = useMemo(() => {
     const out: Record<string, string> = {};
     for (const f of schema?.fields ?? []) out[f.key] = f.label;
@@ -301,6 +367,8 @@ export function ConfigEditor({
         patch[k] = draft[k];
       }
       const result = await api.patch<ConfigUpdateResult>(target, ends.config, patch);
+      // Whatever another section read a moment ago is out of date now.
+      invalidateConfigTrio(target);
       if (result.rejected.length) setShowMore(true);
       setSaveStatus({
         applied: result.applied,
@@ -419,10 +487,8 @@ export function ConfigEditor({
         }, 1500);
         // Reload schema/doc from the freshly-restarted process.
         try {
-          const [schemaResp, docResp] = await Promise.all([
-            api.get<ConfigSchema>(target, `${ends.config}/schema`),
-            api.get<ConfigDocument>(target, ends.config),
-          ]);
+          invalidateConfigTrio(target);
+          const { schema: schemaResp, doc: docResp } = await loadConfigTrio(target, ends.config);
           setSchema(schemaResp);
           setServerDoc(docResp);
           setDraft({ ...(docResp as Record<string, unknown>), ...refused });
@@ -456,6 +522,30 @@ export function ConfigEditor({
     setRestart({ phase: "idle" });
   }
 
+  latest.current = { save, discard };
+
+  // A deep link's field: open the fold it may be behind, scroll to it and
+  // mark it for a moment. Once per key, after the form exists.
+  const focused = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusKey || loading || !schema || focused.current === focusKey) return;
+    if (!schema.fields.some((f) => f.key === focusKey)) return;
+    if (only && !only.includes(focusKey)) return;
+    focused.current = focusKey;
+    setShowMore(true);
+    const id = window.setTimeout(() => {
+      const row = rootRef.current?.querySelector<HTMLElement>(
+        `[data-config-key="${CSS.escape(focusKey)}"]`,
+      );
+      if (!row) return;
+      row.scrollIntoView({ block: "center" });
+      row.setAttribute("data-focused", "true");
+      row.querySelector<HTMLElement>("input, select, textarea, button")?.focus();
+      window.setTimeout(() => row.removeAttribute("data-focused"), 2500);
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [focusKey, loading, schema, only]);
+
   if (loading) {
     return <p className="p-4 text-sm text-[color:var(--muted)]">Loading {label}…</p>;
   }
@@ -470,19 +560,32 @@ export function ConfigEditor({
     return null;
   }
 
-  const groups = configGroups(
+  // The fold is decided on everything the component serves, THEN the
+  // section's share is taken -- so a topic page and the component's own
+  // page fold the same fields. The wizard's flag and the two dead
+  // appearance knobs are shown nowhere.
+  const all = configGroups(
     schema.component,
-    schema.fields.filter((f) => isFieldVisible(f, draft)),
+    schema.fields.filter((f) => !HIDDEN_KEYS.has(f.key) && isFieldVisible(f, draft)),
   );
+  const inScope = (f: ConfigFieldDef) => !only || only.includes(f.key);
+  const groups = { common: all.common.filter(inScope), more: all.more.filter(inScope) };
   const categories = schema.categories ?? {};
   const hiddenChanges = groups.more.filter((f) => dirtyKeys.has(f.key)).length;
+  const dirtyInScope = [...dirtyKeys].filter((k) => !only || only.includes(k)).length;
+  // A compact section names its category only where it spans two: one
+  // heading under a card that already says the topic is a caption.
+  const spanned = new Set([...groups.common, ...groups.more].map((f) => f.category));
+  const showCategoryHeadings = !compact || spanned.size > 1;
 
   function renderCategories(fields: ConfigFieldDef[]) {
     return Object.entries(groupByCategory(fields)).map(([category, entries]) => (
-      <section key={category} className="mb-6">
-        <h3 className="mb-2 font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
-          {categories[category] ?? category}
-        </h3>
+      <section key={category} className={compact ? "mb-3" : "mb-6"}>
+        {showCategoryHeadings && (
+          <h3 className="mb-2 font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
+            {categories[category] ?? category}
+          </h3>
+        )}
         {entries.map((f) => (
           <ConfigFieldInput
             key={f.key}
@@ -502,50 +605,41 @@ export function ConfigEditor({
     ));
   }
 
-  return (
-    <div ref={rootRef} className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
-        <div>
-          <h2 className="text-sm font-semibold">{label}</h2>
-          <p className="text-[0.6875rem] text-[color:var(--muted)]">{schema.component}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-[color:var(--muted)]">
-            {dirtyKeys.size === 0 ? "no changes" : `${dirtyKeys.size} change(s)`}
-          </span>
-          {dirtyKeys.size > 0 && (
-            <ConfirmButton
-              label="Discard"
-              confirmLabel="Discard changes"
-              prompt="Put every field back as it was saved?"
-              onConfirm={discard}
-              disabled={saving}
-              testId="config-discard"
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
-            />
-          )}
-          {ends.canTest && (
-            <button
-              type="button"
-              onClick={test}
-              disabled={testing || saving}
-              title="Test the current draft against the running services without committing it."
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
-            >
-              {testing ? "Testing…" : "Test"}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={save}
-            disabled={dirtyKeys.size === 0 || saving}
-            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </header>
+  const discardButton = (
+    <ConfirmButton
+      label="Discard"
+      confirmLabel="Discard changes"
+      prompt="Put every field back as it was saved?"
+      onConfirm={discard}
+      disabled={saving}
+      testId="config-discard"
+      className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+    />
+  );
+  const testButton = ends.canTest && (
+    <button
+      type="button"
+      onClick={test}
+      disabled={testing || saving}
+      title="Test the current draft against the running services without committing it."
+      className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+    >
+      {testing ? "Testing…" : "Test"}
+    </button>
+  );
+  const saveButton = (
+    <button
+      type="button"
+      onClick={save}
+      disabled={dirtyKeys.size === 0 || saving}
+      className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
+    >
+      {saving ? "Saving…" : "Save"}
+    </button>
+  );
 
+  const banners = (
+    <>
       {testStatus && <TestStatusBanner status={testStatus} />}
       {saveError && (
         <div
@@ -557,30 +651,95 @@ export function ConfigEditor({
         </div>
       )}
       {saveStatus && <SaveStatusBanner status={saveStatus} labels={labels} />}
+    </>
+  );
 
-      <div className="flex-1 overflow-y-auto p-4">
-        {renderCategories(groups.common)}
-        {groups.more.length > 0 && (
-          <div className="border-t border-[color:var(--border)] pt-3">
-            <button
-              type="button"
-              aria-expanded={showMore}
-              aria-controls={moreId}
-              onClick={() => setShowMore(!showMore)}
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm"
-            >
-              {showMore ? "Show less" : "Show more"} · {groups.more.length} settings
-              {hiddenChanges > 0 && ` · ${hiddenChanges} unsaved`}
-            </button>
-            <p className="my-2 text-sm text-[color:var(--muted)]">
-              These settings usually work with their defaults.
-            </p>
-            <div id={moreId} hidden={!showMore}>
-              {renderCategories(groups.more)}
-            </div>
+  const body = (
+    <>
+      {renderCategories(groups.common)}
+      {groups.more.length > 0 && (
+        <div className="border-t border-[color:var(--border)] pt-3">
+          <button
+            type="button"
+            aria-expanded={showMore}
+            aria-controls={moreId}
+            onClick={() => setShowMore(!showMore)}
+            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm"
+          >
+            {showMore ? "Show less" : "Show more"} · {groups.more.length}{" "}
+            {groups.more.length === 1 ? "setting" : "settings"}
+            {hiddenChanges > 0 && ` · ${hiddenChanges} unsaved`}
+          </button>
+          <p className="my-2 text-sm text-[color:var(--muted)]">
+            These settings usually work with their defaults.
+          </p>
+          <div id={moreId} hidden={!showMore}>
+            {renderCategories(groups.more)}
           </div>
+        </div>
+      )}
+    </>
+  );
+
+  if (compact) {
+    // A section of a topic card: the owner's name, the fields, and the
+    // buttons only while there is something for them to do. A dirty count
+    // elsewhere in the component (another section's edits) is not this
+    // section's to report, so the count is of the fields it shows.
+    return (
+      <div
+        ref={rootRef}
+        data-testid="settings-section"
+        data-target={target}
+        data-dirty={dirtyInScope}
+        className="flex flex-col"
+      >
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-ui text-sm font-semibold" title={hint}>
+            {label}
+          </h3>
+          {dirtyInScope > 0 && (
+            <div className="flex items-center gap-2" data-testid="section-actions">
+              <span className="text-sm text-[color:var(--muted)]">{dirtyInScope} unsaved</span>
+              {discardButton}
+              {testButton}
+              {saveButton}
+            </div>
+          )}
+        </div>
+        {banners}
+        {body}
+        {restart.phase !== "idle" && (
+          <RestartProgressModal
+            phase={restart.phase}
+            message={restart.message}
+            onDismiss={dismissRestart}
+          />
         )}
       </div>
+    );
+  }
+
+  return (
+    <div ref={rootRef} className="flex h-full flex-col">
+      <header className="flex items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold">{label}</h2>
+          <p className="text-[0.6875rem] text-[color:var(--muted)]">{schema.component}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-[color:var(--muted)]">
+            {dirtyKeys.size === 0 ? "no changes" : `${dirtyKeys.size} change(s)`}
+          </span>
+          {dirtyKeys.size > 0 && discardButton}
+          {testButton}
+          {saveButton}
+        </div>
+      </header>
+
+      {banners}
+
+      <div className="flex-1 overflow-y-auto p-4">{body}</div>
 
       {/* v0.2.x: RestartRequiredModal removed — save() auto-triggers
           performRestart() when the patch requires it, and the progress
@@ -790,26 +949,6 @@ function groupByCategory(fields: ConfigFieldDef[]): Record<string, ConfigFieldDe
     out[f.category]!.push(f);
   }
   return out;
-}
-
-/**
- * Honor `ConfigField.showWhen`: only render the field when another field's
- * current draft value matches the predicate. The spec supports two forms:
- *
- *   - scalar `equals`: literal equality against the referenced field's value
- *   - array  `equals`: set-membership — fires when the value matches any entry
- *
- * The array form is what lets a single `apiKey` field declare itself
- * applicable to several enum entries (`provider` ∈ {openai, xai, …}).
- */
-function isFieldVisible(field: ConfigFieldDef, draft: Record<string, unknown>): boolean {
-  if (!field.showWhen) return true;
-  const target = JSON.stringify(draft[field.showWhen.key]);
-  const equals = field.showWhen.equals as unknown;
-  if (Array.isArray(equals)) {
-    return equals.some((e) => JSON.stringify(e) === target);
-  }
-  return JSON.stringify(equals) === target;
 }
 
 /**

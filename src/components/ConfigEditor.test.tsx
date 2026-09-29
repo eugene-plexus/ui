@@ -343,3 +343,23 @@ it("keeps a refusal and its typed value through the restart the rest of the save
   expect(screen.getByDisplayValue("not a url")).toBeInTheDocument();
   expect(screen.getByText(/Invalid address/, { selector: "li" })).toBeInTheDocument();
 });
+
+it("shows neither the wizard's flag nor the dead appearance knobs, whichever page renders it", async () => {
+  // HIDDEN_KEYS (settingsTopics.ts): the Settings page filters them
+  // before the editor sees them, so this is the editor's own guard, for
+  // the plain page a backend or an app gets.
+  fields.push(
+    {
+      key: "firstRunComplete",
+      label: "First-run setup complete",
+      category: "library",
+      valueType: "boolean",
+    },
+    { key: "uiTheme", label: "Theme", category: "library", valueType: "string" },
+  );
+  doc = { ...doc, firstRunComplete: true, uiTheme: "dark" };
+  render(<ConfigEditor target="library" label="Library" />);
+  expect(await screen.findByLabelText("modelRoots")).toBeInTheDocument();
+  expect(screen.queryByLabelText("First-run setup complete")).toBeNull();
+  expect(screen.queryByLabelText("Theme")).toBeNull();
+});

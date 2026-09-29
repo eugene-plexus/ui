@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { api } from "@/lib/api";
 import { accentVar, layerOf } from "@/lib/navigation";
@@ -51,6 +59,23 @@ const TWIST_BOX =
   "flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--radius)] text-[0.625rem]";
 
 const EMPTY: Topology = { localNode: null, nodes: [], components: [] };
+
+/**
+ * The topology the shell built its tree from, for the page inside it.
+ *
+ * A page that needs the install's machines -- Settings lists one section
+ * per machine -- reads it from here rather than fetching its own, for
+ * the reason `useTopology` was hoisted in the first place: two fetches
+ * of the same thing disagree the moment one answers and the other has
+ * not. Absent a provider (a page rendered without the shell, in a test)
+ * the hook answers the empty topology, which is what the shell itself
+ * starts from.
+ */
+export const TopologyContext = createContext<{ topology: Topology; ready: boolean } | null>(null);
+
+export function useSharedTopology(): { topology: Topology; ready: boolean } {
+  return useContext(TopologyContext) ?? { topology: EMPTY, ready: false };
+}
 
 /**
  * How often the tree asks again. It used to ask once, when the shell
@@ -322,8 +347,11 @@ function Row({
             // The whole name on hover. A leaf is about 19 characters wide
             // in the column, and a driver's name is the model's plus a
             // profile and "-driver" -- the part that tells two profiles
-            // or quants apart is the part that was cut off.
-            title={node.hint ? `${node.label} · ${node.hint}` : node.label}
+            // or quants apart is the part that was cut off. The
+            // implementation noun rides here too (`expert`), so the
+            // design documents' words are one hover away from the
+            // hobbyist's.
+            title={rowTitle(node)}
             data-tree-sel={node.sel}
             data-layer={node.layer ?? "install"}
             className={`font-ui flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius)] px-1.5 py-1 text-sm transition-colors hover:bg-[color:var(--panel-hover)] ${
@@ -386,6 +414,14 @@ function Row({
       )}
     </div>
   );
+}
+
+/** The hover text for a row: its whole label, its hint, and the implementation noun. */
+export function rowTitle(node: Pick<TreeNode, "label" | "hint" | "expert">): string {
+  const parts = [node.label];
+  if (node.hint) parts.push(node.hint);
+  if (node.expert && node.expert !== node.label.toLowerCase()) parts.push(node.expert);
+  return parts.join(" · ");
 }
 
 /**

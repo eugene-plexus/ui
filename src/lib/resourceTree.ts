@@ -44,6 +44,23 @@
  *    not change shape across that flip, so every link, every bookmark
  *    and every `parseSelection` case keeps working. `machineKeys` is the
  *    one place the count is taken.
+ *
+ * And two from the reorganisation of 2026-09-29
+ * (`specs/docs/design/ui-settings-reorganisation.md`), on Troy's report
+ * that the page which starts and stops a model lived on the install root
+ * while the branch called *Inference drivers* held only each driver's
+ * config:
+ *
+ * 5. **The branch that lists the backends owns the page about them.**
+ *    `Backends` is selectable; its Overview IS the Inference page, and a
+ *    backend's Overview is the same page opened on that backend. "Which
+ *    pages an object has depends on its kind" still holds — the kind
+ *    gained the page it always deserved, and no page was invented.
+ * 6. **Machines is one branch**: the control root's registry page at the
+ *    top and each machine (its agent) underneath, on a one-box install
+ *    too. The labels a hobbyist reads — Backends, Machines, Settings,
+ *    This machine — are the tree's; the implementation nouns ride in
+ *    hover text (`expert`), per hobbyist-ux.md decision #12's condition.
  */
 
 import { layerOf, type IconName, type Layer, type LayerId } from "./navigation";
@@ -113,6 +130,12 @@ export interface TreeNode {
   node?: string | null;
   /** Rendered muted beside the label. */
   hint?: string;
+  /**
+   * The implementation noun for the row — `inference drivers`, `control
+   * root`, `agent` — shown on hover only. The label says what a person
+   * calls the thing; this says what the design documents call it.
+   */
+  expert?: string;
   /** True for the row describing the machine the browser is talking to. */
   local?: boolean;
 }
@@ -123,30 +146,38 @@ export const DEFAULT_INSTALL_NAME = "Eugene Plexus";
 /** What an unenrolled machine is called, since it has no name of its own. */
 export const THIS_MACHINE = "This machine";
 
-type SingletonKind = "gateway" | "library" | "control";
+type SingletonKind = "gateway" | "library";
 
 /**
- * Branch order is the registry's layer order, so the tree reads down the
- * architecture page: the gateway, then the drivers under it, then the
- * three services beside the request path.
+ * Branch order is the order of a hobbyist's questions, which is also the
+ * order of Home's cards: get a model, run it, connect an app, add a
+ * machine. It was the architecture page's order (gateway first) until
+ * 2026-09-29; the layer map still reads that way for whoever wants the
+ * request path. One array — Troy's to reorder.
+ *
+ * `expert` is the implementation noun the design documents use, shown on
+ * hover; the label is what the row is called.
  */
-const BRANCH_ORDER: ReadonlyArray<{ layer: LayerId; label: string }> = [
-  { layer: "gateway", label: "Gateway" },
-  { layer: "drivers", label: "Inference drivers" },
-  { layer: "agent", label: "Agents" },
-  { layer: "library", label: "Library" },
-  { layer: "control", label: "Control root" },
+const BRANCH_ORDER: ReadonlyArray<{ layer: LayerId; label: string; expert: string }> = [
+  { layer: "library", label: "Library", expert: "library" },
+  { layer: "drivers", label: "Backends", expert: "inference drivers" },
+  { layer: "gateway", label: "Gateway", expert: "gateway" },
+  { layer: "control", label: "Machines", expert: "control root and agents" },
 ];
+
+/** The page menu's word for every component's settings page. */
+const SETTINGS: PageRef = { id: "config", label: "Settings", route: "/config", icon: "Server" };
 
 /**
  * The pages each kind of object owns.
  *
- * **Two of these are one item long and that is deliberate.** The UI has
- * seven screens and the tree has more objects than that, so an agent and
- * a driver each show only Config today. Inventing an overview to fill
- * the column would be adding product under cover of a navigation change;
- * what the tree does instead is make the empty slot obvious. The data
- * for an agent overview already exists at `GET /v1/node`.
+ * **No page here was invented for the tree.** A backend's Overview is
+ * the Inference page opened on that backend; Machines' Overview is the
+ * Nodes page. The 2026-09-13 rule stands — inventing an overview to fill
+ * a column would be adding product under cover of a navigation change —
+ * and what changed on 2026-09-29 is which object the existing pages
+ * hang on: the Inference page belongs to the branch that lists the
+ * backends, not to the install root.
  */
 const PAGES: Record<string, PageRef[]> = {
   install: [
@@ -158,17 +189,16 @@ const PAGES: Record<string, PageRef[]> = {
     // added there.
     { id: "home", label: "Home", route: "/", icon: "Monitor" },
     { id: "playground", label: "Playground", route: "/playground", icon: "Terminal" },
-    { id: "inference", label: "Inference", route: "/inference", icon: "Cpu" },
     // The app catalogue and every installed app, on every machine. On the
     // install root because installing is a question about the install --
     // which machine is a picker on the page, the way Library's launch is.
     { id: "apps", label: "Apps", route: "/apps", icon: "Blocks" },
     // Every machine's log on one timeline (2026-09-27).
     { id: "logs", label: "Logs", route: "/logs", icon: "ScrollText" },
-    // Theme and font size. Browser-local, not install-wide, and the page
-    // says so -- but it has to hang somewhere in a tree of objects, and
-    // the install root is the only row that is not a component.
-    { id: "preferences", label: "Preferences", route: "/config", icon: "Monitor" },
+    // Every setting on the install, by topic, with a search box
+    // (2026-09-29). The browser's own theme and font size are its last
+    // card, which is where Preferences went.
+    SETTINGS,
   ],
   gateway: [
     { id: "metrics", label: "Metrics", route: "/metrics", icon: "Radio" },
@@ -177,32 +207,41 @@ const PAGES: Record<string, PageRef[]> = {
     // failure mode — a misspelled target — needs the routing table on
     // screen while editing (2026-09-21).
     { id: "routing", label: "Routing", route: "/routing", icon: "Route" },
-    { id: "config", label: "Config", route: "/config", icon: "Server" },
+    SETTINGS,
   ],
   library: [
     { id: "models", label: "Models", route: "/library", icon: "Database" },
-    // Folders and their reach, every node at once (2026-09-14). Second,
-    // not first: on the commonest install -- one box -- Models is what the
-    // operator came for, and Folders says "same path" three times.
-    { id: "folders", label: "Folders", route: "/library/folders", icon: "FolderTree" },
     { id: "discover", label: "Discover", route: "/discover", icon: "FolderOpen" },
-    { id: "config", label: "Config", route: "/config", icon: "Server" },
+    // Folders and their reach, every node at once (2026-09-14). After
+    // Discover since 2026-09-29: on the commonest install -- one box --
+    // Models is what the operator came for, getting more is the next
+    // question, and Folders says "same path" three times.
+    { id: "folders", label: "Folders", route: "/library/folders", icon: "FolderTree" },
+    SETTINGS,
   ],
   // A machine under Library: not an instance of the library, but how that
   // machine reaches it. One page, deliberately -- the object exists so an
   // operator can set a node's override from the Library branch, with a
   // picker that browses THAT node, without visiting an agent page.
   libraryNode: [{ id: "folders", label: "Folders", route: "/library/folders", icon: "FolderTree" }],
-  control: [
-    { id: "nodes", label: "Nodes", route: "/nodes", icon: "ShieldCheck" },
-    { id: "config", label: "Config", route: "/config", icon: "Server" },
+  // The branch that lists the backends: what is serving, where, with
+  // start, stop and the engines line -- the Inference page -- and the
+  // form that adds one the person already runs.
+  backends: [
+    { id: "overview", label: "Overview", route: "/inference", icon: "Cpu" },
+    { id: "add", label: "Add a backend", route: "/backends/add", icon: "Cloud" },
   ],
+  // A machine's group under Backends: the same page, that machine only.
+  backendsNode: [{ id: "overview", label: "Overview", route: "/inference", icon: "Cpu" }],
+  control: [{ id: "overview", label: "Overview", route: "/nodes", icon: "ShieldCheck" }, SETTINGS],
   agent: [
-    { id: "config", label: "Config", route: "/config", icon: "Server" },
+    SETTINGS,
     // That machine's own log: its agent and everything it runs.
     { id: "logs", label: "Logs", route: "/logs", icon: "ScrollText" },
   ],
-  driver: [{ id: "config", label: "Config", route: "/config", icon: "Server" }],
+  // A backend: its row on the Inference page, with the actions, and its
+  // own settings.
+  driver: [{ id: "overview", label: "Overview", route: "/inference", icon: "Cpu" }, SETTINGS],
   // An installed app. Settings is listed for every app, though a custom
   // app may publish none: which pages an object has depends on its kind,
   // never on data that arrives later (see `pagesForSelection`), and the
@@ -240,15 +279,17 @@ export function buildTree(topology: Topology): TreeNode {
   for (const branch of BRANCH_ORDER) {
     const layer = layerOf(branch.layer);
     if (branch.layer === "drivers") {
-      children.push(driverBranch(layer, branch.label, nodes, machines, drivers, localNode));
-    } else if (branch.layer === "agent") {
-      children.push(agentBranch(layer, branch.label, nodes, machines, localNode));
+      children.push(
+        driverBranch(layer, branch.label, branch.expert, nodes, machines, drivers, localNode),
+      );
+    } else if (branch.layer === "control") {
+      children.push(machinesBranch(layer, branch.label, branch.expert, nodes, localNode));
     } else if (branch.layer === "library") {
       // The deliberate exception to "machines only under kinds that
       // multiply" (design §5.1): a machine under Library is how that
       // machine reaches the Library, and the Folders page for one node
       // has to hang off something in the Library branch.
-      const singleton = singletonLeaf(layer, branch.label, components, localNode);
+      const singleton = singletonLeaf(layer, branch.label, branch.expert, components, localNode);
       if (singleton) {
         children.push({
           ...singleton,
@@ -256,7 +297,7 @@ export function buildTree(topology: Topology): TreeNode {
         });
       }
     } else {
-      const singleton = singletonLeaf(layer, branch.label, components, localNode);
+      const singleton = singletonLeaf(layer, branch.label, branch.expert, components, localNode);
       if (singleton) children.push(singleton);
     }
   }
@@ -360,10 +401,11 @@ export function machineCount(topology: Topology): number {
 function singletonLeaf(
   layer: Layer,
   label: string,
+  expert: string,
   components: ComponentPlacement[],
   localNode: string | null,
 ): TreeNode | null {
-  const kind = layer.id === "control" ? "control" : layer.id;
+  const kind = layer.id as SingletonKind;
   const found = components.find((c) => c.kind === kind);
   if (!found) return null;
   const owner = found.node ?? localNode;
@@ -375,55 +417,45 @@ function singletonLeaf(
     icon: layer.icon,
     node: owner,
     children: [],
-    pages: PAGES[kind as SingletonKind] ?? [],
+    pages: PAGES[kind] ?? [],
     hint: owner ?? undefined,
+    expert,
   };
 }
 
 /**
- * One leaf per machine — or, with one machine, the branch IS the leaf.
+ * Machines: the control root's registry at the top, one leaf per machine
+ * underneath (2026-09-29; before it, `Agents` and `Control root` were two
+ * branches, and the machine's own settings sat under a word — agent —
+ * that means nothing to the audience).
+ *
+ * **The branch always exists.** The control root may be sealed or
+ * unreachable — the case the install root is the root FOR — and this
+ * machine still has settings and a log, so the branch is built from the
+ * registry plus this machine, never from the root's placement. Its
+ * Overview is the Nodes page, which explains a locked root itself.
+ *
+ * **The machine leaf renders on a one-box install too.** hobbyist-ux.md
+ * §6.4 hid the machine level because FOUR rows read "This machine"; this
+ * is one row, and it replaces the `Agent · this machine` leaf that stood
+ * on its own before. The `sel` tokens are unchanged: the bare `agent` on
+ * a machine with no name yet — the token the Config page has always used
+ * for the local one — and `agent:<name>` once enrolled, so the flip from
+ * one machine to two moves nothing. `findSelected` still maps a bare
+ * `agent` onto the `local` row (design §13.2).
  *
  * An agent is not a component, so the node registry is the source rather
  * than `/v1/components`; a machine a driver names but the registry lacks
- * gets no agent leaf, because the UI has no evidence of an agent there
- * (design §14.2).
- *
- * **A standalone install has no node name at all** — it is not enrolled,
- * so `GET /v1/node` carries none and the registry is empty. That is the
- * commonest shape there is (one box, first run), and it still has an
- * agent to configure, so its leaf's `sel` is the bare `agent` that the
- * Config page has always used for the local one. An enrolled node that
- * is alone gets `agent:<name>` — the same token the two-machine shape
- * gives that row — so the flip from one machine to two moves the row and
- * changes nothing about how it is addressed. `findSelected` still maps
- * the bare `agent` a query-less `/config` asks for onto the `local` row,
- * whichever shape it is in (design §13.2).
+ * gets no leaf here, because the UI has no evidence of an agent there
+ * (design §14.2) — it shows under Backends, flagged.
  */
-function agentBranch(
+function machinesBranch(
   layer: Layer,
   label: string,
+  expert: string,
   nodes: string[],
-  machines: ReadonlyArray<string | null>,
   localNode: string | null,
 ): TreeNode {
-  if (machines.length === 1) {
-    const machine = machines[0] ?? null;
-    return {
-      sel: machine ? `agent:${machine}` : "agent",
-      kind: "leaf",
-      // Singular: one machine has one agent, and a plural over a single
-      // row is exactly the "fleet you do not have" the design removes.
-      label: "Agent",
-      layer: layer.id,
-      icon: layer.icon,
-      node: machine,
-      children: [],
-      pages: PAGES.agent ?? [],
-      hint: machine === localNode ? "this machine" : (machine ?? undefined),
-      local: machine === localNode,
-    };
-  }
-
   const children: TreeNode[] =
     nodes.length === 0
       ? [
@@ -431,12 +463,13 @@ function agentBranch(
             sel: "agent",
             kind: "leaf" as const,
             label: localNode ?? THIS_MACHINE,
-            layer: layer.id,
-            icon: layer.icon,
+            layer: "agent",
+            icon: layerOf("agent").icon,
             node: localNode,
             children: [],
             pages: PAGES.agent ?? [],
             hint: "this machine",
+            expert: "agent",
             local: true,
           },
         ]
@@ -444,23 +477,26 @@ function agentBranch(
           sel: `agent:${name}`,
           kind: "leaf" as const,
           label: name,
-          layer: layer.id,
-          icon: layer.icon,
+          layer: "agent" as const,
+          icon: layerOf("agent").icon,
           node: name,
           children: [],
           pages: PAGES.agent ?? [],
           hint: name === localNode ? "this machine" : undefined,
+          expert: "agent",
           local: name === localNode,
         }));
 
   return {
-    sel: null,
+    sel: "control",
     kind: "branch",
     label,
     layer: layer.id,
     icon: layer.icon,
+    node: null,
     children,
-    pages: [],
+    pages: PAGES.control ?? [],
+    expert,
   };
 }
 
@@ -513,8 +549,10 @@ function libraryNodeLeaves(
 }
 
 /**
- * Node groups, each holding that machine's drivers — or, with one
- * machine, the drivers themselves straight under the type.
+ * Backends: the branch is selectable and its Overview is the Inference
+ * page (2026-09-29); under it, node groups each holding that machine's
+ * drivers — or, with one machine, the drivers themselves straight under
+ * the type.
  *
  * **A machine with no drivers still appears, as an empty group.** Hiding
  * it would make "this machine is running nothing" indistinguishable from
@@ -531,11 +569,14 @@ function libraryNodeLeaves(
  * **A leaf's `sel` is the same in both shapes**: `driver:<name>@<node>`
  * when the machine has a name, `driver:<name>` when it has none. The
  * machine is carried in the token, not in the row above it, which is
- * what lets a link written on one shape land on the other.
+ * what lets a link written on one shape land on the other. A group's is
+ * `backends:node:<name>` (`backends:node` for the nameless local one),
+ * which opens the Overview on that machine alone.
  */
 function driverBranch(
   layer: Layer,
   label: string,
+  expert: string,
   nodes: string[],
   machines: ReadonlyArray<string | null>,
   drivers: ComponentPlacement[],
@@ -552,6 +593,7 @@ function driverBranch(
     node: key,
     children: [],
     pages: PAGES.driver ?? [],
+    expert: "inference driver",
   });
   const hintFor = (key: string | null, count: number): string | undefined =>
     !(key === null || nodes.includes(key))
@@ -565,40 +607,44 @@ function driverBranch(
     // driver's key in the list, and the list has one entry.
     const key = machines[0] ?? null;
     return {
-      sel: null,
+      sel: "backends",
       kind: "branch",
       label,
       layer: layer.id,
       icon: layer.icon,
+      node: null,
       children: [...drivers].sort(byName).map((d) => leaf(d, key)),
-      pages: [],
+      pages: PAGES.backends ?? [],
       hint: hintFor(key, drivers.length),
+      expert,
     };
   }
 
   const groups: TreeNode[] = machines.map((key) => {
     const mine = drivers.filter((d) => keyOf(d) === key).sort(byName);
     return {
-      sel: null,
+      sel: key ? `backends:node:${key}` : "backends:node",
       kind: "nodeGroup" as const,
       label: key ?? localNode ?? THIS_MACHINE,
       layer: layer.id,
       icon: layer.icon,
       node: key,
       children: mine.map((d) => leaf(d, key)),
-      pages: [],
+      pages: PAGES.backendsNode ?? [],
       hint: hintFor(key, mine.length),
     };
   });
 
   return {
-    sel: null,
+    sel: "backends",
     kind: "branch",
     label,
     layer: layer.id,
     icon: layer.icon,
+    node: null,
     children: groups,
-    pages: [],
+    pages: PAGES.backends ?? [],
+    expert,
   };
 }
 
@@ -670,9 +716,23 @@ function appBranch(
 /* ────────────────────────────── selection ───────────────────────────── */
 
 export interface Selection {
-  /** `install`, `gateway`, `library`, `libraryNode`, `control`, `agent`, `driver`, or `app`. */
-  type: "install" | "gateway" | "library" | "libraryNode" | "control" | "agent" | "driver" | "app";
-  /** The machine, for an agent, a driver, an app, or a node under the Library. */
+  /**
+   * `install`; `gateway`, `library` and `control` (the Machines branch);
+   * `backends` (the branch) and `backendsNode` (a machine's group under
+   * it); `libraryNode`; `agent` (a machine); `driver` (a backend); `app`.
+   */
+  type:
+    | "install"
+    | "gateway"
+    | "library"
+    | "libraryNode"
+    | "backends"
+    | "backendsNode"
+    | "control"
+    | "agent"
+    | "driver"
+    | "app";
+  /** The machine, for an agent, a driver, an app, or a node under the Library or Backends. */
   node: string | null;
   /** The driver's own name, or the app's id. */
   name: string | null;
@@ -697,7 +757,13 @@ export function parseSelection(raw: string | null | undefined): Selection | null
     const node = value.slice("library:node:".length);
     return node ? { type: "libraryNode", node, name: null } : null;
   }
-  if (value === "gateway" || value === "library" || value === "control") {
+  // A machine's group under Backends, mirroring the Library's shape.
+  if (value === "backends:node") return { type: "backendsNode", node: null, name: null };
+  if (value.startsWith("backends:node:")) {
+    const node = value.slice("backends:node:".length);
+    return node ? { type: "backendsNode", node, name: null } : null;
+  }
+  if (value === "gateway" || value === "library" || value === "control" || value === "backends") {
     return { type: value, node: null, name: null };
   }
   // The bare `agent` is the local one on a machine with no name yet,
@@ -732,11 +798,14 @@ export function formatSelection(selection: Selection): string {
     case "gateway":
     case "library":
     case "control":
+    case "backends":
       return selection.type;
     case "agent":
       return selection.node ? `agent:${selection.node}` : "agent";
     case "libraryNode":
       return selection.node ? `library:node:${selection.node}` : "library:node";
+    case "backendsNode":
+      return selection.node ? `backends:node:${selection.node}` : "backends:node";
     case "driver":
     case "app":
       return selection.node
@@ -821,9 +890,13 @@ export function configTabFor(selection: Selection, localNode: string | null): st
     case "driver":
       return selection.name;
     // An app's settings are its own page, not a Config tab: the agent
-    // serves them on the app's behalf at `/v1/apps/{id}/config`.
+    // serves them on the app's behalf at `/v1/apps/{id}/config`. The
+    // install root's Settings is every component at once, and the
+    // Backends rows have no settings of their own.
     case "app":
     case "install":
+    case "backends":
+    case "backendsNode":
       return null;
   }
 }
@@ -838,7 +911,8 @@ export function configTabFor(selection: Selection, localNode: string | null): st
  * arrives with the tree already pointing at the right row.
  *
  * `/config` is the only ambiguous one, and it is resolved from the
- * `?tab=` that page has always taken.
+ * `?tab=` that page has always taken. Bare, it is every setting on the
+ * install (2026-09-29); it used to be this machine's agent.
  */
 export function defaultSelectionFor(
   pathname: string | null | undefined,
@@ -854,9 +928,13 @@ export function defaultSelectionFor(
     // both are the install's own pages.
     case "/":
     case "/playground":
-    case "/inference":
     case "/apps":
       return "install";
+    // The Inference page and the add-a-backend form belong to the branch
+    // that lists the backends (2026-09-29).
+    case "/inference":
+    case "/backends/add":
+      return "backends";
     case "/metrics":
     case "/routing":
       return "gateway";
@@ -867,7 +945,7 @@ export function defaultSelectionFor(
     case "/nodes":
       return "control";
     case "/config":
-      return selectionFromConfigTab(tab) ?? "agent";
+      return selectionFromConfigTab(tab) ?? "install";
     default:
       return null;
   }
@@ -931,6 +1009,14 @@ export function findSelected(root: TreeNode, sel: string | null): TreeNode | nul
     // `local` is reserved for the one row that IS the browser's machine
     // (its agent); the Library leaf for that machine is found by node.
     return machineRows.find((n) => (n.node ?? null) === localNodeOf(root)) ?? null;
+  }
+  if (selection.type === "backendsNode") {
+    // The same flip as the Library's: one machine has no groups, so a
+    // group link lands on the branch, whose Overview is the same page.
+    const groupRows = rows.filter((n) => n.sel?.startsWith("backends:node"));
+    if (groupRows.length === 0) return findNode(root, "backends");
+    if (selection.node) return null;
+    return groupRows.find((n) => (n.node ?? null) === localNodeOf(root)) ?? null;
   }
   if (
     (selection.type === "driver" || selection.type === "app") &&

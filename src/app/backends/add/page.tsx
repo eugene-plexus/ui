@@ -293,7 +293,7 @@ export default function AddBackendPage() {
               {!phase.account && (
                 <p className="mt-3 text-sm leading-relaxed text-[color:var(--muted)]">
                   Choosing later is fine. The app will not answer anything until a model is set,
-                  under Config.
+                  under Settings.
                 </p>
               )}
             </section>
@@ -309,7 +309,7 @@ export default function AddBackendPage() {
                     and serves {phase.account.exposed}{" "}
                     {phase.account.exposed === 1 ? "model" : "models"}, each named{" "}
                     <span className="font-mono">{phase.name}/</span> and the name the app gives it.
-                    Keep fewer under Config, in Models to use.
+                    Keep fewer under Settings, in Models to use.
                   </>
                 ) : phase.modelId ? (
                   <>
@@ -317,7 +317,7 @@ export default function AddBackendPage() {
                     and answers for <span className="font-mono">{phase.modelId}</span>.
                   </>
                 ) : (
-                  <>. It has no model yet, so set one under Config before it can answer.</>
+                  <>. It has no model yet, so set one under Settings before it can answer.</>
                 )}
               </p>
               <div className="flex flex-wrap items-center gap-3">

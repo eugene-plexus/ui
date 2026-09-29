@@ -296,10 +296,11 @@ function Catalogue({
     }
   }
 
+  // Opened on the one field it is about.
   const configHref =
     !chosen || chosen === localNode
-      ? "/config?tab=agent&sel=agent"
-      : `/config?tab=${encodeURIComponent(`node:${chosen}`)}&sel=${encodeURIComponent(`agent:${chosen}`)}`;
+      ? "/config?tab=agent&sel=agent#allowCustomApps"
+      : `/config?tab=${encodeURIComponent(`node:${chosen}`)}&sel=${encodeURIComponent(`agent:${chosen}`)}#allowCustomApps`;
 
   return (
     <section aria-labelledby="catalogue-heading" className="flex flex-col gap-3">

@@ -200,8 +200,10 @@ describe("describeAdmission: the context that would fit", () => {
 
 describe("configTabHref", () => {
   it("links to the node's agent tab", () => {
-    expect(configTabHref("node:Amish_Station")).toBe("/config?tab=node%3AAmish_Station");
-    expect(configTabHref("agent")).toBe("/config?tab=agent");
+    expect(configTabHref("node:Amish_Station")).toBe(
+      "/config?tab=node%3AAmish_Station#pathMappings",
+    );
+    expect(configTabHref("agent")).toBe("/config?tab=agent#pathMappings");
   });
 });
 

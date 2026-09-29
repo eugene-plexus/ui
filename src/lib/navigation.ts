@@ -251,8 +251,10 @@ export const SCREENS: readonly Screen[] = [
       "Priority lists: which backends serve each model name, and what is tried when they fail.",
   },
   {
+    // The page is the Backends branch's Overview since 2026-09-29; the
+    // route keeps its name because scripts and bookmarks carry it.
     href: "/inference",
-    label: "Inference",
+    label: "Backends",
     icon: "Cpu",
     layer: "drivers",
     spans: ["engines", "hardware"],
@@ -276,11 +278,12 @@ export const SCREENS: readonly Screen[] = [
   },
   {
     href: "/config",
-    label: "Config",
+    label: "Settings",
     icon: "Server",
     layer: "agent",
     spans: ["gateway", "library", "control"],
-    blurb: "Every component's settings, one tab per component per machine.",
+    blurb:
+      "Every setting on the install, by topic, with a search box; a component's own page shows its share.",
   },
   {
     // Every machine's log, like `docker logs` (2026-09-27). Filed under
@@ -294,12 +297,14 @@ export const SCREENS: readonly Screen[] = [
     blurb: "Every machine's log, and every model and service each one runs, live.",
   },
   {
+    // The Machines branch's Overview (2026-09-29); the route keeps its
+    // name for the same reason `/inference` does.
     href: "/nodes",
-    label: "Nodes",
+    label: "Machines",
     icon: "ShieldCheck",
     layer: "control",
-    spans: [],
-    blurb: "The machines in this install, and the token a new one joins with.",
+    spans: ["agent"],
+    blurb: "The machines in this install, their versions, and the token a new one joins with.",
   },
 ] as const;
 
@@ -317,56 +322,54 @@ export const SCREENS: readonly Screen[] = [
 export const ROUTES_WITHOUT_NAV: readonly string[] = ["/login", "/setup", "/runtimes"] as const;
 
 /**
- * Routes that render inside the shell as pages **of the install root**
- * without a slot in its page menu.
+ * Routes that render inside the shell as pages **of one object** without
+ * being a screen of their own, keyed by the `sel` of that object.
  *
  * `/backends/add` is the first (hobbyist UX S2): the form that adds an
  * app the person already runs — Ollama, a cloud CLI — reached from Home's
- * first-model card and from Inference. It is a task, not a place anyone
- * returns to, so a permanent menu entry would be a third "add" beside
- * Discover and Library. But the shell still has to know which object the
- * page is about: a page that selects nothing renders an empty page menu
- * and a tree with no row lit, silently — the exact defect the tree
- * design's §13 found in a bare `/config`. `defaultSelectionFor` in
- * `resourceTree.ts` answers for the pages in the menu; this set answers
- * for the ones under the root that are not, and the shell asks it second.
+ * first-model card and from the Backends page. Since 2026-09-29 it is a
+ * page of the Backends branch, with a slot in that menu; it was a page of
+ * the install root with no slot before. The shell still has to know which
+ * object a page is about: a page that selects nothing renders an empty
+ * page menu and a tree with no row lit, silently — the exact defect the
+ * tree design's §13 found in a bare `/config`. `defaultSelectionFor` in
+ * `resourceTree.ts` answers for the pages in a menu; this set answers
+ * for any under an object that are not, and the shell asks it second.
  *
  * Prefixes, matched on a segment boundary: `/backends` covers
  * `/backends/add` and would cover a future `/backends/<name>`, and never
  * `/backendsmith`.
  */
-export const ROUTES_UNDER_INSTALL: readonly string[] = ["/backends"] as const;
+export const ROUTES_UNDER_OBJECT: Readonly<Record<string, string>> = {
+  "/backends": "backends",
+};
 
 /**
- * `"install"` for a pathname under `ROUTES_UNDER_INSTALL`, else `null`.
- * The same normalisation as `activeScreen`, so the static export's
- * trailing slash and a query string change nothing.
+ * The `sel` for a pathname under `ROUTES_UNDER_OBJECT`, else `null`. The
+ * same normalisation as `activeScreen`, so the static export's trailing
+ * slash and a query string change nothing.
  */
-export function installSubrouteSelection(pathname: string | null | undefined): "install" | null {
+export function subrouteSelection(pathname: string | null | undefined): string | null {
   if (!pathname) return null;
   const path = normalizePath(pathname);
-  const under = ROUTES_UNDER_INSTALL.some(
-    (route) => path === route || path.startsWith(`${route}/`),
-  );
-  return under ? "install" : null;
+  for (const [route, sel] of Object.entries(ROUTES_UNDER_OBJECT)) {
+    if (path === route || path.startsWith(`${route}/`)) return sel;
+  }
+  return null;
 }
 
 /**
  * A name for a page that is in no nav group and no page menu.
  *
- * `SCREENS` answers for the eight navigable screens and the tree's page
- * menu answers for a component's pages; a route in neither had no name at
- * all, which read in the tab as the bare product name — the very thing
- * the title work of 2026-09-17 exists to stop.
- *
- * The value is the page's own `<h1>`, not a shorter label invented for
- * the tab: a title that disagrees with the heading under it is worse than
- * a long one, and these are tasks a person arrives at from a link rather
- * than places they navigate to by name.
+ * `SCREENS` answers for the navigable screens and the tree's page menu
+ * answers for an object's pages; a route in neither had no name at all,
+ * which read in the tab as the bare product name — the very thing the
+ * title work of 2026-09-17 exists to stop. Empty since 2026-09-29, when
+ * `/backends/add` became a page of the Backends branch; kept so the next
+ * task-shaped page has somewhere to be named, and so the vitest case that
+ * enumerates `src/app` still has three sets to keep disjoint.
  */
-const UNLISTED_PAGE_TITLES: Readonly<Record<string, string>> = {
-  "/backends/add": "Add an app you already run",
-};
+const UNLISTED_PAGE_TITLES: Readonly<Record<string, string>> = {};
 
 /**
  * What to call `pathname` in a tab, for the pages `activeScreen` does not

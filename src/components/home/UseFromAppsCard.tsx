@@ -331,6 +331,8 @@ export function UseFromAppsCard({
 
   return (
     <section
+      // The Settings page's search answers "client key" with a link here.
+      id="use-from-apps"
       data-testid="home-use-from-apps"
       className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3"
     >

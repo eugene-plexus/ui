@@ -14,7 +14,15 @@
  * took off the live worker.
  */
 
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup as cleanupRender,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,10 +31,11 @@ import { checkVisibleCopy } from "@/lib/vocabulary";
 
 import InferencePage from "./page";
 
+let search = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
   usePathname: () => "/inference",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => search,
 }));
 
 vi.mock("@/components/AppShell", () => ({
@@ -104,6 +113,7 @@ function install(): Map<string, Handler> {
 
 beforeEach(() => {
   handlers = install();
+  search = new URLSearchParams();
   sessionStorage.clear();
   localStorage.clear();
   forgetLoadsForTests();
@@ -133,6 +143,66 @@ async function rowFor(model: string) {
   const cell = await screen.findByText(model, {}, { timeout: 5000 });
   return cell.closest("tr") as HTMLElement;
 }
+
+describe("opened from the tree on one backend", () => {
+  // ui-settings-reorganisation.md decision #1: a backend's Overview is
+  // this page opened on it. Troy's report was that the leaf held only
+  // config while start and stop were on the install root.
+  it("marks that backend's row, names it, and offers everything", async () => {
+    search = new URLSearchParams("sel=driver:gemma-a-driver@Amish_Station");
+    const row = await rowFor("gemma-3-27b");
+    expect(row).toHaveAttribute("data-marked", "true");
+    expect(screen.getByTestId("inference-scope")).toHaveTextContent(
+      "Showing gemma-a-driver on Amish_Station.",
+    );
+    expect(screen.getByRole("link", { name: "Show everything" })).toHaveAttribute(
+      "href",
+      "/inference?sel=backends",
+    );
+    // The actions are on the marked row, which is the point.
+    expect(within(row).getByRole("button", { name: "stop" })).toBeInTheDocument();
+  });
+
+  it("marks nothing and says nothing about scope when the whole branch is selected", async () => {
+    search = new URLSearchParams("sel=backends");
+    const row = await rowFor("gemma-3-27b");
+    expect(row).not.toHaveAttribute("data-marked");
+    expect(screen.queryByTestId("inference-scope")).toBeNull();
+  });
+
+  it("keeps a backend's machine on the page even when no row carries it yet", async () => {
+    // The gateway's routing refresh is its own cadence; a backend declared
+    // a moment ago has a machine, and the page shows that machine's
+    // section -- whatever it is serving, nothing marked -- rather than
+    // showing nothing at all.
+    search = new URLSearchParams("sel=driver:brand-new@Amish_Station");
+    const row = await rowFor("gemma-3-27b");
+    expect(screen.getByTestId("inference-scope")).toHaveTextContent("brand-new on Amish_Station");
+    expect(row).not.toHaveAttribute("data-marked");
+  });
+
+  it("shows only that backend's machine when the install has two", async () => {
+    // The sabotage that escaped the one-machine fixture: a scope that
+    // never narrowed the machines was invisible with one machine.
+    handlers.set("GET control/v1/nodes", () => ({
+      status: 200,
+      body: {
+        nodes: [
+          { name: "Amish_Station", reachable: true, devices: CUDA },
+          { name: "nas", reachable: true },
+        ],
+      },
+    }));
+    search = new URLSearchParams("sel=backends");
+    await rowFor("gemma-3-27b");
+    expect(await screen.findByRole("heading", { name: "nas" })).toBeInTheDocument();
+    cleanupRender();
+    search = new URLSearchParams("sel=driver:gemma-a-driver@Amish_Station");
+    await rowFor("gemma-3-27b");
+    expect(screen.queryByRole("heading", { name: "nas" })).toBeNull();
+    expect(screen.getByRole("heading", { name: /Amish_Station/ })).toBeInTheDocument();
+  });
+});
 
 describe("an external backend's config link", () => {
   /** An Ollama the operator already ran, joined by a driver: no runtime

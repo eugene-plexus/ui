@@ -883,7 +883,7 @@ describe("the two halves of one setting name each other", () => {
     const card = await screen.findByTestId("home-reach");
     expect(within(card).getByRole("link", { name: /advertise address/i })).toHaveAttribute(
       "href",
-      "/config?sel=agent",
+      "/config?sel=agent#advertiseUrl",
     );
   });
 });
