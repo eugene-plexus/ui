@@ -56,6 +56,12 @@ export const DOORS: readonly Door[] = [
     surfaces: ["image"],
     hint: "POST /v1/images/generations and /edits: a picture made, or changed",
   },
+  {
+    id: "video",
+    label: "Video",
+    surfaces: ["video"],
+    hint: "POST /v1/videos: a video made as a job, watched and fetched",
+  },
 ];
 
 export const DEFAULT_DOOR: DoorId = "chat";

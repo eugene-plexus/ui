@@ -20,6 +20,7 @@ import { DoorPicker } from "@/components/doors/DoorPicker";
 import { ImageDoor } from "@/components/doors/ImageDoor";
 import { SpeechDoor } from "@/components/doors/SpeechDoor";
 import { TranscriptionDoor } from "@/components/doors/TranscriptionDoor";
+import { VideoDoor } from "@/components/doors/VideoDoor";
 import { EXAMPLE_TOOLS_TEXT, type ResponseFormatChoice, ToolsPanel } from "@/components/ToolsPanel";
 import { ApiError, api } from "@/lib/api";
 import {
@@ -810,6 +811,14 @@ function PlaygroundPageInner() {
         )}
         {door === "image" && (
           <ImageDoor
+            models={doorModels}
+            transport={transport}
+            reproduceBaseUrl={reproduceBaseUrl}
+            apiKey={apiKey || null}
+          />
+        )}
+        {door === "video" && (
+          <VideoDoor
             models={doorModels}
             transport={transport}
             reproduceBaseUrl={reproduceBaseUrl}

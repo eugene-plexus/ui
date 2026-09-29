@@ -36,6 +36,7 @@ export const COPY_SCREENS: Record<string, string[]> = {
     "lib/imageDoor.ts",
     "lib/speechDoor.ts",
     "lib/transcriptionDoor.ts",
+    "lib/videoDoor.ts",
   ],
   // Not on the golden path, but a screen a person with two machines
   // meets, and it carried "epoch", "Mint" and "topology" in plain view.
