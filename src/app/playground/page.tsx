@@ -17,6 +17,7 @@ import { SetupGateScreen } from "@/components/SetupGateScreen";
 import { SpokenReplyPanel } from "@/components/SpokenReplyPanel";
 import { CompletionDoor } from "@/components/doors/CompletionDoor";
 import { DoorPicker } from "@/components/doors/DoorPicker";
+import { ImageDoor } from "@/components/doors/ImageDoor";
 import { SpeechDoor } from "@/components/doors/SpeechDoor";
 import { TranscriptionDoor } from "@/components/doors/TranscriptionDoor";
 import { EXAMPLE_TOOLS_TEXT, type ResponseFormatChoice, ToolsPanel } from "@/components/ToolsPanel";
@@ -801,6 +802,14 @@ function PlaygroundPageInner() {
 
         {door === "speech" && (
           <SpeechDoor
+            models={doorModels}
+            transport={transport}
+            reproduceBaseUrl={reproduceBaseUrl}
+            apiKey={apiKey || null}
+          />
+        )}
+        {door === "image" && (
+          <ImageDoor
             models={doorModels}
             transport={transport}
             reproduceBaseUrl={reproduceBaseUrl}

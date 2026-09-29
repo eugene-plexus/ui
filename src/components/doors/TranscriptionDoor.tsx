@@ -53,8 +53,11 @@ export function TranscriptionDoor({
   reproduceBaseUrl: string | null;
   apiKey: string | null;
 }) {
-  const [draft, setDraft] = useState<TranscriptionDraft>(EMPTY_TRANSCRIPTION_DRAFT);
-  const [loaded, setLoaded] = useState(false);
+  // Read when the state is made: an effect would run after the first
+  // paint and overwrite whatever was chosen before it did.
+  const [draft, setDraft] = useState<TranscriptionDraft>(() =>
+    readDraft(DRAFT_KEY, EMPTY_TRANSCRIPTION_DRAFT),
+  );
   const [file, setFile] = useState<File | null>(null);
   const [model, setModel] = useState("");
   const [pending, setPending] = useState(false);
@@ -65,12 +68,8 @@ export function TranscriptionDoor({
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    setDraft(readDraft(DRAFT_KEY, EMPTY_TRANSCRIPTION_DRAFT));
-    setLoaded(true);
-  }, []);
-  useEffect(() => {
-    if (loaded) writeDraft(DRAFT_KEY, draft);
-  }, [loaded, draft]);
+    writeDraft(DRAFT_KEY, draft);
+  }, [draft]);
 
   const translates = modelsForTask(models, "translate").length > 0;
   const task: Task = draft.task === "translate" && translates ? "translate" : "transcribe";

@@ -63,8 +63,9 @@ export function SpeechDoor({
   apiKey: string | null;
 }) {
   const [model, setModel] = useState(models[0]?.id ?? "");
-  const [draft, setDraft] = useState<SpeechDraft>(EMPTY_SPEECH_DRAFT);
-  const [loaded, setLoaded] = useState(false);
+  // Read when the state is made: an effect would run after the first
+  // paint and overwrite whatever was chosen before it did.
+  const [draft, setDraft] = useState<SpeechDraft>(() => readDraft(DRAFT_KEY, EMPTY_SPEECH_DRAFT));
   const [pending, setPending] = useState(false);
   const [clip, setClip] = useState<Clip | null>(null);
   const [report, setReport] = useState<Report | null>(null);
@@ -72,12 +73,8 @@ export function SpeechDoor({
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    setDraft(readDraft(DRAFT_KEY, EMPTY_SPEECH_DRAFT));
-    setLoaded(true);
-  }, []);
-  useEffect(() => {
-    if (loaded) writeDraft(DRAFT_KEY, draft);
-  }, [loaded, draft]);
+    writeDraft(DRAFT_KEY, draft);
+  }, [draft]);
   useEffect(() => {
     setModel((current) => keepModel(models, current));
   }, [models]);
@@ -86,17 +83,15 @@ export function SpeechDoor({
   const voices = voicesFor(selected);
   const formats = formatsFor(selected);
   // Keep the choices inside what this model lists: a format or voice
-  // picked for another model is replaced by this one's first.
-  useEffect(() => {
-    setDraft((d) => {
-      const format = formats.includes(d.format) ? d.format : (formats[0] ?? "mp3");
-      const voice = voices && !voices.includes(d.voice) ? (voices[0] ?? "") : d.voice;
-      return format === d.format && voice === d.voice ? d : { ...d, format, voice };
-    });
-    // The lists are derived from `selected`; its id is the dependency.
-  }, [selected?.id, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  // picked for another model reads as this one's first. Worked out here
+  // rather than synced in an effect, so what is shown is what is sent.
+  const effective: SpeechDraft = {
+    ...draft,
+    format: formats.includes(draft.format) ? draft.format : (formats[0] ?? "mp3"),
+    voice: voices && !voices.includes(draft.voice) ? (voices[0] ?? "") : draft.voice,
+  };
 
-  const built = buildSpeechBody(model, draft);
+  const built = buildSpeechBody(model, effective);
 
   async function send() {
     if ("error" in built) return;
@@ -149,7 +144,7 @@ export function SpeechDoor({
             {voices ? (
               <select
                 data-testid="speech-voice"
-                value={draft.voice}
+                value={effective.voice}
                 onChange={(e) => setDraft({ ...draft, voice: e.target.value })}
                 className={inputClass}
               >
@@ -162,7 +157,7 @@ export function SpeechDoor({
             ) : (
               <input
                 data-testid="speech-voice"
-                value={draft.voice}
+                value={effective.voice}
                 onChange={(e) => setDraft({ ...draft, voice: e.target.value })}
                 placeholder="alloy"
                 className={`${inputClass} w-32`}
@@ -174,7 +169,7 @@ export function SpeechDoor({
             <span className="text-[color:var(--muted)]">Format</span>
             <select
               data-testid="speech-format"
-              value={draft.format}
+              value={effective.format}
               onChange={(e) => setDraft({ ...draft, format: e.target.value })}
               className={inputClass}
             >

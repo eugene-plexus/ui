@@ -50,6 +50,12 @@ export const DOORS: readonly Door[] = [
     surfaces: ["transcription", "translation"],
     hint: "POST /v1/audio/transcriptions and /translations: a recording written down, or put into English",
   },
+  {
+    id: "image",
+    label: "Images",
+    surfaces: ["image"],
+    hint: "POST /v1/images/generations and /edits: a picture made, or changed",
+  },
 ];
 
 export const DEFAULT_DOOR: DoorId = "chat";

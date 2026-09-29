@@ -33,6 +33,7 @@ export const COPY_SCREENS: Record<string, string[]> = {
     "components/SpokenReplyPanel.tsx",
     "lib/completionDoor.ts",
     "lib/mediaAttachments.ts",
+    "lib/imageDoor.ts",
     "lib/speechDoor.ts",
     "lib/transcriptionDoor.ts",
   ],

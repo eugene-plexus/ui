@@ -57,8 +57,11 @@ export function CompletionDoor({
   apiKey: string | null;
 }) {
   const [model, setModel] = useState(models[0]?.id ?? "");
-  const [draft, setDraft] = useState<CompletionDraft>(EMPTY_COMPLETION_DRAFT);
-  const [loaded, setLoaded] = useState(false);
+  // Read when the state is made: an effect would run after the first
+  // paint and overwrite whatever was chosen before it did.
+  const [draft, setDraft] = useState<CompletionDraft>(() =>
+    readDraft(DRAFT_KEY, EMPTY_COMPLETION_DRAFT),
+  );
   const [pending, setPending] = useState(false);
   const [answer, setAnswer] = useState<CompletionAnswer | null>(null);
   const [streamed, setStreamed] = useState("");
@@ -68,12 +71,8 @@ export function CompletionDoor({
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    setDraft(readDraft(DRAFT_KEY, EMPTY_COMPLETION_DRAFT));
-    setLoaded(true);
-  }, []);
-  useEffect(() => {
-    if (loaded) writeDraft(DRAFT_KEY, draft);
-  }, [loaded, draft]);
+    writeDraft(DRAFT_KEY, draft);
+  }, [draft]);
   useEffect(() => {
     setModel((current) => keepModel(models, current));
   }, [models]);
