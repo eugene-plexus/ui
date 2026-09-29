@@ -945,6 +945,11 @@ export interface paths {
          *     (measured). A format the model cannot make is a 400 naming the ones
          *     it can (`x_eugene_plexus.speech_formats`). `stream_format: "sse"`
          *     is refused: raw bytes are the stream.
+         *
+         *     **What served it rides response headers** (U4, 2026-09-28), as on
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `-latency-ms`, `-attempts`, `-tier` and the rest of
+         *     `x_eugene_plexus`, because the body is the audio and has nowhere to carry them.
          */
         post: operations["createSpeech"];
         delete?: never;
@@ -994,6 +999,11 @@ export interface paths {
          *     `timestamp_granularities[]` without `verbose_json`, as OpenAI
          *     requires. **The same caller settings route as chat's do** only in
          *     that a model without the surface is never asked.
+         *
+         *     **What served it rides response headers** (U4, 2026-09-28), as on
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `-latency-ms`, `-attempts`, `-tier` and the rest of
+         *     `x_eugene_plexus`, because `text` has no body to carry them; every format carries them alike.
          */
         post: operations["createTranscription"];
         delete?: never;
@@ -1030,6 +1040,11 @@ export interface paths {
          *     other than `en` (measured). `response_format` is as transcription's:
          *     `json`, `verbose_json` (with `task: translate`), `text` rendered
          *     here, and `srt`/`vtt` refused.
+         *
+         *     **What served it rides response headers** (U4, 2026-09-28), as on
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `-latency-ms`, `-attempts`, `-tier` and the rest of
+         *     `x_eugene_plexus`, because `text` has no body to carry them; every format carries them alike.
          */
         post: operations["createTranslation"];
         delete?: never;
@@ -2402,7 +2417,11 @@ export interface components {
             /** @description `stop` or `length`; null on a chunk before the last. */
             finish_reason: string | null;
         };
-        /** @description One SSE `data:` frame. With `include_usage`, a last frame has `choices` empty and `usage`. */
+        /**
+         * @description One SSE `data:` frame. The frame with `finish_reason` carries
+         *     `x_eugene_plexus`, as chat's final frame does. With
+         *     `include_usage`, a last frame has `choices` empty and `usage`.
+         */
         CompletionChunk: {
             id: string;
             /** @constant */
@@ -2411,6 +2430,7 @@ export interface components {
             model: string;
             choices: components["schemas"]["CompletionChoice"][];
             usage?: components["schemas"]["CompletionUsage"];
+            x_eugene_plexus?: components["schemas"]["CompletionRoutingInfo"];
         };
         ModerationRequest: {
             /** @description Left out, the one moderation model this key may use (P6-1). */
