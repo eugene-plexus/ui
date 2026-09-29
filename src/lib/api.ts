@@ -130,7 +130,9 @@ function proxyUrl(target: ProxyTarget, path: string): string {
  * which would show up only as a 401 on exactly one code path. */
 function proxyHeaders(init: RequestInit, options: RequestOptions, accept: string): Headers {
   const headers = new Headers(init.headers);
-  if (init.body !== undefined && !headers.has("content-type")) {
+  // A form sets its own content type, boundary included; naming one here
+  // would send a multipart body the server cannot split.
+  if (init.body !== undefined && !(init.body instanceof FormData) && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
   if (!headers.has("accept")) {
@@ -201,6 +203,21 @@ export async function postStream(
   return openStream(target, path, { method: "POST", body: JSON.stringify(body) }, options);
 }
 
+/**
+ * Any request that hands back the raw `Response`, with the caller's own
+ * body and `accept`: a multipart upload, an audio answer, a video file.
+ * The playground's other doors (`lib/doorRequest.ts`) read bytes, text or
+ * a stream off it themselves. Same session handling as every call here.
+ */
+export async function fetchRaw(
+  target: ProxyTarget,
+  path: string,
+  init: { method: "GET" | "POST"; body?: BodyInit; accept: string },
+  options: RequestOptions = {},
+): Promise<Response> {
+  return openStream(target, path, { method: init.method, body: init.body }, options, init.accept);
+}
+
 /** GET that hands back the raw `Response`: a follow, like `GET /v1/logs/stream`. */
 export async function getStream(
   target: ProxyTarget,
@@ -215,11 +232,12 @@ async function openStream(
   path: string,
   init: RequestInit,
   options: RequestOptions,
+  accept = "text/event-stream",
 ): Promise<Response> {
   const sent = sessionCarried(options);
   const response = await fetch(proxyUrl(target, path), {
     ...init,
-    headers: proxyHeaders(init, options, "text/event-stream"),
+    headers: proxyHeaders(init, options, accept),
     signal: options.signal,
   });
   if (response.status === 401 && !options.skipAuth && !options.bearer) {

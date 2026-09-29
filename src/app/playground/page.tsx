@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ChatInput } from "@/components/ChatInput";
@@ -13,6 +14,8 @@ import { DiagnosticPanel, type GatewayMode } from "@/components/DiagnosticPanel"
 import { RequestReport } from "@/components/RequestReport";
 import { SamplingPanel } from "@/components/SamplingPanel";
 import { SetupGateScreen } from "@/components/SetupGateScreen";
+import { CompletionDoor } from "@/components/doors/CompletionDoor";
+import { DoorPicker } from "@/components/doors/DoorPicker";
 import { EXAMPLE_TOOLS_TEXT, type ResponseFormatChoice, ToolsPanel } from "@/components/ToolsPanel";
 import { ApiError, api } from "@/lib/api";
 import {
@@ -45,6 +48,7 @@ import {
   parseSampling,
   withSystemPrompt,
 } from "@/lib/sampling";
+import { type DoorId, availableDoors, doorFromParam, modelsForDoor } from "@/lib/doors";
 import { getSessionToken } from "@/lib/session";
 import { seconds, tokenCount } from "@/lib/turnFormat";
 import { usePolling } from "@/lib/usePolling";
@@ -158,6 +162,26 @@ function pageLocation(): PageLocation {
 }
 
 export default function PlaygroundPage() {
+  // `useSearchParams` suspends during prerender, so the boundary is
+  // required rather than decorative -- Discover's own pattern.
+  return (
+    <Suspense fallback={null}>
+      <PlaygroundPageInner />
+    </Suspense>
+  );
+}
+
+function PlaygroundPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // Every model the gateway lists, for the doors; `models` below stays
+  // the chat picker's own list.
+  const [allModels, setAllModels] = useState<Model[]>([]);
+  // The door asked for, by `?door=` or a click. Kept apart from the door
+  // shown, because the models that make a door available arrive after
+  // the first render, and a link to Images must not fall back to Chat
+  // and rewrite itself before they do.
+  const [requestedDoor, setRequestedDoor] = useState<string | null>(() => searchParams.get("door"));
   const [messages, setMessages] = useState<PlaygroundMessage[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [decisionModels, setDecisionModels] = useState<string[]>([]);
@@ -293,10 +317,8 @@ export default function PlaygroundPage() {
       // talking to a gateway older than call #2, and an absent list must
       // read as "no opinion" rather than "no chat", or this screen goes
       // empty against an install that has not been upgraded yet.
-      const data = (list.data ?? []).filter((m) => {
-        const surfaces = m.x_eugene_plexus?.surfaces;
-        return !surfaces || surfaces.includes("chat");
-      });
+      const data = modelsForDoor(list.data ?? [], "chat");
+      setAllModels(list.data ?? []);
       setModels(data);
       // The decision surface gets its own panel below the transcript;
       // decision-only models never appear in the chat picker.
@@ -438,7 +460,7 @@ export default function PlaygroundPage() {
           toolChoice: toolsOn ? toolChoice : undefined,
           responseFormat: responseFormat === "json_object" ? { type: "json_object" } : undefined,
           transport: transportRef.current,
-          reproduceBaseUrl: normalizeBaseUrl(baseUrl) || guess,
+          reproduceBaseUrl,
           signal: controller.signal,
           onReport: setReport,
           // Cards fill in as fragments land, the way the text does.
@@ -582,23 +604,45 @@ export default function PlaygroundPage() {
     setNotice(null);
   }
 
+  const doors = useMemo(() => availableDoors(allModels), [allModels]);
+  const door: DoorId = doorFromParam(requestedDoor, doors);
+  // The URL mirrors the choice; `replace`, so switching doors does not
+  // bury Back. Other params are kept: `?sel=` is the tree's.
+  const chooseDoor = useCallback(
+    (id: DoorId) => {
+      setRequestedDoor(id);
+      const params = new URLSearchParams(window.location.search);
+      if (id === "chat") params.delete("door");
+      else params.set("door", id);
+      const qs = params.toString();
+      router.replace(qs ? `/playground?${qs}` : "/playground", { scroll: false });
+    },
+    [router],
+  );
+  const doorModels = useMemo(() => modelsForDoor(allModels, door), [allModels, door]);
+  const reproduceBaseUrl = normalizeBaseUrl(baseUrl) || guess;
+
   if (setupGate !== "ready") {
     return <SetupGateScreen state={setupGate} onRetry={retrySetupGate} />;
   }
 
   const selected = models.find((m) => m.id === model);
+  const chat = door === "chat";
   return (
     <AppShell
       controls={
         <>
-          <ModelPicker
-            models={models}
-            value={model}
-            onChange={setModel}
-            disabled={pending}
-            error={modelsError}
-            mode={mode}
-          />
+          <DoorPicker doors={doors} value={door} onChange={chooseDoor} disabled={pending} />
+          {chat && (
+            <ModelPicker
+              models={models}
+              value={model}
+              onChange={setModel}
+              disabled={pending}
+              error={modelsError}
+              mode={mode}
+            />
+          )}
           <button
             type="button"
             data-testid="toggle-diagnostic"
@@ -623,7 +667,7 @@ export default function PlaygroundPage() {
               click. So it asks, but only when there is a conversation to
               lose: with none, there is nothing to ask about and the button
               stays the plain, disabled one it always was. */}
-          {messages.length > 0 ? (
+          {chat && messages.length > 0 ? (
             <ConfirmButton
               label="New"
               confirmLabel="Clear it"
@@ -632,7 +676,7 @@ export default function PlaygroundPage() {
               testId="new-conversation"
               className={NEW_BUTTON_CLASS}
             />
-          ) : (
+          ) : chat ? (
             <button
               type="button"
               data-testid="new-conversation"
@@ -641,8 +685,8 @@ export default function PlaygroundPage() {
             >
               New
             </button>
-          )}
-          {messages.length > 0 && (
+          ) : null}
+          {chat && messages.length > 0 && (
             <CopyButton
               // What rode the wire, not what the page keeps: without the
               // browser-only `generatedAt` on every reply, and with the
@@ -679,23 +723,27 @@ export default function PlaygroundPage() {
               sessionToken={sessionToken}
               page={page}
             />
-            <ToolsPanel
-              enabled={toolsOn}
-              onEnabled={setToolsOn}
-              definitions={toolDefs}
-              onDefinitions={setToolDefs}
-              error={toolsError}
-              toolNames={toolNames}
-              toolChoice={toolChoice}
-              onToolChoice={setToolChoice}
-              responseFormat={responseFormat}
-              onResponseFormat={setResponseFormat}
-              modelToolCalling={selected?.x_eugene_plexus?.tool_calling}
-            />
-            <div className="flex sm:col-span-2">
-              <SamplingPanel draft={sampling} onDraft={setSampling} error={samplingError} />
-            </div>
-            {decisionModels.length > 0 && (
+            {chat && (
+              <ToolsPanel
+                enabled={toolsOn}
+                onEnabled={setToolsOn}
+                definitions={toolDefs}
+                onDefinitions={setToolDefs}
+                error={toolsError}
+                toolNames={toolNames}
+                toolChoice={toolChoice}
+                onToolChoice={setToolChoice}
+                responseFormat={responseFormat}
+                onResponseFormat={setResponseFormat}
+                modelToolCalling={selected?.x_eugene_plexus?.tool_calling}
+              />
+            )}
+            {chat && (
+              <div className="flex sm:col-span-2">
+                <SamplingPanel draft={sampling} onDraft={setSampling} error={samplingError} />
+              </div>
+            )}
+            {chat && decisionModels.length > 0 && (
               <div className="sm:col-span-2">
                 <DecisionPanel models={decisionModels} />
               </div>
@@ -703,78 +751,91 @@ export default function PlaygroundPage() {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <ChatLog
-            messages={messages}
-            pending={pending}
-            work={work ?? undefined}
-            onRegenerate={handleRegenerate}
-            onEditUserMessage={handleEditUserMessage}
-            onToolResults={handleToolResults}
+        {door === "completion" && (
+          <CompletionDoor
+            models={doorModels}
+            transport={transport}
+            reproduceBaseUrl={reproduceBaseUrl}
+            apiKey={apiKey || null}
           />
-        </div>
-
-        {turnInfo && <RoutingBar info={turnInfo} />}
-        {report && <RequestReport report={report} page={page} apiKey={apiKey || null} />}
-        {error && (
-          <div
-            role="alert"
-            className="status-error flex items-center gap-3 border-t px-4 py-2 text-sm"
-          >
-            <span className="min-w-0 flex-1">{error}</span>
-            {canRetry && (
-              <button
-                type="button"
-                data-testid="retry-turn"
-                onClick={handleRetry}
-                title="Send the same history again; nothing needs re-typing"
-                className="font-ui shrink-0 rounded-[var(--radius)] border border-current px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
-              >
-                Try again
-              </button>
-            )}
-          </div>
         )}
-        {notice && (
-          <div
-            data-testid="turn-notice"
-            role="status"
-            className="font-ui flex items-center gap-3 border-t border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--muted)]"
-          >
-            <span className="min-w-0 flex-1">{notice}</span>
-            {/* A Stop before the first token leaves the question as the
+
+        {chat && (
+          <>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <ChatLog
+                messages={messages}
+                pending={pending}
+                work={work ?? undefined}
+                onRegenerate={handleRegenerate}
+                onEditUserMessage={handleEditUserMessage}
+                onToolResults={handleToolResults}
+              />
+            </div>
+
+            {turnInfo && <RoutingBar info={turnInfo} />}
+            {report && <RequestReport report={report} page={page} apiKey={apiKey || null} />}
+            {error && (
+              <div
+                role="alert"
+                className="status-error flex items-center gap-3 border-t px-4 py-2 text-sm"
+              >
+                <span className="min-w-0 flex-1">{error}</span>
+                {canRetry && (
+                  <button
+                    type="button"
+                    data-testid="retry-turn"
+                    onClick={handleRetry}
+                    title="Send the same history again; nothing needs re-typing"
+                    className="font-ui shrink-0 rounded-[var(--radius)] border border-current px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
+                  >
+                    Try again
+                  </button>
+                )}
+              </div>
+            )}
+            {notice && (
+              <div
+                data-testid="turn-notice"
+                role="status"
+                className="font-ui flex items-center gap-3 border-t border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--muted)]"
+              >
+                <span className="min-w-0 flex-1">{notice}</span>
+                {/* A Stop before the first token leaves the question as the
                 last message, with the composer cleared: the next Send
                 would put two questions in a row. */}
-            {canRetry && (
-              <button
-                type="button"
-                data-testid="retry-turn"
-                onClick={handleRetry}
-                title="Send the same history again; nothing needs re-typing"
-                className="font-ui shrink-0 rounded-[var(--radius)] border border-current px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
-              >
-                Try again
-              </button>
+                {canRetry && (
+                  <button
+                    type="button"
+                    data-testid="retry-turn"
+                    onClick={handleRetry}
+                    title="Send the same history again; nothing needs re-typing"
+                    className="font-ui shrink-0 rounded-[var(--radius)] border border-current px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
+                  >
+                    Try again
+                  </button>
+                )}
+              </div>
             )}
-          </div>
-        )}
 
-        <ChatInput
-          onSend={handleSend}
-          disabled={pending || model == null}
-          seed={seed}
-          pending={pending}
-          onStop={stopTurn}
-          // Warn before Send, never strip -- the tools rule. Only an
-          // explicit false warns: an absent flag is a gateway with no
-          // opinion, not a model with no eyes.
-          imageNote={
-            selected?.x_eugene_plexus?.image_input === false
-              ? "The selected model does not take images: no backend serving it confirmed image " +
-                "input, so the gateway will refuse this request rather than drop the pictures."
-              : null
-          }
-        />
+            <ChatInput
+              onSend={handleSend}
+              disabled={pending || model == null}
+              seed={seed}
+              pending={pending}
+              onStop={stopTurn}
+              // Warn before Send, never strip -- the tools rule. Only an
+              // explicit false warns: an absent flag is a gateway with no
+              // opinion, not a model with no eyes.
+              imageNote={
+                selected?.x_eugene_plexus?.image_input === false
+                  ? "The selected model does not take images: no backend serving it confirmed image " +
+                    "input, so the gateway will refuse this request rather than drop the pictures."
+                  : null
+              }
+            />
+          </>
+        )}
       </main>
     </AppShell>
   );

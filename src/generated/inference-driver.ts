@@ -27,10 +27,22 @@ export interface paths {
          *     only works if this driver keeps the two apart, so it does:
          *
          *     * A backend 4xx that another backend would hit identically — an
-         *       over-long prompt, a malformed request, a rejected key, an
-         *       unknown model — is **400**, `type` ending
-         *       `#backend-rejected-request`, with the backend's own status and
-         *       body in `detail`.
+         *       over-long prompt, a malformed request, an unknown model — is
+         *       **400**, `type` ending `#backend-rejected-request`, with the
+         *       backend's own status and body in `detail`.
+         *     * **A backend that refuses THIS DRIVER's own credential is 502,
+         *       `type` ending `#backend-credential-refused`, since
+         *       2026-09-28**: a `401`, a `402` (the account behind the key has
+         *       no credit), or a `403` unless the backend's own words say the
+         *       *content* was flagged or moderated (OpenRouter answers 403 for
+         *       flagged input, and that one stays the caller's 400). It was a
+         *       400, which told the caller to fix a request that was fine for
+         *       a key only the operator holds; measured live against
+         *       OpenRouter with an invalid key. `retryDisposition` is
+         *       `terminal`, so it **does not cascade** — the 4xx non-cascade
+         *       rule is older than this and unchanged — and `detail` carries
+         *       the backend's own status and words plus the next step: set a
+         *       working API key on this driver.
          *     * A backend 4xx that is worth trying elsewhere — `408`, `409`,
          *       `425`, `429` — stays **502**, so the priority-list cascade
          *       still fires. A rate-limited cloud provider falling through to
@@ -148,6 +160,256 @@ export interface paths {
          *     and the template renders only a marker for it.
          */
         post: operations["countPromptTokens"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/moderate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Moderate text or an image on the configured backend.
+         * @description The moderation counterpart of `POST /v1/embed` (P6, 2026-09-28):
+         *     OpenAI's `/v1/moderations`, which only OpenAI's own API serves
+         *     (OpenRouter answers 404, measured). A model without the
+         *     `moderation` surface is refused before anything is sent.
+         *
+         *     **Two shapes of input, as OpenAI's**: `texts`, each moderated on
+         *     its own with one result each, or `parts`, one input of text and
+         *     an image with one result. The image is a `data:` URL (A4); the
+         *     gateway never forwards a remote one.
+         *
+         *     The backend's results come back as it sent them: `flagged`,
+         *     `categories`, `category_scores` and `category_applied_input_types`
+         *     per input.
+         */
+        post: operations["moderate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/speak": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Speak text on the configured backend, streamed as audio bytes.
+         * @description The speech counterpart of `POST /v1/generate` (P3a, 2026-09-28):
+         *     normalised, so one request fronts OpenAI's `/v1/audio/speech`,
+         *     OpenRouter's and ElevenLabs' text-to-speech, each translated here.
+         *     No local engine speaks yet.
+         *
+         *     **The answer is the audio itself, streamed** as the backend sends
+         *     it, with the format's media type. Nothing is buffered; the first
+         *     byte out is the commit point one layer up. A failure before it is a
+         *     status code with a `problem+json` body, as for chat.
+         *
+         *     **Formats are the model's.** A `format` the backend cannot make is
+         *     refused with 400 naming the ones it can (`SpeechFormat`); `wav` is
+         *     made from `pcm` where the backend has no WAV of its own. A voice
+         *     the backend does not know is its own 400, relayed with its words.
+         */
+        post: operations["speak"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transcribe audio on the configured backend.
+         * @description The transcription counterpart of `POST /v1/generate` (P3b,
+         *     2026-09-28): normalised, so one request fronts OpenAI's and
+         *     OpenRouter's `/v1/audio/transcriptions`, `llama-server`'s, and
+         *     ElevenLabs' `/v1/speech-to-text` (P3-1), each asked in the form it
+         *     takes (measured).
+         *
+         *     **`translate` asks for English instead** (P3-4): OpenAI's
+         *     `/v1/audio/translations`, which only OpenAI's `whisper-*` models
+         *     answer (measured: its `gpt-4o-*-transcribe` models, OpenRouter and
+         *     `llama-server` all answer 404). A model without the `translation`
+         *     surface is refused before any audio is sent, and `language` and
+         *     `timestampGranularities` are refused with it, since OpenAI's door
+         *     takes neither.
+         *
+         *     **ElevenLabs** is asked for no audio-event tags, so its transcript
+         *     reads as OpenAI's does. It takes no `prompt` and would ignore one
+         *     (measured), so a prompt is refused; it makes no segments, so
+         *     `segment` timestamps are refused. Its words become OpenAI's
+         *     `{word, start, end}` and its `audio_duration_secs` the usage
+         *     seconds.
+         *
+         *     **The audio travels as base64 in JSON**, as attachments do (P2a).
+         *     It is at most 25 MiB, OpenAI's upload limit, so this path's body
+         *     limit is 36 MiB where every other inference path's is 16.
+         *
+         *     **`llama-server` makes `json` only** (measured): `verbose` asked of
+         *     it is its own 400, relayed. Its Qwen3-ASR text carries the model's
+         *     own preamble (`language English<asr_text>...`), which the same
+         *     model on OpenRouter does not send; the driver parses it into
+         *     `language` and the text.
+         */
+        post: operations["transcribe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make or edit images on the configured backend.
+         * @description The image counterpart of `POST /v1/generate` (P4, 2026-09-28):
+         *     normalised, so one request fronts OpenAI's `/v1/images/generations`
+         *     and `/v1/images/edits` and OpenRouter's `/images/generations`, each
+         *     translated here.
+         *
+         *     **An edit is a generation with `references`.** OpenRouter has no
+         *     edit route (404, measured) and takes the images as
+         *     `input_references` objects on `/images/generations`; OpenAI is asked
+         *     on `/v1/images/edits` in the multipart form its SDK uses. `mask`
+         *     reaches only OpenAI's API, which alone honours it; this driver
+         *     refuses it for any other backend rather than letting it be ignored
+         *     (OpenRouter ignores it, measured).
+         *
+         *     **The images travel as base64 in JSON**, at most 25 MiB decoded in
+         *     all, so this path's body limit is 36 MiB, as `/v1/transcribe`'s is.
+         *     Every image comes back base64 whatever the backend was asked, with
+         *     the media type its bytes carry (OpenRouter ignores
+         *     `response_format: url`, measured).
+         */
+        post: operations["image"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/image/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make or edit images, with partial images streamed.
+         * @description Same request as `POST /v1/image`, for a model whose
+         *     `capabilities.image.streaming` is true (P4-3: a streamed request is
+         *     routed only to one). The response is Server-Sent Events:
+         *
+         *     - `event: partial`: `data` is an `ImagePartial`, one partial render;
+         *     - `event: done`: `data` is the final `ImageResponse`;
+         *     - `event: error`: `data` is a `Problem`.
+         *
+         *     **A failure before the first event is a status code**, as for
+         *     `/v1/generate/stream`; after it, only an `error` event. A backend
+         *     that answers plain JSON although asked to stream (OpenRouter does,
+         *     for a model that cannot, measured) is the driver's 400: the model's
+         *     listing said it streams and the backend disagreed.
+         */
+        post: operations["imageStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a video job on the configured backend.
+         * @description The video counterpart of `POST /v1/generate` (P5, 2026-09-28):
+         *     normalised, so the gateway speaks OpenAI's `/v1/videos` and this
+         *     driver asks OpenRouter's `/videos` in its own shape (`duration` an
+         *     integer, `size` one it lists, the first frame as `frame_images`).
+         *     OpenAI's own video API shut down on 2026-09-24 (measured); an OpenAI
+         *     account makes no videos.
+         *
+         *     **The answer is the job, not the video.** OpenRouter accepts a job in
+         *     a few seconds and makes it in tens (24-47 s for one second at 480p,
+         *     measured); the caller polls `GET /v1/video/{jobId}`.
+         */
+        post: operations["video"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/video/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Poll a video job. */
+        get: operations["videoJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/video/{jobId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A finished video job's MP4, streamed.
+         * @description Streamed as the backend sends it. OpenRouter sends it chunked, with
+         *     no length, and ignores `Range` (measured), so a download is whole.
+         */
+        get: operations["videoContent"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -445,17 +707,22 @@ export interface components {
              * @description A2 provenance: names of settings explicitly requested by the caller,
              *     using this request's field names (maxTokens, temperature, topP, seed,
              *     stop, tools, toolChoice, responseFormat, topK, minP, frequencyPenalty,
-             *     presencePenalty, parallelToolCalls). The gateway preserves this
+             *     presencePenalty, parallelToolCalls; since P2c logprobs, logitBias,
+             *     reasoningEffort, verbosity, prediction, webSearchOptions). `topLogprobs`
+             *     rides with `logprobs`. The hints (`promptCacheKey`,
+             *     `promptCacheRetention`, `serviceTier`, `safetyIdentifier`) are never
+             *     listed: a backend that cannot carry a hint drops it. The gateway preserves this
              *     list on each fallback attempt. An adapter must refuse a known unsupported
              *     explicit setting with 400, rather than silently dropping it. Settings
              *     supplied only by profiles/defaults retain the adapter's default behavior.
              *     This field is internal and is not forwarded to upstream providers.
              */
             callerSettings?: string[];
+            completion?: components["schemas"]["CompletionPrompt"];
             /**
              * @description Full prompt as an ordered conversation. Whatever system
              *     message the caller wants is already in here; the driver does
-             *     not modify, prepend to, or reorder it.
+             *     not modify, prepend to, or reorder it. Empty with `completion`.
              */
             messages: components["schemas"]["Message"][];
             /**
@@ -584,6 +851,24 @@ export interface components {
              */
             toolChoice?: ("none" | "auto" | "required") | components["schemas"]["NamedToolChoice"];
             responseFormat?: components["schemas"]["ResponseFormat"];
+            audioOutput?: components["schemas"]["AudioOutputRequest"];
+            /** @description Return the chosen tokens' log probabilities (P2c). A setting. */
+            logprobs?: boolean;
+            topLogprobs?: number;
+            /** @description Token id to bias, OpenAI's `logit_bias`. A setting. */
+            logitBias?: {
+                [key: string]: number;
+            };
+            reasoningEffort?: components["schemas"]["ReasoningEffort"];
+            verbosity?: components["schemas"]["Verbosity"];
+            prediction?: components["schemas"]["Prediction"];
+            webSearchOptions?: components["schemas"]["WebSearchOptions"];
+            /** @description A hint, carried to OpenAI's own API and dropped elsewhere (P2c). */
+            promptCacheKey?: string;
+            promptCacheRetention?: components["schemas"]["PromptCacheRetention"];
+            serviceTier?: components["schemas"]["ServiceTier"];
+            /** @description A hint, as `promptCacheKey`. */
+            safetyIdentifier?: string;
             /**
              * @description On `POST /v1/generate/stream` only: emit `event: progress`
              *     frames saying what the backend is doing when it is not yet,
@@ -674,6 +959,10 @@ export interface components {
              * @enum {string}
              */
             finishReason: "stop" | "length" | "stop_sequence" | "tool_calls" | "content_filter" | "error";
+            audio?: components["schemas"]["GeneratedAudio"];
+            logprobs?: components["schemas"]["ChatLogprobs"];
+            /** @description The web sources the answer cites, from a provider's search (P2c). */
+            annotations?: components["schemas"]["ChatAnnotation"][];
             usage?: components["schemas"]["Usage"];
             /** Format: uuid */
             requestId?: string;
@@ -692,8 +981,9 @@ export interface components {
             latencyMs?: number;
         };
         /**
-         * @description One `event: token` payload. Exactly one of `text`, `reasoning`
-         *     or `toolCalls` is set.
+         * @description One `event: token` payload. Exactly one of `text`, `reasoning`,
+         *     `toolCalls`, `audio` or `annotations` is set; `logprobs` rides with
+         *     the `text` whose tokens it describes.
          *
          *     A reasoning frame is output like any other: it is the first
          *     thing a reasoning model produces, so it is also the commit point
@@ -712,6 +1002,371 @@ export interface components {
             reasoning?: string;
             /** @description Fragments of one or more tool calls, accumulated by `index`. */
             toolCalls?: components["schemas"]["ToolCallDelta"][];
+            audio?: components["schemas"]["AudioDelta"];
+            logprobs?: components["schemas"]["ChatLogprobs"];
+            annotations?: components["schemas"]["ChatAnnotation"][];
+        };
+        /** @description Exactly one of `texts` and `parts`. */
+        ModerateRequest: {
+            model?: components["schemas"]["RequestModel"];
+            /**
+             * @description As `GenerateRequest.localOnly`: refuse before sending anything
+             *     unless the active engine is classified local.
+             * @default false
+             */
+            localOnly: boolean;
+            /** @description Texts moderated one by one, with one result each. */
+            texts?: string[];
+            /** @description One input of text and an image, with one result. */
+            parts?: components["schemas"]["ModerationPart"][];
+            /** Format: uuid */
+            requestId?: string;
+        };
+        ModerationPart: {
+            type: components["schemas"]["ModerationPartType"];
+            text?: string;
+            /** @description For `image`: a `data:` URL, as `image_url.url` carries it. */
+            image?: string;
+        };
+        /**
+         * @description Named, so a later inline enum cannot renumber it.
+         * @enum {string}
+         */
+        ModerationPartType: "text" | "image";
+        ModerateResponse: {
+            /** @description The backend's id for this moderation. */
+            id?: string;
+            /**
+             * @description One per input, as the backend sent them: `flagged`,
+             *     `categories`, `category_scores` and
+             *     `category_applied_input_types`.
+             */
+            results: {
+                [key: string]: unknown;
+            }[];
+            /** @description The model the backend says answered. */
+            modelId?: string;
+            latencyMs?: number;
+        };
+        SpeakRequest: {
+            model?: components["schemas"]["RequestModel"];
+            /**
+             * @description As `GenerateRequest.localOnly`: refuse before forwarding any text
+             *     unless the active engine is classified local.
+             * @default false
+             */
+            localOnly: boolean;
+            /** @description The text to speak. OpenAI's limit, 4,096 characters. */
+            input: string;
+            /**
+             * @description The backend's own voice id, passed through (P3-3): `alloy` on
+             *     OpenAI, `af_heart` on Kokoro, `21m00Tcm4TlvDq8ikWAM` on
+             *     ElevenLabs. `DriverModel.voices` lists them where the backend
+             *     says.
+             */
+            voice: string;
+            format?: components["schemas"]["SpeechFormat"];
+            /**
+             * @description 1.0 is normal. ElevenLabs takes 0.7 to 1.2 and refuses the rest;
+             *     the refusal is relayed.
+             */
+            speed?: number;
+            /**
+             * @description How to speak, for a backend that takes it (OpenAI's
+             *     `gpt-4o-mini-tts`). Refused with 400 by one that cannot
+             *     (ElevenLabs), never dropped.
+             */
+            instructions?: string;
+            /** Format: uuid */
+            requestId?: string;
+        };
+        TranscribeRequest: {
+            model?: components["schemas"]["RequestModel"];
+            /**
+             * @description As `GenerateRequest.localOnly`: refuse before forwarding any
+             *     audio unless the active engine is classified local.
+             * @default false
+             */
+            localOnly: boolean;
+            audio: components["schemas"]["TranscribeAudio"];
+            /** @description The spoken language, ISO-639-1 (`en`), when the caller knows it. */
+            language?: string;
+            /** @description Text to guide the transcript's style or spelling, as OpenAI's. */
+            prompt?: string;
+            temperature?: number;
+            /**
+             * @description Ask for `language`, `duration` and segments as well as the text:
+             *     OpenAI's `verbose_json`. A backend that cannot make it refuses,
+             *     and the refusal is relayed.
+             * @default false
+             */
+            verbose: boolean;
+            /** @description With `verbose` only, as OpenAI requires. */
+            timestampGranularities?: components["schemas"]["TimestampGranularity"][];
+            /**
+             * @description The text in English, whatever was spoken: OpenAI's
+             *     `/v1/audio/translations` (P3-4). Only a model with the
+             *     `translation` surface is asked. Refused with `language` or
+             *     `timestampGranularities`, which that door does not take.
+             * @default false
+             */
+            translate: boolean;
+            /** Format: uuid */
+            requestId?: string;
+        };
+        /**
+         * @description Named, so a later inline enum cannot renumber it.
+         * @enum {string}
+         */
+        TimestampGranularity: "word" | "segment";
+        TranscribeAudio: {
+            /** @description The file's bytes, base64, no `data:` prefix. At most 25 MiB decoded. */
+            data: string;
+            /**
+             * @description The name the caller uploaded it under. Backends read the format
+             *     from its extension as often as from its bytes, so it is sent on.
+             */
+            filename: string;
+            /** @description The upload's `Content-Type`, when the caller sent one. */
+            mediaType?: string;
+        };
+        TranscribeResponse: {
+            text: string;
+            /** @description The spoken language, as the backend names it. */
+            language?: string;
+            /** @description The audio's length in seconds, when the backend says. */
+            duration?: number;
+            /** @description `verbose` only: the backend's segments, as it sent them. */
+            segments?: {
+                [key: string]: unknown;
+            }[];
+            /** @description `verbose` with word timestamps: the backend's words, as it sent them. */
+            words?: {
+                [key: string]: unknown;
+            }[];
+            usage?: components["schemas"]["TranscriptionUsage"];
+            /** @description The model the backend says answered. */
+            modelId?: string;
+            latencyMs?: number;
+        };
+        /**
+         * @description What the backend counted, in its own unit (measured 2026-09-28):
+         *     seconds of audio for Whisper, tokens for `gpt-4o-mini-transcribe`
+         *     and `llama-server`.
+         */
+        TranscriptionUsage: {
+            seconds?: number;
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+        };
+        /**
+         * @description One request for images (P4). Settings are strings here: the gateway
+         *     has already checked them against OpenAI's values and routed them to
+         *     a model whose listing takes them (A2); this driver carries them.
+         */
+        ImageRequest: {
+            model?: components["schemas"]["RequestModel"];
+            /**
+             * @description As `GenerateRequest.localOnly`: refuse before forwarding the
+             *     prompt or any image unless the active engine is classified local.
+             * @default false
+             */
+            localOnly: boolean;
+            /** @description OpenAI's limit for its GPT image models. */
+            prompt: string;
+            n?: number;
+            /**
+             * @description `WIDTHxHEIGHT` or `auto`, carried as sent. No OpenRouter model
+             *     lists it and OpenRouter translates it (measured).
+             */
+            size?: string;
+            quality?: string;
+            background?: string;
+            /**
+             * @description Carried where the model's listing does not name it, because
+             *     gpt-image-1-mini honours it unlisted (measured). The answer's
+             *     `mediaType` says what the image is.
+             */
+            outputFormat?: string;
+            outputCompression?: number;
+            moderation?: string;
+            style?: string;
+            user?: string;
+            inputFidelity?: string;
+            /**
+             * @description The images to edit. Present makes this an edit; at most 25 MiB
+             *     decoded across these and `mask`.
+             */
+            references?: components["schemas"]["ImageData"][];
+            mask?: components["schemas"]["ImageData"];
+            /** @description For `/v1/image/stream`, how many partial renders to ask for. */
+            partialImages?: number;
+            /** Format: uuid */
+            requestId?: string;
+        };
+        ImageData: {
+            /** @description The image's bytes, base64, no `data:` prefix. */
+            data: string;
+            /**
+             * @description Read from the bytes by the gateway (`image/png`, `image/jpeg`,
+             *     `image/webp`, `image/gif`), never from an upload's part header:
+             *     the OpenAI SDK labels a `BytesIO` `application/octet-stream`
+             *     (measured).
+             */
+            mediaType: string;
+        };
+        ImageResponse: {
+            images: components["schemas"]["GeneratedImage"][];
+            /**
+             * @description The backend's own timestamp, when it gave a real one. Absent
+             *     where it sent 0 (flux and gemini on OpenRouter, measured).
+             */
+            created?: number;
+            /** @description The backend's report of the size, when it gave one. */
+            size?: string;
+            quality?: string;
+            background?: string;
+            usage?: components["schemas"]["ImageUsage"];
+            /** @description The model the backend says answered. */
+            modelId?: string;
+            latencyMs?: number;
+        };
+        GeneratedImage: {
+            /** @description Base64, no `data:` prefix. */
+            data: string;
+            /**
+             * @description What the bytes are, read from them (`image/png`, `image/jpeg`,
+             *     `image/webp`, `image/svg+xml`), whatever format was asked for.
+             */
+            mediaType: string;
+            /** @description The prompt the backend actually used, where it says (`dall-e-3`). */
+            revisedPrompt?: string;
+        };
+        ImagePartial: {
+            image: components["schemas"]["GeneratedImage"];
+            /** @description 0-based, as OpenAI's `partial_image_index`. */
+            index: number;
+        };
+        /**
+         * @description What the backend counted. OpenAI counts `input_tokens` and
+         *     `output_tokens`; OpenRouter counts chat-style `prompt_tokens` and
+         *     `completion_tokens`, which are the same quantities under their chat
+         *     names, plus a `cost`.
+         */
+        ImageUsage: {
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+            /** @description The provider's charge in US dollars, where it says (OpenRouter). */
+            cost?: number;
+        };
+        /**
+         * @description One video job (P5). `seconds` and `size` are the gateway's, already
+         *     routed to a model whose listing takes them (A2).
+         */
+        VideoRequest: {
+            model?: components["schemas"]["RequestModel"];
+            /**
+             * @description As `GenerateRequest.localOnly`.
+             * @default false
+             */
+            localOnly: boolean;
+            prompt: string;
+            /** @description Sent as OpenRouter's `duration`. */
+            seconds?: number;
+            /** @description `WIDTHxHEIGHT`, one the model lists. */
+            size?: string;
+            firstFrame?: components["schemas"]["ImageData"];
+            /** Format: uuid */
+            requestId?: string;
+        };
+        /**
+         * @description OpenAI's words. OpenRouter's `pending` is `queued`.
+         * @enum {string}
+         */
+        VideoJobStatus: "queued" | "in_progress" | "completed" | "failed";
+        VideoJob: {
+            /** @description The backend's own job id. */
+            jobId: string;
+            status: components["schemas"]["VideoJobStatus"];
+            /** @description Where the backend says; OpenRouter does not (measured). */
+            progress?: number;
+            /** @description A failed job's reason, in the backend's words. */
+            error?: string;
+            /** @description The provider's charge in US dollars, once it says. */
+            cost?: number;
+            modelId?: string;
+        };
+        /**
+         * @description Answer with audio as well as text (P2b, 2026-09-28): the chat
+         *     door's `modalities` including `audio`, with its `audio` object.
+         *     Sent only to a model whose capabilities say `audioOutput`; any
+         *     other is refused with 400 before anything is forwarded.
+         *
+         *     **Upstream it is always a stream of `pcm16`**, whichever door
+         *     asked: every audio-output model behind an account answers audio
+         *     only that way (measured 2026-09-28). `POST /v1/generate`
+         *     assembles the stream into one `GeneratedAudio`; asked for `wav`,
+         *     it adds the header. It refuses any other `format` with 400,
+         *     naming `wav` and `pcm16`. `POST /v1/generate/stream` carries
+         *     `pcm16` only and refuses the rest the same way, as OpenAI itself
+         *     does.
+         */
+        AudioOutputRequest: {
+            /**
+             * @description The voice, in the provider's own names (`alloy`, `coral`,
+             *     ...). Passed through; a model with no voices (Lyria)
+             *     ignores it.
+             */
+            voice: string;
+            format: components["schemas"]["AudioOutputFormat"];
+        };
+        /**
+         * @description The audio of a `POST /v1/generate` answer, assembled from the
+         *     stream the backend sent.
+         */
+        GeneratedAudio: {
+            /** @description The whole answer's audio, base64-encoded. */
+            data: string;
+            /**
+             * @description What `data` is, read from its bytes: `mp3` for an ID3 tag or
+             *     frame sync, `wav` for a RIFF/WAVE header (including one this
+             *     driver added), `pcm16` for headerless samples. **Not what
+             *     was asked** when the backend sent something else: Lyria's
+             *     MP3 is `mp3` (P2-2).
+             */
+            format: components["schemas"]["AudioOutputFormat"];
+            /** @description The backend's id for the audio, when it gives one. */
+            id?: string;
+            /**
+             * @description What the audio says, when the backend reports it. A speech
+             *     model's spoken answer is here, not in `content`.
+             */
+            transcript?: string;
+            /**
+             * @description Unix seconds after which the backend forgets the audio, when
+             *     it says. Nothing here stores it; see the chat door.
+             */
+            expiresAt?: number;
+        };
+        /**
+         * @description A fragment of the answer's audio on the stream. `data` fragments
+         *     concatenate, after base64 decoding each one, into the whole
+         *     answer. `id`, `format` and `expiresAt` arrive once; `transcript`
+         *     arrives in fragments, like `text`.
+         */
+        AudioDelta: {
+            /** @description A fragment of the audio, base64-encoded on its own. */
+            data?: string;
+            /**
+             * @description On the first fragment carrying `data`: what the bytes are,
+             *     read from them (`pcm16`, or Lyria's `mp3`).
+             */
+            format?: components["schemas"]["AudioOutputFormat"];
+            id?: string;
+            transcript?: string;
+            expiresAt?: number;
         };
         /**
          * @description One `event: progress` payload: what the backend is doing while
@@ -1085,11 +1740,35 @@ export interface components {
             /**
              * @description Which requests this model answers. The values so far:
              *
-             *     * `chat` (`/v1/generate`), `embeddings` (`/v1/embed`) and
-             *       `decisions` (`/v1/decide`), which have doors today;
-             *     * `completion`, `speech`, `transcription`, `image`, `video`,
-             *       `moderation` and `rerank`, which name OpenAI's and
-             *       OpenRouter's doors Eugene has not built yet.
+             *     * `chat` (`/v1/generate`), `embeddings` (`/v1/embed`),
+             *       `decisions` (`/v1/decide`), `speech` (`/v1/speak`, P3a),
+             *       `transcription` (`/v1/transcribe`, P3b), `translation`
+             *       (`/v1/transcribe` with `translate`, P3-4), `image`
+             *       (`/v1/image`, P4), `video` (`/v1/video`, P5),
+             *       `moderation` (`/v1/moderate`, P6) and `completion`
+             *       (`/v1/generate` with `completion`, P6), which have doors;
+             *     * `rerank`, which names a door Eugene has not built yet.
+             *
+             *     `completion` is reported for a local `llama-server`, a vLLM,
+             *     and an Ollama account's models with its `completion`
+             *     capability: engines that continue raw text (P6-4). An account
+             *     over a hosted API does not report it: OpenRouter's completions
+             *     answer the prompt as a chat turn (measured).
+             *
+             *     An OpenRouter model whose output is image and text (Gemini's
+             *     image models) serves `image` beside `chat`: its images route
+             *     answers them too (measured).
+             *
+             *     A single-model `llama-server` whose projector hears
+             *     (`/props` `modalities.audio`) serves `transcription` beside
+             *     `chat`: its `/v1/audio/transcriptions` answers only then
+             *     (measured).
+             *
+             *     OpenAI's `whisper-*` models serve `translation` beside
+             *     `transcription`; nothing else here translates (measured).
+             *     ElevenLabs' `scribe_*` models serve `transcription`, listed
+             *     only while the key may use speech-to-text (P3-1, as P3-2
+             *     requires `models_read` for its speech models).
              *
              *     A driver reports those anyway, so a model's id does not
              *     change on the day its door arrives, and the gateway lists a
@@ -1189,6 +1868,29 @@ export interface components {
             error?: string | null;
         };
         /**
+         * @description P6: a raw text continuation instead of a conversation, OpenAI's
+         *     legacy `/v1/completions`. With it `messages` is empty and **no chat
+         *     template is applied**: the backend continues `prompt` as written,
+         *     special tokens parsed, so a client-rendered fill-in-the-middle
+         *     prompt works (measured on `llama-server` b11235). Only a model with
+         *     the `completion` surface is asked, and each engine is asked the way
+         *     it continues raw text: `llama-server` and vLLM at `/v1/completions`,
+         *     Ollama at `/api/generate` with `raw` (its `/v1/completions` wraps a
+         *     prompt in the chat template, read in its source).
+         *
+         *     **`suffix` asks for fill-in-the-middle** and only a model whose
+         *     `Capabilities.fillInMiddle` is true is asked. `llama-server`'s
+         *     `/v1/completions` ignores a suffix (measured), so it is sent to
+         *     `/infill` instead; Ollama takes it on `/api/generate` for a model
+         *     with its `insert` capability; vLLM refuses one for every model but
+         *     DeepSeek V4, so it is never sent there.
+         */
+        CompletionPrompt: {
+            prompt: string;
+            /** @description The text after the cursor, for fill-in-the-middle. */
+            suffix?: string;
+        };
+        /**
          * @description What one model can do behind this driver, which the gateway keys
          *     off when routing. Was one object for the whole driver until P1;
          *     each `DriverModel` carries its own now. For a backend whose
@@ -1207,11 +1909,56 @@ export interface components {
             /** @description Whether `/v1/generate/stream` emits true incremental tokens. */
             streaming?: boolean;
             /**
+             * @description P6: whether a `completion` with a `suffix` is filled in the
+             *     middle by this model: `llama-server` answering `/infill` (the
+             *     model carries fill-in-the-middle tokens), or an Ollama model
+             *     with the `insert` capability. Unknown is false.
+             */
+            fillInMiddle?: boolean;
+            /**
              * @description Whether the loaded model is confirmed to accept inline PNG/JPEG
              *     images. Unknown or unverified backends report false. Rechecked
              *     before image generation; never inferred from the provider name.
              */
             imageInput?: boolean;
+            /**
+             * @description Whether the model is confirmed to hear an `input_audio` part
+             *     (WAV or MP3). The same rule as `imageInput`: unknown reports
+             *     false, and the gateway routes a request carrying audio only
+             *     to a model that says true. From the account's listing
+             *     (`audio` in OpenRouter's `input_modalities`) or, for
+             *     `llama-server`, its `/props` `modalities.audio`.
+             *
+             *     **Added 2026-09-28 (P2).** Without it a text-only model is
+             *     sent the audio: measured, OpenRouter answers *"No endpoints
+             *     found that support input audio"*, and a backend that drops
+             *     the part answers a question the caller did not ask.
+             */
+            audioInput?: boolean;
+            /**
+             * @description Whether the model is confirmed to read a `file` part (PDF).
+             *     The same rule as `audioInput`. From `file` in the account's
+             *     `input_modalities`; no local engine reads one today, so a
+             *     single-model driver reports false.
+             */
+            fileInput?: boolean;
+            /**
+             * @description For a `speech` model: the formats this driver can give it in,
+             *     `wav` included where it is made from `pcm` (P3a).
+             */
+            speechFormats?: components["schemas"]["SpeechFormat"][];
+            /**
+             * @description Whether the model is confirmed to answer with audio
+             *     (`GenerateRequest.audioOutput`). From `audio` in the
+             *     account's `output_modalities`; no local engine or CLI speaks,
+             *     so they report false. Unknown is false, as for the inputs.
+             *
+             *     **Not from `supported_parameters`** (A2's setting list): no
+             *     audio-output model on OpenRouter lists `modalities` or
+             *     `audio` there (measured 2026-09-28), so routing by it would
+             *     route nothing. Added 2026-09-28 (P2b).
+             */
+            audioOutput?: boolean;
             /**
              * @description Whether this driver can carry `tools` to its backend and
              *     report `toolCalls` back.
@@ -1256,6 +2003,63 @@ export interface components {
              */
             maxContextTokens?: number;
             decision?: components["schemas"]["DecisionCapability"];
+            image?: components["schemas"]["ImageCapabilities"];
+            video?: components["schemas"]["VideoCapabilities"];
+        };
+        /**
+         * @description For a `video` model (P5): what OpenRouter's `GET /videos/models`
+         *     lists, which the gateway routes on. Null lists mean the listing did
+         *     not say.
+         */
+        VideoCapabilities: {
+            /** @description The whole seconds it makes. */
+            durations?: number[] | null;
+            /** @description The `WIDTHxHEIGHT` sizes it makes; another is its 400 (measured). */
+            sizes?: string[] | null;
+            /** @description Whether it takes a first frame (image-to-video). */
+            firstFrame?: boolean;
+        };
+        /**
+         * @description For an `image` model (P4): what its listing says it takes, which the
+         *     gateway routes on. **Absent or null means the backend checks its own
+         *     fields**, and its refusal is relayed: an OpenAI account's image
+         *     models, whose API is the reference and which lists nothing per
+         *     model. **An empty list means not taken**: OpenRouter ignores an
+         *     unlisted `quality` or `background` with a 200 (measured), so a model
+         *     whose listing does not name one is routed around for it.
+         */
+        ImageCapabilities: {
+            /**
+             * @description Whether `/v1/image/stream` gives partial renders. From
+             *     OpenRouter's `supports_streaming` (8 of 55, measured); for
+             *     OpenAI's API, its GPT image models and not `dall-e-*`.
+             */
+            streaming?: boolean;
+            /** @description The largest `n`. Null when the backend checks it. */
+            maxImages?: number | null;
+            /**
+             * @description At least this many reference images. One on a model that only
+             *     edits (five on OpenRouter, measured), which a generation routes
+             *     around.
+             * @default 0
+             */
+            minReferences: number;
+            /**
+             * @description At most this many reference images; 0 cannot edit. Null when
+             *     the backend checks it.
+             */
+            maxReferences?: number | null;
+            /** @description Whether `mask` is honoured. OpenAI's API only (OpenRouter ignores it, measured). */
+            mask?: boolean;
+            /** @description The `quality` values taken; `[]` none, null the backend checks. */
+            qualities?: string[] | null;
+            /** @description The `background` values taken; `[]` none, null the backend checks. */
+            backgrounds?: string[] | null;
+            /**
+             * @description The `output_format` values taken. Null where the listing does
+             *     not say: carried, and the answer labelled by its bytes (P2-2).
+             */
+            outputFormats?: string[] | null;
         };
         /**
          * @description Driver self-description, and the gateway's only source of truth
@@ -1363,7 +2167,65 @@ export interface components {
                 detail?: "auto";
             };
         };
-        MessageContentPart: components["schemas"]["TextContentPart"] | components["schemas"]["ImageContentPart"];
+        /**
+         * @description OpenAI's two input formats, which `llama-server` also reads.
+         *     OpenRouter accepts more; they are refused rather than passed to
+         *     a backend that may not. Named rather than inline so a later
+         *     inline enum cannot rename it (S6's `Source1`).
+         * @enum {string}
+         */
+        InputAudioFormat: "wav" | "mp3";
+        InputAudio: {
+            /**
+             * @description The audio, base64-encoded, with no `data:` prefix (OpenAI's
+             *     shape). At most 10 MiB decoded. Checked against `format`:
+             *     a WAV must begin `RIFF....WAVE` and an MP3 with an ID3 tag
+             *     or a frame sync, so a mislabelled clip is refused here
+             *     rather than as whatever the provider happens to say.
+             */
+            data: string;
+            format: components["schemas"]["InputAudioFormat"];
+        };
+        /**
+         * @description A recording the model hears, in OpenAI's chat shape. Carried only
+         *     to a model whose backend confirms audio input
+         *     (`capabilities.audioInput`); nothing else is asked, so a model
+         *     that cannot hear it never answers as though it had.
+         */
+        InputAudioContentPart: {
+            /** @constant */
+            type: "input_audio";
+            input_audio: components["schemas"]["InputAudio"];
+        };
+        InputFile: {
+            /** @description The name the model is shown. Optional; forwarded when set. */
+            filename?: string;
+            /**
+             * @description The file as a `data:application/pdf;base64,...` URL, at most
+             *     10 MiB decoded, beginning `%PDF-`. Bare base64 is accepted
+             *     and carried as that data URL, because OpenAI's own schema
+             *     describes it as base64 while OpenRouter refuses anything but
+             *     the URL (measured 2026-09-28: *"Invalid content"*).
+             */
+            file_data?: string;
+            /**
+             * @description Refused with a 400. It names a file uploaded to one
+             *     provider's store, which this install does not have; send
+             *     `file_data`.
+             */
+            file_id?: string;
+        };
+        /**
+         * @description A document the model reads, in OpenAI's chat shape. PDF only.
+         *     Carried only to a model whose backend confirms file input
+         *     (`capabilities.fileInput`).
+         */
+        FileContentPart: {
+            /** @constant */
+            type: "file";
+            file: components["schemas"]["InputFile"];
+        };
+        MessageContentPart: components["schemas"]["TextContentPart"] | components["schemas"]["ImageContentPart"] | components["schemas"]["InputAudioContentPart"] | components["schemas"]["FileContentPart"];
         /**
          * @description Text, null for an assistant tool-call turn, or ordered user content parts.
          *     Images are inline PNG/JPEG only: the gateway's `maxImagesPerRequest`
@@ -1371,7 +2233,14 @@ export interface components {
          *     conversation), 5 MiB decoded each, 10 MiB decoded total, 16 million
          *     pixels each, maximum dimension 8192. The inference-driver enforces
          *     the ceiling of 64; the gateway enforces the setting.
-         *     JSON bodies are limited to 16 MiB. Remote URLs are never fetched.
+         *
+         *     Audio (`input_audio`, WAV or MP3) and files (`file`, PDF) are
+         *     inline too: at most 10 MiB decoded each, and every attachment in
+         *     the request together -- images, audio and files -- at most
+         *     11 MiB decoded, which is what fits in the 16 MiB JSON body once
+         *     base64 has grown it by a third. Attachments ride on user messages
+         *     only. Remote URLs are never fetched, and a `file_id` is refused:
+         *     each names a store this install does not have.
          */
         MessageContent: string | null | components["schemas"]["MessageContentPart"][];
         /**
@@ -1427,6 +2296,125 @@ export interface components {
             timestamp?: string;
         };
         /**
+         * @description The formats OpenAI's chat audio output names (P2b, 2026-09-28).
+         *
+         *     **Asked for, only `wav` and `pcm16` can be served**, because
+         *     every audio-output model behind an account answers audio only
+         *     when streamed and only as `pcm16` (measured 2026-09-28, OpenAI's
+         *     own 400: *"Supported values are: 'pcm16'"*). A non-streamed
+         *     answer is the stream assembled, and `wav` is that with a WAV
+         *     header; a streamed answer is `pcm16`. The other four would need a
+         *     transcoder and are refused, naming the two that work (P2-1).
+         *
+         *     **Reported, it is what the bytes are, not what was asked.**
+         *     Lyria answers MP3 whatever it is asked for (measured), so its
+         *     audio is labelled `mp3` from its own header (P2-2). `pcm16` is
+         *     raw little-endian 16-bit mono samples with no header, at the
+         *     24 kHz OpenAI documents.
+         *
+         *     Named rather than inline so a later inline enum cannot rename it
+         *     (S6's `Source1`).
+         * @enum {string}
+         */
+        AudioOutputFormat: "wav" | "mp3" | "flac" | "opus" | "aac" | "pcm16";
+        /**
+         * @description How much a reasoning model thinks before it answers: OpenAI's
+         *     `reasoning_effort` (P2c, 2026-09-28). Measured on
+         *     `openai/gpt-oss-20b` through OpenRouter: 17 reasoning tokens at
+         *     `low`, 275 at `high`. A setting, so it routes only to a model
+         *     that lists it (A2).
+         * @enum {string}
+         */
+        ReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+        /**
+         * @description OpenAI's `verbosity`, how long the answer is. A setting, routed as A2 says.
+         * @enum {string}
+         */
+        Verbosity: "low" | "medium" | "high";
+        /**
+         * @description OpenAI's predicted output: text the answer is expected to repeat
+         *     most of, which a backend can use to answer faster. A setting,
+         *     routed as A2 says.
+         */
+        Prediction: {
+            /** @constant */
+            type: "content";
+            content: string | components["schemas"]["TextContentPart"][];
+        };
+        /** @enum {string} */
+        WebSearchContextSize: "low" | "medium" | "high";
+        WebSearchUserLocation: {
+            /** @constant */
+            type: "approximate";
+            approximate: {
+                city?: string;
+                country?: string;
+                region?: string;
+                timezone?: string;
+            };
+        };
+        /**
+         * @description Ask the model to search the web before it answers: OpenAI's
+         *     `web_search_options`. The search is the model provider's, not this
+         *     install's. A setting, routed as A2 says; **listed is not promised**
+         *     (OpenRouter lists it for `gpt-4o-mini`, and OpenAI refuses it for
+         *     that model, measured), so a provider's refusal is still the
+         *     caller's 400. The citations come back as `annotations`.
+         */
+        WebSearchOptions: {
+            search_context_size?: components["schemas"]["WebSearchContextSize"];
+            user_location?: components["schemas"]["WebSearchUserLocation"];
+        };
+        /**
+         * @description OpenAI's `prompt_cache_retention`, a hint (see `prompt_cache_key`).
+         * @enum {string}
+         */
+        PromptCacheRetention: "in_memory" | "24h";
+        /**
+         * @description OpenAI's `service_tier`, a hint carried to OpenAI's own API only.
+         * @enum {string}
+         */
+        ServiceTier: "auto" | "default" | "flex" | "scale" | "priority";
+        ChatTopLogprob: {
+            token: string;
+            logprob: number;
+            bytes?: number[] | null;
+        };
+        ChatTokenLogprob: {
+            token: string;
+            logprob: number;
+            bytes?: number[] | null;
+            top_logprobs?: components["schemas"]["ChatTopLogprob"][];
+        };
+        /**
+         * @description The chosen tokens' log probabilities, OpenAI's shape (P2c). Asked
+         *     for with `logprobs` (and `top_logprobs` for alternatives). Streamed,
+         *     each frame carries the entries for its own tokens.
+         */
+        ChatLogprobs: {
+            content?: components["schemas"]["ChatTokenLogprob"][] | null;
+            refusal?: components["schemas"]["ChatTokenLogprob"][] | null;
+        };
+        UrlCitation: {
+            url: string;
+            title?: string;
+            /** @description Where in `content` the citation applies. Perplexity's Sonar sends 0 for all. */
+            start_index?: number;
+            end_index?: number;
+        };
+        /**
+         * @description A web source the answer cites, OpenAI's shape (P2c). Carried back
+         *     from a search the provider ran for `web_search_options`. Only
+         *     `url_citation` is carried: OpenRouter's own `file` annotations are
+         *     a cache of how it parsed a PDF, not a citation, and no OpenAI
+         *     client reads them.
+         */
+        ChatAnnotation: {
+            /** @constant */
+            type: "url_citation";
+            url_citation: components["schemas"]["UrlCitation"];
+        };
+        /**
          * @description Which wire protocol an inference-driver instance speaks to its
          *     backend. Reported by the driver's `/v1/info` so the gateway can
          *     log it and the UI can render a label.
@@ -1447,9 +2435,15 @@ export interface components {
          *     `DriverInfo.provider` exactly as the chat protocols are. A
          *     driver on this protocol serves decisions and not chat; see
          *     `Capabilities.chatCapable`.
+         *
+         *     `elevenlabs_http` is ElevenLabs' own API (P3a, 2026-09-28): speech,
+         *     and transcription since P3-1 was taken, keyed by `xi-api-key`,
+         *     nothing OpenAI-shaped about it. The driver translates `POST
+         *     /v1/speak` to its text-to-speech route and `POST /v1/transcribe` to
+         *     its speech-to-text route.
          * @enum {string}
          */
-        BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http" | "systemone_http";
+        BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http" | "systemone_http" | "elevenlabs_http";
         /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
          *     Eugene Plexus component returns this for 4xx / 5xx responses.
@@ -1490,6 +2484,17 @@ export interface components {
             /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
             retryAfterSeconds?: number;
         };
+        /**
+         * @description OpenAI's speech formats (P3a). `pcm` is 16-bit little-endian mono at
+         *     24 kHz with no header, and `wav` is that with one. **Each backend
+         *     makes only some** (measured 2026-09-28): OpenRouter `mp3` and `pcm`,
+         *     ElevenLabs mp3, pcm and opus on its lower plans, OpenAI's API all
+         *     six. `wav` is served wherever `pcm` is, by adding the header. A
+         *     format a model cannot make is refused naming the ones it can,
+         *     never transcoded.
+         * @enum {string}
+         */
+        SpeechFormat: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
         /**
          * @description Current effective config values, keyed by `ConfigField.key`.
          *     Values of fields with `sensitive: true` are returned as the
@@ -1994,10 +2999,12 @@ export interface operations {
             };
             /**
              * @description The request cannot be served as asked. Either the driver
-             *     refused it (tools against a backend that cannot carry them)
-             *     or the backend rejected it in a way another backend would
-             *     reject identically — including a prompt longer than the
-             *     context window. Does not cascade.
+             *     refused it (tools against a backend that cannot carry them;
+             *     `audioOutput` against a model that does not confirm it, or
+             *     in a `format` other than `wav` or `pcm16`) or the backend
+             *     rejected it in a way another backend would reject
+             *     identically — including a prompt longer than the context
+             *     window. Does not cascade.
              */
             400: {
                 headers: {
@@ -2027,7 +3034,9 @@ export interface operations {
             /**
              * @description Upstream model backend error, or a backend refusal worth
              *     retrying elsewhere (`408`, `409`, `425`, `429`). Cascades to
-             *     the next backend in the slot.
+             *     the next backend in the slot. The one 502 that does not:
+             *     `#backend-credential-refused`, the backend refusing this
+             *     driver's own key (see the overview).
              */
             502: {
                 headers: {
@@ -2107,7 +3116,9 @@ export interface operations {
             500: components["responses"]["Problem"];
             /**
              * @description Backend failure before the stream opened, or a refusal worth
-             *     retrying elsewhere (`408`, `409`, `425`, `429`). Cascades.
+             *     retrying elsewhere (`408`, `409`, `425`, `429`). Cascades —
+             *     except `#backend-credential-refused`, the backend refusing
+             *     this driver's own key, which does not.
              */
             502: {
                 headers: {
@@ -2202,6 +3213,475 @@ export interface operations {
             };
         };
     };
+    moderate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerateRequest"];
+            };
+        };
+        responses: {
+            /** @description One result per input. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModerateResponse"];
+                };
+            };
+            /**
+             * @description A model without the `moderation` surface, neither or both of
+             *     `texts` and `parts`, or the backend's own refusal (more than
+             *     one image, an image it cannot read), with its words. Does not
+             *     cascade.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["ModelNotServed"];
+            /** @description The backend failed, or refused this driver's own key. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `requestTimeoutSeconds` passed with no answer. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    speak: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpeakRequest"];
+            };
+        };
+        responses: {
+            /** @description The audio, streamed. `Content-Type` names the format. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/mpeg": string;
+                    "audio/ogg": string;
+                    "audio/aac": string;
+                    "audio/flac": string;
+                    "audio/wav": string;
+                    "audio/pcm": string;
+                };
+            };
+            /**
+             * @description A format the model cannot make, a setting its backend cannot
+             *     carry (`instructions` on ElevenLabs), or the backend's own
+             *     refusal (an unknown voice). Does not cascade.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["ModelNotServed"];
+            /**
+             * @description The backend failed, or refused this driver's own key --
+             *     `#backend-credential-refused`, naming the missing permission
+             *     where the backend does (ElevenLabs' scoped keys).
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `requestTimeoutSeconds` passed with no first byte. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    transcribe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description The transcript. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscribeResponse"];
+                };
+            };
+            /**
+             * @description Audio that is not base64, or the backend's own refusal (a format
+             *     it cannot read, `verbose` on `llama-server`), with its words.
+             *     Does not cascade.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["ModelNotServed"];
+            /** @description The body is over this path's 36 MiB limit. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The backend failed, or refused this driver's own key. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `requestTimeoutSeconds` passed with no answer. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    image: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageRequest"];
+            };
+        };
+        responses: {
+            /** @description The images. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageResponse"];
+                };
+            };
+            /**
+             * @description A setting this model does not take (`mask` off OpenAI's API,
+             *     more references than it reads), or the backend's own refusal
+             *     (OpenRouter's *"No provider ... supports the requested
+             *     parameter(s)"*, a provider's content filter), with its words.
+             *     Does not cascade.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["ModelNotServed"];
+            /** @description The body is over this path's 36 MiB limit. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The backend failed, or refused this driver's own key. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `requestTimeoutSeconds` passed with no answer. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    imageStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageRequest"];
+            };
+        };
+        responses: {
+            /** @description SSE stream opened. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description As `POST /v1/image`, plus a model that does not stream. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["ModelNotServed"];
+            /** @description The body is over this path's 36 MiB limit. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The backend failed before the stream opened. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `requestTimeoutSeconds` passed before the first event. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    video: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoRequest"];
+            };
+        };
+        responses: {
+            /** @description The job, accepted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoJob"];
+                };
+            };
+            /**
+             * @description A model that makes no videos, a first frame that is not an
+             *     image, or the backend's own refusal (a size it does not list),
+             *     with its words. Does not cascade.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["ModelNotServed"];
+            /** @description The body is over this path's 36 MiB limit. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The backend failed, or refused this driver's own key. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `requestTimeoutSeconds` passed with no answer. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    videoJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job as the backend reports it now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoJob"];
+                };
+            };
+            /** @description The backend knows no such job. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The backend failed, or refused this driver's own key. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    videoContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The video. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
+            /** @description The backend's refusal (a job that has no video yet). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The backend knows no such job. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The backend failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     embed: {
         parameters: {
             query?: never;
@@ -2253,6 +3733,8 @@ export interface operations {
              * @description Upstream backend error, or a refusal worth retrying
              *     elsewhere (`408`, `409`, `425`, `429`). Cascades — but only
              *     across replicas of the SAME model; see `gateway.yaml`.
+             *     `#backend-credential-refused` (the backend refusing this
+             *     driver's own key) does not cascade.
              */
             502: {
                 headers: {
@@ -2338,6 +3820,8 @@ export interface operations {
              *     answer, an illegal choice, a distribution that is not one),
              *     or a refusal-before-work worth retrying elsewhere. Cascades
              *     across replicas of the same model per the gateway's rules.
+             *     `#backend-credential-refused` (the backend refusing this
+             *     driver's own key) does not cascade.
              */
             502: {
                 headers: {
