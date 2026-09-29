@@ -38,6 +38,18 @@ export const DOORS: readonly Door[] = [
     surfaces: ["completion"],
     hint: "POST /v1/completions: a prompt continued as written, or the middle filled in",
   },
+  {
+    id: "speech",
+    label: "Speech",
+    surfaces: ["speech"],
+    hint: "POST /v1/audio/speech: text read aloud",
+  },
+  {
+    id: "transcription",
+    label: "Transcription",
+    surfaces: ["transcription", "translation"],
+    hint: "POST /v1/audio/transcriptions and /translations: a recording written down, or put into English",
+  },
 ];
 
 export const DEFAULT_DOOR: DoorId = "chat";
