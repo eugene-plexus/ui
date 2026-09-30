@@ -37,10 +37,12 @@ function identity(update: Partial<Update> | null, extra: Partial<NodeIdentity> =
     update: {
       enabled: true,
       channel: "edge",
-      channelSource: "inferred",
+      channelSource: "setting",
       checkedAt: "2026-09-27T17:55:00Z",
       available: false,
       behind: [],
+      // An agent from 2026-09-30 on says what is newer, too.
+      ahead: [],
       apply: { possible: true },
       ...update,
     },
@@ -200,6 +202,69 @@ describe("describeUpdate", () => {
 
   it("says nothing it does not know about a machine that did not answer", () => {
     expect(describeUpdate(null, NOW).state).toBe("unknown");
+  });
+});
+
+describe("only a newer version is called newer (settings never lie, 2026-09-30)", () => {
+  const OLDER = {
+    channel: "releases" as const,
+    ref: "v0.1.0-alpha.5",
+    release: "v0.1.0-alpha.5",
+    components: {},
+  };
+
+  it("an older agent's 'available' is called different, never newer", () => {
+    const view = describeUpdate(
+      identity({ available: true, behind: ["agent"], newest: NEWEST, ahead: undefined }),
+      NOW,
+    );
+    expect(view.headline).toBe("edge has a different version: edge b8b30bd");
+    expect(view.headline).not.toMatch(/newer/);
+    expect(view.detail).toMatch(/cannot tell whether it is newer or older/);
+  });
+
+  it("a machine newer than its channel's newest is told so, and offered nothing", () => {
+    // Installed from main, following releases: alpha.5 is OLDER.
+    const view = describeUpdate(
+      identity(
+        {
+          channel: "releases",
+          channelSource: "default",
+          available: false,
+          behind: [],
+          ahead: ["agent", "ui"],
+          newest: OLDER,
+        },
+        { install: SEVEN },
+      ),
+      NOW,
+    );
+    expect(view.state).toBe("ahead");
+    expect(view.headline).toBe("Newer than the newest on releases");
+    expect(view.detail).toContain("Two of the seven parts are newer than v0.1.0-alpha.5");
+    expect(view.detail).toContain("It follows releases, the default. To follow edge");
+    expect(view.canUpdate).toBe(false);
+    expect(versionLabel(identity({ ahead: ["agent"], newest: OLDER }))).toBe("agent 2dcf645");
+  });
+
+  it("a mixed install is offered nothing that would move a part back", () => {
+    const view = describeUpdate(
+      identity({ available: false, behind: ["gateway"], ahead: ["agent"], newest: NEWEST }),
+      NOW,
+    );
+    expect(view.state).toBe("mixed");
+    expect(view.canUpdate).toBe(false);
+    expect(view.detail).toContain("would move the newer ones back");
+  });
+
+  it("an undecided channel is not shown as one", () => {
+    const view = describeUpdate(
+      identity({ channel: undefined, channelSource: "pending", checkedAt: undefined }),
+      NOW,
+    );
+    expect(view.state).toBe("undecided");
+    expect(view.headline).toBe("Update channel not decided yet");
+    expect(view.headline).not.toContain("undefined");
   });
 });
 

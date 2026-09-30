@@ -29,6 +29,7 @@ const FIELD: ConfigField = {
   sensitive: false,
   required: false,
   requiresRestart: false,
+  pendingRestart: false,
   default: [],
 };
 
@@ -46,10 +47,27 @@ describe("share credentials", () => {
   it("marks a stored password as saved rather than as empty", () => {
     // The server redacted it. An empty password box with no explanation
     // invites somebody to "fix" it, and the fix clears the secret.
-    renderField([{ host: "192.168.16.252", username: "tcorbin", password: null }]);
+    renderField([
+      { host: "192.168.16.252", username: "tcorbin", password: null, hasPassword: true },
+    ]);
     const box = screen.getByLabelText("Password for the file server");
     expect(box).toHaveValue("");
-    expect(box).toHaveAttribute("placeholder", expect.stringContaining("saved"));
+    expect(box).toHaveAttribute("placeholder", "saved - leave blank to keep it");
+  });
+
+  it("does not call a row with no password saved (settings never lie)", () => {
+    // Every row came back `password: null`, and the box said "saved" about
+    // all of them. The agent now says `hasPassword`; a row without one says so.
+    renderField([{ host: "nas", username: "u", password: null, hasPassword: false }]);
+    const box = screen.getByLabelText("Password for the file server");
+    expect(box).toHaveAttribute("placeholder", "no password saved");
+    expect(screen.queryByTestId("share-forget-0")).toBeNull();
+  });
+
+  it("does not claim either way for an agent too old to say", () => {
+    renderField([{ host: "nas", username: "u", password: null }]);
+    const box = screen.getByLabelText("Password for the file server");
+    expect(box).toHaveAttribute("placeholder", "leave blank to keep any stored password");
   });
 
   it("sends null for an untouched password, which means keep the stored one", () => {

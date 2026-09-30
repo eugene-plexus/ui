@@ -23,6 +23,7 @@ const CHANNEL: ConfigField = {
   sensitive: false,
   required: false,
   requiresRestart: false,
+  pendingRestart: false,
 };
 
 function renderField(field: ConfigField, value: unknown, onChange = vi.fn()) {

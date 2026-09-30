@@ -11,7 +11,7 @@ import { useSharedTopology } from "@/components/ResourceTree";
 import { UIPreferences } from "@/components/UIPreferences";
 import { api, describeError } from "@/lib/api";
 import { foldedKeys, isFieldVisible } from "@/lib/configPresentation";
-import { loadConfigTrio } from "@/lib/configTrio";
+import { loadConfigTrio, onConfigTrioInvalidated } from "@/lib/configTrio";
 import { targetFor } from "@/lib/nodeBudget";
 import {
   configTabFor,
@@ -184,6 +184,12 @@ function SettingsView({
   const [schemas, setSchemas] = useState<Map<string, ConfigSchema>>(() => new Map());
   const [docs, setDocs] = useState<Map<string, Record<string, unknown>>>(() => new Map());
   const [failed, setFailed] = useState<Map<string, string>>(() => new Map());
+  // Bumped whenever a read may be out of date (any write, anywhere): which
+  // fields a `showWhen` shows was decided once, so a save that changed the
+  // controlling field left a field that now applies off the page until a
+  // reload (settings never lie, 2026-09-30).
+  const [generation, setGeneration] = useState(0);
+  useEffect(() => onConfigTrioInvalidated(() => setGeneration((g) => g + 1)), []);
 
   // Every owner's schema, so the page can decide which section gets which
   // field before the sections render. Shared with the sections' own
@@ -212,9 +218,10 @@ function SettingsView({
     return () => {
       live = false;
     };
-    // Re-read when the set of owners changes, not when the maps do.
+    // Re-read when the set of owners changes or a write may have changed
+    // what they say, not when the maps do.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ownerKey]);
+  }, [ownerKey, generation]);
 
   // The query rides in the URL so a found setting can be linked to, and
   // so Back returns to the search rather than to everything.
@@ -229,7 +236,8 @@ function SettingsView({
   const cards = useMemo(
     () =>
       buildCards(owners, schemas, query, {
-        visible: (owner, field) => isFieldVisible(field, docs.get(owner.id) ?? {}),
+        visible: (owner, field) =>
+          isFieldVisible(field, docs.get(owner.id) ?? {}, schemas.get(owner.id)?.fields),
         moreKeys: (owner, fields) => foldedKeys(owner.component, fields),
       }),
     [owners, schemas, docs, query],

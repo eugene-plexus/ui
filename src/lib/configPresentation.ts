@@ -1,3 +1,4 @@
+import { effectiveValue } from "./configValue";
 import type { ConfigField } from "./types";
 
 /** Presentation only. Unknown/new fields stay visible; the API owns all defaults and validation. */
@@ -76,9 +77,16 @@ export function foldedKeys(component: string, fields: ConfigField[]): ReadonlySe
  * The array form is what lets a single `apiKey` field declare itself
  * applicable to several enum entries (`provider` ∈ {openai, xai, …}).
  */
-export function isFieldVisible(field: ConfigField, values: Record<string, unknown>): boolean {
+export function isFieldVisible(
+  field: ConfigField,
+  values: Record<string, unknown>,
+  fields?: readonly ConfigField[],
+): boolean {
   if (!field.showWhen) return true;
-  const target = JSON.stringify(values[field.showWhen.key]);
+  // The referenced field's EFFECTIVE value: a document that leaves it out
+  // still runs on its default, and the fields that depend on the default
+  // must not vanish while it applies (settings never lie, 2026-09-30).
+  const target = JSON.stringify(effectiveValue(field.showWhen.key, values, fields));
   const equals = field.showWhen.equals as unknown;
   if (Array.isArray(equals)) {
     return equals.some((e) => JSON.stringify(e) === target);

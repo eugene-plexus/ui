@@ -12,7 +12,7 @@
  * few seconds, and a save or a restart throws it away.
  */
 
-import { api } from "./api";
+import { api, onWrite } from "./api";
 import type { ConfigDocument, ConfigSchema } from "./types";
 
 export interface ConfigTrio {
@@ -63,18 +63,50 @@ export function loadConfigTrio(target: string, base = "/v1/config"): Promise<Con
   return promise;
 }
 
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+/** Be told when a read this module handed out may be out of date, so a
+ * page that decided something from it (which fields a `showWhen` shows)
+ * can read again. */
+export function onConfigTrioInvalidated(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function announce(): void {
+  for (const listener of listeners) listener();
+}
+
 /** Forget what was read from `target`: after a save, a restart, or a test that changed something. */
 export function invalidateConfigTrio(target: string, base?: string): void {
   if (base) {
     cache.delete(keyOf(target, base));
-    return;
+  } else {
+    for (const key of [...cache.keys()]) {
+      if (key.startsWith(`${target}\n`)) cache.delete(key);
+    }
   }
-  for (const key of [...cache.keys()]) {
-    if (key.startsWith(`${target}\n`)) cache.delete(key);
-  }
+  announce();
 }
 
 /** Every cached read, for tests and for a sign-out. */
 export function clearConfigTrios(): void {
   cache.clear();
 }
+
+/**
+ * Any write can change what a settings read would say: a Routing save is a
+ * `PATCH /v1/config` on the gateway, Reach writes the advertise address, the
+ * wizard and Folders write config on two components at once. And one
+ * machine is two targets here (`agent` and `node:<its name>`), so the cache
+ * is emptied whole rather than guessed at by target. It is a few seconds of
+ * reuse; a stale value shown as current is the thing it must never buy.
+ */
+onWrite(() => {
+  if (cache.size === 0) return;
+  cache.clear();
+  announce();
+});

@@ -164,7 +164,9 @@ export function UseFromAppsCard({
     } catch (e) {
       // An agent on another node that is down costs this card its list
       // and nothing else; the address and the model id are still right.
-      setKeys([]);
+      // **Unknown, not empty**: `[]` here read "none yet" and "Make a key
+      // below" about a registry nobody could read (settings never lie).
+      setKeys(null);
       setRegistry(null);
       setError(describeError(e));
     }
@@ -510,9 +512,13 @@ export function UseFromAppsCard({
             </>
           ) : (
             <span className="font-ui flex-1 text-sm text-[color:var(--muted)]">
-              {liveKeys.length === 0
-                ? "none yet"
-                : `${liveKeys.length} key${liveKeys.length === 1 ? "" : "s"} made; a key is shown once, so make a new one if you no longer have it`}
+              {keys === null
+                ? error
+                  ? "could not be read"
+                  : "reading…"
+                : liveKeys.length === 0
+                  ? "none yet"
+                  : `${liveKeys.length} key${liveKeys.length === 1 ? "" : "s"} made; a key is shown once, so make a new one if you no longer have it`}
             </span>
           )}
         </Row>
@@ -605,6 +611,13 @@ export function UseFromAppsCard({
                 </button>
                 {editingKey === key.id && (
                   <form onSubmit={saveLimits} className="basis-full space-y-2 py-2">
+                    {!key.limits && (
+                      // The editor opens on the defaults; the key has none of
+                      // them yet, and must not read as if it did.
+                      <p className="text-sm text-[color:var(--muted)]" data-testid="legacy-limits">
+                        This key has no limits today. What is below is what saving gives it.
+                      </p>
+                    )}
                     <ClientKeyLimitsEditor
                       value={editLimits}
                       onChange={setEditLimits}

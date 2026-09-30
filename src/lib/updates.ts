@@ -27,6 +27,13 @@ export type UpdateState =
   | "unchecked"
   | "current"
   | "available"
+  /** Newer than its channel's newest: nothing is offered (2026-09-30). */
+  | "ahead"
+  /** Some parts newer, some older: updating would move some back. */
+  | "mixed"
+  /** An install from before the channel had a default, whose first check
+   * has not yet said which channel it follows. */
+  | "undecided"
   /** Behind, and cannot update itself: a person does it (a container). */
   | "manual"
   | "running"
@@ -67,9 +74,17 @@ export function versionLabel(identity: NodeIdentity | null): string {
   if (install.development) return "development build";
   const agent = install.components.find((c) => c.name === "agent");
   if (agent?.state === "stamped" && agent.commit) {
-    const newest = identity?.update?.newest;
-    // A release install says which release, when it is exactly that one.
-    if (newest?.release && identity?.update && identity.update.behind.length === 0) {
+    const update = identity?.update;
+    const newest = update?.newest;
+    // A release install says which release, when it is exactly that one --
+    // nothing behind it AND nothing ahead of it. An install newer than the
+    // release has nothing behind it too, and used to be named after it.
+    if (
+      newest?.release &&
+      update &&
+      update.behind.length === 0 &&
+      (update.ahead ?? []).length === 0
+    ) {
       return newest.release;
     }
     return `agent ${short(agent.commit)}`;
@@ -159,14 +174,26 @@ export function describeUpdate(identity: NodeIdentity | null, now: number): Upda
     };
   }
   const failed = last?.outcome === "failed" ? last : null;
+  // **Only a newer version is called newer** (2026-09-30). An agent from
+  // before then sends no `ahead`, and its `available` means only "differs"
+  // -- so for it the page says different, never newer.
+  const knowsOrder = Array.isArray(update.ahead);
+  const ahead = update.ahead ?? [];
+  const parts = identity.install?.components.length || 7;
+  const offer = knowsOrder
+    ? `A newer version is ready: ${label}`
+    : `${update.channel ?? "Its channel"} has a different version: ${label}`;
+  const unordered = knowsOrder
+    ? null
+    : "This machine's version of Eugene cannot tell whether it is newer or older; updating installs it.";
   if (update.available && label) {
     if (!update.apply.possible) {
       return {
         ...base,
         last,
         state: failed ? "failed" : "manual",
-        headline: failed ? "The last update did not finish" : `A newer version is ready: ${label}`,
-        detail: failed?.detail ?? update.apply.reason ?? null,
+        headline: failed ? "The last update did not finish" : offer,
+        detail: failed?.detail ?? joined(unordered, update.apply.reason ?? null),
         steps: update.apply.steps ?? [],
       };
     }
@@ -174,12 +201,39 @@ export function describeUpdate(identity: NodeIdentity | null, now: number): Upda
       ...base,
       last,
       state: failed ? "failed" : "available",
-      headline: failed ? "The last update did not finish" : `A newer version is ready: ${label}`,
+      headline: failed ? "The last update did not finish" : offer,
       detail:
         failed?.detail ??
-        `${partsBehind(update.behind.length, identity.install?.components.length || 6)} ${RESTART}`,
+        joined(unordered, `${partsBehind(update.behind.length, parts)} ${RESTART}`),
       canUpdate: true,
       target: update.newest?.ref ?? null,
+    };
+  }
+  if (ahead.length > 0 && label) {
+    const newer = partsCount(ahead.length, parts);
+    if (update.behind.length > 0) {
+      return {
+        ...base,
+        last,
+        state: "mixed",
+        headline: `Parts of this machine are newer than ${label}`,
+        detail: joined(
+          `${newer} newer and ${update.behind.length} older than the newest on ${update.channel}, ` +
+            "so nothing is offered: updating would move the newer ones back.",
+          checkNote,
+        ),
+      };
+    }
+    return {
+      ...base,
+      last,
+      state: "ahead",
+      headline: `Newer than the newest on ${update.channel}`,
+      detail: joined(
+        `${newer} newer than ${label}, so nothing is offered.`,
+        checkNote,
+        sourceNote(update),
+      ),
     };
   }
   if (!update.enabled) {
@@ -189,6 +243,20 @@ export function describeUpdate(identity: NodeIdentity | null, now: number): Upda
       state: "off",
       headline: "Update checks are off",
       detail: "Turn them on under Settings › Updates.",
+    };
+  }
+  if (update.channelSource === "pending" || !update.channel) {
+    return {
+      ...base,
+      last,
+      state: "undecided",
+      headline: "Update channel not decided yet",
+      detail: joined(
+        "This machine was installed before the channel had a default. At its first update " +
+          "check it saves the channel it was installed from -- Releases for a release, Edge " +
+          "for anything else -- and nothing is offered until then.",
+        update.error ? `The last check could not finish: ${update.error}` : null,
+      ),
     };
   }
   if (!update.checkedAt) {
@@ -207,7 +275,7 @@ export function describeUpdate(identity: NodeIdentity | null, now: number): Upda
     last,
     state: failed ? "failed" : "current",
     headline: failed ? "The last update did not finish" : `Up to date on ${update.channel}`,
-    detail: failed?.detail ?? joined(checkNote, inferredNote(update)),
+    detail: failed?.detail ?? joined(checkNote, sourceNote(update)),
   };
 }
 
@@ -218,7 +286,16 @@ export function describeUpdate(identity: NodeIdentity | null, now: number): Upda
  * said the channel was a guess (found on Troy's worker, installed from
  * alpha.5, whose Settings dropdown showed Edge for an unset value).
  */
-function inferredNote(update: NonNullable<NodeIdentity["update"]>): string | null {
+function sourceNote(update: NonNullable<NodeIdentity["update"]>): string | null {
+  if (update.channelSource === "default") {
+    const other = update.channel === "releases" ? "edge" : "releases";
+    return (
+      `It follows ${update.channel}, the default. To follow ${other}, set Update channel ` +
+      "under Settings › Updates."
+    );
+  }
+  // Sent only by agents from before 2026-09-30, which worked the channel out
+  // at every check.
   if (update.channelSource !== "inferred") return null;
   const from =
     update.channel === "releases"
@@ -233,6 +310,13 @@ function inferredNote(update: NonNullable<NodeIdentity["update"]>): string | nul
 function joined(...parts: (string | null)[]): string | null {
   const kept = parts.filter((p): p is string => Boolean(p));
   return kept.length ? kept.join(" ") : null;
+}
+
+/** "Two of the seven parts" -- the words `partsBehind` uses, without "behind". */
+function partsCount(count: number, total: number): string {
+  if (count >= total) return `All ${numberWord(total)} parts are`;
+  if (count === 1) return `One of the ${numberWord(total)} parts is`;
+  return `${numberWord(count)[0]?.toUpperCase()}${numberWord(count).slice(1)} of the ${numberWord(total)} parts are`;
 }
 
 function partsBehind(count: number, total: number): string {

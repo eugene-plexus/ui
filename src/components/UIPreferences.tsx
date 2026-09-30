@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { useFontSize, FONT_SIZE_LABELS, type FontSize } from "@/lib/useFontSize";
 import { useTheme, type Theme } from "@/lib/useTheme";
 
@@ -14,6 +16,13 @@ import { Attribution } from "./Attribution";
 export function UIPreferences() {
   const [theme, setTheme] = useTheme();
   const [fontSize, setFontSize] = useFontSize();
+  // What System resolves to right now: the theme the page is drawn in. A
+  // setting that says only "System" does not say which theme is in effect
+  // (settings never lie, 2026-09-30).
+  const [drawn, setDrawn] = useState<string | null>(null);
+  useEffect(() => {
+    setDrawn(document.documentElement.dataset.theme ?? null);
+  }, [theme]);
 
   return (
     <div className="overflow-y-auto p-6">
@@ -34,11 +43,16 @@ export function UIPreferences() {
         >
           {/* Plexus first: it is the dark theme, so the list reads
               dark -> light -> light -> auto. */}
-          <option value="plexus">Plexus</option>
+          <option value="plexus">Plexus (default)</option>
           <option value="modern">Modern</option>
           <option value="editorial">Editorial</option>
           <option value="system">System</option>
         </select>
+        {theme === "system" && drawn && (
+          <p className="mt-2 text-sm text-[color:var(--muted)]" data-testid="theme-resolved">
+            Now {THEME_NAMES[drawn] ?? drawn}, from your system&rsquo;s dark or light setting.
+          </p>
+        )}
       </Row>
 
       <Row label="Font size" description="Scales text, hints, and badges. Independent of theme.">
@@ -51,6 +65,9 @@ export function UIPreferences() {
           {(Object.keys(FONT_SIZE_LABELS) as FontSize[]).map((k) => (
             <option key={k} value={k}>
               {FONT_SIZE_LABELS[k]}
+              {k === "default" && !FONT_SIZE_LABELS[k].toLowerCase().includes("default")
+                ? " (default)"
+                : ""}
             </option>
           ))}
         </select>
@@ -76,6 +93,12 @@ export function UIPreferences() {
     </div>
   );
 }
+
+const THEME_NAMES: Record<string, string> = {
+  plexus: "Plexus",
+  modern: "Modern",
+  editorial: "Editorial",
+};
 
 function Row({
   label,

@@ -193,3 +193,51 @@ it("launches once, however fast the button is pressed twice", async () => {
   await screen.findByText(/Starting/);
   expect(posted).toHaveLength(1);
 });
+
+// Settings never lie (2026-09-30): an unset flag is not its schema default,
+// and a profile's engine is shown even when this machine does not offer it.
+it("shows an unset flag as unset, and a profile's own engine as itself", async () => {
+  let profile: ModelProfile = {
+    id: "p",
+    name: "Tuned",
+    engine: "vllm",
+    default: false,
+    flags: {},
+    maxTokens: 64,
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ profiles: [profile] })),
+  );
+  const engines = [
+    {
+      engine: "llama_cpp",
+      flagSchema: {
+        component: "llama_cpp",
+        fields: [
+          {
+            key: "parallelSlots",
+            label: "Parallel slots",
+            category: "engine",
+            valueType: "integer",
+            default: 1,
+            sensitive: false,
+            required: false,
+            requiresRestart: false,
+            pendingRestart: false,
+          },
+        ],
+      },
+    },
+  ] as unknown as Parameters<typeof ProfileEditor>[0]["engines"];
+  render(<ProfileEditor model={model} engines={engines} node={null} onChanged={() => {}} />);
+  // Stored generation values on a profile that is not the default are not in use.
+  expect(await screen.findByTestId("profile-generation")).toHaveTextContent("not in use");
+  fireEvent.click(await screen.findByRole("button", { name: "edit" }));
+  const engine = screen.getByDisplayValue("vllm (not offered by this machine)");
+  expect(engine).toBeInTheDocument();
+  fireEvent.change(engine, { target: { value: "llama_cpp" } });
+  expect(screen.getByRole("spinbutton", { name: "Parallel slots" })).toHaveValue(null);
+  expect(screen.getByTestId("unset-parallelSlots")).toHaveTextContent("lists its default as 1");
+  profile = { ...profile };
+});

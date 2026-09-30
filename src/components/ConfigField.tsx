@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { FolderPicker } from "@/components/FolderPicker";
+import { REDACTED, formatValue, readValue, unsetSentence } from "@/lib/configValue";
 import {
   type MountBoxes,
   type MountShape,
@@ -30,8 +31,8 @@ import type {
  * form follows the schema. Adding a knob to a component is a
  * server-side change only.
  */
-/** What a component answers for a secret it holds (`ConfigDocument`). */
-const REDACTED = "<redacted>";
+/** An option value no component can send, for a value no option matches. */
+const NOT_A_CHOICE = "\u0000not-a-choice";
 
 /**
  * A stored secret, which this page never sees -- only the word that
@@ -183,20 +184,44 @@ export function ConfigFieldInput({
   // A secret's default is not shown (it has Remove), and the routing
   // summary is edited on its own page.
   const hasDefault =
-    field.default !== undefined && !field.sensitive && field.valueType !== "model_slots";
+    field.default !== undefined &&
+    field.default !== null &&
+    !field.sensitive &&
+    field.valueType !== "model_slots";
   // `null` in the draft is the contract's "revert to the default".
   const resetting = hasDefault && value === null && savedValue != null;
-  const canReset = hasDefault && value !== null && !sameValue(value, field.default);
+  const canReset =
+    hasDefault && value !== null && value !== undefined && !sameValue(value, field.default);
+  // **Settings never lie** (2026-09-30): what the value is, before any widget
+  // draws it -- itself, unset, or something no widget here can show.
+  const reading = readValue(field, value);
+  // Set by another part of the install, which rewrites it: shown, not edited.
+  const locked = pending || Boolean(field.managedBy);
+  // A secret stored on the component: the only sign is `<redacted>`.
+  const secretSaved =
+    field.valueType === "secret" && (savedValue === REDACTED || value === REDACTED);
 
   function renderInput() {
     if (field.valueType === "boolean") {
+      // A checkbox has no "not set", and no "neither on nor off". Unset with
+      // a default shows the default, which is what is in effect; anything a
+      // checkbox cannot show is drawn half-set, and the line below says what
+      // the machine holds. `Boolean(value)` drew both as a real choice.
+      const shown =
+        typeof value === "boolean" ? value : reading.kind === "unset" && field.default === true;
+      const indeterminate =
+        reading.kind === "unrepresentable" ||
+        (reading.kind === "unset" && typeof field.default !== "boolean");
       return (
         <input
           {...controlProps}
+          ref={(el) => {
+            if (el) el.indeterminate = indeterminate;
+          }}
           type="checkbox"
-          checked={Boolean(value)}
+          checked={shown}
           onChange={(e) => onChange(e.target.checked)}
-          disabled={pending}
+          disabled={locked}
           className="h-4 w-4 align-middle"
         />
       );
@@ -205,23 +230,38 @@ export function ConfigFieldInput({
     if (field.valueType === "enum" && field.enumValues) {
       const labels = field.enumLabels ?? [];
       // An optional enum with no default can be unset, and unset means
-      // something (`updateChannel` unset follows how the machine was
-      // installed). Without an option for it, `value=""` matched nothing
-      // and the browser showed the FIRST option -- Troy's worker read
-      // "Edge" while it followed releases (2026-09-29).
+      // something. Without an option for it, `value=""` matched nothing and
+      // the browser showed the FIRST option -- Troy's worker read "Edge"
+      // while it followed releases (2026-09-29). And a value that is not one
+      // of the choices is shown as itself, never as the first choice.
       const unsettable =
         !field.required &&
         (field.default === null || field.default === undefined) &&
         !field.enumValues.includes("");
+      const showUnset = (unsettable || reading.kind === "unset") && !field.enumValues.includes("");
+      const selected =
+        reading.kind === "unrepresentable"
+          ? NOT_A_CHOICE
+          : reading.kind === "unset"
+            ? ""
+            : (value as string);
       return (
         <select
           {...controlProps}
-          value={(value as string | undefined) ?? ""}
-          onChange={(e) => onChange(unsettable && e.target.value === "" ? null : e.target.value)}
-          disabled={pending}
+          value={selected}
+          onChange={(e) => {
+            if (e.target.value === NOT_A_CHOICE) return;
+            onChange(
+              e.target.value === "" && !field.enumValues?.includes("") ? null : e.target.value,
+            );
+          }}
+          disabled={locked}
           className={baseInputClass}
         >
-          {unsettable && <option value="">Not set</option>}
+          {reading.kind === "unrepresentable" && (
+            <option value={NOT_A_CHOICE}>{reading.raw} (not one of the choices)</option>
+          )}
+          {showUnset && <option value="">Not set</option>}
           {field.enumValues.map((v, i) => (
             <option key={v} value={v}>
               {/* "" in enumValues is the "(use default)" sentinel for
@@ -238,11 +278,18 @@ export function ConfigFieldInput({
       field.valueType === "number" ||
       field.valueType === "duration"
     ) {
+      // A number box cannot show a string; it would go blank and read as
+      // unset. Only a number is put in it -- the line below says the rest.
+      const shown = typeof value === "number" && Number.isFinite(value) ? value : "";
+      const hint = field.unsetResolvesTo ?? field.default;
       return (
         <input
           {...controlProps}
           type="number"
-          value={(value as number | string | undefined) ?? ""}
+          value={shown}
+          placeholder={
+            reading.kind === "unset" && typeof hint === "number" ? `not set (${hint})` : "not set"
+          }
           step={field.valueType === "integer" ? 1 : "any"}
           min={field.minimum ?? undefined}
           max={field.maximum ?? undefined}
@@ -255,7 +302,7 @@ export function ConfigFieldInput({
             const parsed = field.valueType === "integer" ? parseInt(raw, 10) : parseFloat(raw);
             onChange(Number.isFinite(parsed) ? parsed : null);
           }}
-          disabled={pending}
+          disabled={locked}
           className={baseInputClass}
         />
       );
@@ -266,8 +313,8 @@ export function ConfigFieldInput({
         <SecretInput
           controlProps={controlProps}
           value={value}
-          saved={savedValue === REDACTED || value === REDACTED}
-          pending={pending}
+          saved={secretSaved}
+          pending={locked}
           onChange={onChange}
           className={baseInputClass}
         />
@@ -283,10 +330,10 @@ export function ConfigFieldInput({
     if (field.valueType === "path_list") {
       return (
         <StringListInput
-          value={Array.isArray(value) ? (value as unknown[]).map(String) : []}
-          pending={pending}
+          value={stringsOf(value)}
+          pending={locked}
           onChange={onChange}
-          copy={PATH_LIST_COPY}
+          copy={withEmpty(PATH_LIST_COPY, field.unsetMeans)}
           browseTarget={browseTarget ?? null}
         />
       );
@@ -299,7 +346,7 @@ export function ConfigFieldInput({
       return (
         <LibraryFoldersInput
           value={value}
-          pending={pending}
+          pending={locked}
           onChange={onChange}
           browseTarget={browseTarget ?? null}
         />
@@ -314,7 +361,7 @@ export function ConfigFieldInput({
       return (
         <PathMappingsInput
           value={value}
-          pending={pending}
+          pending={locked}
           onChange={onChange}
           browseTarget={browseTarget ?? null}
           suggestions={pathSuggestions ?? []}
@@ -326,7 +373,7 @@ export function ConfigFieldInput({
     // reaches a file server. One row per SERVER, not per share --
     // Windows allows one login per server and refuses a second (1219).
     if (field.valueType === "share_credentials") {
-      return <ShareCredentialsInput value={value} pending={pending} onChange={onChange} />;
+      return <ShareCredentialsInput value={value} pending={locked} onChange={onChange} />;
     }
 
     // `url_list` is the same widget with different words: an ordered
@@ -342,10 +389,10 @@ export function ConfigFieldInput({
     if (field.valueType === "url_list") {
       return (
         <StringListInput
-          value={Array.isArray(value) ? (value as unknown[]).map(String) : []}
-          pending={pending}
+          value={stringsOf(value)}
+          pending={locked}
           onChange={onChange}
-          copy={URL_LIST_COPY}
+          copy={withEmpty(URL_LIST_COPY, field.unsetMeans)}
         />
       );
     }
@@ -356,10 +403,10 @@ export function ConfigFieldInput({
     if (field.valueType === "string_list") {
       return (
         <StringListInput
-          value={Array.isArray(value) ? (value as unknown[]).map(String) : []}
-          pending={pending}
+          value={stringsOf(value)}
+          pending={locked}
           onChange={onChange}
-          copy={STRING_LIST_COPY}
+          copy={withEmpty(STRING_LIST_COPY, field.unsetMeans)}
         />
       );
     }
@@ -400,10 +447,13 @@ export function ConfigFieldInput({
           {...controlProps}
           value={currentNorm}
           onChange={(e) => onChange(e.target.value)}
-          disabled={pending}
+          disabled={locked}
           className={baseInputClass}
         >
-          <option value="">(off)</option>
+          {/* "(off)" was a lie for `controlUrl`, whose empty value is "found
+              through the agent": a field that says what unset means is
+              "Not set", and the line below says what that does. */}
+          <option value="">{field.unsetMeans ? "Not set" : "(off)"}</option>
           {matches.map((c) => (
             <option key={c.name} value={normalizeUrl(c.url)}>
               {c.name}
@@ -440,18 +490,29 @@ export function ConfigFieldInput({
           <input
             {...controlProps}
             type="text"
-            value={(value as string | undefined) ?? ""}
+            value={
+              typeof value === "string"
+                ? value
+                : typeof value === "number" || typeof value === "boolean"
+                  ? String(value)
+                  : ""
+            }
+            placeholder={
+              reading.kind === "unset" && typeof field.unsetResolvesTo === "string"
+                ? field.unsetResolvesTo
+                : undefined
+            }
             pattern={field.pattern ?? undefined}
             list={datalistId}
             onChange={(e) => onChange(e.target.value)}
-            disabled={pending}
+            disabled={locked}
             className={baseInputClass}
           />
           {browsable && (
             <button
               type="button"
               onClick={() => setBrowsingPath(true)}
-              disabled={pending}
+              disabled={locked}
               className={`${buttonClass} shrink-0`}
               data-testid={`browse-${field.key}`}
             >
@@ -518,6 +579,54 @@ export function ConfigFieldInput({
             Not saved: {error}
           </p>
         )}
+        {reading.kind === "unrepresentable" && (
+          <p className="text-status-warn text-sm" data-testid={`value-warning-${field.key}`}>
+            This machine holds {reading.raw} here, which this field cannot show: {reading.reason}.
+            Choose a value to replace it.
+          </p>
+        )}
+        {reading.kind === "value" && reading.warning && (
+          <p className="text-status-warn text-sm" data-testid={`value-warning-${field.key}`}>
+            {reading.warning[0]?.toUpperCase()}
+            {reading.warning.slice(1)}.
+          </p>
+        )}
+        {reading.kind === "unset" &&
+          !compound &&
+          !secretSaved &&
+          (field.valueType !== "secret" || Boolean(field.unsetMeans)) && (
+            <p className="text-sm text-[color:var(--muted)]" data-testid={`unset-${field.key}`}>
+              {unsetSentence(field)}
+            </p>
+          )}
+        {field.pendingRestart && (
+          <p className="text-status-warn text-sm" data-testid={`pending-${field.key}`}>
+            Saved, not in effect yet: this runs on{" "}
+            {field.sensitive || field.inEffect === undefined ? (
+              "the value it started with"
+            ) : (
+              <span className="font-mono">{formatValue(field, field.inEffect)}</span>
+            )}{" "}
+            until it restarts.
+          </p>
+        )}
+        {field.managedBy && (
+          <p className="text-sm text-[color:var(--muted)]" data-testid={`managed-${field.key}`}>
+            {field.managedBy}
+          </p>
+        )}
+        {field.status && (
+          <p
+            className={
+              field.status.level === "warning"
+                ? "text-status-warn text-sm"
+                : "text-sm text-[color:var(--muted)]"
+            }
+            data-testid={`status-${field.key}`}
+          >
+            {field.status.text}
+          </p>
+        )}
         {field.description && (
           <p id={descriptionId} className="text-sm leading-relaxed text-[color:var(--muted)]">
             {field.description}
@@ -527,7 +636,8 @@ export function ConfigFieldInput({
           // The schema has always carried the default and PATCH has always
           // taken `null` to go back to it; nothing on the page said either.
           <p className="text-sm text-[color:var(--muted)]" data-testid={`default-${field.key}`}>
-            Default: <span className="font-mono">{formatDefault(field)}</span>
+            Default: <span className="font-mono">{formatValue(field, field.default)}</span>
+            {field.defaultSource && <span> · {field.defaultSource}</span>}
             {resetting ? (
               <span> · Goes back to the default when you save.</span>
             ) : (
@@ -537,7 +647,7 @@ export function ConfigFieldInput({
                   <button
                     type="button"
                     onClick={() => onChange(null)}
-                    disabled={pending}
+                    disabled={locked}
                     className={`${buttonClass} ml-1`}
                   >
                     Reset to default
@@ -572,23 +682,16 @@ function sameValue(a: unknown, b: unknown): boolean {
   return a === b || JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** A field's default in the words its editor uses. */
-function formatDefault(field: ConfigFieldDef): string {
-  const d = field.default;
-  if (d === null) return "not set";
-  if (typeof d === "boolean") return d ? "on" : "off";
-  if (field.valueType === "enum" && typeof d === "string") {
-    const i = field.enumValues?.indexOf(d) ?? -1;
-    const label = i >= 0 ? field.enumLabels?.[i] : undefined;
-    return label ?? (d === "" ? "(use adapter default)" : d);
-  }
-  if (Array.isArray(d)) {
-    if (d.length === 0) return "none";
-    return d.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(", ");
-  }
-  if (typeof d === "object") return JSON.stringify(d);
-  if (d === "") return "empty";
-  return String(d);
+/** The strings a list holds, and none of what is not a string: those are
+ * counted and said by `readValue`, not drawn as `[object Object]`. */
+function stringsOf(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+/** A list editor's words, with what the component says an empty list
+ * means in place of the generic line. */
+function withEmpty(copy: ListCopy, unsetMeans: string | undefined): ListCopy {
+  return unsetMeans ? { ...copy, empty: unsetMeans } : copy;
 }
 
 /** Value types whose editor is several controls rather than one input. */
@@ -623,8 +726,10 @@ type ListCopy = {
 };
 
 const PATH_LIST_COPY: ListCopy = {
-  empty:
-    "No directories yet. Point this at wherever you already keep models — nothing is moved or renamed.",
+  // Generic on purpose: this editor serves the agent's trusted engine
+  // directories too, where "wherever you keep models" was untrue. What an
+  // empty list means is the field's `unsetMeans`, when it says.
+  empty: "None.",
   placeholder: "D:\\models",
   addLabel: "add directory",
   removeTitle: "Stop scanning this directory. The files in it are untouched.",
@@ -632,8 +737,10 @@ const PATH_LIST_COPY: ListCopy = {
 };
 
 const URL_LIST_COPY: ListCopy = {
-  empty:
-    "No standbys yet. A standby replicates this root's log and can be promoted if this host is not coming back — none is required, and more than one is a configuration rather than a mechanism.",
+  // Was the control root's standby sentence, shown under the gateway's
+  // browser origins too -- where empty means ANY website may call it. Each
+  // field now says what its own empty list means (`unsetMeans`).
+  empty: "None.",
   placeholder: "http://other-host:8083",
   addLabel: "add address",
   removeTitle: "Stop replicating to this address. Nothing on that host is touched.",
@@ -1173,7 +1280,15 @@ function LibraryFoldersInput({
   );
 }
 
-type ShareCredentialRow = { host: string; username: string; password: string | null };
+type ShareCredentialRow = {
+  host: string;
+  username: string;
+  password: string | null;
+  /** Whether the agent holds a password for this server: `true`/`false`
+   * from an agent that says (`hasPassword`, 2026-09-30), `null` from one
+   * that predates it and cannot be asked. */
+  hasPassword?: boolean | null;
+};
 
 /**
  * Editor for `share_credentials` (R2.6): who this machine says it is
@@ -1216,9 +1331,10 @@ function ShareCredentialsInput({
   // MOVES, which it does not on mount — so initialising this to all-false
   // made every row the server already holds look like a row with no
   // password, which is the exact confusion this flag exists to prevent.
-  const [stored, setStored] = useState<boolean[]>(() =>
-    incoming.map((r) => r.host.trim().length > 0),
-  );
+  // **From `hasPassword`**, not from the row having a host: every row the
+  // server knows came back "saved" whether or not a password was stored
+  // (settings never lie, 2026-09-30). `null` is an agent too old to say.
+  const [stored, setStored] = useState<(boolean | null)[]>(() => incoming.map(storedFlag));
   const mirrored = useRef<string>(JSON.stringify(incoming));
 
   useEffect(() => {
@@ -1227,14 +1343,12 @@ function ShareCredentialsInput({
     if (serialized !== mirrored.current) {
       mirrored.current = serialized;
       setRows(parsed);
-      // A row that came back from the server with a host is a row the
-      // server is holding a credential for. The password itself is
-      // never on the wire, so its presence cannot be read from it.
-      setStored(parsed.map((r) => r.host.trim().length > 0));
+      // The password itself is never on the wire; whether one is stored is.
+      setStored(parsed.map(storedFlag));
     }
   }, [value]);
 
-  function update(next: ShareCredentialRow[], nextStored?: boolean[]) {
+  function update(next: ShareCredentialRow[], nextStored?: (boolean | null)[]) {
     setRows(next);
     if (nextStored) setStored(nextStored);
     const complete = next
@@ -1297,7 +1411,13 @@ function ShareCredentialsInput({
             type="password"
             value={row.password ?? ""}
             autoComplete="new-password"
-            placeholder={stored[index] ? "saved - leave blank to keep it" : "password"}
+            placeholder={
+              stored[index] === true
+                ? "saved - leave blank to keep it"
+                : stored[index] === null
+                  ? "leave blank to keep any stored password"
+                  : "no password saved"
+            }
             aria-label="Password for the file server"
             onChange={(e) => {
               const next = [...rows];
@@ -1307,7 +1427,7 @@ function ShareCredentialsInput({
             disabled={pending}
             className={inputClass}
           />
-          {stored[index] && (
+          {stored[index] !== false && (
             <button
               type="button"
               data-testid={`share-forget-${index}`}
@@ -1366,6 +1486,13 @@ function ShareCredentialsInput({
   );
 }
 
+/** Whether a row arrived with a stored password: what the agent says, or
+ * `null` for a row it did not say about (a new row has none). */
+function storedFlag(row: ShareCredentialRow): boolean | null {
+  if (!row.host.trim()) return false;
+  return row.hasPassword ?? null;
+}
+
 /** Whatever the server or the draft holds, as rows. A redacted password
  * (null) is preserved as null, because null is the value that means
  * *keep the stored one* on the way back. */
@@ -1380,6 +1507,7 @@ function parseShareCredentials(value: unknown): ShareCredentialRow[] {
         host: record.host,
         username: typeof record.username === "string" ? record.username : "",
         password: typeof record.password === "string" ? record.password : null,
+        hasPassword: typeof record.hasPassword === "boolean" ? record.hasPassword : null,
       },
     ];
   });

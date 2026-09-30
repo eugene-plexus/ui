@@ -150,6 +150,9 @@ export function ConfigEditor({
   // worth keeping was the moment the form, and every typed value in it,
   // disappeared behind a message about the wrong thing.
   const [saveError, setSaveError] = useState<string | null>(null);
+  // A save that landed and could not be read back: the draft is not what
+  // is on the server any more, and nothing here knows what is.
+  const [readBackError, setReadBackError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null);
   const [testStatus, setTestStatus] = useState<ConfigTestResult | null>(null);
   const [restart, setRestart] = useState<RestartState>({ phase: "idle" });
@@ -358,6 +361,7 @@ export function ConfigEditor({
     setSaving(true);
     setSaveStatus(null);
     setSaveError(null);
+    setReadBackError(null);
     // The test banner reflects an older draft; clearing it avoids a
     // stale "fail" sitting next to a successful save.
     setTestStatus(null);
@@ -392,7 +396,22 @@ export function ConfigEditor({
         void performRestart(refused);
       }
       // Refresh from server so the editor reflects any server-side coercions.
-      const fresh = await api.get<ConfigDocument>(target, ends.config);
+      // A read-back that fails is NOT a save that failed: the values are
+      // saved, and saying "Could not save" would send somebody to save them
+      // again (settings never lie, 2026-09-30). The schema is read too --
+      // what is pending a restart, what an unset value now resolves to.
+      let fresh: ConfigDocument;
+      try {
+        const trio = await loadConfigTrio(target, ends.config);
+        fresh = trio.doc;
+        setSchema(trio.schema);
+      } catch (e) {
+        setReadBackError(
+          `Saved, but the saved values could not be read back (${formatError(e)}). ` +
+            "Reload the page to see them.",
+        );
+        return;
+      }
       setServerDoc(fresh);
       // Keep user's edits to fields the server rejected, otherwise reset to server values.
       const rejectedKeys = new Set(result.rejected.map((r) => r.key));
@@ -566,7 +585,7 @@ export function ConfigEditor({
   // appearance knobs are shown nowhere.
   const all = configGroups(
     schema.component,
-    schema.fields.filter((f) => !HIDDEN_KEYS.has(f.key) && isFieldVisible(f, draft)),
+    schema.fields.filter((f) => !HIDDEN_KEYS.has(f.key) && isFieldVisible(f, draft, schema.fields)),
   );
   const inScope = (f: ConfigFieldDef) => !only || only.includes(f.key);
   const groups = { common: all.common.filter(inScope), more: all.more.filter(inScope) };
@@ -648,6 +667,15 @@ export function ConfigEditor({
           data-testid="config-save-error"
         >
           Could not save. Your changes are still here, so you can try again. {saveError}
+        </div>
+      )}
+      {readBackError && (
+        <div
+          role="alert"
+          className="status-warn border-b px-4 py-3 text-sm"
+          data-testid="config-read-back-error"
+        >
+          {readBackError}
         </div>
       )}
       {saveStatus && <SaveStatusBanner status={saveStatus} labels={labels} />}

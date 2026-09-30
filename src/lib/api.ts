@@ -313,18 +313,63 @@ async function jsonRequest<T>(
   return parsed as T;
 }
 
+type WriteListener = (target: ProxyTarget, path: string) => void;
+const writeListeners = new Set<WriteListener>();
+
+/**
+ * Be told of every write this page makes, after it answers -- success or
+ * not, since a refused PATCH can still have applied its other keys.
+ *
+ * **Settings never lie** (2026-09-30): the settings cache in `configTrio`
+ * was thrown away only by the Settings editor's own saves, so a change
+ * made on the Routing, Folders or Reach page, or by the wizard, read back
+ * as the old value for as long as the cache lasted.
+ */
+export function onWrite(listener: WriteListener): () => void {
+  writeListeners.add(listener);
+  return () => {
+    writeListeners.delete(listener);
+  };
+}
+
+async function written<T>(target: ProxyTarget, path: string, call: Promise<T>): Promise<T> {
+  try {
+    return await call;
+  } finally {
+    for (const listener of writeListeners) {
+      try {
+        listener(target, path);
+      } catch {
+        // A listener is a cache; it never fails the write it heard about.
+      }
+    }
+  }
+}
+
 export const api = {
   get: <T>(target: ProxyTarget, path: string, options?: RequestOptions) =>
     jsonRequest<T>(target, path, { method: "GET" }, options),
   post: <T>(target: ProxyTarget, path: string, body: unknown, options?: RequestOptions) =>
-    jsonRequest<T>(target, path, { method: "POST", body: JSON.stringify(body) }, options),
+    written(
+      target,
+      path,
+      jsonRequest<T>(target, path, { method: "POST", body: JSON.stringify(body) }, options),
+    ),
   patch: <T>(target: ProxyTarget, path: string, body: unknown, options?: RequestOptions) =>
-    jsonRequest<T>(target, path, { method: "PATCH", body: JSON.stringify(body) }, options),
+    written(
+      target,
+      path,
+      jsonRequest<T>(target, path, { method: "PATCH", body: JSON.stringify(body) }, options),
+    ),
   // PUT exists for launch profiles, which replace whole-document rather
   // than merging: `flags` is a document, and merge semantics give no way
   // to express removing a flag.
   put: <T>(target: ProxyTarget, path: string, body: unknown, options?: RequestOptions) =>
-    jsonRequest<T>(target, path, { method: "PUT", body: JSON.stringify(body) }, options),
+    written(
+      target,
+      path,
+      jsonRequest<T>(target, path, { method: "PUT", body: JSON.stringify(body) }, options),
+    ),
   delete: <T>(target: ProxyTarget, path: string, options?: RequestOptions) =>
-    jsonRequest<T>(target, path, { method: "DELETE" }, options),
+    written(target, path, jsonRequest<T>(target, path, { method: "DELETE" }, options)),
 };

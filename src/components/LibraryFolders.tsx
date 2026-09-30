@@ -13,6 +13,7 @@ import {
   describeAge,
   foldersProblem,
   libraryFoldersHref,
+  overrideKeyFor,
   type MountBoxes,
   mountBoxProblem,
   mountBoxes,
@@ -91,6 +92,12 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
   // The selected node's overrides: server and draft.
   const [serverOverrides, setServerOverrides] = useState<PathMapping[]>([]);
   const [overrideDraft, setOverrideDraft] = useState<Record<string, string>>({});
+  // Whether the selected node's overrides were read. Until they are, the
+  // boxes are not what the machine holds: blank read as "inherits", and a
+  // save sent only what was typed, erasing overrides never loaded
+  // (settings never lie, 2026-09-30).
+  const [overridesRead, setOverridesRead] = useState(false);
+  const [overridesNote, setOverridesNote] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -166,8 +173,11 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
   }, []);
 
   const loadOverrides = useCallback(async (node: TargetNode) => {
+    setOverridesRead(false);
+    setOverridesNote(null);
     try {
       const config = await api.get<{ pathMappings?: unknown }>(node.target, "/v1/config");
+      const held = Array.isArray(config.pathMappings) ? config.pathMappings.length : 0;
       const rows = Array.isArray(config.pathMappings)
         ? (config.pathMappings as unknown[]).flatMap((m): PathMapping[] => {
             const r = m as Record<string, unknown>;
@@ -178,6 +188,14 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
         : [];
       setServerOverrides(rows);
       setOverrideDraft(Object.fromEntries(rows.map((r) => [r.from, r.to])));
+      setOverridesRead(true);
+      if (held > rows.length) {
+        const n = held - rows.length;
+        setOverridesNote(
+          `${n} ${n === 1 ? "override" : "overrides"} on ${node.label} could not be read and ` +
+            `${n === 1 ? "is" : "are"} not shown. Saving replaces them with what you see.`,
+        );
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return;
       setFailure(`Could not read ${node.label}'s overrides: ${describeError(err)}`);
@@ -344,7 +362,9 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
       setDraftEpoch((n) => n + 1);
     } else {
       const folder = draft[browsing.index];
-      if (folder) setOverrideDraft((prev) => ({ ...prev, [folder.path]: path }));
+      if (folder) {
+        setOverrideDraft((prev) => ({ ...prev, [overrideKeyFor(prev, folder.path)]: path }));
+      }
     }
     setBrowsing(null);
   }
@@ -461,12 +481,17 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
           reach={selectedNode ? (reaches[selectedNode.target] ?? null) : null}
           checked={selectedNode ? selectedNode.target in reaches : false}
           overrides={overrideDraft}
-          busy={busy !== null}
+          busy={busy !== null || !overridesRead}
           onOverride={(folderPath, value) =>
-            setOverrideDraft((prev) => ({ ...prev, [folderPath]: value }))
+            setOverrideDraft((prev) => ({ ...prev, [overrideKeyFor(prev, folderPath)]: value }))
           }
           onBrowse={setBrowsing}
         />
+      )}
+      {!gridView && overridesNote && (
+        <p className="text-status-warn mt-2 text-sm" data-testid="overrides-note">
+          {overridesNote}
+        </p>
       )}
 
       {gridView && serverFolders !== null && !libraryError && (
@@ -526,7 +551,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
             type="button"
             className={primaryClass}
             data-testid="overrides-save"
-            disabled={busy !== null || !overridesDirty}
+            disabled={busy !== null || !overridesDirty || !overridesRead}
             onClick={() => void saveOverrides()}
           >
             {busy === "overrides" ? "saving…" : "save overrides"}
@@ -919,7 +944,7 @@ function NodeColumn({
         )}
         {folders.map((folder, index) => {
           const cell = cellFor(folder.path, reach);
-          const value = overrides[folder.path] ?? "";
+          const value = overrides[overrideKeyFor(overrides, folder.path)] ?? "";
           return (
             <tr
               key={folder.path || index}

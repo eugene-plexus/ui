@@ -8,6 +8,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ApiError, api, describeError } from "@/lib/api";
+import { loadConfigTrio } from "@/lib/configTrio";
+import { formatValue } from "@/lib/configValue";
 import { describeAdmission } from "@/lib/launchPreview";
 import {
   DEFAULT_PROFILE_NAME,
@@ -20,6 +22,7 @@ import type { TargetNode } from "@/lib/nodeBudget";
 import { ProfileBenchmark } from "./ProfileBenchmark";
 import type {
   Admission,
+  ConfigField,
   EngineDescriptor,
   LibraryModel,
   ModelProfile,
@@ -528,15 +531,51 @@ function ProfileRow({
       {profile.notes && <p className="mt-1 text-[color:var(--muted)] italic">{profile.notes}</p>}
       <ProfileBenchmark model={model} profile={profile} node={node} />
       {generationFields.some(({ key }) => profile[key] != null) && (
-        <p className="mt-1 text-[color:var(--muted)]">
+        <p className="mt-1 text-[color:var(--muted)]" data-testid="profile-generation">
           {generationFields
             .filter(({ key }) => profile[key] != null)
             .map(({ key, label }) => `${label}: ${profile[key]}`)
             .join(" · ")}
+          {/* Stored, and used only while this is the default profile. */}
+          {!profile.default && " (not in use: only the default profile's are)"}
         </p>
       )}
     </div>
   );
+}
+
+/**
+ * A flag as a profile holds it. Unset is NOT the flag schema's `default`:
+ * the agent passes nothing for an unset flag, so the engine decides -- and
+ * the editor used to fill every unset box with the schema default, so a
+ * profile read as if it set values it did not, and clearing a box snapped it
+ * back (settings never lie, 2026-09-30). The adapter's stated default is kept
+ * as a sentence, attributed to it.
+ */
+function asProfileFlag(field: ConfigField, engine: string, trained: number | null): ConfigField {
+  const stated =
+    field.default !== undefined && field.default !== null
+      ? ` This machine's ${engine} adapter lists its default as ${formatValue(field, field.default)}.`
+      : "";
+  const unsetMeans =
+    field.key === "contextSize" && trained != null
+      ? `Not set: not passed, so ${engine} takes the model's trained context, ${trained.toLocaleString()}.`
+      : `Not set: not passed, so ${engine} decides for itself.${stated}`;
+  return { ...field, default: undefined, unsetMeans };
+}
+
+/** What a blank generation default falls back to, from the gateway. */
+function fallbackFor(
+  key: "maxTokens" | "temperature" | "topP",
+  gateway: Record<string, unknown> | null,
+): string {
+  if (key === "topP") return "not set: unspecified";
+  const value = gateway?.[key === "maxTokens" ? "defaultMaxTokens" : "defaultTemperature"];
+  if (gateway === null) return "not set: the gateway's default";
+  if (value === null || value === undefined) {
+    return key === "maxTokens" ? "not set: no cap" : "not set: unspecified";
+  }
+  return `not set: the gateway's ${String(value)}`;
 }
 
 const generationFields: {
@@ -594,6 +633,23 @@ function ProfileForm({
 
   const descriptor = engines.find((e) => e.engine === engine);
   const schema = descriptor?.flagSchema;
+  // What a blank generation value falls back to: the gateway's own answer
+  // defaults, read rather than written as "Use fallback" (settings never lie).
+  const [gatewayDefaults, setGatewayDefaults] = useState<Record<string, unknown> | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadConfigTrio("gateway").then(
+      (trio) => {
+        if (live) setGatewayDefaults(trio.doc as Record<string, unknown>);
+      },
+      () => {
+        if (live) setGatewayDefaults(null);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
 
   async function save() {
     setSaving(true);
@@ -676,12 +732,17 @@ function ProfileForm({
             onChange={(e) => setEngine(e.target.value as typeof engine)}
             className={inputClass}
           >
+            {/* The profile's own engine, when this machine does not offer it:
+                a select whose value matches no option shows the FIRST one,
+                so the page read llama_cpp about a profile saved for vllm. */}
+            {!engines.some((e) => e.engine === engine) && (
+              <option value={engine}>{engine} (not offered by this machine)</option>
+            )}
             {engines.map((e) => (
               <option key={e.engine} value={e.engine}>
                 {e.engine}
               </option>
             ))}
-            {engines.length === 0 && <option value="llama_cpp">llama_cpp</option>}
           </select>
         </label>
         <label className="flex items-center gap-2 pb-2 text-sm">
@@ -702,8 +763,8 @@ function ProfileForm({
           {schema.fields.map((field) => (
             <ConfigFieldInput
               key={field.key}
-              field={field}
-              value={flags[field.key] ?? field.default ?? ""}
+              field={asProfileFlag(field, engine, model.contextLength ?? null)}
+              value={flags[field.key]}
               pending={saving}
               onChange={(v) => setFlags((prev) => ({ ...prev, [field.key]: v }))}
             />
@@ -752,7 +813,7 @@ function ProfileForm({
               max={field.max}
               step={field.step}
               value={generation[field.key]}
-              placeholder="Use fallback"
+              placeholder={fallbackFor(field.key, gatewayDefaults)}
               onChange={(event) =>
                 setGeneration({ ...generation, [field.key]: event.target.value })
               }

@@ -87,12 +87,21 @@ export function NodeUpdateCard({
     }
   }
 
-  const headline = waiting ? `Updating ${name}` : view.headline;
+  // Before the first read answers, the machine has not failed to answer:
+  // "This machine did not answer" was shown while it was still loading.
+  const reading = !loaded && identity === null;
+  const headline = waiting
+    ? `Updating ${name}`
+    : reading
+      ? "Reading this machine's version…"
+      : view.headline;
   const detail = waiting
     ? "Eugene on this machine is restarting with the new version. This page picks it up again when it is back."
     : silent
       ? "It has not reported back after fifteen minutes. Check that machine."
-      : view.detail;
+      : reading
+        ? null
+        : view.detail;
   const tone =
     view.state === "failed" || silent
       ? "status-error"

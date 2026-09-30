@@ -584,10 +584,12 @@ describe("versions, and updating a machine from here (2026-09-27)", () => {
     update: {
       enabled: true,
       channel: "edge",
-      channelSource: "inferred",
+      channelSource: "setting",
       checkedAt: new Date().toISOString(),
       available: true,
       behind: ["agent", "gateway"],
+      // An agent that places each part by date: nothing here is newer.
+      ahead: [],
       newest: { channel: "edge", ref: EDGE, components: {} },
       apply: { possible: true },
     },

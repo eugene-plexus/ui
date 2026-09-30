@@ -498,7 +498,12 @@ function updateIssues(node: NodeFacts): Issue[] {
   const update = node.identity?.update;
   if (!update || node.identity?.install?.development) return [];
   const last = update.last;
-  if (last?.outcome === "failed" && update.available) {
+  // The same week the Versions card uses: a three-week-old failure read
+  // "did not finish" here while the card, rightly, offered the update.
+  const recent = last?.finishedAt
+    ? Date.now() - Date.parse(last.finishedAt) < 7 * 24 * 3600 * 1000
+    : true;
+  if (last?.outcome === "failed" && recent && update.available) {
     return [
       {
         id: `update-failed:${node.name ?? node.label}`,
@@ -513,12 +518,17 @@ function updateIssues(node: NodeFacts): Issue[] {
   }
   if (!update.available || !update.newest) return [];
   const label = update.newest.release ?? `edge ${update.newest.ref.slice(0, 7)}`;
+  // "Newer" only from an agent that can say so (`ahead`, 2026-09-30); an
+  // older one's `available` means only that the version differs.
+  const title = Array.isArray(update.ahead)
+    ? `A newer version of Eugene is ready for ${node.label}: ${label}`
+    : `A different version of Eugene is on ${node.label}'s channel: ${label}`;
   return [
     {
       id: `update-available:${node.name ?? node.label}`,
       kind: "update-available",
       severity: "warning",
-      title: `A newer version of Eugene is ready for ${node.label}: ${label}`,
+      title,
       detail: update.apply.possible
         ? "Update it from Nodes. Eugene restarts there, and its models stop for a minute or two."
         : `${update.apply.reason ?? "It cannot update itself."} Nodes says how.`,

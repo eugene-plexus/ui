@@ -21,6 +21,7 @@ const MAPPINGS: ConfigField = {
   sensitive: false,
   required: false,
   requiresRestart: false,
+  pendingRestart: false,
   default: [],
 };
 
@@ -32,6 +33,7 @@ const ROOTS: ConfigField = {
   sensitive: false,
   required: false,
   requiresRestart: false,
+  pendingRestart: false,
   default: [],
 };
 

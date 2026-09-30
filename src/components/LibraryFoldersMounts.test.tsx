@@ -36,6 +36,7 @@ const FOLDERS: ConfigField = {
   sensitive: false,
   required: false,
   requiresRestart: false,
+  pendingRestart: false,
   default: [],
 };
 

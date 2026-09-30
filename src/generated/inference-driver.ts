@@ -2496,10 +2496,14 @@ export interface components {
          */
         SpeechFormat: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
         /**
-         * @description Current effective config values, keyed by `ConfigField.key`.
-         *     Values of fields with `sensitive: true` are returned as the
-         *     literal string `"<redacted>"` regardless of whether they are
-         *     set. Returned by `GET /v1/config`.
+         * @description Current effective config values, keyed by `ConfigField.key`: a
+         *     field with a `default` and no saved value reads as the default.
+         *     A field with `sensitive: true` that holds a value reads as the
+         *     literal string `"<redacted>"`; one that holds none is absent or
+         *     `null`, so a UI never shows a missing key as saved (corrected
+         *     2026-09-30 -- this said `"<redacted>"` "regardless of whether they
+         *     are set", which no component did, and a UI that believed it would
+         *     say a key was saved that never was). Returned by `GET /v1/config`.
          */
         ConfigDocument: {
             [key: string]: unknown;
@@ -2716,6 +2720,25 @@ export interface components {
              */
             equals: unknown;
         };
+        /**
+         * @description Named rather than inline: an inline enum here generates a class
+         *     called `Level`, and the next inline `level` anywhere in these
+         *     documents would rename it `Level1` under every caller (the S6
+         *     `Source` -> `Source1` trap).
+         * @enum {string}
+         */
+        ConfigFieldStatusLevel: "info" | "warning";
+        /**
+         * @description One sentence about what a field's value is doing on this machine
+         *     right now. `warning` when the value does not do what it says --
+         *     `passphrase_file` with no passphrase file configured, so this
+         *     machine asks at every start -- and `info` when it will, but has not
+         *     yet.
+         */
+        ConfigFieldStatus: {
+            level: components["schemas"]["ConfigFieldStatusLevel"];
+            text: string;
+        };
         /** @description UI-renderable description of a single editable config field. */
         ConfigField: {
             /**
@@ -2814,8 +2837,75 @@ export interface components {
              *     (e.g. `openaiApiKey`) when a different adapter is selected.
              *     The component still validates and stores the field
              *     regardless of UI visibility.
+             *
+             *     **A field must be shown wherever the component reads it**
+             *     (2026-09-30): a condition narrower than the code that reads the
+             *     value hides a setting while it is in effect. The referenced
+             *     field's value is its effective one -- its `default` when the
+             *     document leaves it out.
              */
             showWhen?: components["schemas"]["ConfigFieldShowWhen"];
+            /**
+             * @description Where `default` comes from, as a sentence, when it is not the
+             *     component's own built-in value -- e.g. "Set by this container
+             *     image, through EUGENE_PLEXUS_AGENT_DEFAULT_UPDATE_CHANNEL." A
+             *     default from the environment is shown in the UI and never
+             *     written to the component's file. Absent for a built-in default.
+             *
+             *     **Settings never lie** (2026-09-30, Troy: fundamental). The five
+             *     properties from here to `managedBy` exist so a widget can show
+             *     exactly the value in effect, and say so when that value is a
+             *     default, unset, derived, inherited, not yet in effect or set by
+             *     something else -- never a stand-in that looks like a choice.
+             */
+            defaultSource?: string;
+            /**
+             * @description What this field does while it holds no value, as a sentence a
+             *     person reads -- "No cap: an answer runs until the model
+             *     finishes." -- shown where the control would otherwise be empty,
+             *     or show a default the component is not using. Present on every
+             *     field without a `default` whose absence means something, and on
+             *     any field whose unset value means something other than
+             *     `default` right now. For a list, it says what the EMPTY list
+             *     means. May be computed per request, so it can name what an
+             *     unset value resolves to on this machine.
+             */
+            unsetMeans?: string;
+            /**
+             * @description The value an unset field stands for right now, typed like the
+             *     field, when the component can know it: a provider's own
+             *     address, the advertise address derived from the route to the
+             *     control root. Absent when it cannot be known here or depends on
+             *     each request. Never sent for a `sensitive` field.
+             */
+            unsetResolvesTo?: unknown;
+            /**
+             * @description The value in `GET /v1/config` is saved but not in effect: this
+             *     `requiresRestart` field was changed since the process started,
+             *     and the process still runs on the value it started with
+             *     (`inEffect`). Cleared by the restart.
+             * @default false
+             */
+            pendingRestart: boolean;
+            /**
+             * @description With `pendingRestart`, the value the running process uses,
+             *     typed like the field. Never sent for a `sensitive` field.
+             */
+            inEffect?: unknown;
+            /**
+             * @description The field is written by another part of the install, which
+             *     rewrites it: a sentence saying which, and where to change it
+             *     instead -- "Set by this machine's agent from the runtime this
+             *     driver fronts; change the runtime." UIs show it read-only, and
+             *     `PATCH` refuses it.
+             */
+            managedBy?: string;
+            /**
+             * @description What this field's value is doing right now, when the value alone
+             *     does not say it: a mode this machine cannot carry out, a value
+             *     not yet acted on. Shown beside the control.
+             */
+            status?: components["schemas"]["ConfigFieldStatus"];
         };
         /**
          * @description UI-renderable description of every editable config field this

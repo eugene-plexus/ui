@@ -55,3 +55,27 @@ describe("the web search switch", () => {
     expect(describeClientLimits(DEFAULT_CLIENT_LIMITS)).not.toMatch(/web search/);
   });
 });
+
+describe("the limits say what is in effect (settings never lie, 2026-09-30)", () => {
+  it("a key allowed exactly web_search reads as allowed to search", () => {
+    const limits = { ...DEFAULT_CLIENT_LIMITS, allowedTools: ["web_search"] };
+    render(<Harness start={limits} seen={[]} />);
+    expect(screen.getByTestId("key-web-search")).toBeChecked();
+    expect(describeClientLimits(limits)).not.toContain("No web search");
+    expect(describeClientLimits({ ...limits, allowedTools: ["other"] })).toContain("No web search");
+    expect(describeClientLimits({ ...limits, allowedTools: ["web_*"] })).not.toContain(
+      "No web search",
+    );
+  });
+
+  it("an emptied number box is the default, never 0", () => {
+    const seen: ClientKeyLimits[] = [];
+    render(<Harness start={DEFAULT_CLIENT_LIMITS} seen={seen} />);
+    const box = screen.getByLabelText("Concurrent requests");
+    fireEvent.change(box, { target: { value: "" } });
+    expect(seen.at(-1)?.maxConcurrentRequests).toBeUndefined();
+    expect(box).toHaveValue(null);
+    expect(box).toHaveAttribute("placeholder", "2 (default)");
+    expect(JSON.stringify(seen.at(-1))).not.toContain("maxConcurrentRequests");
+  });
+});

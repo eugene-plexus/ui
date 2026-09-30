@@ -80,6 +80,13 @@ export function reachState(reach: NodeReach | null): ReachState {
 
 /** The one sentence under the switch, in the person's words. */
 export function headline(state: ReachState): string {
+  // On with no address advertised or proposed: never an empty gap where the
+  // address goes ("restart before  starts working").
+  if (state.kind !== "loading" && state.kind !== "off" && !state.url) {
+    return state.kind === "restart-needed"
+      ? "Eugene needs to restart before other devices can reach it, and this machine has no address on a network to give them yet."
+      : "Reach is on, but this machine has no address on a network for other devices to use yet.";
+  }
   switch (state.kind) {
     case "loading":
       return "";

@@ -13,6 +13,33 @@ export const DEFAULT_CLIENT_LIMITS: ClientKeyLimits = {
   requestsPerMinute: 60,
 };
 
+/** Whether a key may have the hub search the web for it: `allowedTools`
+ * null permits every tool, a list permits what it names (patterns with `*`),
+ * and a local-only key never searches. The checkbox used to be on only for
+ * null, so a key allowed exactly `["web_search"]` read as not allowed
+ * (settings never lie, 2026-09-30). */
+export function mayWebSearch(value: ClientKeyLimits): boolean {
+  if (value.localOnly === true) return false;
+  if (value.allowedTools == null) return true;
+  return value.allowedTools.some((t) => toolPattern(t).test("web_search"));
+}
+
+function toolPattern(entry: string): RegExp {
+  const escaped = entry
+    .split("*")
+    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+    .join(".*");
+  return new RegExp(`^${escaped}$`);
+}
+
+/** A number box that can be empty: empty is the field's default, said as
+ * such, rather than a 0 (`Number("")`) that the server refuses. */
+function whole(raw: string): number | undefined {
+  if (raw.trim() === "") return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export function ClientKeyLimitsEditor({
   value,
   onChange,
@@ -58,9 +85,16 @@ export function ClientKeyLimitsEditor({
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
-          checked={value.allowedTools == null && value.localOnly !== true}
+          checked={mayWebSearch(value)}
           disabled={value.localOnly === true}
-          onChange={(e) => onChange({ ...value, allowedTools: e.target.checked ? null : [] })}
+          onChange={(e) =>
+            onChange({
+              ...value,
+              allowedTools: e.target.checked
+                ? null
+                : (value.allowedTools ?? []).filter((t) => !toolPattern(t).test("web_search")),
+            })
+          }
           data-testid="key-web-search"
         />
         Let apps using this key search the web
@@ -99,9 +133,11 @@ export function ClientKeyLimitsEditor({
             type="number"
             min={1}
             max={64}
-            required
-            value={value.maxConcurrentRequests ?? 2}
-            onChange={(e) => onChange({ ...value, maxConcurrentRequests: Number(e.target.value) })}
+            value={value.maxConcurrentRequests ?? ""}
+            placeholder="2 (default)"
+            onChange={(e) =>
+              onChange({ ...value, maxConcurrentRequests: whole(e.target.value) as number })
+            }
           />
         </label>
         <label>
@@ -112,9 +148,11 @@ export function ClientKeyLimitsEditor({
             type="number"
             min={1}
             max={10000}
-            required
-            value={value.requestsPerMinute ?? 60}
-            onChange={(e) => onChange({ ...value, requestsPerMinute: Number(e.target.value) })}
+            value={value.requestsPerMinute ?? ""}
+            placeholder="60 (default)"
+            onChange={(e) =>
+              onChange({ ...value, requestsPerMinute: whole(e.target.value) as number })
+            }
           />
         </label>
       </div>
@@ -144,9 +182,6 @@ export function describeClientLimits(value?: ClientKeyLimits | null): string {
       : value.allowedModels.length === 0
         ? "No models allowed"
         : value.allowedModels.join(", ");
-  const search =
-    value.localOnly || (value.allowedTools != null && !value.allowedTools.length)
-      ? " · No web search"
-      : "";
+  const search = mayWebSearch(value) ? "" : " · No web search";
   return `${models}${value.localOnly ? " · Local-only" : ""}${search} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute`;
 }

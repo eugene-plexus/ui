@@ -729,9 +729,13 @@ function ResolutionLine({ resolution }: { resolution: ReturnType<typeof resolveT
 
 function SelfResolutionLine({ self }: { self: ReturnType<typeof selfTier> }) {
   if (!self) {
+    // No routing table: whether anything runs under this name is unknown,
+    // and "its own backends" claimed there were some -- an alias has none
+    // (settings never lie, 2026-09-30).
     return (
-      <span className="text-sm text-[color:var(--muted)]">
-        its own backends, before any fallback
+      <span className="text-sm text-[color:var(--muted)]" data-testid="self-unknown">
+        its own backends if it has any, before any fallback — the gateway&rsquo;s routing table
+        could not be read, so which serve it is not known here
       </span>
     );
   }

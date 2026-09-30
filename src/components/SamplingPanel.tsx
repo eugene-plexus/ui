@@ -58,7 +58,7 @@ export function SamplingPanel({
           testId="sampling-temperature"
           value={draft.temperature}
           onChange={set("temperature")}
-          placeholder="0.7"
+          placeholder="not set"
           title="Sampling temperature, sent as temperature. 0 is a real value and is sent as 0."
         />
         <NumberField
@@ -66,7 +66,7 @@ export function SamplingPanel({
           testId="sampling-max-tokens"
           value={draft.maxTokens}
           onChange={set("maxTokens")}
-          placeholder="1024"
+          placeholder="not set"
           title="Generation limit, sent as max_tokens. A reply that hits it finishes with length and the bar above says so."
         />
         <NumberField
@@ -74,7 +74,7 @@ export function SamplingPanel({
           testId="sampling-top-p"
           value={draft.topP}
           onChange={set("topP")}
-          placeholder="0.9"
+          placeholder="not set"
           title="Nucleus sampling cutoff, sent as top_p. Backends that cannot carry it say which field was dropped, once."
         />
         <NumberField
@@ -82,7 +82,7 @@ export function SamplingPanel({
           testId="sampling-seed"
           value={draft.seed}
           onChange={set("seed")}
-          placeholder="42"
+          placeholder="not set"
           title="Deterministic sampling where the backend supports it, sent as seed. 0 is a real seed and is sent as 0."
         />
       </div>

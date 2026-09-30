@@ -36,6 +36,28 @@ export function shapeOf(path: string): MountShape {
   return isWindowsShaped(path) ? "windows" : "posix";
 }
 
+/**
+ * Whether two spellings name the same folder, the way the agent matches an
+ * override's `from`: a trailing separator is not a different folder, and a
+ * Windows path is case-blind and takes either slash. The Folders page looked
+ * overrides up by the exact string, so one spelled `/models/` showed an empty
+ * box reading "inherits" while the agent's own check said "override"
+ * (settings never lie, 2026-09-30).
+ */
+export function sameFolderPath(a: string, b: string): boolean {
+  const norm = (p: string) => {
+    const trimmed = p.trim().replace(/[\\/]+$/, "");
+    return isWindowsShaped(p) ? trimmed.replace(/\//g, "\\").toLowerCase() : trimmed;
+  };
+  return norm(a) === norm(b);
+}
+
+/** The key in `overrides` that names `folder`, else `folder` itself. */
+export function overrideKeyFor(overrides: Record<string, string>, folder: string): string {
+  if (folder in overrides) return folder;
+  return Object.keys(overrides).find((k) => sameFolderPath(k, folder)) ?? folder;
+}
+
 /** Absolute in either convention, or `~`-relative. Same rule the library
  * applies at PATCH; enforced here so a typo is caught before the round
  * trip. */

@@ -646,9 +646,12 @@ export interface paths {
          *     reason in `x-eugene-plexus-web-search`. Refusing it would refuse
          *     the first request of every session, as `/v1/messages` once did
          *     with `output_config`. `filters.allowed_domains`, `user_location`
-         *     and `search_context_size` are honoured. Every other server-side tool (file search,
-         *     code interpreter, computer use, image generation, MCP, a custom
-         *     or local-shell tool) is refused with a 400 naming its type.
+         *     and `search_context_size` are honoured. `image_generation` runs
+         *     through this install's image models (P8e, "Server-run tools"
+         *     above) or is refused with a 400 naming why. Every other
+         *     server-side tool (file search, code interpreter, computer use,
+         *     MCP, a custom or local-shell tool) is refused with a 400 naming
+         *     its type.
          *
          *     ### Reasoning goes out as `reasoning_text` and comes back
          *
@@ -4131,7 +4134,10 @@ export interface components {
          *     of `input_text` / `input_image` parts), and `reasoning`
          *     (`content` of `reasoning_text` parts, `encrypted_content`), and a
          *     `web_search_call` handed back (P8), which becomes a line of the
-         *     assistant's history naming the search and its sources.
+         *     assistant's history naming the search and its sources, and an
+         *     `image_generation_call` handed back (P8e), which becomes a line
+         *     naming the prompt the image was made for -- its base64 is not
+         *     sent to the model.
          *     Codex drops `id` and `status` when it sends items back
          *     (measured), so neither is required. Refused: `item_reference` and
          *     any other type.
@@ -4157,7 +4163,9 @@ export interface components {
          * @description A `function` tool (`name`, `description`, `parameters`, `strict`)
          *     maps onto an OpenAI chat function. `web_search` runs on this
          *     install's search account, or is removed and named when it cannot
-         *     (see the endpoint); any other `type` is refused.
+         *     (see the endpoint); `image_generation` runs on this install's
+         *     image models, or is refused naming why (P8e); any other `type` is
+         *     refused.
          */
         ResponsesTool: {
             type: string;
@@ -4207,13 +4215,17 @@ export interface components {
          *     `{"type": "message", "id", "role": "assistant", "status",
          *     "content": [{"type": "output_text", "text", "annotations": []}]}`,
          *     `{"type": "function_call", "id", "status", "call_id", "name",
-         *     "arguments"}`, or, for a search this install ran (P8),
+         *     "arguments"}`, for a search this install ran (P8),
          *     `{"type": "web_search_call", "id", "status", "action": {"type":
-         *     "search", "query", "sources": [{"type": "url", "url"}]}}`.
+         *     "search", "query", "sources": [{"type": "url", "url"}]}}`, or for
+         *     an image it made (P8e), `{"type": "image_generation_call", "id",
+         *     "status", "result", "revised_prompt", "size", "quality",
+         *     "background", "output_format", "action": "generate"}` -- `result`
+         *     the base64 image, null and `status: failed` when none was made.
          */
         ResponsesOutputItem: {
             /** @enum {string} */
-            type: "reasoning" | "message" | "function_call" | "web_search_call";
+            type: "reasoning" | "message" | "function_call" | "web_search_call" | "image_generation_call";
             id?: string;
         } & {
             [key: string]: unknown;
@@ -4673,6 +4685,12 @@ export interface components {
              *     is kept: a query is made from the prompt.
              */
             webSearches?: components["schemas"]["MetricToolExecution"][];
+            /**
+             * @description Each image the `image_generation` tool made or failed to make
+             *     for the request (P8e, schema v10), in order. No prompt text is
+             *     kept, for the same reason. Absent on rows written before P8e.
+             */
+            imageGenerations?: components["schemas"]["MetricToolExecution"][];
         };
         /**
          * @description `over_limit` is a call past the request's limit, answered without
@@ -4683,12 +4701,18 @@ export interface components {
          */
         MetricToolOutcome: "ok" | "error" | "over_limit";
         MetricToolExecution: {
-            /** @description The tool that ran -- `web_search`. */
+            /** @description The tool that ran -- `web_search` or `image_generation`. */
             tool: string;
-            /** @description The tool-driver (search account) that ran it; null when none was asked. */
+            /**
+             * @description The tool-driver (search account) that ran a search, or the
+             *     inference-driver that made an image; null when none was asked.
+             */
             driver?: string | null;
             node?: string | null;
-            /** @description The account's provider, `searxng` or `brave`. */
+            /**
+             * @description The search account's provider, `searxng` or `brave`; for an
+             *     image, the image model that made it.
+             */
             provider?: string | null;
             /**
              * @description How the caller named the tool: `web_search_options`,
@@ -4697,7 +4721,7 @@ export interface components {
              */
             version?: string | null;
             outcome: components["schemas"]["MetricToolOutcome"];
-            /** @description How many results the model was given. */
+            /** @description How many results the model was given, or images made. */
             results?: number | null;
             elapsedMs: number;
         };
@@ -5092,10 +5116,14 @@ export interface components {
             message?: string;
         };
         /**
-         * @description Current effective config values, keyed by `ConfigField.key`.
-         *     Values of fields with `sensitive: true` are returned as the
-         *     literal string `"<redacted>"` regardless of whether they are
-         *     set. Returned by `GET /v1/config`.
+         * @description Current effective config values, keyed by `ConfigField.key`: a
+         *     field with a `default` and no saved value reads as the default.
+         *     A field with `sensitive: true` that holds a value reads as the
+         *     literal string `"<redacted>"`; one that holds none is absent or
+         *     `null`, so a UI never shows a missing key as saved (corrected
+         *     2026-09-30 -- this said `"<redacted>"` "regardless of whether they
+         *     are set", which no component did, and a UI that believed it would
+         *     say a key was saved that never was). Returned by `GET /v1/config`.
          */
         ConfigDocument: {
             [key: string]: unknown;
@@ -5312,6 +5340,25 @@ export interface components {
              */
             equals: unknown;
         };
+        /**
+         * @description Named rather than inline: an inline enum here generates a class
+         *     called `Level`, and the next inline `level` anywhere in these
+         *     documents would rename it `Level1` under every caller (the S6
+         *     `Source` -> `Source1` trap).
+         * @enum {string}
+         */
+        ConfigFieldStatusLevel: "info" | "warning";
+        /**
+         * @description One sentence about what a field's value is doing on this machine
+         *     right now. `warning` when the value does not do what it says --
+         *     `passphrase_file` with no passphrase file configured, so this
+         *     machine asks at every start -- and `info` when it will, but has not
+         *     yet.
+         */
+        ConfigFieldStatus: {
+            level: components["schemas"]["ConfigFieldStatusLevel"];
+            text: string;
+        };
         /** @description UI-renderable description of a single editable config field. */
         ConfigField: {
             /**
@@ -5410,8 +5457,75 @@ export interface components {
              *     (e.g. `openaiApiKey`) when a different adapter is selected.
              *     The component still validates and stores the field
              *     regardless of UI visibility.
+             *
+             *     **A field must be shown wherever the component reads it**
+             *     (2026-09-30): a condition narrower than the code that reads the
+             *     value hides a setting while it is in effect. The referenced
+             *     field's value is its effective one -- its `default` when the
+             *     document leaves it out.
              */
             showWhen?: components["schemas"]["ConfigFieldShowWhen"];
+            /**
+             * @description Where `default` comes from, as a sentence, when it is not the
+             *     component's own built-in value -- e.g. "Set by this container
+             *     image, through EUGENE_PLEXUS_AGENT_DEFAULT_UPDATE_CHANNEL." A
+             *     default from the environment is shown in the UI and never
+             *     written to the component's file. Absent for a built-in default.
+             *
+             *     **Settings never lie** (2026-09-30, Troy: fundamental). The five
+             *     properties from here to `managedBy` exist so a widget can show
+             *     exactly the value in effect, and say so when that value is a
+             *     default, unset, derived, inherited, not yet in effect or set by
+             *     something else -- never a stand-in that looks like a choice.
+             */
+            defaultSource?: string;
+            /**
+             * @description What this field does while it holds no value, as a sentence a
+             *     person reads -- "No cap: an answer runs until the model
+             *     finishes." -- shown where the control would otherwise be empty,
+             *     or show a default the component is not using. Present on every
+             *     field without a `default` whose absence means something, and on
+             *     any field whose unset value means something other than
+             *     `default` right now. For a list, it says what the EMPTY list
+             *     means. May be computed per request, so it can name what an
+             *     unset value resolves to on this machine.
+             */
+            unsetMeans?: string;
+            /**
+             * @description The value an unset field stands for right now, typed like the
+             *     field, when the component can know it: a provider's own
+             *     address, the advertise address derived from the route to the
+             *     control root. Absent when it cannot be known here or depends on
+             *     each request. Never sent for a `sensitive` field.
+             */
+            unsetResolvesTo?: unknown;
+            /**
+             * @description The value in `GET /v1/config` is saved but not in effect: this
+             *     `requiresRestart` field was changed since the process started,
+             *     and the process still runs on the value it started with
+             *     (`inEffect`). Cleared by the restart.
+             * @default false
+             */
+            pendingRestart: boolean;
+            /**
+             * @description With `pendingRestart`, the value the running process uses,
+             *     typed like the field. Never sent for a `sensitive` field.
+             */
+            inEffect?: unknown;
+            /**
+             * @description The field is written by another part of the install, which
+             *     rewrites it: a sentence saying which, and where to change it
+             *     instead -- "Set by this machine's agent from the runtime this
+             *     driver fronts; change the runtime." UIs show it read-only, and
+             *     `PATCH` refuses it.
+             */
+            managedBy?: string;
+            /**
+             * @description What this field's value is doing right now, when the value alone
+             *     does not say it: a mode this machine cannot carry out, a value
+             *     not yet acted on. Shown beside the control.
+             */
+            status?: components["schemas"]["ConfigFieldStatus"];
         };
         /**
          * @description UI-renderable description of every editable config field this

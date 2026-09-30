@@ -2187,10 +2187,24 @@ export interface components {
          *     Checked when the agent starts and every six hours, and on
          *     `POST /v1/node/update/check`. Off with `updateChecks: false` on
          *     this agent's config.
+         *
+         *     **Only a newer version is offered** (2026-09-30). Each component
+         *     whose installed commit differs from the one `newest` pins is
+         *     placed by its commit's date: older is `behind`, newer is `ahead`.
+         *     `available` is true only when something is behind and nothing is
+         *     ahead, so a machine that runs a newer build than its channel's
+         *     newest -- installed from `main` while it follows `releases`, or
+         *     from a commit whose checks are still running -- is never told an
+         *     older one is an update.
          */
         NodeUpdate: {
             enabled: boolean;
-            channel: components["schemas"]["UpdateChannel"];
+            /**
+             * @description The channel this machine follows. Absent only while
+             *     `channelSource` is `pending`: which one it follows has not been
+             *     decided yet, and a value here would be a guess.
+             */
+            channel?: components["schemas"]["UpdateChannel"];
             channelSource: components["schemas"]["UpdateChannelSource"];
             /** Format: date-time */
             checkedAt?: string;
@@ -2198,12 +2212,25 @@ export interface components {
             error?: string;
             newest?: components["schemas"]["UpdateTarget"];
             /**
-             * @description `newest` differs from what is installed. Never true for a
-             *     development checkout.
+             * @description `newest` is newer than what is installed: `behind` is not
+             *     empty and `ahead` is. Never true for a development checkout.
+             *     Agents before 2026-09-30 send no `ahead`, and for them this
+             *     means only that `newest` differs.
              */
             available: boolean;
-            /** @description The components whose installed commit is not the one in `newest`. */
+            /**
+             * @description The components whose installed commit is older than the one in
+             *     `newest`, or that are missing or were installed before commits
+             *     were recorded.
+             */
             behind: string[];
+            /**
+             * @description The components whose installed commit is newer than the one in
+             *     `newest` (or that `newest` predates entirely, as every release
+             *     before P8 predates the tool-driver). Not empty means updating
+             *     to `newest` would move them back, so it is not offered.
+             */
+            ahead?: string[];
             apply: components["schemas"]["UpdateApply"];
             running?: components["schemas"]["UpdateRun"];
             last?: components["schemas"]["UpdateRun"];
@@ -2265,12 +2292,25 @@ export interface components {
         /** @enum {string} */
         UpdateChannel: "edge" | "releases";
         /**
-         * @description `setting`: `updateChannel` on this agent's config.
-         *     `inferred`: not set, so `releases` when the installed commits
-         *     are exactly one of the recent releases, and `edge` otherwise.
+         * @description `setting`: `updateChannel` is saved on this agent's config.
+         *
+         *     `default`: not saved, so the default: `releases`, or what this
+         *     install's environment names (`EUGENE_PLEXUS_AGENT_DEFAULT_UPDATE_CHANNEL`,
+         *     which the `:edge` container image sets to `edge`).
+         *
+         *     `pending`: an install from before 2026-09-30 that never saved a
+         *     channel, whose first update check since has not yet read the
+         *     release list. That check saves the channel the machine followed
+         *     until then -- `releases` when its commits are exactly one of the
+         *     recent releases, `edge` otherwise -- so updating the agent never
+         *     moves a machine to another channel. `channel` is absent meanwhile.
+         *
+         *     `inferred`: sent only by agents before 2026-09-30, which worked an
+         *     unset channel out afresh at every check. Kept so a console can
+         *     still read one.
          * @enum {string}
          */
-        UpdateChannelSource: "setting" | "inferred";
+        UpdateChannelSource: "setting" | "default" | "pending" | "inferred";
         /** @enum {string} */
         UpdateOutcome: "running" | "succeeded" | "failed";
         LogLine: {
@@ -5014,6 +5054,25 @@ export interface components {
              */
             equals: unknown;
         };
+        /**
+         * @description Named rather than inline: an inline enum here generates a class
+         *     called `Level`, and the next inline `level` anywhere in these
+         *     documents would rename it `Level1` under every caller (the S6
+         *     `Source` -> `Source1` trap).
+         * @enum {string}
+         */
+        ConfigFieldStatusLevel: "info" | "warning";
+        /**
+         * @description One sentence about what a field's value is doing on this machine
+         *     right now. `warning` when the value does not do what it says --
+         *     `passphrase_file` with no passphrase file configured, so this
+         *     machine asks at every start -- and `info` when it will, but has not
+         *     yet.
+         */
+        ConfigFieldStatus: {
+            level: components["schemas"]["ConfigFieldStatusLevel"];
+            text: string;
+        };
         /** @description UI-renderable description of a single editable config field. */
         ConfigField: {
             /**
@@ -5112,8 +5171,75 @@ export interface components {
              *     (e.g. `openaiApiKey`) when a different adapter is selected.
              *     The component still validates and stores the field
              *     regardless of UI visibility.
+             *
+             *     **A field must be shown wherever the component reads it**
+             *     (2026-09-30): a condition narrower than the code that reads the
+             *     value hides a setting while it is in effect. The referenced
+             *     field's value is its effective one -- its `default` when the
+             *     document leaves it out.
              */
             showWhen?: components["schemas"]["ConfigFieldShowWhen"];
+            /**
+             * @description Where `default` comes from, as a sentence, when it is not the
+             *     component's own built-in value -- e.g. "Set by this container
+             *     image, through EUGENE_PLEXUS_AGENT_DEFAULT_UPDATE_CHANNEL." A
+             *     default from the environment is shown in the UI and never
+             *     written to the component's file. Absent for a built-in default.
+             *
+             *     **Settings never lie** (2026-09-30, Troy: fundamental). The five
+             *     properties from here to `managedBy` exist so a widget can show
+             *     exactly the value in effect, and say so when that value is a
+             *     default, unset, derived, inherited, not yet in effect or set by
+             *     something else -- never a stand-in that looks like a choice.
+             */
+            defaultSource?: string;
+            /**
+             * @description What this field does while it holds no value, as a sentence a
+             *     person reads -- "No cap: an answer runs until the model
+             *     finishes." -- shown where the control would otherwise be empty,
+             *     or show a default the component is not using. Present on every
+             *     field without a `default` whose absence means something, and on
+             *     any field whose unset value means something other than
+             *     `default` right now. For a list, it says what the EMPTY list
+             *     means. May be computed per request, so it can name what an
+             *     unset value resolves to on this machine.
+             */
+            unsetMeans?: string;
+            /**
+             * @description The value an unset field stands for right now, typed like the
+             *     field, when the component can know it: a provider's own
+             *     address, the advertise address derived from the route to the
+             *     control root. Absent when it cannot be known here or depends on
+             *     each request. Never sent for a `sensitive` field.
+             */
+            unsetResolvesTo?: unknown;
+            /**
+             * @description The value in `GET /v1/config` is saved but not in effect: this
+             *     `requiresRestart` field was changed since the process started,
+             *     and the process still runs on the value it started with
+             *     (`inEffect`). Cleared by the restart.
+             * @default false
+             */
+            pendingRestart: boolean;
+            /**
+             * @description With `pendingRestart`, the value the running process uses,
+             *     typed like the field. Never sent for a `sensitive` field.
+             */
+            inEffect?: unknown;
+            /**
+             * @description The field is written by another part of the install, which
+             *     rewrites it: a sentence saying which, and where to change it
+             *     instead -- "Set by this machine's agent from the runtime this
+             *     driver fronts; change the runtime." UIs show it read-only, and
+             *     `PATCH` refuses it.
+             */
+            managedBy?: string;
+            /**
+             * @description What this field's value is doing right now, when the value alone
+             *     does not say it: a mode this machine cannot carry out, a value
+             *     not yet acted on. Shown beside the control.
+             */
+            status?: components["schemas"]["ConfigFieldStatus"];
         };
         /**
          * @description UI-renderable description of every editable config field this
@@ -5135,10 +5261,14 @@ export interface components {
             };
         };
         /**
-         * @description Current effective config values, keyed by `ConfigField.key`.
-         *     Values of fields with `sensitive: true` are returned as the
-         *     literal string `"<redacted>"` regardless of whether they are
-         *     set. Returned by `GET /v1/config`.
+         * @description Current effective config values, keyed by `ConfigField.key`: a
+         *     field with a `default` and no saved value reads as the default.
+         *     A field with `sensitive: true` that holds a value reads as the
+         *     literal string `"<redacted>"`; one that holds none is absent or
+         *     `null`, so a UI never shows a missing key as saved (corrected
+         *     2026-09-30 -- this said `"<redacted>"` "regardless of whether they
+         *     are set", which no component did, and a UI that believed it would
+         *     say a key was saved that never was). Returned by `GET /v1/config`.
          */
         ConfigDocument: {
             [key: string]: unknown;
