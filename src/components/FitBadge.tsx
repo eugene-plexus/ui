@@ -2,8 +2,17 @@
 
 import { useState } from "react";
 
+import {
+  expertsContextSentence,
+  formatMemory,
+  placementSentence,
+  verdictMeaning,
+  verdictWord,
+} from "@/lib/fitWords";
 import { contextLabel } from "@/lib/starter";
 import type { Fit, FitVerdict, MemoryBudget } from "@/lib/types";
+
+export { formatMemory };
 
 /**
  * A fit verdict, and the arithmetic behind it on demand.
@@ -24,15 +33,13 @@ import type { Fit, FitVerdict, MemoryBudget } from "@/lib/types";
  * to read as *we cannot tell*, never as a qualified yes — the defect it
  * replaces told a 16 GB Arc owner that a 30 GB model fits, which is an
  * out-of-memory error at load rather than a slow answer.
+ *
+ * **`split` is two words since A3c**, because `Fit.offload` says which
+ * kind it is: *experts in RAM* for a mixture-of-experts model that keeps
+ * every layer on the card, *partial offload* for a dense spill. The words
+ * live in `lib/fitWords.ts`, so the badge, the starter set and the
+ * Library's panel cannot drift apart.
  */
-
-const VERDICT_LABEL: Record<FitVerdict, string> = {
-  fits: "fits",
-  tight: "tight",
-  split: "partial offload",
-  no: "too large",
-  unknown: "can't tell",
-};
 
 const VERDICT_CLASS: Record<FitVerdict, string> = {
   fits: "status-success",
@@ -42,17 +49,6 @@ const VERDICT_CLASS: Record<FitVerdict, string> = {
   // Deliberately neither the green one nor the red one: the model is
   // not refused, the machine is unmeasured.
   unknown: "status-warn",
-};
-
-const VERDICT_MEANING: Record<FitVerdict, string> = {
-  fits: "Fits entirely in free GPU memory, fully offloaded.",
-  tight:
-    "Would fit on an idle GPU, but something is holding memory right now. Closing it is your call.",
-  split:
-    "Needs host memory as well as GPU memory. It will run, and generation will be materially slower.",
-  no: "Larger than this machine's GPU and host memory together.",
-  unknown:
-    "There is a graphics card here and nothing on this machine would say how much memory it has, so there is nothing to compare against. Install the card's own tool, or score against a budget you supply.",
 };
 
 /**
@@ -70,22 +66,25 @@ export function FitBadge({
   fit,
   compact = false,
   withContext = false,
+  expertsContext = null,
 }: {
   fit: Fit;
   compact?: boolean;
   withContext?: boolean;
+  /** `maxContextExpertsInRam`, where the caller has one. */
+  expertsContext?: number | null;
 }) {
   const [open, setOpen] = useState(false);
-  const label = withContext
-    ? `${VERDICT_LABEL[fit.verdict]} at ${contextLabel(fit.contextLength)}`
-    : VERDICT_LABEL[fit.verdict];
+  const word = verdictWord(fit);
+  const label = withContext ? `${word} at ${contextLabel(fit.contextLength)}` : word;
 
   if (compact) {
     return (
       <span
         data-testid="fit-badge"
         className={`${VERDICT_CLASS[fit.verdict]} font-ui badge rounded-[var(--radius)] border px-1.5 py-0.5 text-[0.625rem] tracking-wide uppercase`}
-        title={`${VERDICT_MEANING[fit.verdict]} Needs ${formatBytes(fit.requiredBytes)} at ${fit.contextLength.toLocaleString()} tokens.`}
+        data-offload={fit.offload ?? undefined}
+        title={`${verdictMeaning(fit)} Needs ${formatBytes(fit.requiredBytes)} at ${fit.contextLength.toLocaleString()} tokens.`}
       >
         {label}
       </span>
@@ -97,6 +96,8 @@ export function FitBadge({
       <button
         type="button"
         data-testid="fit-badge"
+        data-offload={fit.offload ?? undefined}
+        title={verdictMeaning(fit)}
         onClick={() => setOpen((v) => !v)}
         className={`${VERDICT_CLASS[fit.verdict]} font-ui badge gap-1.5 rounded-[var(--radius)] border px-2 py-0.5 text-[0.6875rem] tracking-wide uppercase`}
         aria-expanded={open}
@@ -104,12 +105,30 @@ export function FitBadge({
         {label}
         <span className="opacity-60">{open ? "▾" : "▸"}</span>
       </button>
-      {open && <FitBreakdown fit={fit} />}
+      {open && <FitBreakdown fit={fit} expertsContext={expertsContext} />}
     </div>
   );
 }
 
-export function FitBreakdown({ fit }: { fit: Fit }) {
+/**
+ * The arithmetic behind a verdict, and where the bytes go.
+ *
+ * `expertsContext` is `maxContextExpertsInRam` where the caller has it
+ * (a model on disk, a starter entry); a catalogue candidate's fit does
+ * not carry one. `withPlacement` is off where the caller already says
+ * what sits where in its own words, as the Library's panel does.
+ */
+export function FitBreakdown({
+  fit,
+  expertsContext = null,
+  withPlacement = true,
+}: {
+  fit: Fit;
+  expertsContext?: number | null;
+  withPlacement?: boolean;
+}) {
+  const where = withPlacement ? placementSentence(fit) : null;
+  const longest = fit.offload === "experts" ? expertsContextSentence(expertsContext) : null;
   const rows: [string, string][] = [
     ["weights", formatBytes(fit.weightsBytes)],
     [
@@ -139,6 +158,13 @@ export function FitBreakdown({ fit }: { fit: Fit }) {
           </div>
         ))}
       </dl>
+
+      {where && (
+        <p data-testid="fit-placement">
+          {where}
+          {longest && <> {longest}</>}
+        </p>
+      )}
 
       {fit.budget && <BudgetLine budget={fit.budget} />}
 
@@ -212,11 +238,4 @@ export function formatBytes(count: number | null | undefined): string {
   const index = Math.min(Math.floor(Math.log10(count) / 3), units.length - 1);
   if (index === 0) return `${count} B`;
   return `${(count / 1000 ** index).toFixed(2)} ${units[index]}`;
-}
-
-/** `29.3 GiB` — binary, for memory, because that is how VRAM is quoted. */
-export function formatMemory(count: number | null | undefined): string {
-  if (!count) return "0";
-  const gib = count / 1024 ** 3;
-  return gib >= 10 ? `${gib.toFixed(1)} GiB` : `${gib.toFixed(2)} GiB`;
 }

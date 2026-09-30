@@ -17,6 +17,7 @@
  * change*. `fitLabel` is why the badge can say `fits at 32k`.
  */
 
+import { verdictWord } from "./fitWords";
 import type { Fit, StarterModel, StarterSet } from "./types";
 
 /** `32k`, `262k`, `4,096`. Powers of two get the short form because that
@@ -27,18 +28,12 @@ export function contextLabel(tokens: number): string {
   return tokens.toLocaleString();
 }
 
-const VERDICT_WORD: Record<string, string> = {
-  fits: "fits",
-  tight: "tight",
-  split: "partial offload",
-  no: "too large",
-};
-
-/** `fits at 32k` — the verdict and the number it depends on, together. */
+/** `fits at 32k` — the verdict and the number it depends on, together.
+ * The word is `fitWords`'s, so a split with its experts in RAM reads
+ * `experts in RAM at 16k` and never as a dense spill. */
 export function fitLabel(fit: Fit | null | undefined): string {
   if (!fit) return "unknown";
-  const word = VERDICT_WORD[fit.verdict] ?? fit.verdict;
-  return `${word} at ${contextLabel(fit.contextLength)}`;
+  return `${verdictWord(fit)} at ${contextLabel(fit.contextLength)}`;
 }
 
 /** `16 Sep 2026`. The date a person judges a recommendation by. */

@@ -66,8 +66,18 @@ describe("fitLabel", () => {
     // tooltip, so the verdict looked like a property of the model rather
     // than of the model and a number the person can change.
     expect(fitLabel(fit("fits", 32768))).toBe("fits at 32k");
-    expect(fitLabel(fit("split", 131072))).toBe("partial offload at 128k");
+    expect(fitLabel({ ...fit("split", 131072), offload: "layers" })).toBe(
+      "partial offload at 128k",
+    );
     expect(fitLabel(fit("no", 8192))).toBe("too large at 8k");
+  });
+
+  it("names a split with its experts in RAM as that, never as a dense spill", () => {
+    // A3c: the starter set recommends a 30B-A3B to an 8 GB card, and its
+    // badge read "partial offload" -- the dense-spill wording.
+    expect(fitLabel({ ...fit("split", 16384), offload: "experts" })).toBe("experts in RAM at 16k");
+    // Not known is neither: a catalogue estimate before the file is read.
+    expect(fitLabel(fit("split", 16384))).toBe("needs RAM too at 16k");
   });
 
   it("says unknown rather than inventing a verdict", () => {

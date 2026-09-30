@@ -262,6 +262,147 @@ describe("Run with an engine installed", () => {
     await stepIs("agent", "ready");
     const saved = calls.find((c) => key(c) === "POST library/v1/models/m1/profiles");
     expect(saved?.body).toMatchObject({ flags: {} });
+    // A whole file on the card needs no experts-in-RAM number: nothing
+    // more is asked.
+    expect(routes()).not.toContain("GET agent/v1/node");
+  });
+
+  /**
+   * A3c: a mixture-of-experts model on a card smaller than its file. The
+   * whole file never fits, so admission hands back 0 and the profile used
+   * to start empty -- and llama.cpp's own fit then drops the context to
+   * its 4,096 floor before it moves an expert. The library's
+   * experts-in-RAM number, scored against the same machine, is the start.
+   */
+  describe("a model that runs with its experts in system memory", () => {
+    const GIB = 1024 ** 3;
+    const NODE = {
+      enrolled: false,
+      devices: [
+        {
+          kind: "cuda",
+          name: "RTX 4060 Laptop",
+          memoryTotalBytes: 8 * GIB,
+          memoryFreeBytes: 7 * GIB,
+        },
+        { kind: "cpu", name: "CPU", memoryTotalBytes: 32 * GIB, memoryFreeBytes: 24 * GIB },
+      ],
+    };
+    const FIT_ROUTE = `GET library/v1/models/m1/fit?vramBytes=${7 * GIB}&ramBytes=${24 * GIB}`;
+    function moe(offload: string, experts: number | null = 24576) {
+      return () => ({
+        status: 200,
+        body: {
+          fit: { verdict: "split", offload, contextLength: 8192 },
+          maxContextLength: null,
+          maxContextExpertsInRam: experts,
+        },
+      });
+    }
+
+    beforeEach(() => {
+      handlers.set("POST agent/v1/runtimes/admission", () => ({
+        status: 200,
+        body: { ...ADMIT, fit: "split", maxContextLength: 0 },
+      }));
+      handlers.set("GET agent/v1/node", () => ({ status: 200, body: NODE }));
+      handlers.set(FIT_ROUTE, moe("experts"));
+    });
+
+    it("starts the profile at the experts-in-RAM context, scored against this machine", async () => {
+      startRun(MODEL, HERE, FAST);
+      await stepIs("agent", "ready");
+      expect(routes()).toContain(FIT_ROUTE);
+      const saved = calls.find((c) => key(c) === "POST library/v1/models/m1/profiles");
+      expect(saved?.body).toMatchObject({ flags: { contextSize: 24576 } });
+    });
+
+    it("asks the node the run goes to, not this browser's machine", async () => {
+      handlers.set("GET node:node-b/v1/engines", () => ({
+        status: 200,
+        body: { engines: [LLAMA_INSTALLED] },
+      }));
+      handlers.set("POST node:node-b/v1/runtimes/admission", () => ({
+        status: 200,
+        body: { ...ADMIT, fit: "split", maxContextLength: 0 },
+      }));
+      handlers.set("GET node:node-b/v1/node", () => ({ status: 200, body: NODE }));
+      handlers.set("GET node:node-b/v1/runtimes", () => ({ status: 200, body: { runtimes: [] } }));
+      // Another node's runtime is declared through the control root.
+      handlers.set("POST control/v1/runtimes", (call) => ({
+        status: 201,
+        body: { node: "node-b", ...(call.body?.spec as object) },
+      }));
+      handlers.set(`GET node:node-b/v1/runtimes/${RUNTIME}`, runtimeSequence("ready"));
+      startRun(MODEL, NODE_B, FAST);
+      await stepIs("node:node-b", "ready");
+      expect(routes()).toContain("GET node:node-b/v1/node");
+      expect(routes()).not.toContain("GET agent/v1/node");
+      const saved = calls.find((c) => key(c) === "POST library/v1/models/m1/profiles");
+      expect(saved?.body).toMatchObject({ flags: { contextSize: 24576 } });
+    });
+
+    it("sets the model's own context when that way holds all of it", async () => {
+      // Left unset, llama.cpp's fit would drop it to 4,096 before moving an
+      // expert; set, fit keeps it and moves experts (profile-builder §0 M2).
+      handlers.set(FIT_ROUTE, moe("experts", 65536));
+      startRun(MODEL, HERE, FAST);
+      await stepIs("agent", "ready");
+      const saved = calls.find((c) => key(c) === "POST library/v1/models/m1/profiles");
+      expect(saved?.body).toMatchObject({ flags: { contextSize: 40960 } });
+    });
+
+    it("leaves a dense spill to llama.cpp, as before", async () => {
+      handlers.set(FIT_ROUTE, moe("layers"));
+      startRun(MODEL, HERE, FAST);
+      await stepIs("agent", "ready");
+      const saved = calls.find((c) => key(c) === "POST library/v1/models/m1/profiles");
+      expect(saved?.body).toMatchObject({ flags: {} });
+    });
+
+    it("keeps the whole-card number wherever there is one", async () => {
+      // A MoE model that fits entirely at 12k keeps 12k: the dense rule,
+      // unchanged, and nothing more is asked.
+      handlers.set("POST agent/v1/runtimes/admission", () => ({
+        status: 200,
+        body: { ...ADMIT, fit: "split", maxContextLength: 12288 },
+      }));
+      startRun(MODEL, HERE, FAST);
+      await stepIs("agent", "ready");
+      expect(routes()).not.toContain(FIT_ROUTE);
+      const saved = calls.find((c) => key(c) === "POST library/v1/models/m1/profiles");
+      expect(saved?.body).toMatchObject({ flags: { contextSize: 12288 } });
+    });
+
+    it("does not score against the library's own host when the node lists no devices", async () => {
+      handlers.set("GET agent/v1/node", () => ({
+        status: 200,
+        body: { enrolled: false, devices: [] },
+      }));
+      startRun(MODEL, HERE, FAST);
+      await stepIs("agent", "ready");
+      expect(routes().some((r) => r.startsWith("GET library/v1/models/m1/fit"))).toBe(false);
+      const saved = calls.find((c) => key(c) === "POST library/v1/models/m1/profiles");
+      expect(saved?.body).toMatchObject({ flags: {} });
+    });
+
+    it("does not ask for an engine whose fit does not move experts", async () => {
+      // vLLM has no partial offload at all.
+      const vllmModel = { ...MODEL, format: "safetensors" as const };
+      handlers.set("GET agent/v1/engines", () => ({
+        status: 200,
+        body: {
+          engines: [
+            { engine: "vllm", available: true, modelFormats: ["safetensors"], acquisition: {} },
+          ],
+        },
+      }));
+      startRun(vllmModel, HERE, FAST);
+      await vi.waitFor(() =>
+        expect(routes().includes("POST library/v1/models/m1/profiles")).toBe(true),
+      );
+      expect(routes()).not.toContain("GET agent/v1/node");
+    });
   });
 
   it("starts a runtime this file already has rather than declaring a second", async () => {

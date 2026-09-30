@@ -920,9 +920,14 @@ export interface paths {
          * Measure single-sequence decode speed at increasing context depth.
          * @description Operator-only. Uses the installed llama-bench beside the selected
          *     llama.cpp server, with the saved profile copied into the request.
-         *     Requires every runtime on the node to be stopped. Does not stop models,
-         *     install engines, download files, change profiles or change fit estimates.
-         *     While active, runtime create/update/start/restart requests return 409.
+         *     Every runtime on the node must be stopped, or listed in
+         *     `stopRuntimes` — the operator's agreement, as the preflight asked
+         *     for it — in which case the job stops exactly those (reason
+         *     `measurement`) and, with `restartAfter`, starts them again when it
+         *     ends. A running runtime that is not listed refuses the job with
+         *     409; nothing is stopped implicitly. Does not install engines,
+         *     download files, change profiles or change fit estimates. While
+         *     active, runtime create/update/start/restart requests return 409.
          *     Depths are zero, half of the available context, and context minus
          *     generated tokens. Results exclude tokenization and sampling. Unsupported
          *     settings are refused rather than silently ignored. One job per node;
@@ -949,6 +954,107 @@ export interface paths {
          * @description Operator-only. Idempotent for a finished job. Releases the node only after its child exits.
          */
         post: operations["cancelBenchmark"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/benchmarks/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What starting this benchmark would do, without starting it.
+         * @description Operator-only. Lists the runtimes the job would have to stop (the
+         *     question to ask before Start) and every reason it would be
+         *     refused. Changes nothing.
+         */
+        post: operations["preflightBenchmark"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/profile-builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent profile builds on this node.
+         * @description Operator-only. Retains the latest 20 builds across agent restarts.
+         */
+        get: operations["listProfileBuilds"];
+        put?: never;
+        /**
+         * Measure settings for this model on this node, for the operator to save as a profile.
+         * @description Operator-only; `docs/design/profile-builder.md` is the design.
+         *     Measures the quality cost of each lower cache precision the
+         *     accuracy level could allow (none at `max`), asks llama.cpp's fit
+         *     where each context and allowed cache type would be placed,
+         *     measures each placement with llama-bench, and confirms the
+         *     recommended one in llama-server. Placement is always fit's; the
+         *     build chooses context, cache precision and the memory margin.
+         *     Writes no profile: the result is for the operator to save.
+         *     Runtimes follow `BenchmarkRequest.stopRuntimes` and
+         *     `restartAfter`. One measurement job per node, benchmark or build;
+         *     thirty-minute time limit; agent restart marks an unfinished build
+         *     failed; cancellation keeps partial results.
+         */
+        post: operations["startProfileBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/profile-builds/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What starting this build would do, without starting it.
+         * @description Operator-only. The runtimes it would stop, every reason it would
+         *     be refused (missing tools, disk for the quality step, an
+         *     evaluation text that is too short), and a time estimate from the
+         *     model's size, where it is read from, and the number of
+         *     measurements the accuracy level implies. Changes nothing.
+         */
+        post: operations["preflightProfileBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/profile-builds/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop an active build, keep what it measured, and restart what it stopped.
+         * @description Operator-only. Idempotent for a finished build. Releases the node only after its children exit.
+         */
+        post: operations["cancelProfileBuild"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1806,6 +1912,55 @@ export interface components {
             repetitions: number;
             /** @default 128 */
             tokens: number;
+            /**
+             * @description The runtimes the operator agreed to stop for this job, as the
+             *     preflight listed them. The job stops exactly these. A runtime
+             *     running on the node that is NOT in this list refuses the job
+             *     with 409, so a model started between the question and the
+             *     click is never stopped without being asked about. Names in
+             *     the list that are already stopped are ignored.
+             * @default []
+             */
+            stopRuntimes: string[];
+            /**
+             * @description Start the runtimes this job stopped again when it ends —
+             *     completed, failed, cancelled or timed out. Each restart goes
+             *     through admission like an operator's Start and is reported on
+             *     the job's `restarts`; a refused or failed one is reported by
+             *     name, never forced.
+             * @default true
+             */
+            restartAfter: boolean;
+        };
+        /**
+         * @description What starting a benchmark or a profile build with this request
+         *     would do, without doing it: the runtimes it would need to stop
+         *     (the question the page asks), anything that would refuse it, and
+         *     the time it would take where that can be estimated.
+         */
+        MeasurementPreflight: {
+            /** @description Runtimes on this node that are not stopped. Pass them as `stopRuntimes` to agree to stopping them. */
+            runningRuntimes: string[];
+            /** @description Plain sentences, one per reason the job would be refused. Empty when it can start. */
+            problems: string[];
+            /** @description Roughly how long the job would take here; null when it cannot be estimated. */
+            estimateSeconds?: number | null;
+            /** @description How the estimate was reached, in words. */
+            detail?: string;
+        };
+        /**
+         * @description * `pending` — stopped for the job; the job has not ended.
+         *     * `restarted` — started again after the job.
+         *     * `refused` — admission refused the restart (the reason is in `detail`); it was not forced.
+         *     * `failed` — the start was attempted and did not happen.
+         *     * `skipped` — the request set `restartAfter: false`.
+         * @enum {string}
+         */
+        MeasurementRestartState: "pending" | "restarted" | "refused" | "failed" | "skipped";
+        MeasurementRestart: {
+            name: string;
+            state: components["schemas"]["MeasurementRestartState"];
+            detail?: string;
         };
         BenchmarkPoint: {
             depth: number;
@@ -1839,9 +1994,163 @@ export interface components {
             hardware?: {
                 [key: string]: string;
             };
+            /** @description The runtimes this job stopped, and what became of each afterwards. */
+            restarts?: components["schemas"]["MeasurementRestart"][];
         };
         BenchmarkList: {
             benchmarks: components["schemas"]["Benchmark"][];
+        };
+        /**
+         * @description A promise about quality, measured on this model rather than
+         *     assumed (`docs/design/profile-builder.md` §3):
+         *     * `max` — the f16 cache only; nothing that changes answers, so
+         *       no quality measurement is made.
+         *     * `high` — a cache type is allowed when it picks the same next
+         *       token as `max` at least 96% of the time on the evaluation
+         *       text, counting its measured rate minus one standard error
+         *       (96.5% until 2026-09-30, when the bundled text proved harder
+         *       than wikitext).
+         *     * `medium` — the same test at 92%.
+         *     * `low` — the same test at 88%. Low's other lever, a smaller file
+         *       of the same model offered after a build, is the page's, not the
+         *       build's (`docs/design/moe-aware-fit.md` call C).
+         * @enum {string}
+         */
+        ProfileBuildAccuracy: "max" | "high" | "medium" | "low";
+        /**
+         * @description llama.cpp's KV-cache precision, always set for K and V together:
+         *     the flash-attention kernels of the builds measured handle
+         *     matching pairs only.
+         * @enum {string}
+         */
+        CacheType: "f16" | "q8_0" | "q4_0";
+        /**
+         * @description * `quality` — measuring what each lower cache precision the
+         *       accuracy level could allow costs on this model.
+         *     * `candidates` — asking llama.cpp's fit where each context and
+         *       cache type would be placed (nothing loads).
+         *     * `measuring` — llama-bench on each candidate, with fit's
+         *       placement passed explicitly.
+         *     * `confirming` — loading the recommended candidate once in
+         *       llama-server and checking it serves.
+         *     * `finished` — the job has ended; `state` says how.
+         * @enum {string}
+         */
+        ProfileBuildPhase: "quality" | "candidates" | "measuring" | "confirming" | "finished";
+        /** @enum {string} */
+        EvaluationTextSource: "bundled" | "custom";
+        /** @description Which text the quality measurement used. A custom text is identified, never stored. */
+        ProfileBuildEvaluation: {
+            source: components["schemas"]["EvaluationTextSource"];
+            sha256?: string | null;
+            tokens?: number | null;
+        };
+        ProfileBuildRequest: {
+            modelId: string;
+            /** @description The profile the build started from, if any. The build never writes a profile; the UI saves its result. */
+            profileId?: string | null;
+            runtime: components["schemas"]["RuntimeSpec"];
+            accuracy: components["schemas"]["ProfileBuildAccuracy"];
+            /**
+             * @description Graphics memory to leave free on every device, passed to fit
+             *     as `--fit-target`. Null is llama.cpp's own default (1024 MiB).
+             */
+            memoryMarginMiB?: number | null;
+            /**
+             * @description The operator's own text for the quality measurement. Null
+             *     uses the text bundled with the agent. It must yield at least
+             *     8,192 tokens for this model (two 4,096-token chunks); a
+             *     shorter text is refused with its token count. Not stored: the
+             *     build keeps its SHA-256, and its token count when
+             *     llama-perplexity reports one (it does when it refuses a text).
+             */
+            evaluationText?: string | null;
+            /**
+             * @description Same rule as `BenchmarkRequest.stopRuntimes`.
+             * @default []
+             */
+            stopRuntimes: string[];
+            /**
+             * @description Same rule as `BenchmarkRequest.restartAfter`.
+             * @default true
+             */
+            restartAfter: boolean;
+        };
+        CacheQuality: {
+            cacheType: components["schemas"]["CacheType"];
+            /** @description How often this cache picks the same next token as the f16 cache, on the evaluation text. */
+            sameTopTokenPercent: number;
+            /** @description The standard error of `sameTopTokenPercent`, in percentage points. */
+            standardError: number;
+            /** @description Mean KL divergence from the f16 cache's token distribution. Evidence for experts; the accuracy level is decided on `sameTopTokenPercent`. */
+            meanKld: number;
+            tokensScored: number;
+            /** @description Whether `sameTopTokenPercent - standardError` clears the requested accuracy level's threshold. */
+            passes: boolean;
+        };
+        BuildCandidate: {
+            contextSize: number;
+            cacheType: components["schemas"]["CacheType"];
+            /** @description The arguments llama.cpp's fit chose for this context and cache (for example `-ngl -1 -ot …`), exactly as measured. */
+            placement: string[];
+            /** @description llama-bench decode speed with an empty context. Null until measured. */
+            decodeTokensPerSecond?: number | null;
+            /**
+             * @description The context depth of the second decode measurement: 2,048 for
+             *     every candidate, so candidates are compared at one depth. A
+             *     candidate measured at half its own context reads slower for
+             *     being deeper, not for its settings.
+             */
+            deepDepth?: number | null;
+            deepDecodeTokensPerSecond?: number | null;
+            /** @description Relative only. llama-bench reads prefill 6–30% above what llama-server reports. */
+            prefillTokensPerSecond?: number | null;
+            /** @description Not both slower and shorter than another measured candidate. */
+            onFrontier?: boolean;
+            /** @description Whether llama-server loaded and served this candidate in the confirm phase; null when it was not the one confirmed. */
+            confirmed?: boolean | null;
+            /** @description Graphics memory used while confirming, where the node can measure it. */
+            graphicsMemoryBytes?: number | null;
+            detail?: string;
+        };
+        ProfileBuild: {
+            id: string;
+            node: string;
+            modelId: string;
+            profileId?: string | null;
+            runtime: components["schemas"]["RuntimeSpec"];
+            accuracy: components["schemas"]["ProfileBuildAccuracy"];
+            memoryMarginMiB?: number | null;
+            evaluation: components["schemas"]["ProfileBuildEvaluation"];
+            state: components["schemas"]["BenchmarkState"];
+            phase: components["schemas"]["ProfileBuildPhase"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt?: string | null;
+            progress: number;
+            detail: string;
+            quality: components["schemas"]["CacheQuality"][];
+            allowedCacheTypes?: components["schemas"]["CacheType"][];
+            candidates: components["schemas"]["BuildCandidate"][];
+            /**
+             * @description Index into `candidates` of the default choice: the longest
+             *     context on the frontier whose decode speed at the common depth
+             *     is at least 80% of the fastest measured. Speeds within 3% of
+             *     each other count as equal, so where every context places alike
+             *     the longest wins. Null when nothing was measured.
+             */
+            recommended?: number | null;
+            engineVersion?: string | null;
+            localPath?: string | null;
+            modelSizeBytes?: number | null;
+            hardware?: {
+                [key: string]: string;
+            };
+            restarts: components["schemas"]["MeasurementRestart"][];
+        };
+        ProfileBuildList: {
+            builds: components["schemas"]["ProfileBuild"][];
         };
         ComponentList: {
             /**
@@ -4072,6 +4381,11 @@ export interface components {
          *       next request if `startOnDemand` is set.
          *     * `autoStart` — declared with `autoStart: false` and never
          *       started in this agent's lifetime.
+         *     * `measurement` — stopped, with the operator's agreement, so a
+         *       benchmark or a profile build could measure this node. It
+         *       starts again when that job ends unless the request asked
+         *       otherwise, and while the job runs a start or a gateway wake is
+         *       refused with 409.
          *
          *     A reason beside `status: stopped` rather than three new members
          *     of `RuntimeStatus`, because the state is the same state — the
@@ -4079,7 +4393,7 @@ export interface components {
          *     only the cause differs.
          * @enum {string}
          */
-        StopReason: "operator" | "idle" | "autoStart";
+        StopReason: "operator" | "idle" | "autoStart" | "measurement";
         /**
          * @description Whether a runtime would fit on the device it targets, right now,
          *     and the arithmetic behind the answer. Returned by
@@ -4259,10 +4573,14 @@ export interface components {
          *     mapped onto a decision by what the spec asked for. `fits` admits.
          *     `tight` — inside total memory but not free memory — and `split`
          *     — needs host memory too — refuse a full-offload launch and admit
-         *     one whose `gpuLayers` is set below full, because then the
-         *     operator chose partial offload. `no` refuses. `unknown` admits
-         *     with a warning: a verdict from a budget that could not be
-         *     measured is worse than none.
+         *     a partial one. A launch is partial when `gpuLayers` is set below
+         *     full, because then the operator chose it, **or when `gpuLayers`
+         *     is unset on a llama.cpp build whose own `--fit` is on** (the
+         *     default in every build the installers ship), because then
+         *     llama.cpp places the model itself, experts or layers in host
+         *     memory as needed (2026-09-30, `docs/design/moe-aware-fit.md`
+         *     call A). `no` refuses. `unknown` admits with a warning: a verdict
+         *     from a budget that could not be measured is worse than none.
          * @enum {string}
          */
         AdmissionFit: "fits" | "tight" | "split" | "no" | "unknown";
@@ -6749,6 +7067,141 @@ export interface operations {
                 };
             };
             /** @description Job not found on this node. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    preflightBenchmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BenchmarkRequest"];
+            };
+        };
+        responses: {
+            /** @description The answer; `problems` is empty when the job can start. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeasurementPreflight"];
+                };
+            };
+        };
+    };
+    listProfileBuilds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first, including the active build. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileBuildList"];
+                };
+            };
+        };
+    };
+    startProfileBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileBuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted; poll the node's build list for progress. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileBuild"];
+                };
+            };
+            /** @description A measurement job is active, or a runtime is running that `stopRuntimes` does not list. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unsupported profile or engine, a missing llama.cpp tool, too little disk, too short an evaluation text, or the model unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    preflightProfileBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileBuildRequest"];
+            };
+        };
+        responses: {
+            /** @description The answer; `problems` is empty when the build can start. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeasurementPreflight"];
+                };
+            };
+        };
+    };
+    cancelProfileBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped or already finished. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileBuild"];
+                };
+            };
+            /** @description Build not found on this node. */
             404: {
                 headers: {
                     [name: string]: unknown;

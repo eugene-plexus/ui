@@ -17,6 +17,9 @@ export const COPY_SCREENS: Record<string, string[]> = {
     "components/ModelCard.tsx",
     "components/DownloadsPanel.tsx",
     "components/FitBadge.tsx",
+    // A3c: the fit words the badge, the starter set, Home and the
+    // Library's panel all render.
+    "lib/fitWords.ts",
   ],
   library: [
     "app/library",

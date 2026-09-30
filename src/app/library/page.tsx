@@ -16,6 +16,7 @@ import { ApiError, api, describeError } from "@/lib/api";
 import { capableEngines } from "@/lib/engineCompat";
 import { type NodeBudget, type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
+import { expertsContextSentence, placementSentence } from "@/lib/fitWords";
 import { formatBytesShort } from "@/lib/tasks";
 import { usePolling } from "@/lib/usePolling";
 import type {
@@ -1089,7 +1090,12 @@ function FitPanel({
             <>
               {verdict === "fits" && "Fits in GPU memory"}
               {verdict === "tight" && "Would fit on an idle GPU"}
-              {verdict === "split" && "Needs partial CPU offload"}
+              {verdict === "split" &&
+                (fit.fit.offload === "experts"
+                  ? "Runs with its experts in system memory"
+                  : fit.fit.offload === "layers"
+                    ? "Needs partial CPU offload"
+                    : "Needs system memory as well")}
               {verdict === "no" && "Too large for this node"}
             </>
           )}
@@ -1126,6 +1132,17 @@ function FitPanel({
           </>
         )}
       </p>
+      {/* A3c: what sits where, and the context the experts-in-RAM way
+          allows. On a card smaller than the file the sentence above has
+          no number at all, and this is the one a profile can take. */}
+      {!resident && placementSentence(fit.fit) && (
+        <p className="mt-0.5" data-testid="model-fit-placement">
+          {placementSentence(fit.fit)}
+          {fit.fit.offload === "experts" && expertsContextSentence(fit.maxContextExpertsInRam) && (
+            <> {expertsContextSentence(fit.maxContextExpertsInRam)}</>
+          )}
+        </p>
+      )}
       {budget && (
         <p className="mt-0.5 opacity-80">
           Scored against {budget.node ?? "this host"}
@@ -1135,7 +1152,7 @@ function FitPanel({
       )}
       {open && (
         <div className="mt-2">
-          <FitBreakdown fit={fit.fit} />
+          <FitBreakdown fit={fit.fit} withPlacement={resident} />
         </div>
       )}
     </div>

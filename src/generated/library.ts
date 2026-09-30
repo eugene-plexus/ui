@@ -1194,6 +1194,20 @@ export interface components {
              */
             vocabSize?: number;
             /**
+             * @description Bytes of mixture-of-experts expert tensors (names carrying
+             *     `_exps`), summed from the tensor table that follows the KV
+             *     block: names, shapes and offsets, never a weight. 0 for a
+             *     dense model. Null when the table was not read (a scan from
+             *     before 2026-09-30, or a header cut short).
+             *
+             *     The number that tells a MoE model from a dense one of the
+             *     same size: on Qwen3-30B-A3B Q4_K_M it is 16.35 GiB of 17.28,
+             *     and everything else is 0.93 GiB, so a small card holds all of
+             *     that plus the cache and llama.cpp moves only experts to system
+             *     memory (`docs/design/moe-aware-fit.md` §0).
+             */
+            expertBytes?: number | null;
+            /**
              * @description Absolute path to the vision projector found beside this
              *     model, if any. Becomes `--mmproj` on the launch line.
              *     llama-server can also find it unaided, but it is reported
@@ -1966,9 +1980,12 @@ export interface components {
         StarterModel: {
             /**
              * @description The bucket this entry fills, by total parameter count:
-             *     `4B`, `8B`, `14B`, `30B`, `70B`. Total, not active -- a
-             *     mixture-of-experts model holds every expert in memory, so
-             *     30B-A3B is a 30B for the only purpose this number serves.
+             *     `4B`, `8B`, `14B`, `30B`, `70B`, and `30B MoE`. Total, not
+             *     active -- a mixture-of-experts model holds every expert in
+             *     memory, so 30B-A3B is a 30B. It has a class of its own
+             *     because where those bytes can go differs: its experts can sit
+             *     in system memory while the rest runs on the card, which is
+             *     how a small card reaches a 30B (`fit.offload` is `experts`).
              */
             sizeClass: string;
             /**
@@ -2022,6 +2039,14 @@ export interface components {
              *     just *fits*.
              */
             maxContextLength?: number;
+            /**
+             * @description For a mixture-of-experts entry: the largest context with its
+             *     experts in system memory and everything else on the card,
+             *     the same number `ModelFit.maxContextExpertsInRam` gives for a
+             *     model on disk. Null for a dense entry, or where the experts do
+             *     not fit in system memory.
+             */
+            maxContextExpertsInRam?: number | null;
             alreadyOwned?: components["schemas"]["AlreadyOwned"];
         };
         /**
@@ -2039,6 +2064,14 @@ export interface components {
              *     `CatalogueRecommendation` follows: the largest of the set
              *     that runs entirely on this GPU with room for the scored
              *     context, said with the sizes that make it checkable.
+             *
+             *     A mixture-of-experts entry may be recommended where it runs
+             *     with its experts in system memory: the card holds the rest
+             *     and the cache, and system memory holds the experts. It wins
+             *     only over a dense entry of a smaller size class; between two
+             *     entries of one class that both fit, the dense one is
+             *     recommended. The prose names what goes where. No speed is
+             *     predicted.
              */
             reason: string;
         };
@@ -2395,6 +2428,10 @@ export interface components {
              */
             basis: "metadata" | "estimate";
             budget?: components["schemas"]["MemoryBudget"];
+            /** @description The part of `weightsBytes` that is MoE expert tensors; null when unknown, 0 for a dense model. */
+            expertBytes?: number | null;
+            /** @description Null for `fits`, `no` and `unknown`, and when expert sizes are not known. */
+            offload?: components["schemas"]["FitOffload"] | null;
             /**
              * @description The assumptions in words: full offload, F16 KV cache, layer
              *     count assumed to be attention count, the overhead allowance
@@ -2404,14 +2441,30 @@ export interface components {
             notes?: string[];
         };
         /**
+         * @description How a verdict of `tight` or `split` would run, because the two
+         *     differ by an order of magnitude and one word covered both
+         *     (`docs/design/moe-aware-fit.md` §0 M2-M3):
+         *     * `experts` — a MoE model whose non-expert weights, cache and
+         *       overhead fit in free VRAM. llama.cpp keeps every layer on the
+         *       card and moves only expert weights to system memory: measured
+         *       at 46.5 tok/s for a 30B-A3B on an 8 GB budget.
+         *     * `layers` — whole layers move to system memory: measured at 4.9
+         *       tok/s for a dense 27B on the same budget.
+         *     It describes placement, never a predicted speed; the profile
+         *     builder measures that.
+         * @enum {string}
+         */
+        FitOffload: "experts" | "layers";
+        /**
          * @description * `fits` — inside **free** VRAM. Fully offloaded, no host memory
          *       in the generation path.
          *     * `tight` — inside total VRAM but not free VRAM. It would fit on
          *       an idle GPU; something is holding memory right now, and
          *       closing it is the operator's call.
          *     * `split` — needs host memory as well. Runnable with partial
-         *       offload, materially slower, and a decision rather than a
-         *       failure.
+         *       offload, and a decision rather than a failure. How much slower
+         *       depends on what moves, which `Fit.offload` says: experts (a
+         *       MoE model, little slower) or whole layers (much slower).
          *     * `no` — larger than VRAM and RAM together.
          *     * `unknown` — there is a GPU here and we could not read how much
          *       memory it has, so no comparison against it can be made. Added
@@ -2520,6 +2573,16 @@ export interface components {
              *     number is the comfortable lie M2 named.
              */
             modelContextLength?: number;
+            /**
+             * @description For a MoE model: the largest context whose non-expert
+             *     weights, cache and overhead fit in free VRAM with every expert
+             *     in system memory (which must hold them). The number for a card
+             *     smaller than the file, where `maxContextLength` is absent or
+             *     small: it is how long a conversation can be while llama.cpp
+             *     keeps every layer on the card. Null for a dense model, or when
+             *     expert sizes or system memory do not allow it.
+             */
+            maxContextExpertsInRam?: number | null;
         };
         /**
          * @description What this host has to spend, as detected. Deliberately **not**

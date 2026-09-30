@@ -135,6 +135,8 @@ describe("describeRunning", () => {
     expect(stopped("idle")).toContain("the gateway unloaded it");
     expect(stopped("operator")).toContain("someone stopped it");
     expect(stopped("autoStart")).toContain("not to start on its own");
+    // PB1's fourth reason: a job paused it and will start it again.
+    expect(stopped("measurement")).toContain("starts again when the test ends");
     // No reason given is not the same as "someone stopped it".
     expect(stopped(undefined)).toBe("Set up on nas and not running.");
   });

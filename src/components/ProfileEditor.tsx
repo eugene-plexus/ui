@@ -10,13 +10,9 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { ApiError, api, describeError } from "@/lib/api";
 import { loadConfigTrio } from "@/lib/configTrio";
 import { formatValue } from "@/lib/configValue";
+import { type ContextSuggestion, suggestContext } from "@/lib/contextSuggestion";
 import { describeAdmission } from "@/lib/launchPreview";
-import {
-  DEFAULT_PROFILE_NAME,
-  composeSpec,
-  contextPrefill,
-  type RuntimeCreate,
-} from "@/lib/launchSpec";
+import { DEFAULT_PROFILE_NAME, composeSpec } from "@/lib/launchSpec";
 import { libraryFoldersHref } from "@/lib/libraryReach";
 import type { TargetNode } from "@/lib/nodeBudget";
 import { ProfileBenchmark } from "./ProfileBenchmark";
@@ -96,7 +92,9 @@ export function ProfileEditor({
   // target node before the form renders: undefined while asking, null
   // when the model's own context fits (or nobody could say), else the
   // largest context that fits entirely in that node's GPU memory.
-  const [prefillContext, setPrefillContext] = useState<number | null | undefined>(undefined);
+  const [prefillContext, setPrefillContext] = useState<ContextSuggestion | null | undefined>(
+    undefined,
+  );
 
   const load = useCallback(async () => {
     try {
@@ -121,6 +119,7 @@ export function ProfileEditor({
   // the node, with the flags the form would otherwise start empty, so the
   // form can start at a number that fits instead of one that is refused.
   const probeEngine = engines[0]?.engine ?? null;
+  const { id: modelId, path: modelPath, contextLength: modelContext } = model;
   useEffect(() => {
     if (!creating || !node || !probeEngine) {
       setPrefillContext(null);
@@ -129,25 +128,19 @@ export function ProfileEditor({
     let cancelled = false;
     setPrefillContext(undefined);
     void (async () => {
-      let suggestion: number | null = null;
-      try {
-        const probe: RuntimeCreate = {
-          name: "context-probe",
-          engine: probeEngine,
-          modelPath: model.path,
-          autoStart: false,
-        };
-        const answer = await api.post<Admission>(node.target, "/v1/runtimes/admission", probe);
-        suggestion = contextPrefill(answer.maxContextLength, model.contextLength);
-      } catch {
-        suggestion = null;
-      }
+      // A MoE model on a card smaller than its file starts at the context
+      // its experts-in-RAM way allows (A3c); `suggestContext` says why.
+      const suggestion = await suggestContext(
+        { id: modelId, path: modelPath, contextLength: modelContext },
+        node.target,
+        probeEngine,
+      );
       if (!cancelled) setPrefillContext(suggestion);
     })();
     return () => {
       cancelled = true;
     };
-  }, [creating, node, probeEngine, model.path, model.contextLength]);
+  }, [creating, node, probeEngine, modelId, modelPath, modelContext]);
 
   async function setContext(profile: ModelProfile, context: number) {
     setError(null);
@@ -294,7 +287,8 @@ export function ProfileEditor({
       )}
       {creating && (prefillContext !== undefined || !node) && (
         <ProfileForm
-          suggestedContext={prefillContext ?? null}
+          suggestedContext={prefillContext?.tokens ?? null}
+          suggestedWay={prefillContext?.way ?? "whole"}
           nodeLabel={node?.label ?? null}
           model={model}
           engines={engines}
@@ -595,6 +589,7 @@ function ProfileForm({
   engines,
   existing,
   suggestedContext = null,
+  suggestedWay = "whole",
   nodeLabel = null,
   onCancel,
   onSaved,
@@ -605,6 +600,9 @@ function ProfileForm({
   /** For a NEW profile: the contextSize to start at, from the target
    * node's admission dry run. Null when the model's own context fits. */
   suggestedContext?: number | null;
+  /** Which way of running `suggestedContext` was worked out for (A3c), so
+   * the note under it says which. */
+  suggestedWay?: "whole" | "experts";
   nodeLabel?: string | null;
   onCancel: () => void;
   onSaved: () => void | Promise<void>;
@@ -774,9 +772,19 @@ function ProfileForm({
               className="mt-1 text-sm text-[color:var(--muted)]"
               data-testid="context-prefill-note"
             >
-              contextSize starts at {suggestedContext.toLocaleString()}: the largest context at
-              which this file fits entirely in {nodeLabel ?? "this node"}&rsquo;s GPU memory.
-              {model.contextLength != null && (
+              {suggestedWay === "experts" ? (
+                <>
+                  contextSize starts at {suggestedContext.toLocaleString()}. That is the longest it
+                  can be with every layer on {nodeLabel ?? "this node"}&rsquo;s graphics card and
+                  the experts in system memory.
+                </>
+              ) : (
+                <>
+                  contextSize starts at {suggestedContext.toLocaleString()}: the largest context at
+                  which this file fits entirely in {nodeLabel ?? "this node"}&rsquo;s GPU memory.
+                </>
+              )}
+              {suggestedWay === "whole" && model.contextLength != null && (
                 <>
                   {" "}
                   The model allows {model.contextLength.toLocaleString()}; above the prefilled value

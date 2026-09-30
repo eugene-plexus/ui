@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LibraryModel, ModelProfile } from "@/lib/types";
 
@@ -240,4 +240,103 @@ it("shows an unset flag as unset, and a profile's own engine as itself", async (
   expect(screen.getByRole("spinbutton", { name: "Parallel slots" })).toHaveValue(null);
   expect(screen.getByTestId("unset-parallelSlots")).toHaveTextContent("lists its default as 1");
   profile = { ...profile };
+});
+
+/**
+ * A3c: a new profile for a mixture-of-experts model on a card smaller than
+ * its file. Admission has no whole-card number (0), so the form starts at
+ * the library's experts-in-RAM context -- and the note under it must say
+ * that is what it is, not "the largest context at which this file fits
+ * entirely", which would be a setting that lies.
+ */
+describe("a new profile for a model that runs with its experts in system memory", () => {
+  const GIB = 1024 ** 3;
+  const engines = [
+    {
+      engine: "llama_cpp",
+      available: true,
+      modelFormats: ["gguf"],
+      flagSchema: {
+        component: "llama_cpp",
+        fields: [
+          {
+            key: "contextSize",
+            label: "Context size",
+            category: "engine",
+            valueType: "integer",
+            sensitive: false,
+            required: false,
+            requiresRestart: false,
+            pendingRestart: false,
+          },
+        ],
+      },
+    },
+  ] as unknown as Parameters<typeof ProfileEditor>[0]["engines"];
+  const node = {
+    name: "laptop",
+    label: "laptop",
+    local: true,
+    target: "agent",
+    reachable: true,
+    lastError: null,
+    budget: null,
+  };
+
+  function serve(fitOffload: string) {
+    const asked: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        asked.push(`${method} ${url}`);
+        if (url.endsWith("/agent/v1/runtimes/admission")) {
+          return Response.json({ decision: "admit", fit: "split", maxContextLength: 0 });
+        }
+        if (url.endsWith("/agent/v1/node")) {
+          return Response.json({
+            devices: [
+              { kind: "cuda", memoryTotalBytes: 8 * GIB, memoryFreeBytes: 7 * GIB },
+              { kind: "cpu", memoryTotalBytes: 32 * GIB, memoryFreeBytes: 24 * GIB },
+            ],
+          });
+        }
+        if (url.includes("/library/v1/models/model/fit")) {
+          return Response.json({
+            fit: { verdict: "split", offload: fitOffload, contextLength: 8192 },
+            maxContextExpertsInRam: 24576,
+          });
+        }
+        return Response.json({ profiles: [] });
+      }),
+    );
+    render(
+      <ProfileEditor
+        model={{ ...model, contextLength: 262144 }}
+        engines={engines}
+        node={node}
+        onChanged={() => {}}
+      />,
+    );
+    return asked;
+  }
+
+  it("starts at the experts-in-RAM context and says which way it was worked out", async () => {
+    const asked = serve("experts");
+    fireEvent.click(await screen.findByRole("button", { name: "new profile" }));
+    const note = await screen.findByTestId("context-prefill-note");
+    expect(note).toHaveTextContent("contextSize starts at 24,576");
+    expect(note).toHaveTextContent("the experts in system memory");
+    expect(note).not.toHaveTextContent("fits entirely");
+    expect(screen.getByRole("spinbutton", { name: "Context size" })).toHaveValue(24576);
+    // Scored against the node's own devices, not the library's host.
+    expect(asked.some((a) => a.includes("vramBytes=" + 7 * GIB))).toBe(true);
+  });
+
+  it("starts empty for a dense spill, as before", async () => {
+    serve("layers");
+    fireEvent.click(await screen.findByRole("button", { name: "new profile" }));
+    await waitFor(() => expect(screen.queryByTestId("context-probe")).toBeNull());
+    expect(screen.queryByTestId("context-prefill-note")).toBeNull();
+  });
 });

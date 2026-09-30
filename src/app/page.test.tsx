@@ -1090,6 +1090,60 @@ describe("Home's Download and run", () => {
     }));
   });
 
+  it("names the dense pick with the library's reason, as before", async () => {
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-first-model");
+    await waitFor(() => expect(card).toHaveTextContent("runs entirely in GPU memory"));
+    expect(screen.queryByTestId("home-first-model-placement")).toBeNull();
+  });
+
+  /**
+   * A3c: the starter set recommends a 30B-A3B to an 8 GB card, with its
+   * experts in system memory. The library's reason for that is four long
+   * sentences; Home says what sits where in two short ones and offers
+   * the context that way of running allows.
+   */
+  it("says what sits where for a pick with its experts in system memory", async () => {
+    const GIB = 1024 ** 3;
+    const moe = {
+      ...STARTER.models[0]!,
+      sizeClass: "30B MoE",
+      baseModel: "Qwen/Qwen3.6-35B-A3B",
+      fit: {
+        verdict: "split",
+        offload: "experts",
+        requiredBytes: 23 * GIB,
+        weightsBytes: 20.6 * GIB,
+        kvCacheBytes: 1.4 * GIB,
+        overheadBytes: GIB,
+        expertBytes: 18.3 * GIB,
+        contextLength: 16384,
+        basis: "metadata",
+      },
+      maxContextExpertsInRam: 61440,
+    };
+    handlers.set("GET library/v1/catalogue/starter", () => ({
+      status: 200,
+      body: {
+        ...STARTER,
+        models: [moe],
+        recommended: {
+          sizeClass: "30B MoE",
+          reason:
+            "Qwen/Qwen3.6-35B-A3B runs here with its experts in system memory: UD-Q4_K_M, 20.6 GiB of weights, of which 18.3 GiB are experts that llama.cpp keeps in system memory.",
+        },
+      },
+    }));
+    render(<HomePage />);
+    const placement = await screen.findByTestId("home-first-model-placement");
+    expect(placement).toHaveTextContent(
+      "The card holds everything except the experts: 4.70 GiB with the cache. Up to 18.3 GiB of experts go to system memory. That way it fits up to 61,440 tokens.",
+    );
+    const card = screen.getByTestId("home-first-model");
+    expect(card).not.toHaveTextContent("llama.cpp keeps in system memory");
+    expect(card).not.toHaveTextContent("partial offload");
+  });
+
   it("says it is getting the model, in the card, once pressed", async () => {
     render(<HomePage />);
     await waitFor(() =>

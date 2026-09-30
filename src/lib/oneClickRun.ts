@@ -60,18 +60,12 @@
 import { useSyncExternalStore } from "react";
 
 import { ApiError, api, describeError } from "./api";
+import { suggestContext } from "./contextSuggestion";
 import { capableEngines } from "./engineCompat";
-import {
-  DEFAULT_PROFILE_NAME,
-  composeSpec,
-  contextPrefill,
-  defaultProfileSpec,
-  runtimeName,
-} from "./launchSpec";
+import { DEFAULT_PROFILE_NAME, composeSpec, defaultProfileSpec, runtimeName } from "./launchSpec";
 import type { TargetNode } from "./nodeBudget";
 import { engineLabel, formatBytesShort, type Task } from "./tasks";
 import type {
-  Admission,
   Download,
   EngineDescriptor,
   EngineInstall,
@@ -913,21 +907,11 @@ async function ensureProfile(
   const pick = forEngine.find((p) => p.default) ?? forEngine[0] ?? null;
   if (pick) return pick;
 
-  let suggestion: number | null = null;
-  try {
-    const answer = await api.post<Admission>(node.target, "/v1/runtimes/admission", {
-      name: "context-probe",
-      engine,
-      modelPath: model.path,
-      autoStart: false,
-    });
-    suggestion = contextPrefill(answer.maxContextLength, model.contextLength);
-  } catch {
-    // No number to start from: the engine's own default applies, and
-    // the launch's admission says so if that does not fit.
-    suggestion = null;
-  }
-  const spec = defaultProfileSpec(engine as ModelProfile["engine"], suggestion);
+  // No number to start from means the engine's own default applies, and
+  // the launch's admission says so if that does not fit. A MoE model on a
+  // card smaller than its file starts with its experts in RAM (A3c).
+  const suggestion = await suggestContext(model, node.target, engine);
+  const spec = defaultProfileSpec(engine as ModelProfile["engine"], suggestion?.tokens ?? null);
   // A profile for another engine may already hold the name; a second
   // engine's default is named for its engine, and does not steal the flag.
   if (profiles.some((p) => p.name === DEFAULT_PROFILE_NAME)) {

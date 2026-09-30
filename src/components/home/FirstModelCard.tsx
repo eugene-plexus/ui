@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { RunButton } from "@/components/RunButton";
+import { expertsContextSentence, placementSentence, verdictMeaning } from "@/lib/fitWords";
 import type { FirstModelState } from "@/lib/home";
 import { startDownloadAndRun } from "@/lib/oneClickRun";
 import { downloadSize, shortName } from "@/lib/starter";
@@ -192,6 +193,8 @@ function SuggestedModelCard({
   // started again from here -- its row, with the reason, stays in the
   // list below until it is dismissed from the tray.
   const started = downloads.some((t) => t.tone !== "error");
+  const expertsWhere = model.fit?.offload === "experts" ? placementSentence(model.fit) : null;
+  const expertsContext = expertsWhere ? expertsContextSentence(model.maxContextExpertsInRam) : null;
 
   function downloadAndRun() {
     // One action, one task: the download, the engine question, the
@@ -217,7 +220,23 @@ function SuggestedModelCard({
         Nothing is on disk yet. <strong>{shortName(model.baseModel)}</strong> is a good first one
         for this machine.
       </p>
-      {reason && <p className="mt-1 text-sm text-[color:var(--muted)]">{reason}</p>}
+      {/* A3c: a pick with its experts in system memory is said in the
+          card's own short words -- what sits where, and how long a
+          conversation can be that way. The library's reason for it runs
+          to four long sentences; Discover, where people compare, keeps
+          it. A pick that fits entirely keeps the reason, as before. */}
+      {expertsWhere ? (
+        <p
+          className="mt-1 text-sm text-[color:var(--muted)]"
+          data-testid="home-first-model-placement"
+          title={model.fit ? verdictMeaning(model.fit) : undefined}
+        >
+          {expertsWhere}
+          {expertsContext && <> {expertsContext}</>}
+        </p>
+      ) : (
+        reason && <p className="mt-1 text-sm text-[color:var(--muted)]">{reason}</p>
+      )}
       <p className="mt-1 text-sm text-[color:var(--muted)]">
         Download into your own folder. We’ll ask before installing llama.cpp and choose starting
         settings for this machine.

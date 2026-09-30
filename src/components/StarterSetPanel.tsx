@@ -199,6 +199,16 @@ export function StarterSetPanel({
                     {model.maxContextLength != null && (
                       <> · fits up to {model.maxContextLength.toLocaleString()} tokens here</>
                     )}
+                    {/* A3c: the other number a MoE entry has. Its own
+                        `maxContextLength` is the whole file on the card,
+                        which on a small card is nothing at all. */}
+                    {model.fit?.offload === "experts" && model.maxContextExpertsInRam != null && (
+                      <>
+                        {" "}
+                        · up to {model.maxContextExpertsInRam.toLocaleString()} tokens with experts
+                        in RAM
+                      </>
+                    )}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

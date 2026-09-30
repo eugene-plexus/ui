@@ -52,6 +52,8 @@ const job: Benchmark = {
     profileName: "Tuned",
     repetitions: 3,
     tokens: 128,
+    stopRuntimes: [],
+    restartAfter: true,
     runtime: {
       name: "m",
       engine: "llama_cpp",

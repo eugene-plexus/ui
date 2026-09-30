@@ -72,6 +72,10 @@ function fitBody() {
       overheadBytes: GIB,
       contextLength: 8192,
       basis: "metadata",
+      // A dense model, read since A3b: no expert tensors, so a split moves
+      // whole layers.
+      expertBytes: 0,
+      offload: "layers",
       budget: {
         vramFreeBytes: 5.6 * GIB,
         vramTotalBytes: 31.8 * GIB,
@@ -237,6 +241,20 @@ describe("a model that is not running", () => {
     expect(await screen.findByTestId("run-button")).toHaveTextContent("Run");
   });
 
+  it("says how much of a dense model spills, in whole layers", async () => {
+    // A stray experts number on a dense model must not be offered: it is
+    // a number for a way of running this model does not have.
+    handlers.set("GET library/v1/models/gemma/fit", () =>
+      ok({ ...fitBody(), maxContextExpertsInRam: 99999 }),
+    );
+    await openTheModel();
+    expect(screen.getByTestId("model-fit")).not.toHaveTextContent("99,999");
+    // 24 GiB needed against 5.6 free: the rest runs from system memory.
+    expect(screen.getByTestId("model-fit-placement")).toHaveTextContent(
+      "About 18.4 GiB does not fit on the card, so some whole layers run from system memory.",
+    );
+  });
+
   it("says nothing at all when the node did not answer", async () => {
     // "Did not answer" is not "nothing is running". Collapsing them
     // would put a Run button under a claim this page cannot make — the
@@ -245,6 +263,71 @@ describe("a model that is not running", () => {
     await openTheModel();
     expect(screen.queryByTestId("model-running")).toBeNull();
     expect(screen.queryByTestId("model-list-running")).toBeNull();
+  });
+});
+
+/**
+ * A3c: a mixture-of-experts model on a card smaller than its file.
+ *
+ * The library says `split`, the word a dense spill gets, and since A3b it
+ * says which kind: `offload: experts`. The headline used to read "Needs
+ * partial CPU offload" about a model that keeps every layer on the card,
+ * with no context offered at all, because the whole file never fits.
+ */
+describe("a mixture-of-experts model with its experts in system memory", () => {
+  function moeFit(over: Record<string, unknown> = {}) {
+    const body = fitBody();
+    return {
+      ...body,
+      fit: {
+        ...body.fit,
+        requiredBytes: 23 * GIB,
+        weightsBytes: 20.6 * GIB,
+        kvCacheBytes: 1.4 * GIB,
+        overheadBytes: GIB,
+        contextLength: 16384,
+        expertBytes: 18.3 * GIB,
+        offload: "experts",
+        budget: { ...body.fit.budget, vramFreeBytes: 7.5 * GIB, vramTotalBytes: 8 * GIB },
+        ...over,
+      },
+      maxContextLength: null,
+      maxContextExpertsInRam: 61440,
+    };
+  }
+
+  beforeEach(() => {
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
+  });
+
+  it("says the experts sit in system memory, not that it spills", async () => {
+    handlers.set("GET library/v1/models/gemma/fit", () => ok(moeFit()));
+    await openTheModel();
+    const fit = screen.getByTestId("model-fit");
+    expect(fit).toHaveTextContent("Runs with its experts in system memory");
+    expect(fit).not.toHaveTextContent("partial");
+  });
+
+  it("says what sits where, and the context that way of running allows", async () => {
+    handlers.set("GET library/v1/models/gemma/fit", () => ok(moeFit()));
+    await openTheModel();
+    expect(screen.getByTestId("model-fit-placement")).toHaveTextContent(
+      "The card holds everything except the experts: 4.70 GiB with the cache. Up to 18.3 GiB of experts go to system memory. That way it fits up to 61,440 tokens.",
+    );
+  });
+
+  it("does not guess which kind of split a file read without its tensor table is", async () => {
+    // A scan from before 2026-09-30: the library could not say, so the
+    // page says neither the dense wording nor the experts wording.
+    handlers.set("GET library/v1/models/gemma/fit", () =>
+      ok(moeFit({ expertBytes: null, offload: null })),
+    );
+    await openTheModel();
+    const fit = screen.getByTestId("model-fit");
+    expect(fit).toHaveTextContent("Needs system memory as well");
+    expect(fit).not.toHaveTextContent("partial");
+    expect(fit).not.toHaveTextContent("experts");
+    expect(screen.queryByTestId("model-fit-placement")).toBeNull();
   });
 });
 

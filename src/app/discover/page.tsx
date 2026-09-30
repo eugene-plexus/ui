@@ -630,7 +630,7 @@ function EmptyDetail({
           <p className="mb-1 font-semibold">Apple silicon: one memory pool</p>
           <p>
             Scored as {formatMemory(budget.vramBytes)} of GPU memory. There is nothing to offload
-            to, so a &ldquo;partial offload&rdquo; verdict does not apply here.
+            to, so no version is split between the two.
           </p>
         </div>
       )}

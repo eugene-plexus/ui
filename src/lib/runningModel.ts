@@ -148,4 +148,7 @@ const STOP_REASON: Record<StopReason, string> = {
   operator: "someone stopped it",
   idle: "nothing asked for it, so the gateway unloaded it",
   autoStart: "it is set not to start on its own",
+  // PB1: a benchmark or a profile build stopped it, with the person's
+  // agreement, and starts it again when the job ends.
+  measurement: "a test of this machine paused it, and it starts again when the test ends",
 };
