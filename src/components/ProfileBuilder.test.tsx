@@ -464,3 +464,158 @@ describe("the tray", () => {
     get.mockRestore();
   });
 });
+
+/**
+ * A3d: after a build at Low, a smaller file of the same model, when the
+ * one on disk does not fit entirely at the chosen context. Driven through
+ * the page, with the model's own download record naming its repository.
+ */
+describe("Low's smaller file", () => {
+  const GB = 1e9;
+  const GIB = 1024 ** 3;
+  const LOW = { ...FINISHED, accuracy: "low", profileId: "p1" } as unknown as ProfileBuild;
+  const REPO = "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF";
+  const candidates = [
+    { label: "Q4_K_M", sizeBytes: 18.56 * GB, verdict: "split" },
+    { label: "UD-Q3_K_XL", sizeBytes: 13.8 * GB, verdict: "fits" },
+    { label: "Q2_K", sizeBytes: 11.3 * GB, verdict: "fits" },
+  ].map((c) => ({
+    label: c.label,
+    format: "gguf",
+    files: [{ path: `${c.label}.gguf`, sizeBytes: c.sizeBytes }],
+    sizeBytes: c.sizeBytes,
+    fit: { verdict: c.verdict, contextLength: 65536 },
+  }));
+
+  beforeEach(() => {
+    builds = [LOW];
+    // The file on disk's own fit at the chosen stop (64k, 8-bit cache) with
+    // 18 GiB free: 3.2 GiB of cache and 1 GiB of overhead leave 13.8 GiB
+    // (14.8 GB) for weights, so UD-Q3_K_XL (13.8 GB) is the largest that
+    // fits and Q4_K_M, the file on disk, is not smaller.
+    handlers.set("GET library/v1/models/qwen3-30b-a3b/fit", () => ({
+      status: 200,
+      body: {
+        fit: {
+          verdict: "split",
+          contextLength: 65536,
+          kvCacheBytes: 3.2 * GIB,
+          overheadBytes: GIB,
+          budget: { vramFreeBytes: 18 * GIB },
+        },
+      },
+    }));
+    handlers.set("GET library/v1/downloads", () => ({
+      status: 200,
+      body: {
+        downloads: [
+          { id: "d1", state: "done", repo: REPO, revision: "main", modelId: MODEL.id, files: [] },
+        ],
+      },
+    }));
+    handlers.set("GET library/v1/catalogue/model", () => ({
+      status: 200,
+      body: { repo: REPO, candidates },
+    }));
+  });
+
+  it("offers the largest smaller file that fits, at the chosen context, and downloads it", async () => {
+    handlers.set("POST library/v1/downloads", (call) => ({
+      status: 201,
+      body: {
+        id: "d2",
+        state: "downloading",
+        repo: REPO,
+        files: call.body?.files,
+        bytesTotal: 100,
+        bytesDownloaded: 40,
+      },
+    }));
+    handlers.set("GET library/v1/downloads/d2", () => ({
+      status: 200,
+      body: { id: "d2", state: "done", repo: REPO, files: [], modelId: "smaller-model" },
+    }));
+    await openBuilder();
+    const offer = await screen.findByTestId("smaller-file", {}, { timeout: 3000 });
+    expect(offer).toHaveAttribute("data-state", "offer");
+    expect(offer).toHaveTextContent(
+      "A smaller version, UD-Q3_K_XL (13.8 GB), fits entirely on the card at 64k.",
+    );
+    expect(offer).toHaveTextContent("does not measure how much");
+    // The file's own fit, at the chosen context and cache type; then only
+    // the repository its download names, for the sizes.
+    const fit = calls.find((c) => c.route.startsWith("library/v1/models/qwen3-30b-a3b/fit?"))!;
+    expect(fit.route).toContain("contextLength=65536");
+    expect(fit.route).toContain("kvCacheType=q8_0");
+    const catalogue = calls.find((c) => c.route.startsWith("library/v1/catalogue/model?"))!;
+    expect(catalogue.route).toContain(`repo=${encodeURIComponent(REPO)}`);
+    fireEvent.click(screen.getByTestId("smaller-file-download"));
+    await waitFor(() => expect(calls.map(key)).toContain("POST library/v1/downloads"));
+    const posted = calls.find((c) => key(c) === "POST library/v1/downloads")!;
+    expect(posted.body).toEqual({ repo: REPO, revision: "main", files: ["UD-Q3_K_XL.gguf"] });
+    // Never rebuilt for the person: once it lands, a link to build it.
+    const build = await screen.findByTestId("smaller-file-build", {}, { timeout: 5000 });
+    expect(build).toHaveAttribute("href", "/library?model=smaller-model");
+    expect(
+      calls.filter((c) => key(c) === "POST node:Amish_Station/v1/profile-builds"),
+    ).toHaveLength(0);
+  });
+
+  it("offers nothing when the file on disk already fits", async () => {
+    handlers.set("GET library/v1/models/qwen3-30b-a3b/fit", () => ({
+      status: 200,
+      body: { fit: { verdict: "fits", contextLength: 65536 } },
+    }));
+    await openBuilder();
+    await screen.findByTestId("build-stop");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    expect(screen.queryByTestId("smaller-file")).toBeNull();
+    expect(calls.some((c) => c.route.startsWith("library/v1/catalogue/model"))).toBe(false);
+  });
+
+  it("does not guess a repository for a file copied in by hand", async () => {
+    handlers.set("GET library/v1/downloads", () => ({ status: 200, body: { downloads: [] } }));
+    await openBuilder();
+    const offer = await screen.findByTestId("smaller-file", {}, { timeout: 3000 });
+    expect(offer).toHaveAttribute("data-state", "unknown-origin");
+    expect(offer).toHaveTextContent("This file was not downloaded here");
+    expect(calls.some((c) => c.route.startsWith("library/v1/catalogue/model"))).toBe(false);
+  });
+
+  it("links to a smaller file that is already on disk instead of downloading it", async () => {
+    handlers.set("GET library/v1/catalogue/model", () => ({
+      status: 200,
+      body: {
+        repo: REPO,
+        candidates: candidates.map((c) =>
+          c.label === "UD-Q3_K_XL"
+            ? {
+                ...c,
+                alreadyOwned: {
+                  modelId: "owned-q3",
+                  path: "D:/models/q3.gguf",
+                  matchedOn: "name_and_size",
+                },
+              }
+            : c,
+        ),
+      },
+    }));
+    await openBuilder();
+    const owned = await screen.findByTestId("smaller-file-owned", {}, { timeout: 3000 });
+    expect(owned).toHaveAttribute("href", "/library?model=owned-q3");
+    expect(screen.queryByTestId("smaller-file-download")).toBeNull();
+  });
+
+  it("is only Low's: a Medium build offers no smaller file", async () => {
+    builds = [{ ...LOW, accuracy: "medium" } as ProfileBuild];
+    await openBuilder();
+    await screen.findByTestId("build-stop");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    expect(screen.queryByTestId("smaller-file")).toBeNull();
+  });
+});

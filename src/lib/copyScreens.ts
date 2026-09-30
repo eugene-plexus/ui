@@ -31,6 +31,9 @@ export const COPY_SCREENS: Record<string, string[]> = {
     "components/ProfileBuilder.tsx",
     "components/AskBeforeStopping.tsx",
     "lib/profileBuild.ts",
+    // A3d: Low's smaller-file offer.
+    "components/SmallerFileOffer.tsx",
+    "lib/smallerFile.ts",
   ],
   // The other doors (playground-doors.md) are a person's first look at
   // speech, pictures and video, so their words are held to the same rules.

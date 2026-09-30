@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { AskBeforeStopping } from "@/components/AskBeforeStopping";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { SmallerFileOffer } from "@/components/SmallerFileOffer";
 import { ApiError, api, describeError } from "@/lib/api";
 import { composeSpec, runtimeName, type RuntimeCreate } from "@/lib/launchSpec";
 import type { TargetNode } from "@/lib/nodeBudget";
@@ -582,6 +583,15 @@ function BuildResult({
                 </p>
               )}
             </div>
+          )}
+          {/* A3d: Low's other lever, a smaller file of this model. */}
+          {build.accuracy === "low" && !failed && stop && (
+            <SmallerFileOffer
+              model={model}
+              contextLength={stop.candidate.contextSize}
+              cacheType={stop.candidate.cacheType}
+              node={node}
+            />
           )}
 
           {saved ? (
