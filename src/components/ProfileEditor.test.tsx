@@ -340,3 +340,69 @@ describe("a new profile for a model that runs with its experts in system memory"
     expect(screen.queryByTestId("context-prefill-note")).toBeNull();
   });
 });
+
+/**
+ * PB2: a field the settings builder set says so in the edit form, says so
+ * again once it is changed, and the save does not drop the builder's
+ * record -- it leaves `builtBy` out, which the library reads as "keep".
+ */
+it("labels the builder's fields while editing, and keeps its record on save", async () => {
+  const built: ModelProfile = {
+    id: "p",
+    name: "Built for laptop",
+    engine: "llama_cpp",
+    default: true,
+    flags: { contextSize: 65536, cacheType: "q8_0" },
+    builtBy: {
+      buildId: "b",
+      node: "laptop",
+      accuracy: "high",
+      builtAt: "2026-09-30T16:33:13Z",
+      flags: { contextSize: 65536, cacheType: "q8_0" },
+    },
+  };
+  const writes: Record<string, unknown>[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        writes.push(JSON.parse(String(init.body)));
+        return Response.json(built);
+      }
+      return Response.json({ profiles: [built] });
+    }),
+  );
+  const engines = [
+    {
+      engine: "llama_cpp",
+      flagSchema: {
+        component: "llama_cpp",
+        fields: [
+          {
+            key: "contextSize",
+            label: "Context size",
+            category: "engine",
+            valueType: "integer",
+            sensitive: false,
+            required: false,
+            requiresRestart: false,
+            pendingRestart: false,
+          },
+        ],
+      },
+    },
+  ] as unknown as Parameters<typeof ProfileEditor>[0]["engines"];
+  render(<ProfileEditor model={model} engines={engines} node={null} onChanged={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: "edit" }));
+  expect(screen.getByTestId("built-contextSize")).toHaveTextContent(
+    /^Set by the settings builder on .+\.$/,
+  );
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Context size" }), {
+    target: { value: "16384" },
+  });
+  expect(screen.getByTestId("built-contextSize")).toHaveTextContent("and edited since");
+  fireEvent.click(screen.getByRole("button", { name: "save" }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]).not.toHaveProperty("builtBy");
+  expect(writes[0]).toMatchObject({ flags: { contextSize: 16384, cacheType: "q8_0" } });
+});

@@ -35,18 +35,20 @@
  * driver", no "declaration". A test on the tray asserts the banned list.
  */
 
+import { phaseLine } from "./profileBuild";
 import type {
   Benchmark,
   Download,
   DownloadList,
   DownloadState,
   EngineInstall,
+  ProfileBuild,
   RuntimeList,
   RuntimePlacementList,
   Scan,
 } from "./types";
 
-export type TaskKind = "download" | "install" | "load" | "scan" | "run" | "benchmark";
+export type TaskKind = "download" | "install" | "load" | "scan" | "run" | "benchmark" | "build";
 
 export interface Task {
   /** Stable across polls, so a list can keep its order and React its keys. */
@@ -80,6 +82,8 @@ export interface Task {
 /** The raw bodies, each `null` when its source did not answer. */
 export interface TaskSources {
   benchmarks?: Benchmark[];
+  /** Settings builds on every reachable node (PB2), read like benchmarks. */
+  builds?: ProfileBuild[];
   downloads: DownloadList | null;
   scan: Scan | null;
   /** The control root's install-wide list, node included. */
@@ -131,6 +135,18 @@ export function tasksFrom(sources: TaskSources): Task[] {
           detail: job.detail,
           progress: job.progress,
           href: `/library?model=${encodeURIComponent(job.request.modelId)}&node=${encodeURIComponent(job.node)}`,
+        }),
+      ),
+    ...(sources.builds ?? [])
+      .filter((b) => b.state === "running")
+      .map(
+        (build): Task => ({
+          id: `build:${build.node}/${build.id}`,
+          kind: "build",
+          title: `Building settings for ${build.runtime.name} on ${build.node}`,
+          detail: [phaseLine(build), build.detail].filter(Boolean).join(" · "),
+          progress: build.progress,
+          href: `/library?model=${encodeURIComponent(build.modelId)}&node=${encodeURIComponent(build.node)}`,
         }),
       ),
     ...downloadTasks(sources.downloads),

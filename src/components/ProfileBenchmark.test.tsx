@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import type { TargetNode } from "@/lib/nodeBudget";
 import { tasksFrom } from "@/lib/tasks";
 import type { Benchmark, LibraryModel, ModelProfile } from "@/lib/types";
@@ -71,9 +71,11 @@ it("starts on the selected remote node, persists through navigation and cancels 
   let jobs: Benchmark[] = [];
   vi.spyOn(api, "get").mockImplementation(async () => ({ benchmarks: jobs }));
   const post = vi.spyOn(api, "post").mockImplementation(async (_target, path) => {
+    if (path.endsWith("/preflight")) return { runningRuntimes: [], problems: [] };
     jobs = [{ ...job, state: path.endsWith("cancel") ? "cancelled" : "running" }];
     return jobs[0];
   });
+  const jobPosts = () => post.mock.calls.filter((c) => !String(c[1]).endsWith("/preflight"));
   const props = { model, profile, node };
   const view = render(<ProfileBenchmark {...props} />);
   fireEvent.click(screen.getByRole("button", { name: "Benchmark" }));
@@ -87,21 +89,25 @@ it("starts on the selected remote node, persists through navigation and cancels 
       profileId: "p",
       tokens: 128,
       repetitions: 3,
+      stopRuntimes: [],
+      restartAfter: true,
       runtime: expect.objectContaining({ flags: profile.flags }),
     }),
   );
-  expect((post.mock.calls[0]![2] as { runtime: object }).runtime).not.toHaveProperty("temperature");
+  expect((jobPosts()[0]![2] as { runtime: object }).runtime).not.toHaveProperty("temperature");
   expect(screen.getByRole("progressbar", { name: "Benchmark progress" })).toHaveAttribute(
     "value",
     "0.5",
   );
   view.unmount();
-  expect(post).toHaveBeenCalledTimes(1);
+  expect(jobPosts()).toHaveLength(1);
   render(<ProfileBenchmark {...props} />);
   fireEvent.click(screen.getByRole("button", { name: "Benchmark" }));
   fireEvent.click(await screen.findByRole("button", { name: "Cancel benchmark" }));
   await screen.findByText("cancelled");
-  expect(post).toHaveBeenLastCalledWith("node:worker", "/v1/benchmarks/job/cancel", {});
+  // Not "last": the job's end re-asks the preflight, since the models it
+  // stopped come back then.
+  expect(post).toHaveBeenCalledWith("node:worker", "/v1/benchmarks/job/cancel", {});
 });
 
 it("shows exact measurements and partial results without relabeling historical settings", () => {
@@ -126,17 +132,18 @@ it("shows exact measurements and partial results without relabeling historical s
 
 it("keeps agent refusal actionable and prevents invalid sample requests", async () => {
   vi.spyOn(api, "get").mockResolvedValue({ benchmarks: [] });
-  const post = vi
-    .spyOn(api, "post")
-    .mockRejectedValue(new Error("Stop this node's runtimes before benchmarking: qwen"));
+  const post = vi.spyOn(api, "post").mockImplementation(async (_target, path) => {
+    if (String(path).endsWith("/preflight")) return { runningRuntimes: [], problems: [] };
+    throw new Error("The model file is not on this node");
+  });
   render(<ProfileBenchmark model={model} profile={profile} node={node} />);
   fireEvent.click(screen.getByRole("button", { name: "Benchmark" }));
   fireEvent.change(screen.getByLabelText("Repetitions"), { target: { value: "2.5" } });
   expect(screen.getByRole("button", { name: "Start benchmark" })).toBeDisabled();
   fireEvent.change(screen.getByLabelText("Repetitions"), { target: { value: "2" } });
-  fireEvent.click(screen.getByRole("button", { name: "Start benchmark" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("Stop this node's runtimes");
-  expect(post).toHaveBeenCalledTimes(1);
+  fireEvent.click(await screen.findByRole("button", { name: "Start benchmark" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("The model file is not on this node");
+  expect(post.mock.calls.filter((c) => c[1] === "/v1/benchmarks")).toHaveLength(1);
 });
 
 it("drops a stale read when the selected node changes", async () => {
@@ -202,4 +209,64 @@ it("records the model's size and date in plain units", async () => {
   expect(line).toHaveTextContent("4.9 GB");
   expect(line).not.toHaveTextContent("4,920,000,000 bytes");
   expect(line).not.toHaveTextContent("2026-09-01T10:00:00Z");
+});
+
+/**
+ * PB2: the Benchmark asks before stopping, the builder's rule (Troy,
+ * 2026-09-30). It used to refuse and send the person to Inference.
+ */
+describe("asking before stopping", () => {
+  it("names what is running and stops exactly those when agreed", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ benchmarks: [] });
+    const post = vi.spyOn(api, "post").mockImplementation(async (_target, path) => {
+      if (String(path).endsWith("/preflight"))
+        return { runningRuntimes: ["qwen3-14b", "gemma-4-12b"], problems: [] };
+      return { ...job, state: "running" };
+    });
+    render(<ProfileBenchmark model={model} profile={profile} node={node} />);
+    fireEvent.click(screen.getByRole("button", { name: "Benchmark" }));
+    expect(await screen.findByTestId("stop-question")).toHaveTextContent(
+      "Stop qwen3-14b and gemma-4-12b while this runs? They start again when it finishes. Apps using them get an error until then.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Stop them and start benchmark" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        "node:worker",
+        "/v1/benchmarks",
+        expect.objectContaining({ stopRuntimes: ["qwen3-14b", "gemma-4-12b"], restartAfter: true }),
+      ),
+    );
+  });
+
+  it("asks again when a model started between the question and the click", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ benchmarks: [] });
+    let running = ["qwen3-14b"];
+    const post = vi.spyOn(api, "post").mockImplementation(async (_target, path) => {
+      if (String(path).endsWith("/preflight")) return { runningRuntimes: running, problems: [] };
+      running = ["qwen3-14b", "late-starter"];
+      throw new ApiError(409, "Conflict", { detail: "late-starter is running" });
+    });
+    render(<ProfileBenchmark model={model} profile={profile} node={node} />);
+    fireEvent.click(screen.getByRole("button", { name: "Benchmark" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Stop it and start benchmark" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("stop-question")).toHaveTextContent(
+        "Stop qwen3-14b and late-starter while this runs?",
+      ),
+    );
+    expect(post.mock.calls.filter((c) => String(c[1]).endsWith("/preflight")).length).toBe(2);
+  });
+
+  it("does not offer Start while the machine says it would refuse", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ benchmarks: [] });
+    vi.spyOn(api, "post").mockImplementation(async (_target, path) => {
+      if (String(path).endsWith("/preflight"))
+        return { runningRuntimes: [], problems: ["llama-bench is missing beside llama-server."] };
+      return { ...job, state: "running" };
+    });
+    render(<ProfileBenchmark model={model} profile={profile} node={node} />);
+    fireEvent.click(screen.getByRole("button", { name: "Benchmark" }));
+    expect(await screen.findByText("llama-bench is missing beside llama-server.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Start benchmark" })).toBeDisabled();
+  });
 });

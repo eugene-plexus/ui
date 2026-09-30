@@ -3,7 +3,7 @@
 import { expertHint } from "@/lib/vocabulary";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -15,7 +15,9 @@ import { describeAdmission } from "@/lib/launchPreview";
 import { DEFAULT_PROFILE_NAME, composeSpec } from "@/lib/launchSpec";
 import { libraryFoldersHref } from "@/lib/libraryReach";
 import type { TargetNode } from "@/lib/nodeBudget";
+import { builtFieldLabel, builtOn, editedSinceBuilt, measuredLine } from "@/lib/profileBuild";
 import { ProfileBenchmark } from "./ProfileBenchmark";
+import { ProfileBuilder } from "./ProfileBuilder";
 import type {
   Admission,
   ConfigField,
@@ -243,6 +245,17 @@ export function ProfileEditor({
         <span className="font-mono">{DEFAULT_PROFILE_NAME}</span> with a context size that fits.
         Save more profiles to compare speed, longer context, or different GPUs.
       </p>
+
+      <ProfileBuilder
+        model={model}
+        profiles={profiles ?? []}
+        engines={engines}
+        node={node}
+        onSaved={async () => {
+          await load();
+          onChanged();
+        }}
+      />
 
       {canLaunch && node && previewProfile && (
         <LaunchPreview
@@ -483,6 +496,14 @@ function ProfileRow({
               default
             </span>
           )}
+          {profile.builtBy && (
+            <span
+              className="badge rounded bg-[color:var(--border)] px-1 text-[0.5625rem] tracking-wider uppercase"
+              title={`Built on ${profile.builtBy.node} on ${builtOn(profile.builtBy)}`}
+            >
+              {editedSinceBuilt(profile) ? "built, edited since" : "built"}
+            </span>
+          )}
           <span className="font-mono text-[color:var(--muted)]">{profile.engine}</span>
         </div>
         <div className="flex items-center gap-1">
@@ -523,6 +544,11 @@ function ProfileRow({
         </p>
       )}
       {profile.notes && <p className="mt-1 text-[color:var(--muted)] italic">{profile.notes}</p>}
+      {measuredLine(profile) && (
+        <p className="mt-1" data-testid="profile-measured" data-edited={editedSinceBuilt(profile)}>
+          {measuredLine(profile)}
+        </p>
+      )}
       <ProfileBenchmark model={model} profile={profile} node={node} />
       {generationFields.some(({ key }) => profile[key] != null) && (
         <p className="mt-1 text-[color:var(--muted)]" data-testid="profile-generation">
@@ -759,13 +785,30 @@ function ProfileForm({
       {schema ? (
         <div className="mt-3">
           {schema.fields.map((field) => (
-            <ConfigFieldInput
-              key={field.key}
-              field={asProfileFlag(field, engine, model.contextLength ?? null)}
-              value={flags[field.key]}
-              pending={saving}
-              onChange={(v) => setFlags((prev) => ({ ...prev, [field.key]: v }))}
-            />
+            <Fragment key={field.key}>
+              <ConfigFieldInput
+                field={asProfileFlag(field, engine, model.contextLength ?? null)}
+                value={flags[field.key]}
+                pending={saving}
+                onChange={(v) => setFlags((prev) => ({ ...prev, [field.key]: v }))}
+              />
+              {/* PB2: a field the settings builder set says so, and says
+                  when it has been changed since (settings never lie). */}
+              {existing?.builtBy && field.key in (existing.builtBy.flags ?? {}) && (
+                <p
+                  className="-mt-1 mb-2 text-[0.75rem] text-[color:var(--muted)]"
+                  data-testid={`built-${field.key}`}
+                >
+                  {builtFieldLabel(
+                    existing.builtBy,
+                    JSON.stringify(flags[field.key] ?? null) ===
+                      JSON.stringify(existing.builtBy.flags[field.key] ?? null)
+                      ? "built"
+                      : "edited",
+                  )}
+                </p>
+              )}
+            </Fragment>
           ))}
           {!existing && suggestedContext != null && (
             <p

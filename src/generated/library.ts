@@ -127,6 +127,10 @@ export interface paths {
          *     semantics there is no way to express *removing* a flag, and
          *     "why is `--n-gpu-layers` still on the command line after I
          *     deleted it" is a bug report nobody should have to file.
+         *
+         *     One exception, `builtBy`: omitting it keeps the stored record
+         *     and `null` clears it, because it records a past measurement
+         *     rather than a setting (`ModelProfileSpec.builtBy`).
          */
         put: operations["replaceProfile"];
         post?: never;
@@ -1417,7 +1421,71 @@ export interface components {
              *     3090" is worth more later than the flag value it explains.
              */
             notes?: string;
+            /**
+             * @description The settings builder's record, for a profile it wrote
+             *     (`docs/design/profile-builder.md` §6). **The one field a
+             *     replace does not replace by omission:** absent from a `PUT`
+             *     body keeps the stored record, and only an explicit `null`
+             *     clears it. It is a record of a past measurement rather than
+             *     a setting, and every edit path that writes a whole profile
+             *     would otherwise drop it on the first edit -- where the
+             *     design says an edited profile's numbers are labelled, not
+             *     deleted.
+             */
+            builtBy?: components["schemas"]["ProfileBuiltBy"] | null;
         };
+        /**
+         * @description What the settings builder set on a profile, and what it measured,
+         *     on which machine. The UI compares `flags` with the profile's own
+         *     flags to say which settings the builder set and whether any has
+         *     been edited since; once one has, the measured numbers no longer
+         *     describe the profile and are labelled so.
+         */
+        ProfileBuiltBy: {
+            /** @description The agent's `ProfileBuild.id`. */
+            buildId: string;
+            /** @description The machine it was measured on. */
+            node: string;
+            accuracy: components["schemas"]["ProfileBuiltAccuracy"];
+            /** Format: date-time */
+            builtAt: string;
+            /** @description The llama.cpp build it was measured with. */
+            engineVersion?: string | null;
+            /**
+             * @description The flags the builder set, as it set them: `contextSize`,
+             *     `cacheType`, `flashAttention` when the cache is quantised,
+             *     and `memoryMargin` when a margin was asked for. `gpuLayers`
+             *     is never among them: placement is llama.cpp's at every launch.
+             */
+            flags: {
+                [key: string]: unknown;
+            };
+            /** @description Measured decode speed with an empty context. */
+            decodeTokensPerSecond?: number | null;
+            /** @description The context depth of the second measurement (2,048 for every candidate). */
+            deepDepth?: number | null;
+            deepDecodeTokensPerSecond?: number | null;
+            /** @description Graphics memory used when the result was loaded to confirm it, where the machine can measure it. */
+            graphicsMemoryBytes?: number | null;
+            /**
+             * @description How often the chosen cache picks the same next token as the
+             *     f16 cache on the evaluation text. Null when the f16 cache was
+             *     chosen, since nothing that changes answers was set.
+             */
+            sameTopTokenPercent?: number | null;
+            /** @description Which text the quality measurement used; null when none was made. */
+            evaluationSource?: components["schemas"]["ProfileBuiltEvaluationSource"] | null;
+        };
+        /**
+         * @description The accuracy level the build was asked for; the agent's `ProfileBuildAccuracy`.
+         * @enum {string}
+         */
+        ProfileBuiltAccuracy: "max" | "high" | "medium" | "low";
+        /**
+         * @description The agent's `EvaluationTextSource`. A custom text is identified by the build, never stored.
+         * @enum {string}
+         */
+        ProfileBuiltEvaluationSource: "bundled" | "custom";
         /**
          * @description A saved profile, as stored: the spec plus server-owned
          *     identifiers and timestamps.
@@ -1439,6 +1507,8 @@ export interface components {
                 [key: string]: string;
             };
             notes?: string;
+            /** @description The settings builder's record, when it wrote this profile. Kept by a replace that omits it. */
+            builtBy?: components["schemas"]["ProfileBuiltBy"] | null;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */

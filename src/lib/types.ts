@@ -19,6 +19,17 @@ import type { components as ControlComponents } from "@/generated/control";
 
 export type Benchmark = AgentComponents["schemas"]["Benchmark"];
 export type BenchmarkList = AgentComponents["schemas"]["BenchmarkList"];
+export type MeasurementPreflight = AgentComponents["schemas"]["MeasurementPreflight"];
+export type MeasurementRestart = AgentComponents["schemas"]["MeasurementRestart"];
+
+// The settings builder (PB1's job, PB2's page): `docs/design/profile-builder.md`.
+export type ProfileBuild = AgentComponents["schemas"]["ProfileBuild"];
+export type ProfileBuildList = AgentComponents["schemas"]["ProfileBuildList"];
+export type ProfileBuildAccuracy = AgentComponents["schemas"]["ProfileBuildAccuracy"];
+export type BuildCandidate = AgentComponents["schemas"]["BuildCandidate"];
+export type CacheQuality = AgentComponents["schemas"]["CacheQuality"];
+export type CacheType = AgentComponents["schemas"]["CacheType"];
+export type ProfileBuiltBy = LibraryComponents["schemas"]["ProfileBuiltBy"];
 
 // --- Shared -----------------------------------------------------------
 

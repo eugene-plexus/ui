@@ -27,6 +27,10 @@ export const COPY_SCREENS: Record<string, string[]> = {
     "components/RunDialog.tsx",
     "components/ProfileEditor.tsx",
     "components/ProfileBenchmark.tsx",
+    // PB2: the settings builder, its shared stop question, and its words.
+    "components/ProfileBuilder.tsx",
+    "components/AskBeforeStopping.tsx",
+    "lib/profileBuild.ts",
   ],
   // The other doors (playground-doors.md) are a person's first look at
   // speech, pictures and video, so their words are held to the same rules.

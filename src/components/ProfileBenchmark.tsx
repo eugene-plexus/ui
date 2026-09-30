@@ -1,14 +1,20 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
-import { api, describeError } from "@/lib/api";
+import { AskBeforeStopping } from "@/components/AskBeforeStopping";
+import { ApiError, api, describeError } from "@/lib/api";
 import { composeSpec } from "@/lib/launchSpec";
 import { formatTimestamp } from "@/lib/relativeTime";
 import { formatBytesShort } from "@/lib/tasks";
 import type { TargetNode } from "@/lib/nodeBudget";
-import type { Benchmark, BenchmarkList, LibraryModel, ModelProfile } from "@/lib/types";
+import type {
+  Benchmark,
+  BenchmarkList,
+  LibraryModel,
+  MeasurementPreflight,
+  ModelProfile,
+} from "@/lib/types";
 
 const button = "rounded border border-[color:var(--border)] px-2 py-1 text-sm disabled:opacity-40";
 
@@ -105,22 +111,64 @@ export function BenchmarkPanel({
     (j) => j.request.modelId === model.id && j.request.profileId === profile.id,
   );
 
-  async function start() {
+  // PB2: ask before stopping, the builder's rule (Troy, 2026-09-30). The
+  // dry run names what is running; Start stops exactly those and the job
+  // starts them again afterwards. Asked again when a job ends, because
+  // that is when the models it stopped come back.
+  const [preflight, setPreflight] = useState<MeasurementPreflight | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [asked, setAsked] = useState(0);
+  // Keyed on what is sent, not on the objects: the page re-reads the
+  // library, and the same profile as a new object must not ask again.
+  const sent = JSON.stringify({
+    modelId: model.id,
+    profileId: profile.id,
+    profileName: profile.name,
+    runtime: composeSpec(model, profile),
+  });
+  const request = useMemo(
+    () => ({ ...(JSON.parse(sent) as object), tokens, repetitions }),
+    [sent, tokens, repetitions],
+  );
+  useEffect(() => {
+    if (!target || !supported || !valid) return;
+    let cancelled = false;
+    setAsking(true);
+    void (async () => {
+      try {
+        const answer = await api.post<MeasurementPreflight>(target, "/v1/benchmarks/preflight", {
+          ...request,
+          stopRuntimes: [],
+        });
+        if (!cancelled) setPreflight(answer);
+      } catch {
+        // No answer is not a refusal: Start is still offered, and the
+        // job's own refusal is what the person then reads.
+        if (!cancelled) setPreflight({ runningRuntimes: [], problems: [] });
+      } finally {
+        if (!cancelled) setAsking(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [target, request, supported, valid, active, asked]);
+
+  async function start(stopRuntimes: string[]) {
     if (!target || !valid || !supported || busy) return;
     setBusy(true);
     setError(null);
     try {
       const job = await api.post<Benchmark>(target, "/v1/benchmarks", {
-        modelId: model.id,
-        profileId: profile.id,
-        profileName: profile.name,
-        runtime: composeSpec(model, profile),
-        tokens,
-        repetitions,
+        ...request,
+        stopRuntimes,
+        restartAfter: true,
       });
       setJobs((previous) => [job, ...previous.filter((j) => j.id !== job.id)]);
       setRefresh((n) => n + 1);
     } catch (e) {
+      // A model started since the question: ask again with its name.
+      if (e instanceof ApiError && e.status === 409) setAsked((n) => n + 1);
       setError(describeError(e));
     } finally {
       setBusy(false);
@@ -155,12 +203,9 @@ export function BenchmarkPanel({
         <strong>{node?.label ?? "the selected machine"}</strong> using this saved profile.
       </p>
       <p className="text-[color:var(--muted)]">
-        Stop this machine’s models in{" "}
-        <Link href="/inference" className="underline">
-          Inference
-        </Link>{" "}
-        first and close other GPU workloads. Nothing is stopped automatically. Runs continue when
-        you leave this page; cancel here. Maximum 15 minutes.
+        Close other GPU workloads first. Models running on this machine are stopped only if you
+        agree below, and start again when it ends. Runs continue when you leave this page; cancel
+        here. Maximum 15 minutes.
       </p>
       <p className="text-[color:var(--muted)]">
         One sequence, three context depths. This measures token evaluation, excluding tokenization,
@@ -205,15 +250,21 @@ export function BenchmarkPanel({
             className="ml-2 w-14 rounded border p-1"
           />
         </label>
-        <button
-          type="button"
-          className={button}
-          disabled={!target || !supported || !valid || busy || active || !!readError}
-          onClick={() => void start()}
-        >
+      </div>
+      {supported && valid && (
+        <AskBeforeStopping
+          preflight={preflight}
+          asking={asking}
+          busy={!target || busy || active || !!readError}
+          startLabel="start benchmark"
+          onStart={(names) => void start(names)}
+        />
+      )}
+      {(!supported || !valid) && (
+        <button type="button" className={button} disabled>
           Start benchmark
         </button>
-      </div>
+      )}
       {supported && tokens < Number(context) && (
         <p>
           Depths: 0, {Math.floor((Number(context) - tokens) / 2).toLocaleString()},{" "}

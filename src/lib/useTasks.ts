@@ -13,6 +13,8 @@ import type {
   DownloadList,
   EngineInstall,
   EngineList,
+  ProfileBuild,
+  ProfileBuildList,
   RuntimeList,
   RuntimePlacementList,
   Scan,
@@ -38,6 +40,23 @@ export async function readBenchmarks(): Promise<Benchmark[]> {
     for (const job of list?.benchmarks ?? []) {
       unique.set(`${job.node}/${job.id}`, job);
     }
+  return [...unique.values()];
+}
+
+/** Settings builds, read like benchmarks: every reachable node, soft (PB2). */
+export async function readProfileBuilds(): Promise<ProfileBuild[]> {
+  const [local, roster] = await Promise.all([
+    api.get<ProfileBuildList>("agent", "/v1/profile-builds").catch(() => null),
+    api.get<{ nodes?: ControlNode[] }>("control", "/v1/nodes").catch(() => null),
+  ]);
+  const lists = await Promise.all(
+    (roster?.nodes ?? []).map((n) =>
+      api.get<ProfileBuildList>(`node:${n.name}`, "/v1/profile-builds").catch(() => null),
+    ),
+  );
+  const unique = new Map<string, ProfileBuild>();
+  for (const list of [local, ...lists])
+    for (const build of list?.builds ?? []) unique.set(`${build.node}/${build.id}`, build);
   return [...unique.values()];
 }
 
@@ -73,12 +92,13 @@ export function useTasks(): { tasks: Task[]; loaded: boolean; reload: () => Prom
 
   const load = useCallback(async () => {
     if (!hasSessionToken()) return;
-    const [downloads, scan, runtimes, engines, benchmarks] = await Promise.all([
+    const [downloads, scan, runtimes, engines, benchmarks, builds] = await Promise.all([
       api.get<DownloadList>("library", "/v1/downloads").catch(() => null),
       api.get<Scan>("library", "/v1/scan").catch(() => null),
       api.get<RuntimePlacementList>("control", "/v1/runtimes").catch(() => null),
       api.get<EngineList>("agent", "/v1/engines").catch(() => null),
       readBenchmarks(),
+      readProfileBuilds(),
     ]);
     // Without a control root the local agent is the only place runtimes
     // can be read from, and it is read — the Inference screen's rule.
@@ -103,7 +123,15 @@ export function useTasks(): { tasks: Task[]; loaded: boolean; reload: () => Prom
                 ),
             )
           ).filter((i): i is EngineInstall => i !== null);
-    const sources: TaskSources = { downloads, scan, runtimes, localRuntimes, installs, benchmarks };
+    const sources: TaskSources = {
+      downloads,
+      scan,
+      runtimes,
+      localRuntimes,
+      installs,
+      benchmarks,
+      builds,
+    };
     setPolled(tasksFrom(sources));
     setLoaded(true);
   }, []);
