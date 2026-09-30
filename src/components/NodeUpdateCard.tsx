@@ -161,7 +161,7 @@ export function NodeUpdateCard({
               prompt={`${name} restarts, and the models on it stop for a minute or two.`}
               disabled={busy !== null}
               onConfirm={update}
-              className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:opacity-50"
+              className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:opacity-50"
             />
           )}
           <button
@@ -169,7 +169,7 @@ export function NodeUpdateCard({
             data-testid="node-update-check"
             onClick={check}
             disabled={busy !== null}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
+            className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
           >
             {busy === "checking" ? "Checking…" : "Check now"}
           </button>

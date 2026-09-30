@@ -456,7 +456,7 @@ export function ChatInput({
           onClick={() => fileInput.current?.click()}
           disabled={disabled}
           title="Attach text files (inlined into the message, as a harness would paste them), PNG/JPEG images (up to 4, 5 MB each), WAV/MP3 recordings or PDFs (10 MB each; 11 MB for everything attached)"
-          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+          className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
         >
           Attach
         </button>
@@ -466,7 +466,7 @@ export function ChatInput({
             data-testid="stop-turn"
             onClick={onStop}
             title="Stop this turn (Escape). Whatever has streamed so far is kept."
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
             Stop
           </button>
@@ -474,7 +474,7 @@ export function ChatInput({
           <button
             type="submit"
             disabled={disabled || !hasContent || imageSetError !== null}
-            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
+            className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
           >
             Send
           </button>

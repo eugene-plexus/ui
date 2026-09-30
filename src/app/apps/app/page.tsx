@@ -30,7 +30,7 @@ import type { App, AppCatalogue, AppInstall, NodeIdentity } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
 
 const buttonClass =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40";
+  "action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40";
 
 export default function AppOverviewPage() {
   return (

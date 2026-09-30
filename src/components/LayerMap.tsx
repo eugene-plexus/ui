@@ -58,7 +58,7 @@ export function LayerMap({
         <button
           type="button"
           onClick={onClose}
-          className="font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2.5 py-1 text-sm text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)]"
+          className="action-button font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2.5 py-1 text-sm text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] hover:text-[color:var(--foreground)]"
         >
           Close
         </button>

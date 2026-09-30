@@ -61,6 +61,16 @@
   --accent-right: #cf9a72;
   --on-accent-left: #0c1216;
   --on-accent-right: #1a1009;
+  /* Controls have their own edge and surface; panel borders stay quiet. */
+  --action-bg: #29343d;
+  --action-hover: #344450;
+  --action-active: #202c35;
+  --action-border: #758695;
+  --action-primary-hover: #9cc5df;
+  --action-primary-active: #6e9cbb;
+  --action-danger-bg: #33292b;
+  --action-danger-hover: #483235;
+  --action-danger-border: #aa766f;
   /* 8.45:1 on --panel (was #8f959b at 5.5:1). Muted means quieter than
      the foreground, never a strain to read — most of this UI's copy is
      set in it. */
@@ -367,6 +377,96 @@ body {
    inherits `--font-body` from <body>. */
 .font-ui {
   font-family: var(--font-ui);
+}
+
+/* Explicit action classes keep data badges, selectable rows and navigation
+   from acquiring button chrome. Existing utilities remain the light themes'
+   presentation. The default also works before the theme attribute is set. */
+:where(:root:not([data-theme]), [data-theme="plexus"]) .action-button {
+  --action-fill: var(--action-bg);
+  --action-fill-hover: var(--action-hover);
+  --action-fill-active: var(--action-active);
+  --action-edge: var(--action-border);
+  --action-ink: var(--foreground);
+  min-height: 2rem;
+  min-width: 2rem;
+  border: 1px solid var(--action-edge);
+  background-color: var(--action-fill);
+  color: var(--action-ink);
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 1px 2px rgb(0 0 0 / 0.2);
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+:where(:root:not([data-theme]), [data-theme="plexus"]) a.action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:where(:root:not([data-theme]), [data-theme="plexus"]) .action-button--compact {
+  min-height: 1.75rem;
+  min-width: 1.75rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+:where(:root:not([data-theme]), [data-theme="plexus"]) .action-button--primary {
+  --action-fill: var(--accent-left);
+  --action-fill-hover: var(--action-primary-hover);
+  --action-fill-active: var(--action-primary-active);
+  --action-edge: var(--accent-left);
+  --action-ink: var(--on-accent-left);
+}
+
+:where(:root:not([data-theme]), [data-theme="plexus"])
+  .action-button:is(.action-button--danger, .text-status-error, .status-error) {
+  --action-fill: var(--action-danger-bg);
+  --action-fill-hover: var(--action-danger-hover);
+  --action-fill-active: var(--action-danger-bg);
+  --action-edge: var(--action-danger-border);
+  --action-ink: var(--status-error-fg);
+}
+
+@media (hover: hover) {
+  :where(:root:not([data-theme]), [data-theme="plexus"])
+    .action-button:not(:disabled, [aria-disabled="true"]):hover {
+    background-color: var(--action-fill-hover);
+    border-color: var(--accent-left);
+    color: var(--action-ink);
+    filter: none;
+    cursor: pointer;
+  }
+
+  :where(:root:not([data-theme]), [data-theme="plexus"])
+    .action-button:is(.action-button--danger, .text-status-error, .status-error):not(
+      :disabled,
+      [aria-disabled="true"]
+    ):hover {
+    border-color: var(--status-error-fg);
+  }
+}
+
+:where(:root:not([data-theme]), [data-theme="plexus"])
+  .action-button:not(:disabled, [aria-disabled="true"]):active {
+  background-color: var(--action-fill-active);
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 0.25);
+}
+
+:where(:root:not([data-theme]), [data-theme="plexus"])
+  .action-button:is(:disabled, [aria-disabled="true"]) {
+  background-color: var(--action-fill);
+  border-color: var(--action-edge);
+  color: var(--action-ink);
+  opacity: 0.45;
+  box-shadow: none;
+  filter: none;
+  cursor: not-allowed;
 }
 
 /* Tailwind's `font-mono` utility uses its own stack; this token is for

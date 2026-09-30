@@ -98,7 +98,7 @@ export function StarterSetPanel({
             setError(null);
             setAttempt((n) => n + 1);
           }}
-          className="font-ui ml-2 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
+          className="action-button action-button--compact font-ui ml-2 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
         >
           Try again
         </button>
@@ -245,8 +245,8 @@ export function StarterSetPanel({
 }
 
 const primary =
-  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40";
+  "action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40";
 const secondary =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
+  "action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
 const smallButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "action-button action-button--compact font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";

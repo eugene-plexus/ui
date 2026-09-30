@@ -137,7 +137,7 @@ function UnlockForm({ onFixed, autoFocus }: { onFixed: () => Promise<void>; auto
           type="submit"
           disabled={busy || passphrase === ""}
           data-testid="issues-unlock-submit"
-          className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
+          className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
         >
           {busy ? "Unlocking…" : "Unlock"}
         </button>

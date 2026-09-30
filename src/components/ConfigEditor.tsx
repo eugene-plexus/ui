@@ -632,7 +632,7 @@ export function ConfigEditor({
       onConfirm={discard}
       disabled={saving}
       testId="config-discard"
-      className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+      className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
     />
   );
   const testButton = ends.canTest && (
@@ -641,7 +641,7 @@ export function ConfigEditor({
       onClick={test}
       disabled={testing || saving}
       title="Test the current draft against the running services without committing it."
-      className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
+      className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[color:var(--border)] disabled:hover:bg-transparent"
     >
       {testing ? "Testing…" : "Test"}
     </button>
@@ -651,7 +651,7 @@ export function ConfigEditor({
       type="button"
       onClick={save}
       disabled={dirtyKeys.size === 0 || saving}
-      className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
+      className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
     >
       {saving ? "Saving…" : "Save"}
     </button>
@@ -692,7 +692,7 @@ export function ConfigEditor({
             aria-expanded={showMore}
             aria-controls={moreId}
             onClick={() => setShowMore(!showMore)}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm"
+            className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm"
           >
             {showMore ? "Show less" : "Show more"} · {groups.more.length}{" "}
             {groups.more.length === 1 ? "setting" : "settings"}
@@ -888,7 +888,7 @@ function RestartProgressModal({
           <button
             type="button"
             onClick={onDismiss}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
             Close
           </button>
@@ -1115,7 +1115,7 @@ function ClearModelCopies({ target }: { target: ProxyTarget }) {
           type="button"
           onClick={clear}
           disabled={busy}
-          className="font-ui w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+          className="action-button font-ui w-fit rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {busy ? "Deleting…" : "Delete the local copies"}
         </button>

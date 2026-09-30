@@ -92,7 +92,7 @@ const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 /** New's look, shared by the asking button and the disabled one, so the
  * control does not change shape when a conversation starts. */
 const NEW_BUTTON_CLASS =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
 /** What survives a reload of the diagnostic panel. Never the key: it
  * defaults to the session token on every load, and a typed one lives

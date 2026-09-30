@@ -440,14 +440,14 @@ function SettingsView({
               onConfirm={discardAll}
               disabled={savingAll}
               testId="discard-all"
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+              className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
             />
             <button
               type="button"
               onClick={() => void saveAll()}
               disabled={savingAll}
               data-testid="save-all"
-              className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
+              className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
             >
               {savingAll ? "Saving…" : dirtySections.length > 1 ? "Save all" : "Save"}
             </button>
@@ -605,7 +605,7 @@ function BackendSettings({
             }
             onConfirm={removeDriver}
             disabled={removing}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error-border)] hover:text-[color:var(--status-error-fg)] disabled:opacity-30"
+            className="action-button action-button--danger action-button--compact font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error-border)] hover:text-[color:var(--status-error-fg)] disabled:opacity-30"
             title="Stops the driver's process and forgets its declaration. What it fronts is untouched."
             testId="remove-driver"
           />

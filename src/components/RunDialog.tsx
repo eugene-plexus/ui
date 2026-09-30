@@ -77,7 +77,7 @@ export function RunDialogView({
             ref={install}
             onClick={() => onAnswer(task.id, "install")}
             data-testid="run-install"
-            className="font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110"
+            className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110"
           >
             Install
           </button>
@@ -85,7 +85,7 @@ export function RunDialogView({
             type="button"
             onClick={() => onAnswer(task.id, "skip")}
             data-testid="run-skip"
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
           >
             Skip
           </button>

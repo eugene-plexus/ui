@@ -1203,10 +1203,10 @@ function dedupe(items: string[]): string[] {
 }
 
 const buttonClass =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
+  "action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
 const smallButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
+  "action-button action-button--compact font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 const dangerButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error-border)] hover:text-[color:var(--status-error-fg)] disabled:cursor-not-allowed disabled:opacity-30";
+  "action-button action-button--danger action-button--compact font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error-border)] hover:text-[color:var(--status-error-fg)] disabled:cursor-not-allowed disabled:opacity-30";
 const tinyButton =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-1.5 py-0 text-[0.625rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
+  "action-button action-button--compact font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-1.5 py-0 text-[0.625rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";

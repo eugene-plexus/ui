@@ -295,7 +295,7 @@ function LoginForm() {
               onClick={() => setShown((v) => !v)}
               aria-pressed={shown}
               aria-controls="passphrase"
-              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+              className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
             >
               {shown ? "Hide" : "Show"}
             </button>
@@ -322,7 +322,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={submitting || !passphrase}
-            className="font-ui mt-4 w-full rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            className="action-button action-button--primary font-ui mt-4 w-full rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting ? "Unlocking…" : "Unlock"}
           </button>

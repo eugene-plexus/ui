@@ -349,7 +349,7 @@ export default function MetricsPage() {
               }
             }}
             disabled={refreshing}
-            className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
+            className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
           >
             {refreshing ? "Refreshing…" : "Refresh"}
           </button>

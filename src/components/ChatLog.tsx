@@ -505,7 +505,7 @@ function Collapsible({ text }: { text: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="font-ui mt-1 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] text-[color:var(--muted)] hover:bg-[color:var(--panel-hover)]"
+        className="action-button action-button--compact font-ui mt-1 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] text-[color:var(--muted)] hover:bg-[color:var(--panel-hover)]"
       >
         Show all {lines.length.toLocaleString("en-US")} lines ({text.length.toLocaleString("en-US")}{" "}
         characters, as sent)
@@ -605,7 +605,7 @@ function ToolResultsForm({
         type="submit"
         data-testid="send-tool-results"
         disabled={!complete}
-        className="font-ui self-end rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
+        className="action-button action-button--primary font-ui self-end rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
       >
         Send {calls.length === 1 ? "result" : "results"}
       </button>

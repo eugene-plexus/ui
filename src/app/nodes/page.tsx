@@ -445,7 +445,7 @@ export default function NodesPage() {
                 <button
                   type="submit"
                   disabled={unlocking || !passphrase}
-                  className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
+                  className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:opacity-50"
                 >
                   {unlocking ? "Unlocking…" : "Unlock"}
                 </button>
@@ -664,7 +664,7 @@ export default function NodesPage() {
                 type="button"
                 onClick={() => void mint()}
                 disabled={minting}
-                className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {minting ? "Making…" : "Make a join token"}
               </button>
@@ -712,7 +712,7 @@ export default function NodesPage() {
                   <button
                     type="button"
                     onClick={() => setControlUrl(addressCheck.suggestion!)}
-                    className="font-ui mt-2 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+                    className="action-button font-ui mt-2 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
                   >
                     Use <span className="font-mono">{addressCheck.suggestion}</span>
                   </button>
@@ -771,7 +771,7 @@ export default function NodesPage() {
                         onClick={() => void revoke(t.id)}
                         disabled={revoking !== null}
                         data-testid="revoke-token"
-                        className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                        className="action-button action-button--compact font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {revoking === t.id ? "revoking…" : "Revoke"}
                       </button>

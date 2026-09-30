@@ -220,7 +220,7 @@ export function SecretInput({
       <button
         type="button"
         onClick={() => setReveal((r) => !r)}
-        className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+        className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
       >
         {reveal ? "Hide" : "Show"}
       </button>

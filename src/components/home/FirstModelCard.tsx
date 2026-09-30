@@ -286,8 +286,8 @@ function DownloadList({ downloads }: { downloads: Task[] }) {
 const card =
   "rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4";
 const primary =
-  "font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110";
+  "action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110";
 const secondary =
-  "font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
+  "action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";
 const tertiary =
   "font-ui px-2 py-2 text-sm text-[color:var(--muted)] underline-offset-2 transition-colors hover:text-[color:var(--foreground)] hover:underline";

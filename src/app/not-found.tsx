@@ -43,7 +43,7 @@ export default function NotFound() {
         </p>
         <Link
           href="/"
-          className="font-ui inline-block rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110"
+          className="action-button action-button--primary font-ui inline-block rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110"
         >
           Go to Home
         </Link>
