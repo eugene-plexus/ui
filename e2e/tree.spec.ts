@@ -139,7 +139,8 @@ test.describe("the resource tree", () => {
     const cases: [string, string[]][] = [
       ["install", ["home", "playground", "apps", "logs", "config"]],
       ["library", ["models", "discover", "folders", "config"]],
-      ["backends", ["overview", "add"]],
+      // P8 (01fd6ee) added "Add a search account"; this case predated it.
+      ["backends", ["overview", "add", "search"]],
       ["control", ["overview", "config"]],
       ["gateway", ["metrics", "routing", "config"]],
     ];
