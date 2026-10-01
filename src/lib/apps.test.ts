@@ -86,6 +86,8 @@ describe("updateAvailable", () => {
       ui: true,
       configTrio: true,
       localActions: false,
+      signIn: false,
+      signInCallbackPath: "/oidc/callback",
       uses: ["inference"],
     },
     origin: "catalogue",

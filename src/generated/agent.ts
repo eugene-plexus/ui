@@ -68,6 +68,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/oidc/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                path: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Signing in with Eugene, through this machine
+         * @description Forwards to the control root's `/oidc/*` (`control.yaml`), the
+         *     OpenID Connect provider (C2, `sign-in-with-eugene.md`). Public:
+         *     it is the sign-in page and the provider's endpoints, and the root
+         *     authenticates what needs it. So the issuer an app is configured
+         *     with is this machine's address and `/oidc`.
+         *
+         *     This agent passes the host and scheme it served, after its host
+         *     allowlist has accepted them, and the caller's address for the
+         *     sign-in limiter, with a token of its own the root checks: the
+         *     root trusts those three from an agent and from nothing else.
+         */
+        get: operations["forwardOidcGet"];
+        put?: never;
+        /**
+         * Signing in with Eugene, through this machine
+         * @description As GET.
+         */
+        post: operations["forwardOidcPost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/logs/stream": {
         parameters: {
             query?: never;
@@ -4824,7 +4859,10 @@ export interface components {
          *     `EUGENE_PLEXUS_APP_GATEWAY_URL` (absent when none could be
          *     found), keeps its state under `EUGENE_PLEXUS_APP_DATA_DIR`, and —
          *     with `configTrio` — requires `EUGENE_PLEXUS_APP_ADMIN_TOKEN` as
-         *     the bearer on its config trio.
+         *     the bearer on its config trio. With `signIn`, it signs people in
+         *     with Eugene (C2) using `EUGENE_PLEXUS_APP_OIDC_ISSUER`,
+         *     `EUGENE_PLEXUS_APP_OIDC_CLIENT_ID` and the secret in the file
+         *     named by `EUGENE_PLEXUS_APP_OIDC_SECRET_FILE`.
          */
         AppManifest: {
             /**
@@ -4897,6 +4935,19 @@ export interface components {
              *     ]
              */
             uses: components["schemas"]["AppHubSurface"][];
+            /**
+             * @description Whether the app signs people in with Eugene (C2). At install
+             *     the agent registers it as an app that signs in with Eugene,
+             *     with `signInCallbackPath` on each address it is opened at, and
+             *     hands it the client's id and secret. Uninstall removes it.
+             * @default false
+             */
+            signIn: boolean;
+            /**
+             * @description Where on the app's own origin Eugene sends a person back after signing in.
+             * @default /oidc/callback
+             */
+            signInCallbackPath: string;
             /**
              * @description Whether the app runs anything a model chooses on this machine:
              *     a file or shell tool, an MCP server, its own plugins. In the
@@ -5104,6 +5155,15 @@ export interface components {
             account?: string;
             /** @description What its manifest declares (`AppManifest.localActions`). */
             localActions?: boolean;
+            /** @description Whether it signs people in with Eugene (`AppManifest.signIn`). */
+            signIn?: boolean;
+            /**
+             * @description The id it signs people in with, as an app registered with the
+             *     control root (`/v1/oidc/clients` on `control.yaml`). Absent when
+             *     it does not sign people in, or its registration failed (`detail`
+             *     says why).
+             */
+            oidcClientId?: string;
             /** Format: date-time */
             installedAt?: string;
             pid?: number;
@@ -6061,6 +6121,48 @@ export interface operations {
             413: components["responses"]["Problem"];
             415: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
+        };
+    };
+    forwardOidcGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The provider's answer, passed through. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["Problem"];
+        };
+    };
+    forwardOidcPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The provider's answer, passed through. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["Problem"];
         };
     };
     followLogs: {

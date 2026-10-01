@@ -49,7 +49,8 @@ export type IconName =
   | "Route"
   | "Blocks"
   | "ScrollText"
-  | "Search";
+  | "Search"
+  | "Users";
 
 /**
  * A colour *role*, not a colour. `left` and `right` resolve to the
@@ -306,6 +307,18 @@ export const SCREENS: readonly Screen[] = [
     layer: "control",
     spans: ["agent"],
     blurb: "The machines in this install, their versions, and the token a new one joins with.",
+  },
+  {
+    // C2 (sign-in-with-eugene.md §4): who may sign in to apps, and the
+    // apps that sign in with Eugene. Filed under `control` because both
+    // live in the root's replicated log; on the install root's menu
+    // because they answer for the whole install.
+    href: "/people",
+    label: "People",
+    icon: "Users",
+    layer: "control",
+    spans: ["tools"],
+    blurb: "Who may sign in to apps, and the apps that sign in with Eugene.",
   },
 ] as const;
 

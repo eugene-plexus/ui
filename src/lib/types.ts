@@ -216,6 +216,15 @@ export type ComponentPlacementList = ControlComponents["schemas"]["ComponentPlac
 export type RuntimePlacement = ControlComponents["schemas"]["RuntimePlacement"];
 export type RuntimePlacementList = ControlComponents["schemas"]["RuntimePlacementList"];
 
+// C2: the people who sign in to apps, and the apps that sign in with Eugene.
+export type Person = ControlComponents["schemas"]["Person"];
+export type PersonList = ControlComponents["schemas"]["PersonList"];
+export type PersonCreateRequest = ControlComponents["schemas"]["PersonCreateRequest"];
+export type PersonUpdateRequest = ControlComponents["schemas"]["PersonUpdateRequest"];
+export type OidcClient = ControlComponents["schemas"]["OidcClient"];
+export type OidcClientList = ControlComponents["schemas"]["OidcClientList"];
+export type OidcClientCreated = ControlComponents["schemas"]["OidcClientCreated"];
+
 // --- Library: the operator's own model directories (M2) ---------------
 //
 // The library holds what is on disk; the agent holds what is running.

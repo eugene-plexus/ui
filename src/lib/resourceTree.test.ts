@@ -302,11 +302,19 @@ describe("the root is the install, not the control root", () => {
     // what to do next, not on a diagnostic. The Inference page left for
     // the Backends branch and Preferences folded into Settings
     // (2026-09-29).
-    expect(tree.pages.map((p) => p.id)).toEqual(["home", "playground", "apps", "logs", "config"]);
+    expect(tree.pages.map((p) => p.id)).toEqual([
+      "home",
+      "playground",
+      "apps",
+      "people",
+      "logs",
+      "config",
+    ]);
     expect(tree.pages.map((p) => p.route)).toEqual([
       "/",
       "/playground",
       "/apps",
+      "/people",
       "/logs",
       "/config",
     ]);
@@ -669,6 +677,7 @@ describe("an old link still lands on the right object", () => {
       "home",
       "playground",
       "apps",
+      "people",
       "logs",
       "config",
     ]);
@@ -726,6 +735,7 @@ describe("installed apps", () => {
     expect(findSelected(tree, "app:chat")?.sel).toBe("app:chat@nas");
     expect(configTabFor(sel!, "nas")).toBeNull();
     expect(defaultSelectionFor("/apps")).toBe("install");
+    expect(defaultSelectionFor("/people")).toBe("install");
   });
 });
 

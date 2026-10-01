@@ -51,4 +51,7 @@ export const COPY_SCREENS: Record<string, string[]> = {
   // Not on the golden path, but a screen a person with two machines
   // meets, and it carried "epoch", "Mint" and "topology" in plain view.
   nodes: ["app/nodes", "components/NodeUpdateCard.tsx", "lib/updates.ts"],
+  // C2: the owner of a small business reads this page to add the people
+  // who sign in to the apps.
+  people: ["app/people", "lib/people.ts"],
 };

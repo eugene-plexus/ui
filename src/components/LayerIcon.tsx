@@ -17,6 +17,7 @@ import {
   Server,
   ShieldCheck,
   Terminal,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -59,6 +60,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   Route,
   Blocks,
   ScrollText,
+  Users,
 };
 
 export function LayerIcon({

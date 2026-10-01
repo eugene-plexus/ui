@@ -276,6 +276,22 @@ function Overview({
             </dd>
           </>
         )}
+        {app.signIn && (
+          <>
+            <dt className="text-[color:var(--muted)]">Sign-in</dt>
+            <dd data-testid="app-sign-in">
+              {app.oidcClientId ? "People sign in to it with Eugene." : "Not set up yet."}
+              <span className="text-[color:var(--muted)]">
+                {" "}
+                Choose who may use it on{" "}
+                <Link href="/people" className="underline">
+                  People
+                </Link>
+                .
+              </span>
+            </dd>
+          </>
+        )}
         {app.keyName && (
           <>
             <dt className="text-[color:var(--muted)]">Its key</dt>

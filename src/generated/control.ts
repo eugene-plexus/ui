@@ -107,6 +107,278 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/oidc/.well-known/openid-configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * OpenID Provider metadata (OIDC Discovery 1.0)
+         * @description Public. The issuer is `oidcIssuer` when the operator has set one,
+         *     otherwise the address the request arrived at through an agent
+         *     (D11). Offers the code flow only, PKCE `S256`, RS256 ID tokens and
+         *     `client_secret_basic`.
+         */
+        get: operations["oidcDiscovery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/jwks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The provider's public keys (JWK Set)
+         * @description Public. The RSA key every sign-in token is signed with, by `kid`; during a rotation, the old one too.
+         */
+        get: operations["oidcJwks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The sign-in page
+         * @description Public. Validates the request and shows the sign-in form: the
+         *     passphrase alone on an install with no people, a name and a
+         *     password once there are people (D4). A `client_id` or
+         *     `redirect_uri` that does not match a registered app is an error
+         *     page and never a redirect; anything else wrong goes back to the app
+         *     as `error=` (RFC 6749 §4.1.2.1). `code_challenge` with `S256`,
+         *     `state` and `nonce` are required.
+         */
+        get: operations["oidcAuthorize"];
+        put?: never;
+        /**
+         * Submit the sign-in form
+         * @description Form fields: `request` (the pending request the page was rendered
+         *     for, good once, for 10 minutes), `password`, and `name` once the
+         *     install has people. Success redirects to the app with `code` and
+         *     `state`. A wrong name or password answers the page again with the
+         *     same sentence for both. Five failures a minute per address, or per
+         *     name, is 429.
+         *
+         *     A person may also send `new_password` and `new_password_again`
+         *     (D10): once their password checks, it is replaced, and every
+         *     earlier sign-in of theirs ends at its next refresh. Two that differ,
+         *     or one under 12 characters, answer the page again and change
+         *     nothing; the owner's passphrase is changed on the console, and
+         *     sending one for `operator` is 400.
+         */
+        post: operations["oidcSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trade a code, or a refresh token, for tokens
+         * @description `client_secret_basic`. `grant_type` is `authorization_code` (with
+         *     `code`, `code_verifier`, `redirect_uri`) or `refresh_token`. A
+         *     refresh is refused when the person has been disabled or deleted,
+         *     their password changed after the sign-in, or the sign-in was
+         *     revoked (D6).
+         */
+        post: operations["oidcToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/userinfo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who the access token was issued for
+         * @description A bearer access token from `/oidc/token`. The same claims as the ID token's, less the token ones.
+         */
+        get: operations["oidcUserinfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out by revoking a refresh token (RFC 7009)
+         * @description `client_secret_basic`. Revokes the sign-in the token belongs to. 200 for a token already invalid, as RFC 7009 requires.
+         */
+        post: operations["oidcRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The people who may sign in to apps
+         * @description Operator only. Never a password or its verifier.
+         */
+        get: operations["listPeople"];
+        put?: never;
+        /**
+         * Add a person
+         * @description Operator only; active, unlocked root. A name is unique, compared case-folded, and `operator` is the owner's.
+         */
+        post: operations["createPerson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/people/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a person
+         * @description Operator only. Their sign-ins stop at their apps' next refresh.
+         */
+        delete: operations["deletePerson"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a person's name, apps, or whether they are disabled
+         * @description Operator only. Disabling refuses their next sign-in and their apps' next refresh.
+         */
+        patch: operations["updatePerson"];
+        trace?: never;
+    };
+    "/v1/people/{id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a person's password
+         * @description Operator only: how a forgotten password is reset (D10, Troy). A
+         *     sign-in from before the new password does not refresh. At least
+         *     12 characters, as the passphrase.
+         */
+        put: operations["setPersonPassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/oidc/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The apps that sign in with Eugene
+         * @description Operator only. Never a secret.
+         */
+        get: operations["listOidcClients"];
+        put?: never;
+        /**
+         * Register an app that signs in with Eugene
+         * @description Operator only; active, unlocked root. Redirect URIs are matched
+         *     exactly (RFC 9700 §4.1); plain `http` is allowed, because a home
+         *     network has no certificates. The secret is in this answer and
+         *     nowhere else.
+         */
+        post: operations["createOidcClient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/oidc/clients/{clientId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Stop an app signing in with Eugene
+         * @description Operator only. Its sign-ins stop at its next refresh.
+         */
+        delete: operations["deleteOidcClient"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/nodes": {
         parameters: {
             query?: never;
@@ -1480,7 +1752,12 @@ export interface components {
             at?: string;
         };
         /**
-         * @description The complete set of control-state mutations. Closed on purpose:
+         * @description **The seven sign-in operations (C2, 2026-10-01)** replicate people,
+         *     the apps that sign in, the provider's sealed RSA key and revoked
+         *     sign-ins, so a promoted standby signs people in as the old root
+         *     did and keeps refusing what it refused.
+         *
+         *     The complete set of control-state mutations. Closed on purpose:
          *     **every change goes through one writer and one ordered path**, and
          *     an operation that is not in this list is an operation that would
          *     not replicate. Adding a mutation means adding an op here.
@@ -1508,7 +1785,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -1635,6 +1912,145 @@ export interface components {
              *     holding the passphrase.
              */
             controlPublicKey?: string;
+            /**
+             * @description The people who may sign in to apps, as `putPerson`,
+             *     `setPersonPassword` and `deletePerson` left them, with their
+             *     Argon2id verifiers: as `passphraseVerifier` is here, and for the
+             *     same reason (a promoted standby signs people in).
+             */
+            people?: components["schemas"]["SnapshotPerson"][];
+            oidcClients?: components["schemas"]["SnapshotOidcClient"][];
+            /**
+             * @description The provider's RSA keys, newest first, each sealed under the
+             *     passphrase-derived key as `sealedSigningKey` is.
+             */
+            oidcKeys?: components["schemas"]["SnapshotOidcKey"][];
+            /** @description Sign-ins revoked at `/oidc/revoke` and not yet expired, by their `jti`. */
+            revokedSignIns?: components["schemas"]["RevokedSession"][];
+        };
+        SnapshotPerson: {
+            id: string;
+            name: string;
+            displayName?: string;
+            /** @description Argon2id, the passphrase's parameters. */
+            passwordVerifier: string;
+            apps?: string[] | null;
+            disabled: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            passwordChangedAt: string;
+        };
+        SnapshotOidcClient: {
+            clientId: string;
+            name: string;
+            /** @description SHA-256 of the 32 random bytes of the secret, hex. */
+            secretVerifier: string;
+            redirectUris: string[];
+            owner?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SnapshotOidcKey: {
+            kid: string;
+            sealedKey: string;
+            publicJwk: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * @description Someone the operator lets sign in to apps (C2). Not an operator:
+         *     a person's sign-in opens their apps and nothing in the hub.
+         */
+        Person: {
+            /** @description Stable; the `sub` in their ID tokens. */
+            id: string;
+            /** @description What they sign in with. Unique, compared case-folded. */
+            name: string;
+            displayName?: string;
+            /** @description The `clientId`s they may sign in to. Null is every app on the install. */
+            apps?: string[] | null;
+            disabled: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            passwordChangedAt: string;
+        };
+        PersonList: {
+            people: components["schemas"]["Person"][];
+            /** @description The name the owner signs in with, once the install has people. */
+            operatorName?: string;
+        };
+        PersonCreateRequest: {
+            name: string;
+            displayName?: string;
+            password: string;
+            apps?: string[] | null;
+        };
+        PersonUpdateRequest: {
+            displayName?: string;
+            apps?: string[] | null;
+            disabled?: boolean;
+        };
+        PersonPasswordRequest: {
+            password: string;
+        };
+        OidcClient: {
+            clientId: string;
+            name: string;
+            redirectUris: string[];
+            /** @description `app:<id>@<node>` for an app the registry installed; absent for one the operator added. */
+            owner?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        OidcClientList: {
+            clients: components["schemas"]["OidcClient"][];
+            /** @description `oidcIssuer` when the operator set one; otherwise absent, and an app uses the address it reaches Eugene at, with `/oidc`. */
+            issuer?: string;
+        };
+        OidcClientCreateRequest: {
+            name: string;
+            redirectUris: string[];
+            owner?: string;
+        };
+        OidcClientCreated: {
+            client: components["schemas"]["OidcClient"];
+            /** @description In this answer only. */
+            clientSecret: string;
+        };
+        OidcDiscovery: {
+            issuer: string;
+            authorization_endpoint: string;
+            token_endpoint: string;
+            userinfo_endpoint?: string;
+            revocation_endpoint?: string;
+            jwks_uri: string;
+            response_types_supported?: string[];
+            id_token_signing_alg_values_supported?: string[];
+            code_challenge_methods_supported?: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        JsonWebKeySet: {
+            keys: {
+                [key: string]: unknown;
+            }[];
+        };
+        OidcTokenResponse: {
+            access_token: string;
+            /** @enum {string} */
+            token_type: "Bearer";
+            expires_in: number;
+            id_token: string;
+            refresh_token?: string;
+            scope?: string;
+        };
+        OAuthError: {
+            error: string;
+            error_description?: string;
         };
         PromoteRequest: {
             /**
@@ -2716,6 +3132,449 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Revocation durably recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    oidcDiscovery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcDiscovery"];
+                };
+            };
+        };
+    };
+    oidcJwks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The JWK Set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JsonWebKeySet"];
+                };
+            };
+        };
+    };
+    oidcAuthorize: {
+        parameters: {
+            query: {
+                response_type: "code";
+                client_id: string;
+                redirect_uri: string;
+                scope: string;
+                state: string;
+                nonce: string;
+                code_challenge: string;
+                code_challenge_method: "S256";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sign-in page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Back to the app with `error=`. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An unknown app or redirect URI, as a page. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+        };
+    };
+    oidcSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    [key: string]: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The page again, with why. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Back to the app with `code` and `state`. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description The request expired or its app is gone, or a new passphrase was
+             *     sent for the owner; the page says which.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description This person is turned off, or may not use this app; the page
+             *     says which.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Too many failed sign-ins; the page says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+        };
+    };
+    oidcToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    [key: string]: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcTokenResponse"];
+                };
+            };
+            /** @description OAuth error (`invalid_grant`, `invalid_request`, `unsupported_grant_type`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `invalid_client`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+        };
+    };
+    oidcUserinfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Claims. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, expired or revoked access token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    oidcRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    [key: string]: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Revoked, or nothing to revoke. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `invalid_client`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+        };
+    };
+    listPeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The people. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonList"];
+                };
+            };
+        };
+    };
+    createPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The person. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    deletePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updatePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The person. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    setPersonPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Set. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    listOidcClients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The apps. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcClientList"];
+                };
+            };
+        };
+    };
+    createOidcClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OidcClientCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The app and its one-time secret. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcClientCreated"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    deleteOidcClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
             204: {
                 headers: {
                     [name: string]: unknown;

@@ -193,6 +193,8 @@ const PAGES: Record<string, PageRef[]> = {
     // install root because installing is a question about the install --
     // which machine is a picker on the page, the way Library's launch is.
     { id: "apps", label: "Apps", route: "/apps", icon: "Blocks" },
+    // Who may sign in to apps, and the apps that sign in with Eugene (C2).
+    { id: "people", label: "People", route: "/people", icon: "Users" },
     // Every machine's log on one timeline (2026-09-27).
     { id: "logs", label: "Logs", route: "/logs", icon: "ScrollText" },
     // Every setting on the install, by topic, with a search box
@@ -959,6 +961,7 @@ export function defaultSelectionFor(
     case "/":
     case "/playground":
     case "/apps":
+    case "/people":
       return "install";
     // The Inference page and the add-a-backend form belong to the branch
     // that lists the backends (2026-09-29).
