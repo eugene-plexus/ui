@@ -85,6 +85,7 @@ describe("updateAvailable", () => {
       python: "3.12",
       ui: true,
       configTrio: true,
+      localActions: false,
       uses: ["inference"],
     },
     origin: "catalogue",

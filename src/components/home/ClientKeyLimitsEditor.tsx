@@ -9,6 +9,7 @@ export const DEFAULT_CLIENT_LIMITS: ClientKeyLimits = {
   localOnly: false,
   allowedModels: null,
   allowedTools: null,
+  writeLogs: false,
   maxConcurrentRequests: 2,
   requestsPerMinute: 60,
 };
@@ -106,6 +107,21 @@ export function ClientKeyLimitsEditor({
           ? "A local-only key never searches."
           : "Turn this off to keep a key's prompts on this network."}
       </p>
+      {/* C1: the agent's log ingress takes lines only from a key with this
+          on. Every app Eugene installs gets it; any other key, on request. */}
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={value.writeLogs === true}
+          onChange={(e) => onChange({ ...value, writeLogs: e.target.checked })}
+          data-testid="key-write-logs"
+        />
+        Let apps using this key send their logs to Eugene
+      </label>
+      <p className="text-[color:var(--muted)]">
+        What they send appears on the Logs page under the key&rsquo;s name. It lets them write logs
+        and nothing else: reading the logs still needs you.
+      </p>
       {selected && (
         <label className="block" htmlFor={`${id}-models`}>
           Allowed model IDs (one per line)
@@ -183,5 +199,6 @@ export function describeClientLimits(value?: ClientKeyLimits | null): string {
         ? "No models allowed"
         : value.allowedModels.join(", ");
   const search = mayWebSearch(value) ? "" : " · No web search";
-  return `${models}${value.localOnly ? " · Local-only" : ""}${search} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute`;
+  const logs = value.writeLogs ? " · Sends logs" : "";
+  return `${models}${value.localOnly ? " · Local-only" : ""}${search}${logs} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute`;
 }

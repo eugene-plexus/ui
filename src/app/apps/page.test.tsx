@@ -144,6 +144,40 @@ describe("installing", () => {
   });
 });
 
+describe("an app that needs an account of its own (C1)", () => {
+  it("cannot be installed where none can be made, and the page says why", async () => {
+    handlers.set("GET agent/v1/app-catalogue", () => ({
+      status: 200,
+      body: {
+        apps: [{ manifest: MANIFEST, origin: "catalogue" }],
+        installable: true,
+        ownAccounts: false,
+        ownAccountsReason: "This install runs as you, from a sign-in task.",
+      },
+    }));
+    render(<AppsPage />);
+    const button = await screen.findByTestId("apps-install-chat", {}, { timeout: 5000 });
+    expect(button).toBeDisabled();
+    expect(screen.getByTestId("apps-needs-account-chat")).toHaveTextContent("sign-in task");
+  });
+
+  it("can be installed there when it runs nothing a model chooses", async () => {
+    handlers.set("GET agent/v1/app-catalogue", () => ({
+      status: 200,
+      body: {
+        apps: [{ manifest: { ...MANIFEST, localActions: false }, origin: "catalogue" }],
+        installable: true,
+        ownAccounts: false,
+        ownAccountsReason: "This install runs as you, from a sign-in task.",
+      },
+    }));
+    render(<AppsPage />);
+    const button = await screen.findByTestId("apps-install-chat", {}, { timeout: 5000 });
+    expect(button).toBeEnabled();
+    expect(screen.queryByTestId("apps-needs-account-chat")).toBeNull();
+  });
+});
+
 describe("custom apps", () => {
   it("shows the refusal that names the setting, and links to it", async () => {
     render(<AppsPage />);

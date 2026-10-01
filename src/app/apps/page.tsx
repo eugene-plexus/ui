@@ -349,7 +349,8 @@ function Catalogue({
 
       {catalogue && catalogue.apps.length === 0 && (
         <p className="text-sm text-[color:var(--muted)]" data-testid="apps-catalogue-empty">
-          This release does not include any apps yet. A chat app is planned next.
+          This release does not include any apps yet. Workbench, Eugene&rsquo;s own app, is planned
+          next.
         </p>
       )}
 
@@ -361,6 +362,8 @@ function Catalogue({
               entry={entry}
               install={installs[entry.manifest.id] ?? null}
               installable={catalogue.installable}
+              ownAccounts={catalogue.ownAccounts !== false}
+              accountsReason={catalogue.ownAccountsReason ?? null}
               onInstall={() => install(entry.manifest.id)}
               onRemove={() => removeCustom(entry.manifest.id)}
             />
@@ -377,12 +380,16 @@ function CatalogueEntry({
   entry,
   install,
   installable,
+  ownAccounts,
+  accountsReason,
   onInstall,
   onRemove,
 }: {
   entry: AppCatalogueEntry;
   install: AppInstall | null;
   installable: boolean;
+  ownAccounts: boolean;
+  accountsReason: string | null;
   onInstall: () => void;
   onRemove: () => void;
 }) {
@@ -390,6 +397,10 @@ function CatalogueEntry({
   const running = install !== null && !installFinished(install);
   const update = updateAvailable(entry);
   const installedHere = !!entry.installedVersion && !update;
+  // C1: an app that runs what a model chooses needs an account of its own,
+  // and the agent refuses it where none can be made. An entry that does
+  // not say is treated as one that does, as the agent treats it.
+  const needsAccount = manifest.localActions !== false && !ownAccounts;
   return (
     <li
       className="flex flex-col gap-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2"
@@ -413,7 +424,7 @@ function CatalogueEntry({
             <button
               type="button"
               className={primaryClass}
-              disabled={!installable || running}
+              disabled={!installable || running || needsAccount}
               onClick={onInstall}
               data-testid={`apps-install-${manifest.id}`}
             >
@@ -436,6 +447,15 @@ function CatalogueEntry({
         </span>
       </div>
       {manifest.summary && <p className="text-sm text-[color:var(--muted)]">{manifest.summary}</p>}
+      {needsAccount && !installedHere && (
+        <p
+          className="status-warn rounded-[var(--radius)] px-2 py-1 text-sm"
+          data-testid={`apps-needs-account-${manifest.id}`}
+        >
+          {manifest.name} runs actions a model chooses on this machine, so it needs an account of
+          its own, and this install cannot make one. {accountsReason}
+        </p>
+      )}
       {install && (
         <div className="text-sm" data-testid={`apps-install-state-${manifest.id}`}>
           <span

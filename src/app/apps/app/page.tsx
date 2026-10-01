@@ -54,6 +54,7 @@ function Inner() {
   const [busy, setBusy] = useState(false);
   const [purge, setPurge] = useState(false);
   const [catalogueVersion, setCatalogueVersion] = useState<string | null>(null);
+  const [accountsReason, setAccountsReason] = useState<string | null>(null);
   const [install, setInstall] = useState<AppInstall | null>(null);
 
   const target = localNode === undefined ? null : agentTarget(node, localNode);
@@ -77,6 +78,7 @@ function Inner() {
     const catalogue = await api.get<AppCatalogue>(t, "/v1/app-catalogue").catch(() => null);
     const entry = catalogue?.apps.find((a) => a.manifest.id === appId);
     setCatalogueVersion(entry && updateAvailable(entry) ? entry.manifest.version : null);
+    setAccountsReason(catalogue?.ownAccountsReason ?? null);
   }, [appId, node, localNode]);
   usePolling(load, 3000);
 
@@ -148,6 +150,7 @@ function Inner() {
               busy={busy}
               pageHost={pageHost}
               catalogueVersion={catalogueVersion}
+              accountsReason={accountsReason}
               install={install}
               purge={purge}
               onPurge={setPurge}
@@ -169,6 +172,7 @@ function Overview({
   busy,
   pageHost,
   catalogueVersion,
+  accountsReason,
   install,
   purge,
   onPurge,
@@ -182,6 +186,7 @@ function Overview({
   busy: boolean;
   pageHost: string;
   catalogueVersion: string | null;
+  accountsReason: string | null;
   install: AppInstall | null;
   purge: boolean;
   onPurge: (v: boolean) => void;
@@ -245,6 +250,32 @@ function Overview({
         </dd>
         <dt className="text-[color:var(--muted)]">Port</dt>
         <dd className="font-mono">{app.port}</dd>
+        {app.isolation && (
+          <>
+            <dt className="text-[color:var(--muted)]">Runs as</dt>
+            <dd data-testid="app-account">
+              {app.isolation === "own_account" ? (
+                <>
+                  <span className="font-mono break-all">{app.account}</span>
+                  <span className="text-[color:var(--muted)]">
+                    {" "}
+                    — an account of its own, which cannot open Eugene&rsquo;s keys or another
+                    app&rsquo;s files.
+                  </span>
+                </>
+              ) : (
+                <>
+                  Eugene&rsquo;s own account.
+                  <span className="text-[color:var(--muted)]">
+                    {" "}
+                    {accountsReason ?? "This install cannot make accounts for apps."} Only apps that
+                    run nothing a model chooses are installed here.
+                  </span>
+                </>
+              )}
+            </dd>
+          </>
+        )}
         {app.keyName && (
           <>
             <dt className="text-[color:var(--muted)]">Its key</dt>

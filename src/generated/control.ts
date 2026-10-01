@@ -937,6 +937,19 @@ export interface components {
              *     public internet.
              */
             allowedTools?: string[] | null;
+            /**
+             * @description Whether this key may send log records to an agent's log ingress
+             *     (`POST /v1/logs` on `agent.yaml`, C1 in `workbench.md`). It
+             *     grants nothing else: reading logs stays operator-only.
+             *
+             *     Every app the registry installs gets a key with this on,
+             *     because the launcher that runs an app in its own account
+             *     forwards what the app prints. Any other key gets it when the
+             *     operator turns it on, so a tool outside the registry sends its
+             *     logs the same way ours do.
+             * @default false
+             */
+            writeLogs: boolean;
             /** @default 2 */
             maxConcurrentRequests: number;
             /** @default 60 */

@@ -79,3 +79,23 @@ describe("the limits say what is in effect (settings never lie, 2026-09-30)", ()
     expect(JSON.stringify(seen.at(-1))).not.toContain("maxConcurrentRequests");
   });
 });
+
+describe("the send-logs switch (C1)", () => {
+  it("is off by default, turns writeLogs on, and says so in the summary", () => {
+    const seen: ClientKeyLimits[] = [];
+    render(<Harness start={DEFAULT_CLIENT_LIMITS} seen={seen} />);
+    const box = screen.getByTestId("key-write-logs");
+    expect(box).not.toBeChecked();
+    fireEvent.click(box);
+    expect(seen.at(-1)?.writeLogs).toBe(true);
+    expect(describeClientLimits({ ...DEFAULT_CLIENT_LIMITS, writeLogs: true })).toMatch(
+      /Sends logs/,
+    );
+    expect(describeClientLimits(DEFAULT_CLIENT_LIMITS)).not.toMatch(/logs/);
+  });
+
+  it("shows a key that may send as checked", () => {
+    render(<Harness start={{ ...DEFAULT_CLIENT_LIMITS, writeLogs: true }} seen={[]} />);
+    expect(screen.getByTestId("key-write-logs")).toBeChecked();
+  });
+});
