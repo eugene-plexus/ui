@@ -14,7 +14,7 @@ function engine(overrides: Partial<EngineDescriptor>): EngineDescriptor {
 
 const llama = engine({ engine: "llama_cpp", modelFormats: ["gguf"] });
 const vllm = engine({ engine: "vllm", modelFormats: ["safetensors"] });
-const mlx = engine({ engine: "mlx", modelFormats: ["safetensors"], experimental: true });
+const mlx = engine({ engine: "mlx", modelFormats: ["safetensors"], experimental: false });
 
 function model(overrides: Partial<LibraryModel>): LibraryModel {
   return {
@@ -55,18 +55,23 @@ describe("capableEngines", () => {
 });
 
 describe("offeredOnThisNode", () => {
-  it("non-experimental engines are always offered", () => {
-    const missing = engine({ available: false });
-    expect(offeredOnThisNode(missing)).toBe(true);
+  it("an engine Eugene installs itself is listed even when it cannot be installed now", () => {
+    // "Not installable" on llama.cpp is a reason worth reading: GitHub's
+    // hourly limit, a build not published yet.
+    const refused = engine({
+      engine: "llama_cpp",
+      available: false,
+      acquisition: { policy: "managed", installable: false, reason: "GitHub's limit..." },
+    } as Partial<EngineDescriptor>);
+    expect(offeredOnThisNode(refused)).toBe(true);
   });
 
-  it("an experimental engine with a real install path is offered", () => {
+  it("a hand-installed engine with a real install path is offered", () => {
     // The agent's manualInstall.command is its own judgment of
     // "appropriate hardware" — present only on Apple silicon for MLX —
     // so the UI hardcodes no platform list.
     const onAMac = engine({
       engine: "mlx",
-      experimental: true,
       available: false,
       acquisition: {
         policy: "manual",
@@ -77,17 +82,22 @@ describe("offeredOnThisNode", () => {
     expect(offeredOnThisNode(onAMac)).toBe(true);
   });
 
-  it("an experimental engine someone already installed is offered", () => {
-    const installed = engine({ engine: "mlx", experimental: true, available: true });
+  it("a hand-installed engine someone already installed is offered", () => {
+    const installed = engine({
+      engine: "mlx",
+      available: true,
+      acquisition: { policy: "manual", installable: false },
+    } as Partial<EngineDescriptor>);
     expect(offeredOnThisNode(installed)).toBe(true);
   });
 
-  it("an experimental engine on the wrong hardware is hidden", () => {
+  it("MLX on the wrong hardware is hidden, now that it is no longer experimental", () => {
     // "mlx: not installed (not installable here)" on every Windows box
-    // in the install would teach people to skip the engines line.
+    // in the install would teach people to skip the engines line. The
+    // flag that used to hide it went with A4 (2026-09-30).
     const onWindows = engine({
       engine: "mlx",
-      experimental: true,
+      experimental: false,
       available: false,
       acquisition: {
         policy: "manual",
@@ -96,5 +106,28 @@ describe("offeredOnThisNode", () => {
       },
     } as Partial<EngineDescriptor>);
     expect(offeredOnThisNode(onWindows)).toBe(false);
+  });
+
+  it("vLLM where it has no build is hidden, and offered where it has one", () => {
+    const onWindows = engine({
+      engine: "vllm",
+      available: false,
+      acquisition: {
+        policy: "manual",
+        installable: false,
+        manualInstall: { notes: "vLLM has no Windows build and upstream's answer is WSL." },
+      },
+    } as Partial<EngineDescriptor>);
+    const onLinuxCuda = engine({
+      engine: "vllm",
+      available: false,
+      acquisition: {
+        policy: "manual",
+        installable: false,
+        manualInstall: { command: "uv pip install vllm --torch-backend=auto" },
+      },
+    } as Partial<EngineDescriptor>);
+    expect(offeredOnThisNode(onWindows)).toBe(false);
+    expect(offeredOnThisNode(onLinuxCuda)).toBe(true);
   });
 });
