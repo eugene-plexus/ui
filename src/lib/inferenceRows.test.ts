@@ -190,6 +190,72 @@ describe("buildRows joins and fallbacks", () => {
     ]);
   });
 
+  it("a companion whose engine crashed is joined to its runtime, not shown as an external backend", () => {
+    // The live install, 2026-10-01: the engine failed at launch, its
+    // companion driver could not report the runtime it follows, and the
+    // screen showed the driver as "external backend · runs on its own"
+    // on one row and the crashed runtime with no driver on another.
+    const runtime = "huihui-qwen3-8-27b-abliterated-q6-k-l-built-for-amish-statio";
+    const rows = buildRows(
+      {
+        ...LIVE,
+        drivers: {
+          drivers: [
+            {
+              name: `${runtime}-driver`,
+              node: "Amish_Station",
+              url: "http://192.168.16.75:8093/",
+              reachable: false,
+              error: "connection refused",
+            },
+          ],
+        },
+        routing: null,
+        placement: {
+          components: [
+            { node: "Amish_Station", name: `${runtime}-driver`, kind: "inference-driver" },
+          ],
+        },
+        runtimes: {
+          runtimes: [
+            {
+              node: "Amish_Station",
+              name: runtime,
+              modelAlias: "Huihui-Qwen3.8-27B-abliterated-Q6_K_L",
+              status: "crashed",
+              engine: "llama_cpp",
+            },
+          ],
+        },
+      },
+      "Amish_Station",
+    );
+    expect(rows).toHaveLength(1);
+    expect(first(rows).driver).toBe(`${runtime}-driver`);
+    expect(first(rows).runtime).toBe(runtime);
+    expect(first(rows).runtimeStatus).toBe("crashed");
+    expect(first(rows).model).toBe("Huihui-Qwen3.8-27B-abliterated-Q6_K_L");
+  });
+
+  it("a driver named like another machine's runtime is not joined to it", () => {
+    const rows = buildRows(
+      {
+        ...LIVE,
+        drivers: {
+          drivers: [{ name: "qwen-driver", node: "laptop", reachable: false }],
+        },
+        routing: null,
+        placement: null,
+        runtimes: {
+          runtimes: [{ node: "gpu-box", name: "qwen", status: "ready", engine: "llama_cpp" }],
+        },
+      },
+      null,
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.driver === "qwen-driver")?.runtime).toBeNull();
+  });
+
   it("without a control root, runtimes come from the local agent and are placed on this node", () => {
     const rows = buildRows(
       {

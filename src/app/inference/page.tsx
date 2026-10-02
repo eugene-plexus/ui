@@ -706,6 +706,14 @@ function RowView({
             <span className="font-mono">{row.engine ?? "engine"}</span> runtime{" "}
             <span className="font-mono">{row.runtime}</span>
             <span className="text-[color:var(--muted)]"> · we supervise it</span>
+            {own?.profile?.name && (
+              // Two runtimes of one model, one per profile, read the same
+              // until this line existed (2026-10-01): the runtime's name
+              // is cut to 60 characters and loses the profile's.
+              <div className="text-[0.6875rem]" data-testid="runtime-profile">
+                profile <span className="font-medium">{own.profile.name}</span>
+              </div>
+            )}
           </>
         ) : (
           <>

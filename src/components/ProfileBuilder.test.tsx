@@ -313,12 +313,12 @@ describe("a finished build", () => {
   it("puts the slider on the suggestion and says what it gives", async () => {
     await openBuilder();
     const stop = await screen.findByTestId("build-stop");
-    expect(stop).toHaveTextContent("About 30 words a second · holds about 101 pages · suggested");
+    expect(stop).toHaveTextContent("40 tok/s · 65,536 tokens of context · suggested");
     expect(stop).toHaveTextContent(
-      "Picks the same next word as Max 96 times in 100, on this model.",
+      "Picks the same next token as Max 96 times in 100, on this model.",
     );
     fireEvent.change(screen.getByTestId("build-slider"), { target: { value: "0" } });
-    expect(screen.getByTestId("build-stop")).toHaveTextContent("holds about 13 pages");
+    expect(screen.getByTestId("build-stop")).toHaveTextContent("8,192 tokens of context");
     expect(screen.getByTestId("build-stop")).not.toHaveTextContent("suggested");
     expect(screen.getByTestId("build-stop")).toHaveTextContent(
       "Answers exactly as this file allows.",
@@ -351,7 +351,7 @@ describe("a finished build", () => {
     );
     // The page re-read its profiles, and the new one says it was built.
     const row = await screen.findByTestId("profile-measured");
-    expect(row).toHaveTextContent("Measured on Amish_Station: about 30 words a second");
+    expect(row).toHaveTextContent("Measured on Amish_Station: 40 tok/s");
   });
 
   it("replaces the profile it started from only after asking", async () => {

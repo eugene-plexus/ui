@@ -217,6 +217,7 @@ describe("Run with an engine installed", () => {
       modelPath: MODEL.path,
       flags: { contextSize: 32768 },
       autoStart: true,
+      profile: { id: expect.any(String), name: "default" },
     });
     expect(task.runtime).toBe(RUNTIME);
     expect(task.engine).toBe("llama_cpp");
@@ -734,6 +735,7 @@ describe("Run on another node", () => {
         modelPath: MODEL.path,
         flags: { contextSize: 32768 },
         autoStart: true,
+        profile: { id: expect.any(String), name: "default" },
       },
     });
     expect(routes()).not.toContain("POST agent/v1/runtimes");

@@ -13,10 +13,12 @@
  * build with no quality step, a cancelled one with partial results) is
  * worth asserting without a browser.
  *
- * **The words say what a person gets, not what was set** (§5). A stop on
- * the slider reads *About 36 words a second · holds about 100 pages*;
- * tokens, the depth and the cache type are the expert hint. Words are
- * tokens × 0.75 and a page is 650 tokens, both labelled *about*.
+ * **The words say what a person gets, in the units it is measured in**
+ * (§5). A stop on the slider reads *48 tok/s · 80,128 tokens of context*;
+ * the depth the speed was measured at and the cache type are the expert
+ * hint. It said *words a second* and *pages* until Troy's first build
+ * (2026-10-01): tokens and tok/s are mainstream now, and a conversion
+ * labelled *about* was a second number to doubt.
  */
 
 import type {
@@ -44,17 +46,17 @@ export const ACCURACY_LEVELS: readonly {
   {
     id: "high",
     label: "High",
-    promise: "Picks the same next word as Max at least 96 times in 100, on this model.",
+    promise: "Picks the same next token as Max at least 96 times in 100, on this model.",
   },
   {
     id: "medium",
     label: "Medium",
-    promise: "Picks the same next word as Max at least 92 times in 100, on this model.",
+    promise: "Picks the same next token as Max at least 92 times in 100, on this model.",
   },
   {
     id: "low",
     label: "Low",
-    promise: "Picks the same next word as Max at least 88 times in 100, on this model.",
+    promise: "Picks the same next token as Max at least 88 times in 100, on this model.",
   },
 ];
 
@@ -118,10 +120,8 @@ export function defaultStop(build: ProfileBuild, stops: Stop[]): number {
 
 export function stopLabel(candidate: BuildCandidate): string {
   const speed = comparedSpeed(candidate);
-  const words = speed === null ? null : Math.round(speed * 0.75);
-  const pages = Math.max(1, Math.round(candidate.contextSize / 650));
-  const said = words === null ? "Speed not measured" : `About ${words} words a second`;
-  return `${said} · holds about ${pages.toLocaleString()} pages`;
+  const said = speed === null ? "Speed not measured" : `${Math.round(speed)} tok/s`;
+  return `${said} · ${candidate.contextSize.toLocaleString()} tokens of context`;
 }
 
 const CACHE_WORDS: Record<CacheType, string> = {
@@ -137,8 +137,8 @@ export function stopDetail(candidate: BuildCandidate): string {
   const measured =
     speed === null
       ? "not measured"
-      : `${speed.toFixed(1)} tokens a second${depth ? ` at ${depth.toLocaleString()} tokens deep` : ""}`;
-  return `${measured}, ${candidate.contextSize.toLocaleString()} tokens of context, ${CACHE_WORDS[candidate.cacheType]} cache`;
+      : `${speed.toFixed(1)} tok/s${depth ? ` measured ${depth.toLocaleString()} tokens deep` : ""}`;
+  return `${measured}, ${CACHE_WORDS[candidate.cacheType]} cache`;
 }
 
 /**
@@ -150,7 +150,7 @@ export function qualityLine(build: ProfileBuild, cacheType: CacheType): string |
   if (cacheType === "f16") return "Answers exactly as this file allows.";
   const measured = build.quality.find((q) => q.cacheType === cacheType);
   if (!measured) return null;
-  return `Picks the same next word as Max ${Math.floor(measured.sameTopTokenPercent)} times in 100, on this model.`;
+  return `Picks the same next token as Max ${Math.floor(measured.sameTopTokenPercent)} times in 100, on this model.`;
 }
 
 // --- saving ---------------------------------------------------------------
@@ -287,15 +287,15 @@ export function measuredLine(profile: ModelProfile): string | null {
   const speed = record.deepDecodeTokensPerSecond ?? record.decodeTokensPerSecond ?? null;
   const context = Number(record.flags?.contextSize);
   const parts = [
-    speed === null ? null : `about ${Math.round(speed * 0.75)} words a second`,
+    speed === null ? null : `${Math.round(speed)} tok/s`,
     Number.isFinite(context) && context > 0
-      ? `room for about ${Math.max(1, Math.round(context / 650)).toLocaleString()} pages`
+      ? `${context.toLocaleString()} tokens of context`
       : null,
   ].filter(Boolean);
   const measured = parts.length ? `: ${parts.join(", ")}` : "";
   const quality =
     record.sameTopTokenPercent != null
-      ? ` Same next word as Max ${Math.floor(record.sameTopTokenPercent)} times in 100.`
+      ? ` Same next token as Max ${Math.floor(record.sameTopTokenPercent)} times in 100.`
       : "";
   return editedSinceBuilt(profile)
     ? `Measured on ${record.node} before this profile was edited${measured}. These numbers may no longer describe it.${quality}`

@@ -628,6 +628,7 @@ describe("Home with exactly one model on disk (S3)", () => {
       modelPath: "/models/a.gguf",
       flags: { contextSize: 32768 },
       autoStart: true,
+      profile: { id: expect.any(String), name: "default" },
     });
     expectPlainWords();
   });

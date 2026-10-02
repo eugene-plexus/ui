@@ -56,7 +56,7 @@ export interface paths {
         put?: never;
         /**
          * Create an install-wide client key
-         * @description Operator only; active, unlocked root. Persist the record before returning the token.
+         * @description Operator only, or a member node acting for the operator on its own app's key (`SubjectToken`); active, unlocked root. Persist the record before returning the token.
          */
         post: operations["createClientKey"];
         delete?: never;
@@ -99,7 +99,7 @@ export interface paths {
         post?: never;
         /**
          * Revoke a key throughout the install
-         * @description Operator only; active root. Durable and idempotent. Healthy gateways observe the change within 20 seconds by default; stale policy expires after 60 seconds plus five seconds clock tolerance.
+         * @description Operator only, or a member node acting for the operator on its own app's key (`SubjectToken`); active root. Durable and idempotent. Healthy gateways observe the change within 20 seconds by default; stale policy expires after 60 seconds plus five seconds clock tolerance.
          */
         delete: operations["revokeClientKey"];
         options?: never;
@@ -182,8 +182,8 @@ export interface paths {
          *     (D10): once their password checks, it is replaced, and every
          *     earlier sign-in of theirs ends at its next refresh. Two that differ,
          *     or one under 12 characters, answer the page again and change
-         *     nothing; the owner's passphrase is changed on the console, and
-         *     sending one for `operator` is 400.
+         *     nothing. Eugene's own passphrase is never changed here: sending
+         *     one for `operator` is 400.
          */
         post: operations["oidcSignIn"];
         delete?: never;
@@ -345,10 +345,11 @@ export interface paths {
         put?: never;
         /**
          * Register an app that signs in with Eugene
-         * @description Operator only; active, unlocked root. Redirect URIs are matched
-         *     exactly (RFC 9700 §4.1); plain `http` is allowed, because a home
-         *     network has no certificates. The secret is in this answer and
-         *     nowhere else.
+         * @description Operator only, or a member node acting for the operator on its
+         *     own app (`SubjectToken`, with `owner` `app:<id>@<node>`); active,
+         *     unlocked root. Redirect URIs are matched exactly (RFC 9700 §4.1);
+         *     plain `http` is allowed, because a home network has no
+         *     certificates. The secret is in this answer and nowhere else.
          */
         post: operations["createOidcClient"];
         delete?: never;
@@ -371,7 +372,7 @@ export interface paths {
         post?: never;
         /**
          * Stop an app signing in with Eugene
-         * @description Operator only. Its sign-ins stop at its next refresh.
+         * @description Operator only, or a member node acting for the operator on its own app (`SubjectToken`). Its sign-ins stop at its next refresh.
          */
         delete: operations["deleteOidcClient"];
         options?: never;
@@ -2225,13 +2226,6 @@ export interface components {
              */
             passphrase: string;
         };
-        ClientKeyPolicyEntry: {
-            id: string;
-            /** Format: date-time */
-            expiresAt: string;
-            /** Format: date-time */
-            revokedAt?: string;
-        };
         /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
          *     Eugene Plexus component returns this for 4xx / 5xx responses.
@@ -2271,6 +2265,13 @@ export interface components {
             retryDisposition?: "safe" | "terminal" | "indeterminate";
             /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
             retryAfterSeconds?: number;
+        };
+        ClientKeyPolicyEntry: {
+            id: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            revokedAt?: string;
         };
         /**
          * @description What a key in a `TrustBundle` may issue. Checked by every
@@ -2948,7 +2949,28 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /**
+         * @description **A member node acting for an operator who is acting on it**
+         *     (2026-10-01). The console reaches another machine with a
+         *     five-minute token addressed to that machine alone (`POST
+         *     /v1/auth/token`), and installing an app there needs its key and
+         *     its sign-in registration from this root -- which that token, not
+         *     being addressed here, cannot ask for. So the machine sends its
+         *     own `agent` service token as the bearer (the actor) and the
+         *     operator's token, addressed to that same machine, here (the
+         *     subject; RFC 8693's roles).
+         *
+         *     Taken only by the operations that reference it, and only for
+         *     things named for the acting node: a client key named
+         *     `app:<id>@<node>`, a sign-in registration whose `owner` is. Any
+         *     other name is a 403. A subject addressed to another machine, an
+         *     actor that is not an agent speaking for itself, or a signed-out
+         *     session is a 401. A node's own token without a subject opens
+         *     none of these.
+         */
+        SubjectToken: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -3078,7 +3100,28 @@ export interface operations {
     createClientKey: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description **A member node acting for an operator who is acting on it**
+                 *     (2026-10-01). The console reaches another machine with a
+                 *     five-minute token addressed to that machine alone (`POST
+                 *     /v1/auth/token`), and installing an app there needs its key and
+                 *     its sign-in registration from this root -- which that token, not
+                 *     being addressed here, cannot ask for. So the machine sends its
+                 *     own `agent` service token as the bearer (the actor) and the
+                 *     operator's token, addressed to that same machine, here (the
+                 *     subject; RFC 8693's roles).
+                 *
+                 *     Taken only by the operations that reference it, and only for
+                 *     things named for the acting node: a client key named
+                 *     `app:<id>@<node>`, a sign-in registration whose `owner` is. Any
+                 *     other name is a 403. A subject addressed to another machine, an
+                 *     actor that is not an agent speaking for itself, or a signed-out
+                 *     session is a 401. A node's own token without a subject opens
+                 *     none of these.
+                 */
+                "X-Eugene-Plexus-Subject-Token"?: components["parameters"]["SubjectToken"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3097,6 +3140,7 @@ export interface operations {
                     "application/json": components["schemas"]["ClientKeyCreated"];
                 };
             };
+            403: components["responses"]["Problem"];
         };
     };
     getClientKeyPolicy: {
@@ -3123,7 +3167,28 @@ export interface operations {
     revokeClientKey: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description **A member node acting for an operator who is acting on it**
+                 *     (2026-10-01). The console reaches another machine with a
+                 *     five-minute token addressed to that machine alone (`POST
+                 *     /v1/auth/token`), and installing an app there needs its key and
+                 *     its sign-in registration from this root -- which that token, not
+                 *     being addressed here, cannot ask for. So the machine sends its
+                 *     own `agent` service token as the bearer (the actor) and the
+                 *     operator's token, addressed to that same machine, here (the
+                 *     subject; RFC 8693's roles).
+                 *
+                 *     Taken only by the operations that reference it, and only for
+                 *     things named for the acting node: a client key named
+                 *     `app:<id>@<node>`, a sign-in registration whose `owner` is. Any
+                 *     other name is a 403. A subject addressed to another machine, an
+                 *     actor that is not an agent speaking for itself, or a signed-out
+                 *     session is a 401. A node's own token without a subject opens
+                 *     none of these.
+                 */
+                "X-Eugene-Plexus-Subject-Token"?: components["parameters"]["SubjectToken"];
+            };
             path: {
                 id: string;
             };
@@ -3138,6 +3203,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
         };
     };
@@ -3258,8 +3324,9 @@ export interface operations {
                 content?: never;
             };
             /**
-             * @description The request expired or its app is gone, or a new passphrase was
-             *     sent for the owner; the page says which.
+             * @description The request expired or its app is gone, or a new password was
+             *     sent for the owner, whose passphrase is not changed here; the
+             *     page says which.
              */
             400: {
                 headers: {
@@ -3541,7 +3608,28 @@ export interface operations {
     createOidcClient: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description **A member node acting for an operator who is acting on it**
+                 *     (2026-10-01). The console reaches another machine with a
+                 *     five-minute token addressed to that machine alone (`POST
+                 *     /v1/auth/token`), and installing an app there needs its key and
+                 *     its sign-in registration from this root -- which that token, not
+                 *     being addressed here, cannot ask for. So the machine sends its
+                 *     own `agent` service token as the bearer (the actor) and the
+                 *     operator's token, addressed to that same machine, here (the
+                 *     subject; RFC 8693's roles).
+                 *
+                 *     Taken only by the operations that reference it, and only for
+                 *     things named for the acting node: a client key named
+                 *     `app:<id>@<node>`, a sign-in registration whose `owner` is. Any
+                 *     other name is a 403. A subject addressed to another machine, an
+                 *     actor that is not an agent speaking for itself, or a signed-out
+                 *     session is a 401. A node's own token without a subject opens
+                 *     none of these.
+                 */
+                "X-Eugene-Plexus-Subject-Token"?: components["parameters"]["SubjectToken"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3560,13 +3648,35 @@ export interface operations {
                     "application/json": components["schemas"]["OidcClientCreated"];
                 };
             };
+            403: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
         };
     };
     deleteOidcClient: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description **A member node acting for an operator who is acting on it**
+                 *     (2026-10-01). The console reaches another machine with a
+                 *     five-minute token addressed to that machine alone (`POST
+                 *     /v1/auth/token`), and installing an app there needs its key and
+                 *     its sign-in registration from this root -- which that token, not
+                 *     being addressed here, cannot ask for. So the machine sends its
+                 *     own `agent` service token as the bearer (the actor) and the
+                 *     operator's token, addressed to that same machine, here (the
+                 *     subject; RFC 8693's roles).
+                 *
+                 *     Taken only by the operations that reference it, and only for
+                 *     things named for the acting node: a client key named
+                 *     `app:<id>@<node>`, a sign-in registration whose `owner` is. Any
+                 *     other name is a 403. A subject addressed to another machine, an
+                 *     actor that is not an agent speaking for itself, or a signed-out
+                 *     session is a 401. A node's own token without a subject opens
+                 *     none of these.
+                 */
+                "X-Eugene-Plexus-Subject-Token"?: components["parameters"]["SubjectToken"];
+            };
             path: {
                 clientId: string;
             };
@@ -3581,6 +3691,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
         };
     };

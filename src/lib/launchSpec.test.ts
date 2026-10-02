@@ -34,7 +34,21 @@ describe("composeSpec", () => {
       extraArgs: undefined,
       env: undefined,
       autoStart: true,
+      profile: { id: "p1", name: "default" },
     });
+  });
+
+  it("records the profile whole, where the runtime's own name cuts it short", () => {
+    const long: ModelProfile = {
+      ...DEFAULT,
+      id: "p7",
+      name: "Built for Amish_Station",
+      default: false,
+    };
+    const huihui: LibraryModel = { ...MODEL, name: "Huihui-Qwen3.8-27B-abliterated-Q6_K_L" };
+    const spec = composeSpec(huihui, long);
+    expect(spec.name).toBe("huihui-qwen3-8-27b-abliterated-q6-k-l-built-for-amish-statio");
+    expect(spec.profile).toEqual({ id: "p7", name: "Built for Amish_Station" });
   });
 
   it("sends autoStart false for Skip, and nothing else changes", () => {

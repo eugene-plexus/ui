@@ -259,6 +259,29 @@ describe("an external backend's config link", () => {
   });
 });
 
+describe("which profile a runtime came from", () => {
+  it("is said on its row, read from the node's own record", async () => {
+    // Two runtimes of one model, one per profile, read the same until
+    // this line existed (Troy's first profile build, 2026-10-01).
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: {
+        runtimes: [nodeRuntime({ profile: { id: "p7", name: "Built for Amish_Station" } })],
+      },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    expect(await within(row).findByTestId("runtime-profile")).toHaveTextContent(
+      "profile Built for Amish_Station",
+    );
+  });
+
+  it("says nothing for a runtime declared before profiles were recorded", async () => {
+    const row = await rowFor("gemma-3-27b");
+    await within(row).findByText("ready");
+    expect(within(row).queryByTestId("runtime-profile")).toBeNull();
+  });
+});
+
 describe("a model running on the processor while the machine has a card", () => {
   it("says so, and says where the claim comes from", async () => {
     handlers.set("GET agent/v1/runtimes", () => ({

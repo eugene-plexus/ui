@@ -50,6 +50,12 @@ export function composeSpec(
     extraArgs: profile.extraArgs ?? undefined,
     env: profile.env ?? undefined,
     autoStart: options.autoStart ?? true,
+    // Which profile, by id and by the name it has now. The runtime's own
+    // name is cut to 60 characters and lost "station" from "Built for
+    // Amish_Station", so two runtimes of one model could not be told
+    // apart (2026-10-01). Recorded for the Inference screen; the agent
+    // never reads it.
+    profile: { id: profile.id, name: profile.name },
   };
 }
 

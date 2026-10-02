@@ -71,19 +71,18 @@ describe("the slider over a real Medium build", () => {
     expect(stops[at]!.candidate.contextSize).toBe(65536);
   });
 
-  it("says each stop in words a person uses, with the exact figures for experts", () => {
+  it("says each stop in tokens and tok/s, with the depth and cache for experts", () => {
     const suggested = stops[defaultStop(MEDIUM, stops)]!.candidate;
-    // 39.85 tokens a second at the common depth, 0.75 words a token.
-    expect(stopLabel(suggested)).toBe("About 30 words a second · holds about 101 pages");
-    expect(stopDetail(suggested)).toBe(
-      "39.8 tokens a second at 2,048 tokens deep, 65,536 tokens of context, 8-bit cache",
-    );
+    // 39.85 tok/s at the common depth. It said "About 30 words a second ·
+    // holds about 101 pages" until Troy's first build (2026-10-01).
+    expect(stopLabel(suggested)).toBe("40 tok/s · 65,536 tokens of context");
+    expect(stopDetail(suggested)).toBe("39.8 tok/s measured 2,048 tokens deep, 8-bit cache");
   });
 
   it("says what the chosen cache does to answers, rounded down", () => {
     // 96.324 measured: 96, never a 97 the measurement did not reach.
     expect(qualityLine(MEDIUM, "q8_0")).toBe(
-      "Picks the same next word as Max 96 times in 100, on this model.",
+      "Picks the same next token as Max 96 times in 100, on this model.",
     );
     expect(qualityLine(MEDIUM, "f16")).toBe("Answers exactly as this file allows.");
     expect(qualityLine(MEDIUM, "q4_0")).toContain("88 times in 100");
@@ -105,16 +104,14 @@ describe("the slider over a real Medium build", () => {
   });
 
   it("compares by the common depth, not the empty context", () => {
-    // The fixture's two speeds round to the same words; these do not.
+    // The fixture's two speeds round to the same figure; these do not.
     const candidate = {
       ...MEDIUM.candidates[9]!,
       decodeTokensPerSecond: 60,
       deepDecodeTokensPerSecond: 40,
     };
-    expect(stopLabel(candidate)).toContain("About 30 words a second");
-    expect(stopLabel({ ...candidate, deepDecodeTokensPerSecond: null })).toContain(
-      "About 45 words a second",
-    );
+    expect(stopLabel(candidate)).toContain("40 tok/s");
+    expect(stopLabel({ ...candidate, deepDecodeTokensPerSecond: null })).toContain("60 tok/s");
   });
 
   it("rounds a quality rate down, never up", () => {
@@ -267,7 +264,7 @@ describe("a built profile, read back", () => {
 
   it("says what was measured while it still describes the profile", () => {
     expect(measuredLine(profile)).toBe(
-      "Measured on Amish_Station: about 30 words a second, room for about 101 pages. Same next word as Max 96 times in 100.",
+      "Measured on Amish_Station: 40 tok/s, 65,536 tokens of context. Same next token as Max 96 times in 100.",
     );
     expect(measuredLine({ ...profile, builtBy: null })).toBeNull();
   });

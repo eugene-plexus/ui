@@ -399,8 +399,8 @@ function BuildChoice({
                 }}
               />
               <p className="text-[color:var(--muted)]">
-                It needs at least 8,192 tokens, about 20 pages, and at most 2 MB. It is sent with
-                the request and not kept.
+                It needs at least 8,192 tokens and at most 2 MB. It is sent with the request and not
+                kept.
               </p>
             </>
           )}

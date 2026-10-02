@@ -46,6 +46,9 @@ export interface Row {
   outdated?: boolean;
 }
 
+/** The agent's companion driver for runtime `x` is the component `x-driver`. */
+const COMPANION_SUFFIX = "-driver";
+
 /** What an outdated driver's row says, in words a person can act on. */
 export const OUTDATED_DRIVER_TEXT =
   "This connection is from an older version and serves nothing until its machine is " +
@@ -141,15 +144,31 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
     return named.length === 1 ? named[0]! : null;
   };
 
+  const companionOf = (driver: string, node: string | null): string | null => {
+    // An exact (node, name) match only: a bare name could be another
+    // machine's runtime. A box that never enrolled has no node name, and
+    // its rows and runtimes both carry null, which still matches.
+    if (!driver.endsWith(COMPANION_SUFFIX)) return null;
+    const name = driver.slice(0, -COMPANION_SUFFIX.length);
+    return runtimeByNode.has(onNode(node, name)) ? name : null;
+  };
+
   const rows: Row[] = [];
   const seenRuntimes = new Set<string>();
 
   for (const d of sources.drivers?.drivers ?? []) {
     const routing = routingFor(d.name, d.url);
-    const runtimeName = d.runtime ?? routing?.runtime ?? null;
     // Which machine: the gateway's own view of this backend first (it
     // is keyed by node since R1.6), then the control root's placement.
     const placedNode = routing?.node ?? d.node ?? placedNodeFor(d.name, d.url);
+    // The runtime a driver follows comes from the driver itself, so a
+    // companion whose engine crashed -- unreachable, reporting nothing --
+    // was shown as an "external backend" on a row of its own, beside its
+    // runtime on another (2026-10-01). The agent names a runtime's
+    // companion `<runtime>-driver` and refuses a declaration that would
+    // collide with any other component of that name, so on the same
+    // machine the name is the link.
+    const runtimeName = d.runtime ?? routing?.runtime ?? companionOf(d.name, placedNode);
     const runtime = runtimeName ? runtimeFor(placedNode, runtimeName) : null;
     const node = placedNode ?? runtime?.node ?? null;
     if (runtimeName) seenRuntimes.add(onNode(runtime?.node ?? node, runtimeName));

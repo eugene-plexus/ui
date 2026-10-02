@@ -1871,6 +1871,36 @@ export interface components {
             /** @constant */
             object: "list";
             data: components["schemas"]["Model"][];
+            x_eugene_plexus?: components["schemas"]["ModelListInfo"];
+        };
+        /**
+         * @description Namespaced extension: what this install can do for this caller
+         *     beyond any one model. OpenAI clients ignore it.
+         *
+         *     Added 2026-10-01 (C3, `workbench-v1.md` §3). Before it a client
+         *     could learn whether a search would run only by sending one: the
+         *     chat door's 400 was the first word, so a switch offering *Search
+         *     the web* could not say beforehand that it would fail, or why.
+         */
+        ModelListInfo: {
+            web_search?: components["schemas"]["WebSearchAvailability"];
+        };
+        /**
+         * @description Whether a web search (P8, "Server-run tools") can run for **this
+         *     key** on **this install**: a reachable search account runs
+         *     `web_search`, the key's `allowedTools` permits it, and the key is
+         *     not `localOnly`. Which models it can reach is each model's own
+         *     `x_eugene_plexus.web_search`; a client offering a search needs
+         *     both.
+         */
+        WebSearchAvailability: {
+            available: boolean;
+            /**
+             * @description Why not, in the words a refused request would carry -- e.g.
+             *     *no search account is set up; add one under Backends, then
+             *     Add a search account*. Null when `available` is true.
+             */
+            reason?: string | null;
         };
         /**
          * @description One routable model, in OpenAI's shape plus one namespaced
@@ -2024,6 +2054,15 @@ export interface components {
              *     the limit as a 400 halfway through a task.
              */
             tool_calling?: boolean;
+            /**
+             * @description Whether a web search can reach this model: at least one
+             *     backend serving it searches itself (its model lists
+             *     `webSearchOptions`) or calls tools, so the gateway can run the
+             *     search for it. Says nothing about the caller's key or whether
+             *     the install has a search account; that is
+             *     `ModelList.x_eugene_plexus.web_search`. Added 2026-10-01 (C3).
+             */
+            web_search?: boolean;
             /**
              * @description The slot's tiers in priority order, each the driver names
              *     in it. One tier for an unconfigured model; more when a
