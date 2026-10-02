@@ -370,6 +370,40 @@ describe("metrics page", () => {
     expect(within(claude as HTMLElement).queryByText("0.0")).toBeNull();
   });
 
+  it("shows how much of the prompt the engine reused, and whether conversations kept their replica", async () => {
+    const groups = (summary as { groups: object[] }).groups;
+    summary = {
+      ...(summary as object),
+      groups: [
+        {
+          ...groups[0],
+          promptCache: { requests: 4, promptTokens: 1000, cachedTokens: 870 },
+          affinity: { hit: 3, new: 1, moved: 1 },
+        },
+        ...groups.slice(1),
+      ],
+    };
+    render(<MetricsPage />);
+    await screen.findByText("128.4");
+    const dolphin = screen
+      .getAllByText("dolphin3-8b")
+      .map((el) => el.closest("tr"))
+      .find((tr) => tr !== null) as HTMLElement;
+    expect(within(dolphin).getByText("87%")).toHaveAttribute(
+      "title",
+      expect.stringContaining("870 of 1,000 prompt tokens"),
+    );
+    expect(within(dolphin).getByText("3/4")).toBeInTheDocument();
+    // A backend that reported no cached count reads as unreported, never 0%.
+    const claude = screen.getByText("claude-cli").closest("tr") as HTMLElement;
+    expect(within(claude).queryByText("0%")).toBeNull();
+    expect(
+      within(claude).getByTitle(
+        "No backend in this group reported how much of a prompt came from its cache.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("owns its scroll, because the shell clips at the viewport", async () => {
     render(<MetricsPage />);
     await screen.findByText("116.8");

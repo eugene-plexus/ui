@@ -91,6 +91,11 @@ interface MetricsGroup {
   waitedMs?: Percentiles | null;
   routingMs?: Percentiles | null;
   overheadMs?: Percentiles | null;
+  /** Prompt and cached tokens over the requests whose backend reported a
+   * cached count (PC5); null when none did, which is not zero reuse. */
+  promptCache?: { requests: number; promptTokens: number; cachedTokens: number } | null;
+  /** What conversation balancing did (PC4); null when it had no choice. */
+  affinity?: { hit: number; new: number; moved: number } | null;
   tierCounts?: Record<string, number>;
 }
 
@@ -163,6 +168,53 @@ const WINDOWS: { label: string; hours: number }[] = [
 ];
 
 const POLL_MS = 15_000;
+
+/** The share of prompt tokens served from the engine's cache (PC5). A dash
+ * when no backend in the group said: an engine that reports nothing must
+ * not read as one that reused nothing. */
+function ReusedCell({ cache }: { cache?: MetricsGroup["promptCache"] }) {
+  if (!cache || cache.promptTokens <= 0) {
+    return (
+      <span
+        className="text-[color:var(--muted)]"
+        title="No backend in this group reported how much of a prompt came from its cache."
+      >
+        &mdash;
+      </span>
+    );
+  }
+  const share = (100 * cache.cachedTokens) / cache.promptTokens;
+  return (
+    <span
+      title={`${cache.cachedTokens.toLocaleString()} of ${cache.promptTokens.toLocaleString()} prompt tokens from the cache, over ${cache.requests} request(s) that reported`}
+    >
+      {share.toFixed(0)}%
+    </span>
+  );
+}
+
+/** How often a returning conversation went back to its replica (PC4). A
+ * dash when none returned: a first turn has no replica to go back to. */
+function SameReplicaCell({ affinity }: { affinity?: MetricsGroup["affinity"] }) {
+  const returning = affinity ? affinity.hit + affinity.moved : 0;
+  if (!affinity || returning === 0) {
+    return (
+      <span
+        className="text-[color:var(--muted)]"
+        title="No conversation in this group came back while there was more than one replica to choose from."
+      >
+        &mdash;
+      </span>
+    );
+  }
+  return (
+    <span
+      title={`${affinity.hit} went back to their replica, ${affinity.moved} moved because it was full or gone, ${affinity.new} started a conversation`}
+    >
+      {affinity.hit}/{returning}
+    </span>
+  );
+}
 
 /** Milliseconds as something readable at a glance across four orders of
  * magnitude — a wake is seconds, a cached answer is milliseconds. */
@@ -557,6 +609,18 @@ export default function MetricsPage() {
                         </th>
                         <th
                           className="py-2 pr-3 text-right font-medium"
+                          title="Share of prompt tokens the engine took from its prompt cache instead of reading again, over the requests whose backend said."
+                        >
+                          Reused
+                        </th>
+                        <th
+                          className="py-2 pr-3 text-right font-medium"
+                          title="Of the requests that continued a conversation seen before, how many went back to the replica that already held it."
+                        >
+                          Same replica
+                        </th>
+                        <th
+                          className="py-2 pr-3 text-right font-medium"
                           title="Tokens per second AFTER the first token — prefill excluded. The number people mean by tok/s."
                         >
                           Decode
@@ -624,6 +688,12 @@ export default function MetricsPage() {
                                 &mdash;
                               </span>
                             )}
+                          </td>
+                          <td className="py-2 pr-3 text-right font-mono">
+                            <ReusedCell cache={g.promptCache} />
+                          </td>
+                          <td className="py-2 pr-3 text-right font-mono">
+                            <SameReplicaCell affinity={g.affinity} />
                           </td>
                           <td className="py-2 pr-3 text-right font-mono">
                             {g.decodeTokensPerSecond ? (

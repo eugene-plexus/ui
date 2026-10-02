@@ -1632,10 +1632,20 @@ export interface paths {
          *       ordered list of `{model, targets}`; see
          *       `ConfigValueType.model_slots` for the shape and why targets
          *       are model ids rather than driver names.
-         *     * **`loadBalancing`** (`enum`) — `least_busy` (default) picks
-         *       the eligible driver with the fewest in-flight requests per
-         *       slot of capacity, ties round-robin; `round_robin` alternates
-         *       strictly, which is worth having when comparing two replicas.
+         *     * **`loadBalancing`** (`enum`) — `conversation` (the default
+         *       since 2026-10-02, PC4) sends a request that continues a
+         *       conversation to the replica its earlier turns went to, because
+         *       only that replica's engine holds its prompt in cache, unless
+         *       that replica is saturated while another has a free slot; a new
+         *       conversation goes to the least busy. The conversation is the
+         *       client's `prompt_cache_key`, Claude Code's `session_id` in
+         *       `metadata.user_id`, or else the model, first system message and
+         *       first user message. Measured on two replicas: one agent session
+         *       alternating reused 52.8% of its prompt tokens, kept on one
+         *       75.3%. `least_busy` picks the eligible driver with the fewest
+         *       in-flight requests per slot of capacity, ties round-robin;
+         *       `round_robin` alternates strictly, which is worth having when
+         *       comparing two replicas.
          *     * **`swapWaitSeconds`** (`duration`) — how long a request waits
          *       for a `startOnDemand` runtime to reach `ready` before the next
          *       tier is tried. Engine-dependent: llama.cpp loads a small
@@ -3596,7 +3606,15 @@ export interface components {
              *     (`x-anthropic-billing-header: …`). Any code that assumes
              *     `system[0]` is the instruction is wrong about the commonest
              *     client. All blocks are concatenated in order into one
-             *     `system` message.
+             *     `system` message, **without that header line**: a leading
+             *     `x-anthropic-billing-header:` line is taken off every block
+             *     before any backend sees the prompt. It tells a model nothing,
+             *     and it leads the prompt with a value that changes per session
+             *     (on some client builds, per request), so carrying it made
+             *     every new session re-read its whole system prompt and tool
+             *     list from the engine's first token (measured 2026-10-02:
+             *     ~18,700 tokens, `docs/acceptance/prompt-cache-measurement.md`).
+             *     Text after the line in the same block is kept.
              */
             system?: string | components["schemas"]["AnthropicSystemBlock"][];
             /**
@@ -3757,7 +3775,19 @@ export interface components {
          *     It is carried **in place** rather than hoisted into the leading
          *     system prompt. The client put it after a user turn deliberately,
          *     and moving it would change what the model sees for the sake of
-         *     tidiness on a wire we do not own.
+         *     tidiness on a wire we do not own -- and would change the start of
+         *     the prompt on every turn, so the engine's prompt cache could reuse
+         *     nothing past it.
+         *
+         *     **By default it reaches the backend as a user turn**, its text
+         *     wrapped `<system-reminder>…</system-reminder>`, because the Qwen
+         *     3.5 and later chat templates refuse a system message anywhere but
+         *     first ("System message must be at the beginning") and Claude Code
+         *     could not use those models (measured 2026-10-02, gateway#6). The
+         *     gateway setting `inConversationSystem` chooses: `user_turn` (the
+         *     default) or `system`, as the client sent it. It applies on every
+         *     door, to a `developer` message after the first turn as well, and
+         *     a leading run of system messages becomes one.
          *
          *     This one was found by the live run and not by the unit tests,
          *     because the unit fixtures came from a capture of a *simple*
@@ -4548,6 +4578,17 @@ export interface components {
              */
             overheadMs?: components["schemas"]["Percentiles"] | null;
             /**
+             * @description How much of the prompt the engines did not have to read
+             *     again (PC5), over the requests whose backend reported a
+             *     cached count. Null when none did.
+             */
+            promptCache?: components["schemas"]["MetricsPromptCache"] | null;
+            /**
+             * @description What `conversation` balancing did (PC4). Null when it never
+             *     had a choice to make in this group.
+             */
+            affinity?: components["schemas"]["MetricsAffinity"] | null;
+            /**
              * @description Requests served, keyed by the 1-based tier that answered. A
              *     slot whose tier 2 answers everything has a primary that is
              *     not working, and this is where that becomes visible.
@@ -4555,6 +4596,22 @@ export interface components {
             tierCounts?: {
                 [key: string]: number;
             };
+        };
+        /**
+         * @description Prompt tokens and the part of them served from an engine's
+         *     prompt cache, summed over `requests` (the ones that reported).
+         *     `cachedTokens / promptTokens` is the share reused.
+         */
+        MetricsPromptCache: {
+            requests: number;
+            promptTokens: number;
+            cachedTokens: number;
+        };
+        /** @description Requests by what `conversation` balancing did with them. */
+        MetricsAffinity: {
+            hit: number;
+            new: number;
+            moved: number;
         };
         MetricsSummary: {
             /** Format: date-time */
@@ -4597,6 +4654,14 @@ export interface components {
             /** @description Whether token usage is known for this attempt; false is not zero cost. */
             usageKnown?: boolean;
             promptTokens?: number;
+            /**
+             * @description Of `promptTokens`, those the backend served from its prompt
+             *     cache (PC5, schema v11). Absent when the backend did not say,
+             *     never guessed: llama.cpp, vLLM (with
+             *     `--enable-prompt-tokens-details`), MLX and hosted OpenAI and
+             *     Anthropic report it.
+             */
+            cachedTokens?: number;
             completionTokens?: number;
             driver: string;
             /**
@@ -4695,8 +4760,8 @@ export interface components {
             /**
              * @description The `loadBalancing` value in effect when this request was
              *     routed. Recorded per request because the config can change
-             *     between them, and `least_busy` and `round_robin` explain
-             *     different orderings.
+             *     between them, and `conversation`, `least_busy` and
+             *     `round_robin` explain different orderings.
              */
             strategy?: string | null;
             /**
@@ -4716,6 +4781,19 @@ export interface components {
             streamed?: boolean;
             promptTokens?: number | null;
             completionTokens?: number | null;
+            /**
+             * @description Of `promptTokens`, those the serving backend took from its
+             *     prompt cache (PC5, schema v11). Null when it did not say.
+             */
+            cachedTokens?: number | null;
+            /**
+             * @description What `conversation` balancing did with this request (PC4):
+             *     `hit`, sent back to the replica its conversation used before;
+             *     `new`, a conversation not seen before; `moved`, its replica
+             *     was full or gone and it went elsewhere. Null when there was
+             *     no choice to make or another strategy was in effect.
+             */
+            affinity?: string | null;
             /**
              * @description Which door the request came in by (P3b): `speech`,
              *     `transcription`, `translation` (P3-4), `images` (P4, schema v8),
