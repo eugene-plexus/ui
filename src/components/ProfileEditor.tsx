@@ -16,6 +16,8 @@ import { DEFAULT_PROFILE_NAME, composeSpec } from "@/lib/launchSpec";
 import { libraryFoldersHref } from "@/lib/libraryReach";
 import type { TargetNode } from "@/lib/nodeBudget";
 import { builtFieldLabel, builtOn, editedSinceBuilt, measuredLine } from "@/lib/profileBuild";
+import { currentFlags } from "@/lib/legacyFlags";
+
 import { ProfileBenchmark } from "./ProfileBenchmark";
 import { ProfileBuilder } from "./ProfileBuilder";
 import type {
@@ -636,7 +638,7 @@ function ProfileForm({
   const [name, setName] = useState(existing?.name ?? suggestedName(model));
   const [engine, setEngine] = useState(existing?.engine ?? engines[0]?.engine ?? "llama_cpp");
   const [flags, setFlags] = useState<Record<string, unknown>>(() => ({
-    ...(existing?.flags ?? {}),
+    ...currentFlags(existing?.flags ?? {}),
     ...(!existing && suggestedContext != null ? { contextSize: suggestedContext } : {}),
   }));
   const [extraArgs, setExtraArgs] = useState((existing?.extraArgs ?? []).join(" "));

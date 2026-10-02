@@ -144,7 +144,7 @@ describe("saving a real High build", () => {
     expect(builtFlags(eight.candidate, null)).toEqual({
       contextSize: 8192,
       cacheType: "q8_0",
-      flashAttention: true,
+      flashAttention: "on",
     });
   });
 

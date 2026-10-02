@@ -17,7 +17,7 @@ const model: LibraryModel = {
   files: [],
 };
 
-function setup() {
+function setup(flags: Record<string, unknown> = { contextSize: 4096 }) {
   let profile: ModelProfile = {
     id: "p",
     name: "Tuned",
@@ -26,7 +26,7 @@ function setup() {
     maxTokens: 400,
     temperature: 0.7,
     topP: 0.9,
-    flags: { contextSize: 4096 },
+    flags,
   };
   const writes: Record<string, unknown>[] = [];
   vi.stubGlobal(
@@ -69,6 +69,24 @@ it("saves explicit zeroes, clears omitted defaults and preserves launch settings
   expect(writes[1]).not.toHaveProperty("temperature");
   expect(writes[1]).not.toHaveProperty("topP");
   expect(writes[1]).toHaveProperty("maxTokens", 123);
+});
+
+it("saves an old checkbox's Flash attention as what it always did (agent#6)", async () => {
+  // True sent on; false sent nothing, which was llama.cpp's own choice.
+  const writes = setup({ contextSize: 4096, flashAttention: false, threads: 8 });
+  fireEvent.click(await screen.findByRole("button", { name: "edit" }));
+  fireEvent.click(screen.getByRole("button", { name: "save" }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]).toMatchObject({ flags: { contextSize: 4096, threads: 8 } });
+  expect((writes[0].flags as Record<string, unknown>).flashAttention).toBeUndefined();
+});
+
+it("saves an old checkbox's ticked Flash attention as on", async () => {
+  const writes = setup({ contextSize: 4096, flashAttention: true });
+  fireEvent.click(await screen.findByRole("button", { name: "edit" }));
+  fireEvent.click(screen.getByRole("button", { name: "save" }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]).toMatchObject({ flags: { contextSize: 4096, flashAttention: "on" } });
 });
 
 /**

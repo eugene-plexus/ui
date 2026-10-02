@@ -340,7 +340,7 @@ describe("a finished build", () => {
         threads: 8,
         contextSize: 65536,
         cacheType: "q8_0",
-        flashAttention: true,
+        flashAttention: "on",
         memoryMargin: 23499,
       },
       builtBy: { buildId: FINISHED.id, node: "Amish_Station", accuracy: "medium" },

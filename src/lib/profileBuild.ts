@@ -21,6 +21,7 @@
  * labelled *about* was a second number to doubt.
  */
 
+import { currentFlag } from "./legacyFlags";
 import type {
   BuildCandidate,
   CacheType,
@@ -165,7 +166,7 @@ export function builtFlags(
     cacheType: candidate.cacheType,
   };
   // The V cache needs it quantised; otherwise it is left to llama.cpp.
-  if (candidate.cacheType !== "f16") flags.flashAttention = true;
+  if (candidate.cacheType !== "f16") flags.flashAttention = "on";
   if (memoryMarginMiB != null) flags.memoryMargin = memoryMarginMiB;
   return flags;
 }
@@ -249,7 +250,10 @@ export function builtFieldStates(profile: ModelProfile): Record<string, "built" 
   if (!record) return {};
   const states: Record<string, "built" | "edited"> = {};
   for (const [key, value] of Object.entries(record.flags ?? {})) {
-    states[key] = same(profile.flags?.[key], value) ? "built" : "edited";
+    // A build recorded before three states wrote `true`; it still means on.
+    states[key] = same(currentFlag(key, profile.flags?.[key]), currentFlag(key, value))
+      ? "built"
+      : "edited";
   }
   return states;
 }
