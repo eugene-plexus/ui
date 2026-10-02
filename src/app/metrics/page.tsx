@@ -94,8 +94,10 @@ interface MetricsGroup {
   /** Prompt and cached tokens over the requests whose backend reported a
    * cached count (PC5); null when none did, which is not zero reuse. */
   promptCache?: { requests: number; promptTokens: number; cachedTokens: number } | null;
-  /** What conversation balancing did (PC4); null when it had no choice. */
-  affinity?: { hit: number; new: number; moved: number } | null;
+  /** What conversation affinity did (PC4); null when it had no choice.
+   * `evicted` (CB5) went back to its replica and found its history gone;
+   * absent from a gateway older than metrics v12. */
+  affinity?: { hit: number; new: number; moved: number; evicted?: number } | null;
   tierCounts?: Record<string, number>;
 }
 
@@ -194,9 +196,13 @@ function ReusedCell({ cache }: { cache?: MetricsGroup["promptCache"] }) {
 }
 
 /** How often a returning conversation went back to its replica (PC4). A
- * dash when none returned: a first turn has no replica to go back to. */
+ * dash when none returned: a first turn has no replica to go back to. An
+ * evicted turn went back too, and is counted here as well as in its own
+ * column. */
 function SameReplicaCell({ affinity }: { affinity?: MetricsGroup["affinity"] }) {
-  const returning = affinity ? affinity.hit + affinity.moved : 0;
+  const evicted = affinity?.evicted ?? 0;
+  const home = affinity ? affinity.hit + evicted : 0;
+  const returning = affinity ? home + affinity.moved : 0;
   if (!affinity || returning === 0) {
     return (
       <span
@@ -209,9 +215,40 @@ function SameReplicaCell({ affinity }: { affinity?: MetricsGroup["affinity"] }) 
   }
   return (
     <span
-      title={`${affinity.hit} went back to their replica, ${affinity.moved} moved because it was full or gone, ${affinity.new} started a conversation`}
+      title={`${home} went back to their replica, ${affinity.moved} moved because it was full or gone, ${affinity.new} started a conversation`}
     >
-      {affinity.hit}/{returning}
+      {home}/{returning}
+    </span>
+  );
+}
+
+/** Turns that went back to their replica and found their history gone
+ * (CB5): the engine reused less than the whole of the previous prompt. On a
+ * backend, that says this model needs more context or another replica,
+ * where the rest of the row shows only a slow model. A dash when no turn
+ * went home, or the gateway is older than the count. */
+function EvictedCell({ affinity }: { affinity?: MetricsGroup["affinity"] }) {
+  const evicted = affinity?.evicted;
+  const home = affinity ? affinity.hit + (evicted ?? 0) : 0;
+  if (!affinity || evicted === undefined || home === 0) {
+    return (
+      <span
+        className="text-[color:var(--muted)]"
+        title="No conversation in this group went back to a replica it had used, so nothing could be evicted."
+      >
+        &mdash;
+      </span>
+    );
+  }
+  return (
+    <span
+      title={
+        evicted
+          ? `${evicted} of ${home} turns that went back to their replica found their history gone: this model needs more context or another replica.`
+          : `None of ${home} turns that went back to their replica found their history gone.`
+      }
+    >
+      {evicted}
     </span>
   );
 }
@@ -621,6 +658,12 @@ export default function MetricsPage() {
                         </th>
                         <th
                           className="py-2 pr-3 text-right font-medium"
+                          title="Of those that went back to their replica, how many found their history gone there: the engine read the conversation again. Many here means this model needs more context or another replica."
+                        >
+                          Evicted
+                        </th>
+                        <th
+                          className="py-2 pr-3 text-right font-medium"
                           title="Tokens per second AFTER the first token — prefill excluded. The number people mean by tok/s."
                         >
                           Decode
@@ -694,6 +737,9 @@ export default function MetricsPage() {
                           </td>
                           <td className="py-2 pr-3 text-right font-mono">
                             <SameReplicaCell affinity={g.affinity} />
+                          </td>
+                          <td className="py-2 pr-3 text-right font-mono">
+                            <EvictedCell affinity={g.affinity} />
                           </td>
                           <td className="py-2 pr-3 text-right font-mono">
                             {g.decodeTokensPerSecond ? (

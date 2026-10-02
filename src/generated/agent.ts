@@ -4476,6 +4476,24 @@ export interface components {
              *     each are the same kind of thing to the layer above.
              */
             parallelSlots?: number;
+            /**
+             * @description The context, in tokens, that this runtime's slots **share**:
+             *     the prompts and answers in flight on it at once must fit in
+             *     it together, or the engine refuses the next request or cuts
+             *     the streams it is decoding. Present only when the slots share
+             *     one pool; absent when each slot has its own `contextLength`,
+             *     and absent for an engine this agent did not launch, because
+             *     only the argv says which (CB3).
+             *
+             *     For llama.cpp the agent reads it from `/props` and its own
+             *     argv: `parallelSlots` unset is llama-server's automatic
+             *     slots, one unified pool of `n_ctx`; an explicit `--parallel
+             *     N` gives each slot `n_ctx` of its own unless `--kv-unified`
+             *     is passed too. `/props` has no unified flag. The gateway
+             *     budgets the prompts it sends a runtime against this, so a
+             *     turn waits for room rather than overflowing the pool.
+             */
+            contextPoolTokens?: number;
             /** @description Whether this runtime was started in embedding mode. */
             embeddings?: boolean;
             /** @description Whether the loaded runtime explicitly reports image input. */

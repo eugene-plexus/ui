@@ -43,6 +43,17 @@ export interface paths {
          *       rule is older than this and unchanged — and `detail` carries
          *       the backend's own status and words plus the next step: set a
          *       working API key on this driver.
+         *     * **A backend with no room for this request now is 503, `type`
+         *       ending `#backend-capacity`, since 2026-10-02 (CB3)**:
+         *       llama-server's `Context size has been exceeded`, a 500 when
+         *       it refuses the request and an `error` frame when it cuts a
+         *       stream, both meaning the prompts in flight together outgrew
+         *       the KV pool its slots share. `retryDisposition` is `safe`, so
+         *       it cascades before any output, and the gateway's circuit does
+         *       not count it: it is load, not a broken backend. As a 502 it
+         *       took every healthy replica of an 8B out as "cooling down"
+         *       (gateway#8). A request bigger than the whole pool is
+         *       llama-server's 400 and stays the caller's.
          *     * A backend 4xx that is worth trying elsewhere — `408`, `409`,
          *       `425`, `429` — stays **502**, so the priority-list cascade
          *       still fires. A rate-limited cloud provider falling through to
@@ -3141,6 +3152,20 @@ export interface operations {
                 };
             };
             /**
+             * @description No room for this request now (`#backend-capacity`, CB3): the
+             *     engine's shared KV pool is full of other requests' prompts.
+             *     `safe`, so it cascades; the gateway's circuit does not count
+             *     it. See the overview.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
              * @description `requestTimeoutSeconds` passed with no answer. **Does not
              *     cascade**: the backend is still computing this prompt and
              *     the next replica would take the same time on the same
@@ -3215,6 +3240,20 @@ export interface operations {
              *     this driver's own key, which does not.
              */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description No room for this request now (`#backend-capacity`, CB3): the
+             *     engine's shared KV pool is full of other requests' prompts.
+             *     `safe`, so it cascades; the gateway's circuit does not count
+             *     it. See the overview.
+             */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

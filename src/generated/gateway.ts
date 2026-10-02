@@ -1632,24 +1632,57 @@ export interface paths {
          *       ordered list of `{model, targets}`; see
          *       `ConfigValueType.model_slots` for the shape and why targets
          *       are model ids rather than driver names.
-         *     * **`loadBalancing`** (`enum`) — `conversation` (the default
-         *       since 2026-10-02, PC4) sends a request that continues a
-         *       conversation to the replica its earlier turns went to, because
-         *       only that replica's engine holds its prompt in cache, unless
-         *       that replica is saturated while another has a free slot; a new
-         *       conversation goes to the least busy. The conversation is the
-         *       client's `prompt_cache_key`, Claude Code's `session_id` in
+         *     * **`conversationAffinity`** (`boolean`, default on; CB1, since
+         *       2026-10-02) — a request that continues a conversation goes to
+         *       the replica its earlier turns went to, because only that
+         *       replica's engine holds its prompt in cache, unless that replica
+         *       is saturated while another has a free slot. The conversation is
+         *       the client's `prompt_cache_key`, Claude Code's `session_id` in
          *       `metadata.user_id`, or else the model, first system message and
-         *       first user message. Measured on two replicas: one agent session
-         *       alternating reused 52.8% of its prompt tokens, kept on one
-         *       75.3%. `least_busy` picks the eligible driver with the fewest
-         *       in-flight requests per slot of capacity, ties round-robin;
-         *       `round_robin` alternates strictly, which is worth having when
-         *       comparing two replicas.
+         *       first user message. Measured with twelve agent sessions on three
+         *       replicas: 80.8% of prompt tokens reused with it, 67.7% without,
+         *       and the median first token in half the time. **Off only for
+         *       benchmarking**, where a tool repeating one prompt would land on
+         *       one replica every time.
+         *     * **`loadBalancing`** (`enum`) — where a **new** conversation
+         *       goes, whatever `conversationAffinity` says. **`spread` (the
+         *       default since CB2, 2026-10-02)** picks the replica holding the
+         *       fewest conversations per slot — every conversation it served
+         *       inside the affinity table's 30 minutes, whether or not a
+         *       request is in flight — ties to the fewest in flight, then in
+         *       turn. Measured with 32 agent sessions on eight replicas: 80.2%
+         *       of prompt tokens reused against 60.4%, the median first token
+         *       1.05 s against 4.00 s, because a replica whose agents are all
+         *       thinking between turns looks empty to a count of requests in
+         *       flight; within noise on three replicas. `least_busy` picks the
+         *       eligible driver with the fewest in-flight requests per slot of
+         *       capacity, ties round-robin; `round_robin` alternates strictly,
+         *       which is worth having when comparing two replicas. **`conversation` is no longer a value** (it was PC4's
+         *       default, from 2026-10-02 until CB1 the same day, and kept
+         *       conversations on their replicas, which affinity now does under
+         *       every value): a file holding it, or holding the default because
+         *       the gateway wrote it there, follows the current default, and a
+         *       PATCH of it is refused.
          *     * **`swapWaitSeconds`** (`duration`) — how long a request waits
          *       for a `startOnDemand` runtime to reach `ready` before the next
          *       tier is tried. Engine-dependent: llama.cpp loads a small
-         *       model in seconds; vLLM's silent load is minutes.
+         *       model in seconds; vLLM's silent load is minutes. **Since
+         *       2026-10-02 (CB3) also how long a chat turn waits for room in a
+         *       runtime's shared context.** A runtime whose agent reports
+         *       `capabilities.contextPoolTokens` gets no more prompt tokens in
+         *       flight than 90% of it: each turn counted as its conversation's
+         *       last prompt tokens, plus its new text at ~3.5 characters a
+         *       token (the whole request's, for a new conversation), plus its
+         *       `max_tokens`. A turn that does not fit waits — on the replica
+         *       that holds its conversation while it holds one, else on any
+         *       replica of the tier with room — and after this long is sent
+         *       in the usual order. A request bigger than the whole pool is
+         *       sent at once, and the engine's own refusal is the answer.
+         *       Measured on an 8B at 64k with four agents a replica: 158 of
+         *       204 turns failed before, when a few prompts overflowed a pool
+         *       and the engine's refusal was counted as a broken backend. That
+         *       refusal (the driver's `#backend-capacity`) now cascades and is
+         *       not counted by a backend's circuit.
          *     * **`idleCheckSeconds`** (`duration`) — how often the gateway
          *       checks each runtime's idle timeout.
          *     * **`controlUrl`** (`url`, optional) — the control root, when
@@ -3431,7 +3464,10 @@ export interface components {
         RoutingTableView: {
             /** Format: date-time */
             refreshed_at: string;
-            /** @description The strategy in effect — the `loadBalancing` config value. */
+            /**
+             * @description Where a new conversation goes now: the `loadBalancing` value,
+             *     or its default when it is unset or the old `conversation`.
+             */
             load_balancing?: string;
             slots: components["schemas"]["RoutingSlotView"][];
             /** @description Drivers in the topology that did not answer `/v1/info`. */
@@ -4584,8 +4620,9 @@ export interface components {
              */
             promptCache?: components["schemas"]["MetricsPromptCache"] | null;
             /**
-             * @description What `conversation` balancing did (PC4). Null when it never
-             *     had a choice to make in this group.
+             * @description What conversation affinity did (PC4; `conversationAffinity`
+             *     since CB1). Null when it never had a choice to make in this
+             *     group.
              */
             affinity?: components["schemas"]["MetricsAffinity"] | null;
             /**
@@ -4607,11 +4644,19 @@ export interface components {
             promptTokens: number;
             cachedTokens: number;
         };
-        /** @description Requests by what `conversation` balancing did with them. */
+        /**
+         * @description Requests by what conversation affinity did with them. `evicted`
+         *     (CB5, schema v12) is a turn that went back to its replica and
+         *     found its history gone there: the engine reused less than the
+         *     whole of the conversation's previous prompt. Grouped by backend,
+         *     it says which model needs more context or another replica, where
+         *     an operator saw only a slow model.
+         */
         MetricsAffinity: {
             hit: number;
             new: number;
             moved: number;
+            evicted: number;
         };
         MetricsSummary: {
             /** Format: date-time */
@@ -4758,10 +4803,14 @@ export interface components {
              */
             refreshed?: boolean;
             /**
-             * @description The `loadBalancing` value in effect when this request was
-             *     routed. Recorded per request because the config can change
-             *     between them, and `conversation`, `least_busy` and
-             *     `round_robin` explain different orderings.
+             * @description Where a new conversation went when this request was routed:
+             *     the `loadBalancing` value in effect, or its default when it is
+             *     unset. Recorded per request because the config can change
+             *     between them, and `spread`, `least_busy` and `round_robin`
+             *     explain different orderings. Rows from before CB1 (2026-10-02) may say
+             *     `conversation`, PC4's value, which placed new conversations by
+             *     least busy and kept the rest on their replicas. Whether this
+             *     request went back to its replica is `affinity`.
              */
             strategy?: string | null;
             /**
@@ -4787,11 +4836,17 @@ export interface components {
              */
             cachedTokens?: number | null;
             /**
-             * @description What `conversation` balancing did with this request (PC4):
-             *     `hit`, sent back to the replica its conversation used before;
-             *     `new`, a conversation not seen before; `moved`, its replica
-             *     was full or gone and it went elsewhere. Null when there was
-             *     no choice to make or another strategy was in effect.
+             * @description What conversation affinity did with this request (PC4;
+             *     `conversationAffinity` since CB1): `hit`, sent back to the
+             *     replica its conversation used before; `evicted` (CB5, schema
+             *     v12), sent back there and the engine reused less than the
+             *     whole of the conversation's previous prompt, so its history
+             *     was gone; `new`, a conversation not seen before; `moved`, its
+             *     replica was full or gone and it went elsewhere. Null when
+             *     there was no choice to make or affinity was off (before CB1,
+             *     when another strategy was in effect). A backend that does not
+             *     report cached tokens cannot be judged, and its turns stay
+             *     `hit`.
              */
             affinity?: string | null;
             /**

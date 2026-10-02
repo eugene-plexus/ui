@@ -370,6 +370,30 @@ describe("metrics page", () => {
     expect(within(claude as HTMLElement).queryByText("0.0")).toBeNull();
   });
 
+  it("shows how many turns that went back to their replica found their history gone", async () => {
+    const groups = (summary as { groups: object[] }).groups;
+    summary = {
+      ...(summary as object),
+      groups: [
+        { ...groups[0], affinity: { hit: 3, new: 1, moved: 1, evicted: 2 } },
+        ...groups.slice(1),
+      ],
+    };
+    render(<MetricsPage />);
+    await screen.findByText("128.4");
+    const dolphin = screen
+      .getAllByText("dolphin3-8b")
+      .map((el) => el.closest("tr"))
+      .find((tr) => tr !== null) as HTMLElement;
+    // Five went to their replica (three held, two evicted), one moved.
+    expect(within(dolphin).getByText("5/6")).toBeInTheDocument();
+    expect(within(dolphin).getByText("2")).toHaveAttribute(
+      "title",
+      expect.stringContaining("needs more context or another replica"),
+    );
+    expect(screen.getByRole("columnheader", { name: "Evicted" })).toBeInTheDocument();
+  });
+
   it("shows how much of the prompt the engine reused, and whether conversations kept their replica", async () => {
     const groups = (summary as { groups: object[] }).groups;
     summary = {
@@ -394,6 +418,8 @@ describe("metrics page", () => {
       expect.stringContaining("870 of 1,000 prompt tokens"),
     );
     expect(within(dolphin).getByText("3/4")).toBeInTheDocument();
+    // A gateway older than metrics v12 sends no eviction count: a dash.
+    expect(within(dolphin).getAllByText("\u2014").length).toBeGreaterThan(0);
     // A backend that reported no cached count reads as unreported, never 0%.
     const claude = screen.getByText("claude-cli").closest("tr") as HTMLElement;
     expect(within(claude).queryByText("0%")).toBeNull();
