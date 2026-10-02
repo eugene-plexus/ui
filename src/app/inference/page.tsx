@@ -633,6 +633,9 @@ function RowView({
 }) {
   const status = row.runtimeStatus as RuntimeStatus | null;
   const known = status !== null && status in STATUS_TONE;
+  // While remove asks, start, stop and restart step aside: the question and
+  // its two answers take the action cell rather than widening it (ui#14).
+  const [asking, setAsking] = useState(false);
   // S7's two honest states. Both are built from what is actually known
   // and say which: nothing reports where a model's weights went, and
   // nothing counts a model load, so neither line is ever a guess
@@ -868,30 +871,34 @@ function RowView({
       <td className="py-1.5 pr-4 text-right whitespace-nowrap">
         {row.runtime ? (
           <>
-            <button
-              type="button"
-              onClick={() => onAct(row.node, row.runtime as string, "start")}
-              disabled={busy !== null || status === "ready" || status === "loading"}
-              className={smallButton}
-            >
-              {busy === `${prefix}start` ? "…" : "start"}
-            </button>
-            <button
-              type="button"
-              onClick={() => onAct(row.node, row.runtime as string, "stop")}
-              disabled={busy !== null || status === "stopped"}
-              className={`${smallButton} ml-1`}
-            >
-              {busy === `${prefix}stop` ? "…" : "stop"}
-            </button>
-            <button
-              type="button"
-              onClick={() => onAct(row.node, row.runtime as string, "restart")}
-              disabled={busy !== null}
-              className={`${smallButton} ml-1`}
-            >
-              {busy === `${prefix}restart` ? "…" : "restart"}
-            </button>
+            {!asking && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onAct(row.node, row.runtime as string, "start")}
+                  disabled={busy !== null || status === "ready" || status === "loading"}
+                  className={smallButton}
+                >
+                  {busy === `${prefix}start` ? "…" : "start"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAct(row.node, row.runtime as string, "stop")}
+                  disabled={busy !== null || status === "stopped"}
+                  className={`${smallButton} ml-1`}
+                >
+                  {busy === `${prefix}stop` ? "…" : "stop"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAct(row.node, row.runtime as string, "restart")}
+                  disabled={busy !== null}
+                  className={`${smallButton} ml-1`}
+                >
+                  {busy === `${prefix}restart` ? "…" : "restart"}
+                </button>
+              </>
+            )}
             <span className="ml-1 inline-block">
               <ConfirmButton
                 label={busy === `${prefix}remove` ? "…" : "remove"}
@@ -901,6 +908,7 @@ function RowView({
                 className={dangerButton}
                 title="Stops the engine and forgets the runtime and its driver. The model files stay."
                 testId="remove-row"
+                onAsking={setAsking}
               />
             </span>
           </>

@@ -282,6 +282,23 @@ describe("which profile a runtime came from", () => {
   });
 });
 
+describe("removing a runtime asks without widening its row (ui#14)", () => {
+  it("steps start, stop and restart aside while asking, and brings them back", async () => {
+    const row = await rowFor("gemma-3-27b");
+    await within(row).findByText("ready");
+    expect(within(row).getByRole("button", { name: "restart" })).toBeInTheDocument();
+    fireEvent.click(within(row).getByTestId("remove-row"));
+    expect(within(row).getByText("The engine stops; the model files stay.")).toBeInTheDocument();
+    for (const name of ["start", "stop", "restart"]) {
+      expect(within(row).queryByRole("button", { name })).toBeNull();
+    }
+    fireEvent.click(within(row).getByTestId("remove-row-cancel"));
+    for (const name of ["start", "stop", "restart"]) {
+      expect(within(row).getByRole("button", { name })).toBeInTheDocument();
+    }
+  });
+});
+
 describe("a model running on the processor while the machine has a card", () => {
   it("says so, and says where the claim comes from", async () => {
     handlers.set("GET agent/v1/runtimes", () => ({

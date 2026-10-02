@@ -28,6 +28,7 @@ export function ConfirmButton({
   confirmClassName = "",
   title,
   testId,
+  onAsking,
 }: {
   /** What the button says before anyone has asked. */
   label: ReactNode;
@@ -43,11 +44,23 @@ export function ConfirmButton({
   confirmClassName?: string;
   title?: string;
   testId?: string;
+  /**
+   * Told when it starts and stops asking, so a screen can step its other
+   * buttons aside while the question is open: a row's action area has no
+   * room for a sentence beside four buttons (ui#14).
+   */
+  onAsking?: (asking: boolean) => void;
 }) {
   const [asking, setAsking] = useState(false);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const returnFocus = useRef(false);
+
+  useEffect(() => {
+    onAsking?.(asking);
+    // Told on a change of `asking` only, not on a new callback each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asking]);
 
   useEffect(() => {
     if (asking) cancelRef.current?.focus();
@@ -78,11 +91,15 @@ export function ConfirmButton({
     );
   }
 
+  // The question sits on a line of its own above its two answers, and is
+  // allowed to wrap: a row's action cell is often `whitespace-nowrap`, and
+  // a sentence that inherits that widens the table until its buttons need
+  // a sideways scroll to reach (ui#14).
   return (
     <span
       role="group"
       aria-label="Confirm"
-      className="inline-flex flex-wrap items-center gap-1"
+      className="inline-flex max-w-[16rem] flex-wrap items-center justify-end gap-1 text-left whitespace-normal"
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();
@@ -90,7 +107,7 @@ export function ConfirmButton({
         }
       }}
     >
-      {prompt && <span className="text-xs">{prompt}</span>}
+      {prompt && <span className="basis-full text-xs">{prompt}</span>}
       <button
         type="button"
         onClick={() => {

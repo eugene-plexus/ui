@@ -25,6 +25,45 @@ describe("ConfirmButton", () => {
     expect(screen.getByTestId("k-cancel")).toHaveFocus();
   });
 
+  it("lets its question wrap on a line of its own, even in a nowrap cell (ui#14)", () => {
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <td className="whitespace-nowrap">
+              <ConfirmButton
+                label="remove"
+                prompt="The engine stops; the model files stay."
+                onConfirm={() => undefined}
+                testId="r"
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    fireEvent.click(screen.getByTestId("r"));
+    const group = screen.getByRole("group", { name: "Confirm" });
+    expect(group.className).toMatch(/\bwhitespace-normal\b/);
+    expect(group.className).toMatch(/\bmax-w-\[16rem\]/);
+    expect(group.className).toMatch(/\bflex-wrap\b/);
+    expect(screen.getByText("The engine stops; the model files stay.").className).toMatch(
+      /\bbasis-full\b/,
+    );
+  });
+
+  it("tells its screen when it starts and stops asking", () => {
+    const onAsking = vi.fn();
+    render(
+      <ConfirmButton label="remove" onConfirm={() => undefined} testId="r" onAsking={onAsking} />,
+    );
+    onAsking.mockClear();
+    fireEvent.click(screen.getByTestId("r"));
+    expect(onAsking).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByTestId("r-cancel"));
+    expect(onAsking).toHaveBeenLastCalledWith(false);
+  });
+
   it("acts on the second click", () => {
     const onConfirm = vi.fn();
     render(<ConfirmButton label="Turn off" onConfirm={onConfirm} testId="k" />);
