@@ -49,4 +49,34 @@ describe("ConfirmButton", () => {
     expect(screen.getByTestId("k")).toHaveFocus();
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+
+  it("asks in a wrapping column so a nowrap parent cannot stretch the page", () => {
+    const onConfirm = vi.fn();
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <td className="whitespace-nowrap">
+              <ConfirmButton
+                label="remove"
+                prompt="The engine stops; the model files stay."
+                onConfirm={onConfirm}
+                testId="k"
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    fireEvent.click(screen.getByTestId("k"));
+    const group = screen.getByRole("group", { name: "Confirm" });
+    expect(group.className).toMatch(/whitespace-normal/);
+    expect(group.className).toMatch(/flex-col/);
+    expect(group.className).toMatch(/max-w-/);
+    expect(screen.getByText("The engine stops; the model files stay.")).toBeInTheDocument();
+    expect(screen.getByTestId("k-confirm")).toBeInTheDocument();
+    expect(screen.getByTestId("k-cancel")).toBeInTheDocument();
+  });
+
 });
