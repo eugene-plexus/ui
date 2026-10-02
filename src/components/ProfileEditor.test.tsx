@@ -78,7 +78,7 @@ it("saves an old checkbox's Flash attention as what it always did (agent#6)", as
   fireEvent.click(screen.getByRole("button", { name: "save" }));
   await waitFor(() => expect(writes).toHaveLength(1));
   expect(writes[0]).toMatchObject({ flags: { contextSize: 4096, threads: 8 } });
-  expect((writes[0].flags as Record<string, unknown>).flashAttention).toBeUndefined();
+  expect((writes[0]?.flags as Record<string, unknown>).flashAttention).toBeUndefined();
 });
 
 it("saves an old checkbox's ticked Flash attention as on", async () => {
