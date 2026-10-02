@@ -78,11 +78,14 @@ export function ConfirmButton({
     );
   }
 
+  // whitespace-normal beats an inherited nowrap cell so the prompt can
+  // wrap instead of stretching the table. Prompt on its own line keeps
+  // Remove/Keep in view at phone width (see issue #14).
   return (
     <span
       role="group"
       aria-label="Confirm"
-      className="inline-flex flex-wrap items-center gap-1"
+      className="inline-flex max-w-[min(100%,14rem)] flex-col items-stretch gap-1 whitespace-normal"
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();
@@ -90,28 +93,30 @@ export function ConfirmButton({
         }
       }}
     >
-      {prompt && <span className="text-xs">{prompt}</span>}
-      <button
-        type="button"
-        onClick={() => {
-          setAsking(false);
-          void onConfirm();
-        }}
-        disabled={disabled}
-        className={`${className} text-status-error ${confirmClassName}`}
-        data-testid={testId ? `${testId}-confirm` : undefined}
-      >
-        {confirmLabel ?? label}
-      </button>
-      <button
-        type="button"
-        ref={cancelRef}
-        onClick={backOut}
-        className={className}
-        data-testid={testId ? `${testId}-cancel` : undefined}
-      >
-        {cancelLabel}
-      </button>
+      {prompt && <span className="text-xs text-left leading-snug break-words">{prompt}</span>}
+      <span className="inline-flex flex-wrap items-center justify-end gap-1">
+        <button
+          type="button"
+          onClick={() => {
+            setAsking(false);
+            void onConfirm();
+          }}
+          disabled={disabled}
+          className={`${className} text-status-error ${confirmClassName}`}
+          data-testid={testId ? `${testId}-confirm` : undefined}
+        >
+          {confirmLabel ?? label}
+        </button>
+        <button
+          type="button"
+          ref={cancelRef}
+          onClick={backOut}
+          className={className}
+          data-testid={testId ? `${testId}-cancel` : undefined}
+        >
+          {cancelLabel}
+        </button>
+      </span>
     </span>
   );
 }
