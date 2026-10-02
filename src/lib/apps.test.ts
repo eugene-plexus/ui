@@ -88,6 +88,7 @@ describe("updateAvailable", () => {
       localActions: false,
       signIn: false,
       signInCallbackPath: "/oidc/callback",
+      healthPath: "/healthz",
       uses: ["inference"],
     },
     origin: "catalogue",

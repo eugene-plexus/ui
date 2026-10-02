@@ -447,6 +447,31 @@ function CatalogueEntry({
         </span>
       </div>
       {manifest.summary && <p className="text-sm text-[color:var(--muted)]">{manifest.summary}</p>}
+      {(manifest.homepage || manifest.licenseUrl) && (
+        <p className="flex flex-wrap gap-3 text-sm" data-testid={`apps-links-${manifest.id}`}>
+          {manifest.homepage && (
+            <a
+              href={manifest.homepage}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[color:var(--accent-left)] underline"
+            >
+              Its website
+            </a>
+          )}
+          {manifest.licenseUrl && (
+            <a
+              href={manifest.licenseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[color:var(--accent-left)] underline"
+              data-testid={`apps-license-${manifest.id}`}
+            >
+              Its licence
+            </a>
+          )}
+        </p>
+      )}
       {needsAccount && !installedHere && (
         <p
           className="status-warn rounded-[var(--radius)] px-2 py-1 text-sm"

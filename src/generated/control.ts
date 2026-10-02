@@ -165,7 +165,10 @@ export interface paths {
          *     `redirect_uri` that does not match a registered app is an error
          *     page and never a redirect; anything else wrong goes back to the app
          *     as `error=` (RFC 6749 §4.1.2.1). `code_challenge` with `S256`,
-         *     `state` and `nonce` are required.
+         *     `state` and `nonce` are required. `scope` must include `openid`;
+         *     `profile` and `email` are honoured and anything else is ignored.
+         *     With `email`, a person who has an address gets `email` and
+         *     `email_verified: false` (C4).
          */
         get: operations["oidcAuthorize"];
         put?: never;
@@ -1933,6 +1936,7 @@ export interface components {
             id: string;
             name: string;
             displayName?: string;
+            email?: string;
             /** @description Argon2id, the passphrase's parameters. */
             passwordVerifier: string;
             apps?: string[] | null;
@@ -1971,6 +1975,13 @@ export interface components {
             /** @description What they sign in with. Unique, compared case-folded. */
             name: string;
             displayName?: string;
+            /**
+             * @description Optional, and unique compared case-folded. Given to an app that
+             *     asks for the `email` scope, with `email_verified: false`: Eugene
+             *     sends no mail and has proved nothing about it. Some apps (Open
+             *     WebUI) identify people by it (C4).
+             */
+            email?: string;
             /** @description The `clientId`s they may sign in to. Null is every app on the install. */
             apps?: string[] | null;
             disabled: boolean;
@@ -1987,11 +1998,14 @@ export interface components {
         PersonCreateRequest: {
             name: string;
             displayName?: string;
+            email?: string;
             password: string;
             apps?: string[] | null;
         };
         PersonUpdateRequest: {
             displayName?: string;
+            /** @description A new address, or `null` to clear it. */
+            email?: string | null;
             apps?: string[] | null;
             disabled?: boolean;
         };

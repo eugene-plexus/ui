@@ -105,6 +105,17 @@ export function signInAddress(
 }
 
 /** Why a new person will be refused, or null. The root's own rules. */
+/** What the email field is for, said where it is asked (C4). */
+export const EMAIL_HINT =
+  "Apps that know people by their email, such as Open WebUI, are given it. Eugene sends no mail to it.";
+
+/** Why an address cannot be saved, or null. Blank is allowed: it is optional. */
+export function emailProblem(email: string): string | null {
+  const trimmed = email.trim();
+  if (!trimmed) return null;
+  return /^[^@\s]+@[^@\s]+$/.test(trimmed) ? null : "That does not look like an email address.";
+}
+
 export function newPersonProblem(
   name: string,
   password: string,

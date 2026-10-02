@@ -32,6 +32,7 @@ const ADA = {
   id: "p-ada",
   name: "Ada",
   displayName: "Ada Lovelace",
+  email: "ada@example.org",
   apps: null,
   disabled: false,
   createdAt: "2026-10-01T00:00:00Z",
@@ -146,6 +147,46 @@ describe("people", () => {
     await waitFor(() =>
       expect(sent("PUT control/v1/people/p-ada/password")).toEqual([
         { password: "a-new-password-1" },
+      ]),
+    );
+  });
+
+  it("adds a person with an email, and refuses one that is not an address (C4)", async () => {
+    render(<PeoplePage />);
+    await screen.findByTestId("people-add", {}, { timeout: 5000 });
+    await userEvent.click(within(screen.getByTestId("people-add")).getByText("Add a person"));
+    await userEvent.type(screen.getByTestId("people-add-name"), "Grace");
+    await userEvent.type(screen.getByTestId("people-add-password"), "long-enough-password");
+    await userEvent.type(screen.getByTestId("people-add-email"), "not an address");
+    expect(screen.getByTestId("people-add-submit")).toBeDisabled();
+    expect(screen.getByText("That does not look like an email address.")).toBeInTheDocument();
+    await userEvent.clear(screen.getByTestId("people-add-email"));
+    await userEvent.type(screen.getByTestId("people-add-email"), "grace@example.org");
+    await userEvent.click(screen.getByTestId("people-add-submit"));
+    await waitFor(() => expect(sent("POST control/v1/people")).toHaveLength(1));
+    expect(sent("POST control/v1/people")[0]).toEqual({
+      name: "Grace",
+      password: "long-enough-password",
+      apps: null,
+      email: "grace@example.org",
+    });
+  });
+
+  it("sets a person's email, and clears it with null", async () => {
+    render(<PeoplePage />);
+    const change = await screen.findByTestId("person-change-email-Ada", {}, { timeout: 5000 });
+    expect(within(change).getByText("Change email")).toBeInTheDocument();
+    expect(screen.getByTestId("person-email-Ada")).toHaveTextContent("ada@example.org");
+    await userEvent.click(within(change).getByText("Change email"));
+    const box = within(change).getByLabelText("Email for Ada");
+    await userEvent.clear(box);
+    await userEvent.type(box, "ada@new.example");
+    await userEvent.click(within(change).getByText("Save email"));
+    await userEvent.click(within(change).getByText("Remove email"));
+    await waitFor(() =>
+      expect(sent("PATCH control/v1/people/p-ada")).toEqual([
+        { email: "ada@new.example" },
+        { email: null },
       ]),
     );
   });

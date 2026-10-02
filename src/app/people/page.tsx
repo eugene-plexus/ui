@@ -27,6 +27,8 @@ import { api, describeError } from "@/lib/api";
 import {
   MIN_PASSWORD,
   appsSummary,
+  EMAIL_HINT,
+  emailProblem,
   installedByAgent,
   newPersonProblem,
   ownerLabel,
@@ -177,6 +179,14 @@ function PersonRow({
         {person.displayName && (
           <span className="text-sm text-[color:var(--muted)]">{person.displayName}</span>
         )}
+        {person.email && (
+          <span
+            className="text-sm text-[color:var(--muted)]"
+            data-testid={`person-email-${person.name}`}
+          >
+            {person.email}
+          </span>
+        )}
         <span
           className={`font-ui rounded-[var(--radius)] px-1.5 text-sm ${
             person.disabled ? "status-warn" : "status-success"
@@ -220,6 +230,10 @@ function PersonRow({
         <NewPassword
           name={person.name}
           onSave={(password) => change(() => api.put("control", `${path}/password`, { password }))}
+        />
+        <ChangeEmail
+          person={person}
+          onSave={(email) => change(() => api.patch("control", path, { email }))}
         />
       </div>
       {error && (
@@ -357,6 +371,56 @@ function NewPassword({
   );
 }
 
+/** Set or clear a person's address. Null on the wire clears it. */
+function ChangeEmail({
+  person,
+  onSave,
+}: {
+  person: Pick<Person, "email" | "name">;
+  onSave: (email: string | null) => Promise<void>;
+}) {
+  const [email, setEmail] = useState(person.email ?? "");
+  const problem = emailProblem(email);
+  return (
+    <details className="text-sm" data-testid={`person-change-email-${person.name}`}>
+      <summary className="font-ui cursor-pointer text-[color:var(--accent-left)]">
+        {person.email ? "Change email" : "Add an email"}
+      </summary>
+      <div className="mt-2 flex max-w-sm flex-col gap-2">
+        <p className="text-[color:var(--muted)]">{EMAIL_HINT}</p>
+        <input
+          type="email"
+          autoComplete="off"
+          className={inputClass}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          aria-label={`Email for ${person.name}`}
+        />
+        {problem && <p className="status-warn text-sm">{problem}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={primaryClass}
+            disabled={!email.trim() || Boolean(problem)}
+            onClick={() => void onSave(email.trim())}
+          >
+            Save email
+          </button>
+          {person.email && (
+            <button
+              type="button"
+              className={buttonClass}
+              onClick={() => void onSave(null).then(() => setEmail(""))}
+            >
+              Remove email
+            </button>
+          )}
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function AddPerson({
   operatorName,
   clients,
@@ -368,12 +432,13 @@ function AddPerson({
 }) {
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [every, setEvery] = useState(true);
   const [chosen, setChosen] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const problem = newPersonProblem(name, password, operatorName);
+  const problem = newPersonProblem(name, password, operatorName) ?? emailProblem(email);
 
   async function submit() {
     setSaving(true);
@@ -384,10 +449,12 @@ function AddPerson({
         password,
         apps: every ? null : chosen,
         ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
+        ...(email.trim() ? { email: email.trim() } : {}),
       };
       await api.post("control", "/v1/people", body);
       setName("");
       setDisplayName("");
+      setEmail("");
       setPassword("");
       setEvery(true);
       setChosen([]);
@@ -425,6 +492,19 @@ function AddPerson({
             value={displayName}
             autoComplete="off"
             onChange={(e) => setDisplayName(e.target.value)}
+          />
+        </label>
+        <label className="font-ui flex flex-col gap-1">
+          <span>
+            Email <span className="text-[color:var(--muted)]">— optional. {EMAIL_HINT}</span>
+          </span>
+          <input
+            type="email"
+            className={inputClass}
+            value={email}
+            autoComplete="off"
+            onChange={(e) => setEmail(e.target.value)}
+            data-testid="people-add-email"
           />
         </label>
         <label className="font-ui flex flex-col gap-1">

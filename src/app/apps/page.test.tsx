@@ -178,6 +178,34 @@ describe("an app that needs an account of its own (C1)", () => {
   });
 });
 
+describe("an app under a licence of its own (C4)", () => {
+  it("links its website and its licence, and shows neither when it has neither", async () => {
+    const licensed = {
+      ...MANIFEST,
+      id: "open-webui",
+      name: "Open WebUI",
+      homepage: "https://openwebui.com",
+      licenseUrl: "https://github.com/open-webui/open-webui/blob/v0.11.4/LICENSE",
+    };
+    handlers.set("GET agent/v1/app-catalogue", () => ({
+      status: 200,
+      body: {
+        apps: [
+          { manifest: licensed, origin: "catalogue" },
+          { manifest: MANIFEST, origin: "catalogue" },
+        ],
+        installable: true,
+      },
+    }));
+    render(<AppsPage />);
+    const licence = await screen.findByTestId("apps-license-open-webui", {}, { timeout: 5000 });
+    expect(licence).toHaveAttribute("href", licensed.licenseUrl);
+    expect(licence).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByTestId("apps-links-open-webui")).toHaveTextContent("Its website");
+    expect(screen.queryByTestId("apps-links-chat")).toBeNull();
+  });
+});
+
 describe("custom apps", () => {
   it("shows the refusal that names the setting, and links to it", async () => {
     render(<AppsPage />);
