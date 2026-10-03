@@ -77,6 +77,8 @@ export interface Task {
    * download is paused or cancelled where it was started, not here.
    */
   dismiss?: () => void;
+  /** Cancel a durable run; completed files and already-started models remain. */
+  cancel?: () => void;
 }
 
 /** The raw bodies, each `null` when its source did not answer. */

@@ -19,7 +19,8 @@
     "format:check": "prettier --check .",
     "codegen": "node scripts/codegen.mjs",
     "test:e2e": "playwright test",
-    "build:python": "npm run build && node scripts/stage-python.mjs"
+    "build:python": "npm run build && node scripts/stage-python.mjs",
+    "codegen:runs": "node scripts/codegen-runs.mjs"
   },
   "dependencies": {
     "lucide-react": "1.45.0",

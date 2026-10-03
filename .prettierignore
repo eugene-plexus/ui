@@ -7,3 +7,7 @@ src/generated
 .codegen-cache
 *.tsbuildinfo
 package-lock.json
+
+# Deterministic, integrity-checked platform snapshots
+contracts
+VENDORED.json

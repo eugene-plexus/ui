@@ -11,6 +11,15 @@ permissions:
   contents: read
 
 jobs:
+  platform-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python scripts/check-vendored.py
+
   secret-scan:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
@@ -118,7 +127,9 @@ jobs:
         run: npm ci
 
       - name: Regenerate from pinned specs
-        run: npm run codegen
+        run: |
+          npm run codegen
+          npm run codegen:runs
 
       - name: Assert no diff
         shell: bash

@@ -151,6 +151,7 @@ beforeEach(() => {
   // Signed in: the gate otherwise bounces to /login before any card renders.
   sessionStorage.setItem("eugene-session-token", "test-token");
 
+  const operations: Record<string, unknown>[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -160,6 +161,33 @@ beforeEach(() => {
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
       };
       recorder.push(call);
+      if (call.method === "GET" && call.route === "library/v1/run-operations")
+        return Response.json({ operations });
+      if (call.method === "PUT" && call.route.startsWith("library/v1/run-operations/")) {
+        const modelId = call.body?.modelId;
+        const modelList = routes.get("GET library/v1/models")?.().body as
+          | { models?: Record<string, unknown>[] }
+          | undefined;
+        const model = modelList?.models?.find((m) => m.id === modelId) ?? null;
+        const made = {
+          id: call.route.split("/").pop(),
+          node: call.body?.node,
+          intent: call.body,
+          model,
+          step: model ? "ready" : "downloading",
+          engine: model ? "llama_cpp" : null,
+          runtime: model ? "qwen3-14b" : null,
+          runtimeStatus: model ? "ready" : null,
+          install: null,
+          download: null,
+          error: null,
+          failedStep: null,
+          startedAt: Date.now(),
+          finishedAt: model ? Date.now() : null,
+        };
+        operations.push(made);
+        return Response.json(made, { status: 202 });
+      }
       // An exact route first, then the path without its query string.
       const handler =
         routes.get(key(call)) ?? routes.get(`${call.method} ${call.route.split("?")[0]}`);
@@ -619,17 +647,12 @@ describe("Home with exactly one model on disk (S3)", () => {
     const status = await within(card).findByTestId("run-status");
     await waitFor(() => expect(status).toHaveAttribute("data-step", "ready"), { timeout: 5000 });
     expect(status).toHaveTextContent("ready — try it on Home");
-    // What went to the agent is the profile editor's own composition,
-    // for THIS machine, started.
-    const declared = calls.find((c) => key(c) === "POST agent/v1/runtimes");
-    expect(declared?.body).toEqual({
-      name: RUNTIME,
-      engine: "llama_cpp",
-      modelPath: "/models/a.gguf",
-      flags: { contextSize: 32768 },
-      autoStart: true,
-      profile: { id: expect.any(String), name: "default" },
-    });
+    // Home submits intent; execution and recovery are verified on the server.
+    const submitted = calls.find(
+      (c) => c.method === "PUT" && c.route.startsWith("library/v1/run-operations/"),
+    );
+    expect(submitted?.body).toEqual({ node: "Amish_Station", modelId: "a" });
+    expect(calls.some((c) => key(c) === "POST agent/v1/runtimes")).toBe(false);
     expectPlainWords();
   });
 

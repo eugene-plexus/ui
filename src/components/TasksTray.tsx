@@ -156,15 +156,12 @@ function TaskRow({ task, onFollow }: { task: Task; onFollow: () => void }) {
           </span>
         )}
       </Link>
-      {task.dismiss && (
-        // The browser's own finished task: dismissing it changes nothing
-        // on any component, which is why this verb is allowed here and
-        // pause / cancel are not.
+      {(task.dismiss || task.cancel) && (
         <button
           type="button"
-          aria-label={`Dismiss: ${task.title}`}
-          data-testid="task-dismiss"
-          onClick={() => task.dismiss?.()}
+          aria-label={`${task.cancel ? "Cancel" : "Dismiss"}: ${task.title}`}
+          data-testid={task.cancel ? "task-cancel" : "task-dismiss"}
+          onClick={() => (task.cancel ?? task.dismiss)?.()}
           className="absolute top-1 right-1 rounded px-1 text-[0.6875rem] text-[color:var(--muted)] hover:bg-[color:var(--border)] hover:text-[color:var(--foreground)]"
         >
           ×

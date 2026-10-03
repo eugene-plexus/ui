@@ -143,7 +143,10 @@ async function main() {
   console.log(`wrote ${GENERATED_DIR}`);
 }
 
-main().catch((e) => {
+await main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+
+// Keep the additive run protocol present after clearing the aggregate output.
+await import("./codegen-runs.mjs");

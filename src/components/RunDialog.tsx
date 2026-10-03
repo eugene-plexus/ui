@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { answerInstall, dismissRun, useRuns, type RunTask } from "@/lib/oneClickRun";
+import { answerInstall, cancelRun, useRuns, type RunTask } from "@/lib/oneClickRun";
 import { engineLabel } from "@/lib/tasks";
 
 /**
@@ -30,7 +30,7 @@ export function RunDialog() {
 export function RunDialogView({
   task,
   onAnswer = (id, answer) => answerInstall(id, answer),
-  onCancel = (id) => dismissRun(id),
+  onCancel = (id) => cancelRun(id),
 }: {
   task: RunTask;
   onAnswer?: (id: string, answer: "install" | "skip") => void;
@@ -71,6 +71,11 @@ export function RunDialogView({
           hundred megabytes and lands in Eugene&rsquo;s own folder; nothing else on the machine
           changes.
         </p>
+        {task.error && (
+          <p role="alert" className="mt-2 text-sm">
+            {task.error}
+          </p>
+        )}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
