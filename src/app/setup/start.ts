@@ -276,13 +276,25 @@ export function backendCredentialsComplete(b: BackendDraft): boolean {
 }
 
 export function buildBackendPatch(b: BackendDraft): Record<string, unknown> {
-  const credentials = WIZARD_PROVIDERS.find((p) => p.key === b.provider)?.credentials ?? [];
+  const provider = WIZARD_PROVIDERS.find((p) => p.key === b.provider);
+  const credentials = provider?.credentials ?? [];
   const patch: Record<string, unknown> = { provider: b.provider };
   if (b.modelId.trim()) patch.modelId = b.modelId.trim();
   if (credentials.includes("api_key")) patch.apiKey = b.apiKey;
   if (credentials.includes("claude_cli")) patch.claudeCodeCliPath = b.claudeCodeCliPath || "claude";
   if (credentials.includes("codex_cli")) patch.codexCliPath = b.codexCliPath || "codex";
   if (credentials.includes("base_url")) patch.baseUrl = b.baseUrl;
+  if (provider?.localServer) {
+    // Both optional, and an empty box is left UNSET rather than written
+    // as "": the driver then keeps its own default address and sends no
+    // key, and its Settings page says so (settings never lie).
+    const key = b.apiKey.trim();
+    if (key) patch.apiKey = key;
+    // The address an app shows for its server ends in /v1, and the driver
+    // appends /v1/chat/completions itself, so that suffix would double.
+    const address = b.baseUrl.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+    if (address) patch.baseUrl = address;
+  }
   return patch;
 }
 

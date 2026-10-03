@@ -34,7 +34,28 @@ export interface AgentConfigDocument extends Record<string, unknown> {
  * extra fields, move to fetching the schema from a wizard-spawned
  * driver instead.
  */
-export type WizardCredential = "claude_cli" | "codex_cli" | "api_key" | "base_url" | "none";
+export type WizardCredential = "claude_cli" | "codex_cli" | "api_key" | "base_url";
+
+/**
+ * A server the person runs themselves, usually on this machine: its
+ * address and its key are both offered and neither is required.
+ *
+ * **It used to be `credentials: ["none"]` and the words "needs no key".**
+ * LM Studio 0.4.0 can require an API token ("Require Authentication for
+ * each request", off by default) and an Ollama is often reached through a
+ * proxy that asks for one, so both were unreachable from the form
+ * (upstream drift audit, 2026-10-03). The driver reads `apiKey` and
+ * `baseUrl` for both providers already; an empty box is left unset, so
+ * the driver keeps its own default address and sends no key.
+ */
+export interface LocalServerFields {
+  /** The driver's own default, `default_base_url` in `providers.py`. */
+  defaultAddress: string;
+  /** What the app itself calls the key. */
+  keyLabel: string;
+  /** When a key is needed, in the person's words. */
+  keyWhen: string;
+}
 
 export interface WizardProvider {
   key: string;
@@ -42,9 +63,11 @@ export interface WizardProvider {
   /**
    * Which credential input(s) to render on the driver screen. `api_key`
    * + `base_url` can combine (e.g. custom OpenAI-compat); most providers
-   * pick exactly one.
+   * pick exactly one. Every one listed here is required.
    */
   credentials: WizardCredential[];
+  /** An address and a key, both optional; see `LocalServerFields`. */
+  localServer?: LocalServerFields;
 }
 
 export const WIZARD_PROVIDERS: WizardProvider[] = [
@@ -73,8 +96,28 @@ export const WIZARD_PROVIDERS: WizardProvider[] = [
   { key: "xai", label: "xAI (Grok)", credentials: ["api_key"] },
   { key: "openrouter", label: "OpenRouter", credentials: ["api_key"] },
   { key: "minimax", label: "MiniMax", credentials: ["api_key"] },
-  { key: "ollama_local", label: "Local — Ollama", credentials: ["none"] },
-  { key: "lmstudio_local", label: "Local — LM Studio", credentials: ["none"] },
+  {
+    key: "ollama_local",
+    label: "Local — Ollama",
+    credentials: [],
+    localServer: {
+      defaultAddress: "http://127.0.0.1:11434",
+      keyLabel: "Key",
+      keyWhen:
+        "Only if your Ollama sits behind a proxy that asks for one. Ollama itself never does.",
+    },
+  },
+  {
+    key: "lmstudio_local",
+    label: "Local — LM Studio",
+    credentials: [],
+    localServer: {
+      defaultAddress: "http://127.0.0.1:1234",
+      keyLabel: "API token",
+      keyWhen:
+        "Only if “Require Authentication for each request” is on in LM Studio's server settings.",
+    },
+  },
 ];
 
 export function providerLabel(key: string): string {

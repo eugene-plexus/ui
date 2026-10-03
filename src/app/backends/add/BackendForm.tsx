@@ -18,7 +18,7 @@
 
 import { cloneElement, isValidElement, useId } from "react";
 
-import { WIZARD_PROVIDERS, type WizardCredential } from "@/lib/agent";
+import { type LocalServerFields, WIZARD_PROVIDERS, type WizardCredential } from "@/lib/agent";
 import type { BackendDraft } from "@/app/setup/draft";
 
 export function BackendForm({
@@ -32,8 +32,8 @@ export function BackendForm({
   disabled?: boolean;
   onChange: (patch: Partial<BackendDraft>) => void;
 }) {
-  const credentials: WizardCredential[] =
-    WIZARD_PROVIDERS.find((p) => p.key === backend.provider)?.credentials ?? [];
+  const provider = WIZARD_PROVIDERS.find((p) => p.key === backend.provider);
+  const credentials: WizardCredential[] = provider?.credentials ?? [];
 
   return (
     <>
@@ -60,6 +60,7 @@ export function BackendForm({
         <>
           <CredentialFields
             credentials={credentials}
+            localServer={provider?.localServer}
             backend={backend}
             disabled={disabled}
             onChange={onChange}
@@ -75,11 +76,14 @@ export function BackendForm({
 
 export function CredentialFields({
   credentials,
+  localServer,
   backend,
   disabled = false,
   onChange,
 }: {
   credentials: WizardCredential[];
+  /** A server the person runs: its address and key, both optional. */
+  localServer?: LocalServerFields;
   backend: BackendDraft;
   disabled?: boolean;
   onChange: (patch: Partial<BackendDraft>) => void;
@@ -139,10 +143,35 @@ export function CredentialFields({
           />
         </Field>
       )}
-      {credentials.includes("none") && (
-        <p className="-mt-2 mb-4 text-sm text-[color:var(--muted)]">
-          Nothing to enter: this app runs on this machine and needs no key.
-        </p>
+      {localServer && (
+        <>
+          {/* The placeholder is the address in effect when the box is
+              empty -- the driver's own default -- and the line under it
+              says so, so an empty box never reads as a value nobody set. */}
+          <Field
+            label="Address (optional)"
+            description={`Leave empty for ${localServer.defaultAddress}, its usual address on this machine. Fill it in if it runs on another machine or port.`}
+          >
+            <input
+              type="url"
+              value={backend.baseUrl}
+              disabled={disabled}
+              onChange={(e) => onChange({ baseUrl: e.target.value })}
+              placeholder={localServer.defaultAddress}
+              className={input}
+            />
+          </Field>
+          <Field
+            label={`${localServer.keyLabel} (optional)`}
+            description={`${localServer.keyWhen} Leave empty otherwise.`}
+          >
+            <SecretInput
+              value={backend.apiKey}
+              disabled={disabled}
+              onChange={(v) => onChange({ apiKey: v })}
+            />
+          </Field>
+        </>
       )}
     </>
   );

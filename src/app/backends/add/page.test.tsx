@@ -272,6 +272,114 @@ describe("/backends/add", () => {
   });
 });
 
+describe("a local server's address and key, both optional", () => {
+  // LM Studio 0.4.0 can require an API token ("Require Authentication for
+  // each request", off by default), sent as `Authorization: Bearer`; and
+  // an Ollama is often reached through a proxy that asks for one. The
+  // form said "needs no key" and had nowhere to put one, so either was
+  // unreachable from here (upstream drift audit, 2026-10-03). The driver
+  // already reads `apiKey` and `baseUrl` for both providers.
+  beforeEach(() => {
+    for (const app of ["lmstudio", "ollama"]) {
+      handlers.set(`PATCH ${app}/v1/config`, () => ({ status: 200, body: {} }));
+      handlers.set(`POST agent/v1/components/${app}/restart`, () => ({ status: 200, body: {} }));
+      handlers.set(`GET ${app}/v1/info?models=false`, () => ({
+        status: 200,
+        body: {
+          backend: "openai_compat_http",
+          catalogue: {
+            source: app,
+            total: 1,
+            exposed: 1,
+            refreshedAt: "2026-10-03T12:00:00Z",
+            error: null,
+          },
+        },
+      }));
+      handlers.set(`GET ${app}/v1/config/schema`, () => ({
+        status: 200,
+        body: { fields: [{ key: "provider" }, { key: "modelId", suggestions: ["qwen3-8b"] }] },
+      }));
+    }
+  });
+
+  async function choose(provider: string) {
+    const user = userEvent.setup({ delay: null });
+    render(<AddBackendPage />);
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Which app" }), provider);
+    return user;
+  }
+
+  function firstPatch(app: string) {
+    return calls.find((c) => key(c) === `PATCH ${app}/v1/config`)?.body;
+  }
+
+  it("offers LM Studio's token and address, and sends neither when both are left empty", async () => {
+    const user = await choose("lmstudio_local");
+    const token = screen.getByLabelText("API token (optional)");
+    expect(token).toHaveAttribute("type", "password");
+    expect(token).toHaveAccessibleDescription(/Require Authentication for each request/);
+    const address = screen.getByLabelText("Address (optional)");
+    // The placeholder is the address in effect when the box is empty, and
+    // the description says so in words.
+    expect(address).toHaveAttribute("placeholder", "http://127.0.0.1:1234");
+    expect(address).toHaveAccessibleDescription(/Leave empty for http:\/\/127\.0\.0\.1:1234/);
+    expect(screen.queryByText(/needs no key/)).toBeNull();
+    expectPlainWords();
+
+    // Neither is required to add it.
+    const add = screen.getByRole("button", { name: "Add" });
+    expect(add).toBeEnabled();
+    await user.click(add);
+    await screen.findByRole("heading", { name: "Which models?" });
+    // Left empty is left unset: no blank key and no address written over
+    // the driver's own default.
+    expect(firstPatch("lmstudio")).toEqual({ provider: "lmstudio_local" });
+  });
+
+  it("sends the token and the address typed, the address without /v1", async () => {
+    const user = await choose("lmstudio_local");
+    await user.type(screen.getByLabelText("API token (optional)"), "lm-secret");
+    // What LM Studio shows as its server address ends in /v1; the driver
+    // adds /v1/chat/completions itself.
+    await user.type(screen.getByLabelText("Address (optional)"), " http://192.168.1.30:1234/v1/ ");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await screen.findByRole("heading", { name: "Which models?" });
+    expect(firstPatch("lmstudio")).toEqual({
+      provider: "lmstudio_local",
+      apiKey: "lm-secret",
+      baseUrl: "http://192.168.1.30:1234",
+    });
+  });
+
+  it("says when an Ollama needs a key, rather than that it needs none", async () => {
+    const user = await choose("ollama_local");
+    const keyBox = screen.getByLabelText("Key (optional)");
+    expect(keyBox).toHaveAttribute("type", "password");
+    expect(keyBox).toHaveAccessibleDescription(/proxy/);
+    expect(screen.getByLabelText("Address (optional)")).toHaveAttribute(
+      "placeholder",
+      "http://127.0.0.1:11434",
+    );
+    expect(screen.queryByText(/needs no key/)).toBeNull();
+    await user.type(keyBox, "proxy-key");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await screen.findByRole("heading", { name: "Which models?" });
+    expect(firstPatch("ollama")).toEqual({ provider: "ollama_local", apiKey: "proxy-key" });
+  });
+
+  it("still requires the key and address where a provider needs them", async () => {
+    // The optional boxes must not loosen the required ones beside them.
+    const user = await choose("openai_compat_custom");
+    expect(screen.getByLabelText("API key")).toBeInTheDocument();
+    expect(screen.getByLabelText("Address")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Address (optional)")).toBeNull();
+    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
+    await user.type(screen.getByLabelText("Address"), "http://10.0.0.2:8000");
+    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
+  });
+});
+
 describe("pressing Add again after a later step failed", () => {
   it("finishes the driver it already made, rather than making a second", async () => {
     let failSettings = true;
