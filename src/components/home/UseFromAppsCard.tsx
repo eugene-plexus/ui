@@ -184,9 +184,18 @@ export function UseFromAppsCard({
   // another just to see them.
   const liveKeys = (keys ?? []).filter((k) => !k.revokedAt);
   const keyString = fresh?.token ?? null;
+  // The chosen model's window, for the recipes that tell an app its size
+  // (Claude Code, Codex). `null` when the gateway does not say, and the
+  // recipes then say it is not known rather than write a number.
+  const contextWindow = selectedModel ? contextOf(selectedModel) : null;
   const strings = useMemo(
-    () => ({ baseUrl: display, key: keyString ?? "YOUR_KEY", model: model ?? "MODEL_ID" }),
-    [display, keyString, model],
+    () => ({
+      baseUrl: display,
+      key: keyString ?? "YOUR_KEY",
+      model: model ?? "MODEL_ID",
+      contextWindow,
+    }),
+    [display, keyString, model, contextWindow],
   );
   const recipes = useMemo(() => buildRecipes(strings), [strings]);
   const missing = blockers({
@@ -340,8 +349,8 @@ export function UseFromAppsCard({
     >
       <h2 className="font-ui text-sm font-semibold">Use it from your apps</h2>
       <p className="font-ui mt-1 text-sm text-[color:var(--muted)]">
-        One address for Claude Code and OpenAI-compatible apps such as Continue, Open WebUI and
-        SillyTavern. Choose your app below for its connection settings.
+        One address for Claude Code, Codex and OpenAI-compatible apps such as Continue, Open WebUI
+        and SillyTavern. Choose your app below for its connection settings.
       </p>
 
       <dl className="mt-3 flex flex-col gap-2">
@@ -685,11 +694,35 @@ export function UseFromAppsCard({
             <div key={recipe.name} className="mt-2" data-testid="recipe">
               <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">{recipe.where}</p>
               <div className="mt-1 flex items-start gap-2">
-                <pre className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-2 font-mono text-[0.6875rem]">
+                <pre
+                  data-testid="recipe-snippet"
+                  className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-2 font-mono text-[0.6875rem]"
+                >
                   {recipe.snippet}
                 </pre>
                 <CopyButton text={recipe.snippet} title={`Copy the ${recipe.name} snippet`} />
               </div>
+              {/* A second place to paste, with its own Copy: Codex's key
+                  goes in an environment variable, never in its file. */}
+              {recipe.then && (
+                <>
+                  <p className="font-ui mt-2 text-[0.6875rem] text-[color:var(--muted)]">
+                    {recipe.then.where}
+                  </p>
+                  <div className="mt-1 flex items-start gap-2">
+                    <pre
+                      data-testid="recipe-snippet"
+                      className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-2 font-mono text-[0.6875rem]"
+                    >
+                      {recipe.then.snippet}
+                    </pre>
+                    <CopyButton
+                      text={recipe.then.snippet}
+                      title={`Copy the ${recipe.name} key variable`}
+                    />
+                  </div>
+                </>
+              )}
               {recipe.note && (
                 <p className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]">
                   {recipe.note}

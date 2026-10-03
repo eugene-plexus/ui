@@ -78,6 +78,15 @@ export interface Recipe {
   readonly snippet: string;
   /** What to watch for. Optional, one sentence. */
   readonly note?: string;
+  /**
+   * A second place, for an app that reads from two. Codex names an
+   * environment variable in its file and reads the key from it, so the
+   * file and the key are two things to paste in two places -- and one
+   * block holding both would put the key in a file that is not meant to
+   * carry it, or put an unquoted `NAME=value` line into TOML that Codex
+   * then refuses to read.
+   */
+  readonly then?: { readonly where: string; readonly snippet: string };
 }
 
 export interface Strings {
@@ -87,6 +96,63 @@ export interface Strings {
   readonly key: string;
   /** The model id, exactly as `/v1/models` spells it. */
   readonly model: string;
+  /**
+   * The model's context window in tokens, as `GET /v1/models` reports it
+   * (`lib/modelContext.ts`). `null` or absent when the gateway does not
+   * say, and then no recipe writes a number it was not given (settings
+   * never lie): the recipe says the window is unknown and names the line.
+   */
+  readonly contextWindow?: number | null;
+}
+
+/** A window worth writing down: a positive whole number of tokens. */
+function knownWindow(s: Strings): number | null {
+  const w = s.contextWindow;
+  return typeof w === "number" && Number.isFinite(w) && w > 0 ? Math.floor(w) : null;
+}
+
+/**
+ * What Claude Code keeps free for each reply on a model id it does not
+ * recognise. From its environment-variable reference: "For a model ID
+ * Claude Code can't resolve to a model it knows, the default is 32000".
+ */
+export const CLAUDE_CODE_UNKNOWN_MODEL_OUTPUT_TOKENS = 32_000;
+
+/**
+ * `CLAUDE_CODE_MAX_OUTPUT_TOKENS` for a window, or `null` to leave
+ * Claude Code's own 32,000 alone.
+ *
+ * **Why a line at all.** Claude Code subtracts the reply room from the
+ * window before it decides to compact ("Increasing this value reduces
+ * the effective context window available before auto-compaction"), so a
+ * 32k local model told its real window and nothing else would leave
+ * Claude Code about 768 tokens of conversation before it compacts --
+ * reasoned from that sentence, not run.
+ * The gateway's capacity budget also reserves a turn's whole
+ * `max_tokens` (cache-aware balancing, record §9), so 32,000 on a 64k
+ * pool holds one Claude Code turn where two would fit by real use.
+ *
+ * **Why a quarter.** It is a choice, not a measurement: three quarters
+ * of the window for the conversation and a quarter for one reply, 8,192
+ * tokens on a 32k model. Where a quarter is already 32,000 or more (a
+ * 128k window and up) the line would only restate Claude Code's default,
+ * so it is left out.
+ */
+export function claudeCodeOutputTokens(window: number): number | null {
+  const quarter = Math.floor(window / 4);
+  return quarter > 0 && quarter < CLAUDE_CODE_UNKNOWN_MODEL_OUTPUT_TOKENS ? quarter : null;
+}
+
+/** The environment variable Codex's provider entry names for the key. */
+export const CODEX_KEY_VARIABLE = "EUGENE_API_KEY";
+
+/**
+ * A TOML basic string. JSON's string escapes (`\"`, `\\`, `\n`, `\uXXXX`)
+ * are all TOML basic-string escapes too, and `JSON.stringify` never emits
+ * one TOML lacks, so a model id with a quote in it stays one string.
+ */
+function tomlString(value: string): string {
+  return JSON.stringify(value);
 }
 
 /**
@@ -117,25 +183,124 @@ export function anthropicBaseUrl(s: Strings): string {
  * The gateway serves it since R4, and this recipe is written from a
  * measured run rather than from the documentation: see
  * `specs/docs/acceptance/anthropic-messages-measurement.md`.
+ *
+ * **Codex follows it (2026-10-03).** It speaks only the Responses API,
+ * which the gateway serves since the Responses door; there was no
+ * recipe, and the audit found the one people would write from Codex's
+ * docs misses two lines that matter (`env_key`, `model_context_window`).
  */
 export function recipes(s: Strings): Recipe[] {
-  return [
-    {
-      name: "Claude Code",
-      where: "Environment variables",
-      snippet: [
-        `ANTHROPIC_BASE_URL=${anthropicBaseUrl(s)}`,
-        `ANTHROPIC_AUTH_TOKEN=${s.key}`,
-        `ANTHROPIC_MODEL=${s.model}`,
-        "CLAUDE_CODE_EFFORT_LEVEL=unset",
-      ].join("\n"),
-      note:
-        "No /v1 on the base URL here — Claude Code adds it. Use ANTHROPIC_AUTH_TOKEN, " +
-        "not ANTHROPIC_API_KEY: the API-key variable needs a one-off approval prompt, and " +
-        "if you are signed in to a Claude subscription it is ignored and your Anthropic " +
-        "token is sent instead. Claude Code 2.1.207 also needs EFFORT_LEVEL=unset " +
-        "for local models: native Anthropic effort controls are not supported.",
+  return [claudeCode(s), codex(s), ...openAiRecipes(s)];
+}
+
+/**
+ * Claude Code, as of 2.1.288 (upstream drift audit, 2026-10-03).
+ *
+ * **`CLAUDE_CODE_EFFORT_LEVEL=unset` is gone.** It was never a value
+ * Claude Code documents (low, medium, high, xhigh, max, auto), and its
+ * reason -- the door refused `output_config.effort` -- stopped being
+ * true on 2026-09-23.
+ *
+ * **The window is the new line.** Claude Code assumes 200K for a model id
+ * it does not recognise and compacts against that, and the docs say
+ * `CLAUDE_CODE_MAX_CONTEXT_TOKENS` "applies directly" to such an id. A
+ * local model's id is exactly that case; a hosted Claude's id resolves to
+ * a model Claude Code knows, where the variable is inert and harmless.
+ * The gateway words an overflow `prompt is too long` since the same
+ * contract, which is what Claude Code compacts on when the number is
+ * still wrong.
+ */
+function claudeCode(s: Strings): Recipe {
+  const window = knownWindow(s);
+  const reply = window === null ? null : claudeCodeOutputTokens(window);
+  const lines = [
+    `ANTHROPIC_BASE_URL=${anthropicBaseUrl(s)}`,
+    `ANTHROPIC_AUTH_TOKEN=${s.key}`,
+    `ANTHROPIC_MODEL=${s.model}`,
+  ];
+  if (window !== null) lines.push(`CLAUDE_CODE_MAX_CONTEXT_TOKENS=${window}`);
+  if (reply !== null) lines.push(`CLAUDE_CODE_MAX_OUTPUT_TOKENS=${reply}`);
+
+  const auth =
+    "No /v1 on the base URL here — Claude Code adds it. Use ANTHROPIC_AUTH_TOKEN, " +
+    "not ANTHROPIC_API_KEY: the API-key variable needs a one-off approval prompt, and " +
+    "if you are signed in to a Claude subscription it is ignored and your Anthropic " +
+    "token is sent instead.";
+  const size =
+    window === null
+      ? " This model's window is not known yet, so set CLAUDE_CODE_MAX_CONTEXT_TOKENS " +
+        "to it yourself. Without it, Claude Code assumes 200,000 tokens and the model " +
+        "runs out of room first."
+      : " CLAUDE_CODE_MAX_CONTEXT_TOKENS is this model's window, so Claude Code sums up " +
+        "older turns before the window fills. It assumes 200,000 tokens otherwise." +
+        (reply === null
+          ? ""
+          : " CLAUDE_CODE_MAX_OUTPUT_TOKENS leaves room for your conversation: Claude Code " +
+            "otherwise keeps 32,000 tokens free for each reply.");
+  return {
+    name: "Claude Code",
+    where: "Environment variables",
+    snippet: lines.join("\n"),
+    note: auth + size,
+  };
+}
+
+/**
+ * Codex, as of 0.160.0, every key read in its source (drift audit,
+ * 2026-10-03).
+ *
+ * - A custom provider is the only way to point Codex at another
+ *   endpoint, and it speaks the Responses API only (`wire_api` accepts
+ *   `responses` and refuses the removed `chat`), which the gateway serves.
+ * - **`env_key` is mandatory in practice**: since openai/codex#39214 a
+ *   custom provider no longer inherits ambient auth, so without it Codex
+ *   sends no key and the gateway answers 401.
+ * - **`model_context_window`**: Codex falls back to 272,000 tokens for a
+ *   model it has no metadata for (`models-manager/src/model_info.rs`),
+ *   compacts against that, and treats a real overflow as the end of the
+ *   conversation. Written only when the gateway knows the window.
+ * - `model`, `model_provider` and `model_context_window` are top-level
+ *   keys, so they come before the `[model_providers.eugene]` header: in
+ *   TOML a key after a header belongs to that table, and both structs
+ *   are `deny_unknown_fields`.
+ * - No `[features] multi_agent = false`: the gateway takes Codex's
+ *   `namespace` tools since specs 8c41b85's contract.
+ */
+function codex(s: Strings): Recipe {
+  const window = knownWindow(s);
+  const top = [`model_provider = "eugene"`, `model = ${tomlString(s.model)}`];
+  if (window !== null) top.push(`model_context_window = ${window}`);
+  const provider = [
+    "[model_providers.eugene]",
+    `name = "Eugene Plexus"`,
+    `base_url = ${tomlString(s.baseUrl)}`,
+    `env_key = ${tomlString(CODEX_KEY_VARIABLE)}`,
+    `wire_api = "responses"`,
+  ];
+  const size =
+    window === null
+      ? " This model's window is not known yet, so add model_context_window with it yourself. " +
+        "Without it, Codex assumes 272,000 tokens and stops when the model runs out of room."
+      : " model_context_window is this model's window. Without it, Codex assumes 272,000 " +
+        "tokens and stops when the model runs out of room.";
+  return {
+    name: "Codex",
+    where: "~/.codex/config.toml",
+    snippet: [...top, "", ...provider].join("\n"),
+    note:
+      `Codex reads the key from ${CODEX_KEY_VARIABLE}, the variable env_key names, ` +
+      "and sends none without it." +
+      size,
+    then: {
+      where: "Environment variable, set where you start Codex",
+      snippet: `${CODEX_KEY_VARIABLE}=${s.key}`,
     },
+  };
+}
+
+/** The apps that speak the OpenAI shape, `/v1` and all. */
+function openAiRecipes(s: Strings): Recipe[] {
+  return [
     {
       name: "Continue",
       where: "~/.continue/config.yaml",

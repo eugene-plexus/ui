@@ -111,8 +111,11 @@ describe("recipes", () => {
   const made = recipes(STRINGS);
 
   it("puts all three strings in every recipe that needs all three", () => {
+    // The key may sit in a recipe's second place rather than its first:
+    // Codex names an environment variable in its file and reads the key
+    // from there, so its file must NOT carry the key.
     for (const recipe of made) {
-      expect(recipe.snippet).toContain(STRINGS.key);
+      expect([recipe.snippet, recipe.then?.snippet ?? ""].join("\n")).toContain(STRINGS.key);
     }
   });
 
@@ -175,7 +178,72 @@ describe("recipes", () => {
     expect(one.snippet).toContain("ANTHROPIC_BASE_URL=http://192.168.1.20:8080\n");
     expect(one.snippet).not.toContain("ANTHROPIC_BASE_URL=http://192.168.1.20:8080/v1");
     expect(one.snippet).toContain(`ANTHROPIC_MODEL=${STRINGS.model}`);
-    expect(one.snippet).toContain("CLAUDE_CODE_EFFORT_LEVEL=unset");
+  });
+
+  it("no longer turns Claude Code's effort level off", () => {
+    // **Inverted 2026-10-03 (upstream drift audit).** `=unset` is not a
+    // value Claude Code documents (its values are low, medium, high,
+    // xhigh, max and auto), and the reason given for it went stale on
+    // 2026-09-23 when the Anthropic door started accepting
+    // `output_config.effort`. A recipe that tells people to set an
+    // undocumented value, for a refusal that no longer happens, is two
+    // wrong things in one line.
+    for (const window of [32_768, null]) {
+      const one = recipes({ ...STRINGS, contextWindow: window }).find(
+        (r) => r.name === "Claude Code",
+      )!;
+      expect(one.snippet).not.toContain("EFFORT_LEVEL");
+      expect(one.note ?? "").not.toMatch(/effort/i);
+    }
+  });
+
+  it("tells Claude Code the model's real window, and leaves room for the prompt", () => {
+    // Claude Code assumes 200K for a model id it does not know and
+    // compacts against that, so a local 32k model overflows long before
+    // Claude Code thinks to shorten anything. And it keeps 32,000 tokens
+    // free for each reply on such a model, which on a 32k window is all
+    // of it -- so the window alone, without the output line, would make
+    // Claude Code compact on every turn.
+    const one = recipes({ ...STRINGS, contextWindow: 32_768 }).find(
+      (r) => r.name === "Claude Code",
+    )!;
+    expect(one.snippet).toContain("CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768");
+    expect(one.snippet).toContain("CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192");
+    expect(one.note).toContain("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+    expect(one.note).toContain("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+    // Every line is one variable, as a person pastes them.
+    for (const line of one.snippet.split("\n")) expect(line).toMatch(/^[A-Z_]+=\S+$/);
+  });
+
+  it("does not lower Claude Code's reply room where a quarter of the window is already more", () => {
+    // A quarter of 128k is Claude Code's own 32,000; past that, a line
+    // would say what Claude Code already does.
+    for (const window of [128_000, 262_144]) {
+      const one = recipes({ ...STRINGS, contextWindow: window }).find(
+        (r) => r.name === "Claude Code",
+      )!;
+      expect(one.snippet).toContain(`CLAUDE_CODE_MAX_CONTEXT_TOKENS=${window}`);
+      expect(one.snippet).not.toContain("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+    }
+    // Just under it, the line appears.
+    const near = recipes({ ...STRINGS, contextWindow: 127_996 }).find(
+      (r) => r.name === "Claude Code",
+    )!;
+    expect(near.snippet).toContain("CLAUDE_CODE_MAX_OUTPUT_TOKENS=31999");
+  });
+
+  it("never invents a window it was not told", () => {
+    // Settings never lie: an unknown window is said to be unknown, and the
+    // variable is named so a person who knows the number can set it.
+    for (const window of [null, undefined, 0]) {
+      const one = recipes({ ...STRINGS, contextWindow: window }).find(
+        (r) => r.name === "Claude Code",
+      )!;
+      expect(one.snippet).not.toContain("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+      expect(one.snippet).not.toContain("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+      expect(one.note).toContain("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+      expect(one.note).toMatch(/not known/);
+    }
   });
 
   it("tells Claude Code's reader to use AUTH_TOKEN rather than API_KEY", () => {
@@ -188,6 +256,98 @@ describe("recipes", () => {
     expect(one.snippet).toContain("ANTHROPIC_AUTH_TOKEN=");
     expect(one.snippet).not.toContain("ANTHROPIC_API_KEY=");
     expect(one.note).toContain("ANTHROPIC_API_KEY");
+  });
+
+  describe("Codex", () => {
+    // Every key below was read in Codex 0.160.0's source: `ConfigToml`
+    // (`model`, `model_provider`, `model_context_window`,
+    // `model_providers`) and `ModelProviderInfo` (`name`, `base_url`,
+    // `env_key`, `wire_api`), both `deny_unknown_fields`, so a misspelt
+    // key is a Codex that will not start.
+    const codex = (window: number | null = 32_768) =>
+      recipes({ ...STRINGS, contextWindow: window }).find((r) => r.name === "Codex")!;
+
+    /** Top-level `key = value` lines, before the first `[table]`. */
+    function topLevel(toml: string): Map<string, string> {
+      const out = new Map<string, string>();
+      for (const line of toml.split("\n")) {
+        if (line.startsWith("[")) break;
+        const m = line.match(/^([a-z_]+) = (.+)$/);
+        if (m) out.set(m[1]!, m[2]!);
+      }
+      return out;
+    }
+
+    /** `key = value` lines under `[name]`, up to the next table. */
+    function table(toml: string, name: string): Map<string, string> {
+      const out = new Map<string, string>();
+      let inside = false;
+      for (const line of toml.split("\n")) {
+        if (line.startsWith("[")) {
+          inside = line === `[${name}]`;
+          continue;
+        }
+        const m = inside ? line.match(/^([a-z_]+) = (.+)$/) : null;
+        if (m) out.set(m[1]!, m[2]!);
+      }
+      return out;
+    }
+
+    it("is offered, and says which file it goes in", () => {
+      const one = codex();
+      expect(one).toBeTruthy();
+      expect(one.where).toContain(".codex/config.toml");
+    });
+
+    it("picks the provider and the model at the top, before any table", () => {
+      // **The order is the TOML, not style.** A key written after a
+      // `[table]` header belongs to that table, so a `model = ...` below
+      // `[model_providers.eugene]` is a provider field Codex refuses.
+      const top = topLevel(codex().snippet);
+      expect(top.get("model_provider")).toBe('"eugene"');
+      expect(JSON.parse(top.get("model")!)).toBe(STRINGS.model);
+      expect(top.get("model_context_window")).toBe("32768");
+    });
+
+    it("declares the provider with every field Codex needs", () => {
+      const provider = table(codex().snippet, "model_providers.eugene");
+      expect(JSON.parse(provider.get("name")!)).toBeTruthy();
+      // Codex appends `/responses` to this, so the `/v1` stays.
+      expect(JSON.parse(provider.get("base_url")!)).toBe(STRINGS.baseUrl);
+      expect(provider.get("wire_api")).toBe('"responses"');
+      // Mandatory since openai/codex#39214: without it a custom provider
+      // sends no key at all.
+      expect(provider.get("env_key")).toBe('"EUGENE_API_KEY"');
+    });
+
+    it("keeps the key out of the file and in the variable the file names", () => {
+      const one = codex();
+      expect(one.snippet).not.toContain(STRINGS.key);
+      expect(one.then?.snippet).toBe(`EUGENE_API_KEY=${STRINGS.key}`);
+      expect(one.then?.where).toMatch(/environment/i);
+    });
+
+    it("does not switch Codex's sub-agents off", () => {
+      // The gateway takes Codex's `namespace` tools since the 2026-10-03
+      // contract, so the audit's interim `multi_agent = false` is not
+      // part of the recipe.
+      expect(codex().snippet).not.toContain("multi_agent");
+      expect(codex().snippet).not.toContain("[features]");
+    });
+
+    it("says an unknown window is unknown instead of writing a number", () => {
+      const one = codex(null);
+      expect(topLevel(one.snippet).has("model_context_window")).toBe(false);
+      expect(one.note).toContain("model_context_window");
+      expect(one.note).toMatch(/not known/);
+    });
+
+    it("writes a model id with a quote in it as a TOML string", () => {
+      const one = recipes({ ...STRINGS, model: 'odd"id\\x', contextWindow: 8192 }).find(
+        (r) => r.name === "Codex",
+      )!;
+      expect(JSON.parse(topLevel(one.snippet).get("model")!)).toBe('odd"id\\x');
+    });
   });
 
   it("tells Open WebUI's reader there is no model to type", () => {

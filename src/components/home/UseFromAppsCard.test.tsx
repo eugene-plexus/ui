@@ -208,6 +208,71 @@ describe("the card's controls have names", () => {
   });
 });
 
+describe("the recipes, as the card hands them out", () => {
+  // Driven through the card rather than `recipes()`: the window has to
+  // come from the model the person picked, and a recipe module that is
+  // right is no proof the card feeds it (S7: a component test is not a
+  // wiring test).
+  const models = [
+    {
+      id: "qwen",
+      object: "model",
+      created: 0,
+      owned_by: "eugene-plexus",
+      x_eugene_plexus: { context_length: 32768 },
+    },
+    {
+      id: "gemma",
+      object: "model",
+      created: 0,
+      owned_by: "eugene-plexus",
+      x_eugene_plexus: { context_length: 131072 },
+    },
+  ] as unknown as Model[];
+
+  function render2() {
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [], scope: "install" });
+    render(
+      <UseFromAppsCard
+        models={models}
+        gatewayPortUrl="http://192.168.1.20:8080"
+        placement={null}
+        localNode="worker"
+      />,
+    );
+  }
+
+  it("gives Claude Code the chosen model's window", async () => {
+    const user = userEvent.setup();
+    render2();
+    await screen.findByText(/Registry status|every gateway/);
+    await user.click(screen.getByRole("button", { name: "Claude Code" }));
+    const recipe = screen.getByTestId("recipe");
+    expect(recipe).toHaveTextContent("CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768");
+    expect(recipe).toHaveTextContent("CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192");
+    expect(recipe).not.toHaveTextContent("EFFORT_LEVEL");
+
+    await user.selectOptions(screen.getByTestId("app-model"), "gemma");
+    expect(screen.getByTestId("recipe")).toHaveTextContent("CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072");
+  });
+
+  it("shows Codex's file and its key variable as two things to copy", async () => {
+    const user = userEvent.setup();
+    render2();
+    await screen.findByText(/Registry status|every gateway/);
+    await user.click(screen.getByRole("button", { name: "Codex" }));
+    const recipe = screen.getByTestId("recipe");
+    const blocks = within(recipe).getAllByTestId("recipe-snippet");
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]).toHaveTextContent('base_url = "http://192.168.1.20:8080/v1"');
+    expect(blocks[0]).toHaveTextContent("model_context_window = 32768");
+    expect(blocks[1]).toHaveTextContent("EUGENE_API_KEY=YOUR_KEY");
+    // Each place has its own Copy, so the file can be pasted without the key.
+    expect(within(recipe).getByTitle("Copy the Codex snippet")).toBeInTheDocument();
+    expect(within(recipe).getByTitle("Copy the Codex key variable")).toBeInTheDocument();
+  });
+});
+
 describe("the address editor", () => {
   it("takes focus on open, cancels on Escape, and hands focus back", async () => {
     vi.spyOn(api, "get").mockResolvedValue({ keys: [], scope: "install" });
