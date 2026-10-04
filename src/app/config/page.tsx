@@ -331,6 +331,9 @@ function SettingsView({
               </>
             )}
           </span>
+          <Link href="/access" className="text-sm underline">
+            Container access setup
+          </Link>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4" data-testid="settings-scroll">

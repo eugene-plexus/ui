@@ -1453,6 +1453,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/entrypoint/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate a proposed container access setup without changing listeners.
+         * @description Operator session required. Returns normalized startup configuration and
+         *     deployment instructions. Does not write files, contact a CA, resolve DNS,
+         *     restart services or claim that external connectivity has been tested.
+         */
+        post: operations["previewEntryPoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node": {
         parameters: {
             query?: never;
@@ -4929,6 +4951,19 @@ export interface components {
          * @enum {string}
          */
         FolderReachSource: "same_path" | "inherited" | "override";
+        EntryPointPreviewRequest: {
+            /** @description Startup JSON, strictly validated by the entry point implementation. */
+            configuration: {
+                [key: string]: unknown;
+            };
+        };
+        EntryPointPreview: {
+            configuration: {
+                [key: string]: unknown;
+            };
+            publicUrls: components["schemas"]["PublicEntryPoint"];
+            instructions: string[];
+        };
         /**
          * @description Explicit external HTTPS origins for this node's optional single-port
          *     container entry point. An absent optional service is not published.
@@ -7969,6 +8004,51 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
+            };
+        };
+    };
+    previewEntryPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryPointPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Valid configuration and setup instructions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryPointPreview"];
+                };
+            };
+            /** @description Invalid startup configuration. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An operator session is required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

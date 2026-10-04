@@ -356,6 +356,7 @@ export const ROUTES_WITHOUT_NAV: readonly string[] = ["/login", "/setup", "/runt
  */
 export const ROUTES_UNDER_OBJECT: Readonly<Record<string, string>> = {
   "/backends": "backends",
+  "/access": "install",
 };
 
 /**
@@ -378,12 +379,12 @@ export function subrouteSelection(pathname: string | null | undefined): string |
  * `SCREENS` answers for the navigable screens and the tree's page menu
  * answers for an object's pages; a route in neither had no name at all,
  * which read in the tab as the bare product name — the very thing the
- * title work of 2026-09-17 exists to stop. Empty since 2026-09-29, when
- * `/backends/add` became a page of the Backends branch; kept so the next
- * task-shaped page has somewhere to be named, and so the vitest case that
- * enumerates `src/app` still has three sets to keep disjoint.
+ * title work of 2026-09-17 exists to stop. Task pages reached from Settings
+ * also need their own title even though they share the installation object.
  */
-const UNLISTED_PAGE_TITLES: Readonly<Record<string, string>> = {};
+const UNLISTED_PAGE_TITLES: Readonly<Record<string, string>> = {
+  "/access": "Container access setup",
+};
 
 /**
  * What to call `pathname` in a tab, for the pages `activeScreen` does not

@@ -65,6 +65,9 @@ jobs:
       - name: Machines and Needs Attention agree in Chrome
         run: node scripts/update-status-browser-acceptance.mjs out test-results/update-status
 
+      - name: Container access setup and downloads in Chrome
+        run: node scripts/access-browser-acceptance.mjs out test-results/access
+
   wheel:
     name: Build the eugene-plexus-ui wheel
     runs-on: ubuntu-latest
