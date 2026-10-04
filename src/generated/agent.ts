@@ -610,6 +610,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/engines/{engine}/uninstall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engine: components["schemas"]["EngineKind"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Eugene-managed builds of an engine, preserving models.
+         * @description Operator-only. Refuses with 409 while an installation or any
+         *     runtime for this engine is running. Removes only builds with a
+         *     valid managed-install receipt inside this engine's store. Keeps
+         *     model files, runtime declarations, borrowed installations and
+         *     shared dependencies. Repeating removal is harmless. This is
+         *     separate from DELETE .../install, which cancels an install job.
+         */
+        post: operations["uninstallEngine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/engines/{engine}/install": {
         parameters: {
             query?: never;
@@ -3709,6 +3736,10 @@ export interface components {
              *     grey out a launch button and name the missing engine instead
              *     of offering one that fails.
              *
+             *     `strata` lists no catalogue model formats: it requires a
+             *     prepared JSON configuration and is offered through the
+             *     experimental prepared-model form, not arbitrary GGUF launch.
+             *
              *     `vllm` does **not** list `gguf`, though upstream has a path
              *     for it. That path is documented as highly experimental and
              *     under-optimized, and it needs a second `--tokenizer` model
@@ -3731,15 +3762,11 @@ export interface components {
              */
             modelFormats: components["schemas"]["ModelFormat"][];
             /**
-             * @description True while this engine's integration has never been proved
-             *     on the hardware it targets — `mlx` until a physical Apple
-             *     silicon run is recorded. A property of the *integration*,
-             *     not of this host, and reported so the UI can badge the
-             *     option instead of hardcoding a list that goes stale the day
-             *     the evidence lands. Experimental does not mean hidden: on
-             *     appropriate hardware the engine is offered, badged; on the
-             *     wrong hardware `acquisition.manualInstall.notes` explains
-             *     why there is no install command.
+             * @description Limited integration and support, including niche engines
+             *     whose capabilities and upstream interfaces change quickly.
+             *     Independent of hardware test status: a successful hardware
+             *     test does not automatically remove this designation.
+             *     Experimental engines remain visible on supported hosts.
              * @default false
              */
             experimental: boolean;
@@ -3900,6 +3927,12 @@ export interface components {
              *     path, in the operator's own layout.** We never relocate,
              *     rename, or hash-address a model file; a runtime points at
              *     where the user put it.
+             *
+             *     For `strata`, this is a prepared Strata JSON configuration
+             *     in a Library folder on the target node. It references the
+             *     existing weights, pack, tokenizer and optional MTP assets.
+             *     It is not copied into the node's model cache. The adapter
+             *     writes a private launch config and preserves this original.
              *
              *     For a sharded GGUF this is the *first* shard
              *     (`…-00001-of-0000N.gguf`), which is what the engine expects.
@@ -5464,6 +5497,11 @@ export interface components {
          *     and without an adapter there is nothing that knows how to start
          *     it or tell when it is ready.
          *
+         *     `strata` is experimental. It launches Strata's Python HTTP
+         *     server and native engine together, using a prepared Strata JSON
+         *     configuration as `RuntimeSpec.modelPath`. It does not accept an
+         *     arbitrary GGUF or prepare model weights automatically.
+         *
          *     `kev` drives upstream `python -m kev.serve` and loads Kev
          *     decision checkpoints (`kev_checkpoint` format) — a decision
          *     model, not a chat model: its server speaks the System One
@@ -5510,7 +5548,7 @@ export interface components {
          *     are written for.
          * @enum {string}
          */
-        EngineKind: "llama_cpp" | "vllm" | "mlx" | "kev";
+        EngineKind: "llama_cpp" | "vllm" | "mlx" | "kev" | "strata";
         /**
          * @description On-disk format of a model. A dimension of the data model rather
          *     than an assumption (locked 2026-09-08), and the differences are
@@ -6875,6 +6913,33 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EngineList"];
                 };
+            };
+        };
+    };
+    uninstallEngine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engine: components["schemas"]["EngineKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Managed builds removed (or none existed). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Stop this engine's runtimes and finish or cancel its install first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

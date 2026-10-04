@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 
 import { AppShell } from "@/components/AppShell";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { ExperimentalModels } from "@/components/ExperimentalModels";
 import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
 import { offeredOnThisNode } from "@/lib/engineCompat";
@@ -565,6 +566,9 @@ function NodeSection({
         reachable={node?.reachable ?? true}
         onEngines={setEngines}
       />
+      {engines?.some((e) => e.engine === "strata" && e.available) && (
+        <ExperimentalModels target={targetFor(name, localName)} node={name} rows={rows} />
+      )}
       {rows.length === 0 ? (
         <p className="mt-2 text-sm text-[color:var(--muted)]">Nothing serving on this node.</p>
       ) : (
@@ -707,6 +711,9 @@ function RowView({
         {row.runtime ? (
           <>
             <span className="font-mono">{row.engine ?? "engine"}</span> runtime{" "}
+            {engines?.find((e) => e.engine === row.engine)?.experimental && (
+              <span className="text-status-warn">· Experimental </span>
+            )}
             <span className="font-mono">{row.runtime}</span>
             <span className="text-[color:var(--muted)]"> · we supervise it</span>
             {own?.profile?.name && (
@@ -1056,6 +1063,20 @@ function EnginesLine({
     }
   }
 
+  async function uninstall(engine: string) {
+    setPosting(engine);
+    setInstallErrors((prev) => ({ ...prev, [engine]: "" }));
+    try {
+      await api.post(target, `/v1/engines/${encodeURIComponent(engine)}/uninstall`, {});
+      setInstalls((prev) => ({ ...prev, [engine]: null }));
+      await load();
+    } catch (err) {
+      setInstallErrors((prev) => ({ ...prev, [engine]: describeError(err) }));
+    } finally {
+      setPosting(null);
+    }
+  }
+
   if (!reachable) return null;
   if (error) {
     return <p className="text-[0.6875rem] text-[color:var(--muted)]">engines: {error}</p>;
@@ -1080,9 +1101,8 @@ function EnginesLine({
               <span
                 className="rounded-[var(--radius)] border border-[color:var(--border)] px-1 text-[0.5625rem] tracking-wide uppercase"
                 title={
-                  "This engine integration has not been proved on physical hardware yet. " +
-                  "It works against tested fixtures; real-machine results are what turns " +
-                  "this badge off. " +
+                  "Limited integration and support. Features may change quickly upstream. " +
+                  "A successful hardware test does not remove this designation. " +
                   (e.acquisition?.manualInstall?.notes ?? "")
                 }
               >
@@ -1164,6 +1184,17 @@ function EnginesLine({
               <span role="alert" className="text-status-error">
                 {refused}
               </span>
+            )}
+            {e.managed && !busyInstall && (
+              <ConfirmButton
+                label="uninstall"
+                confirmLabel="Uninstall engine"
+                cancelLabel="Keep engine"
+                prompt={`Remove Eugene-managed ${e.engine} builds? Models and saved runtimes stay. Stop its runtimes first.`}
+                disabled={posting !== null}
+                className={tinyButton}
+                onConfirm={() => uninstall(e.engine)}
+              />
             )}
           </span>
         );

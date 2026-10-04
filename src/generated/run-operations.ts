@@ -457,6 +457,11 @@ export interface components {
          *     and without an adapter there is nothing that knows how to start
          *     it or tell when it is ready.
          *
+         *     `strata` is experimental. It launches Strata's Python HTTP
+         *     server and native engine together, using a prepared Strata JSON
+         *     configuration as `RuntimeSpec.modelPath`. It does not accept an
+         *     arbitrary GGUF or prepare model weights automatically.
+         *
          *     `kev` drives upstream `python -m kev.serve` and loads Kev
          *     decision checkpoints (`kev_checkpoint` format) — a decision
          *     model, not a chat model: its server speaks the System One
@@ -503,7 +508,7 @@ export interface components {
          *     are written for.
          * @enum {string}
          */
-        EngineKind: "llama_cpp" | "vllm" | "mlx" | "kev";
+        EngineKind: "llama_cpp" | "vllm" | "mlx" | "kev" | "strata";
         /**
          * GgufDetail
          * @description GGUF-specific metadata, read from the file's KV block. Present

@@ -4,6 +4,34 @@
  */
 
 export interface paths {
+    "/v1/runtimes/switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drain one model, stop it, and start another saved runtime on the same node.
+         * @description Operator-only. Holds both runtimes out of this gateway's routing
+         *     while draining requests, stopping the source and starting the
+         *     target. Source and target keep their own aliases. Returns 409
+         *     without stopping the source when it cannot drain within 30 seconds.
+         *     Returns 202 when the target start is scheduled; the owning agent's
+         *     runtime status reports loading, ready or failed. Only ready models
+         *     receive traffic. No requests are replayed and no models are evicted
+         *     automatically. Both runtimes must use the same engine and have
+         *     startOnDemand disabled. Direct engine traffic is outside this gateway.
+         */
+        post: operations["switchRuntime"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/models": {
         parameters: {
             query?: never;
@@ -1940,6 +1968,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        RuntimeSwitchRequest: {
+            /** @description Node name; absent for the gateway's local node. */
+            node?: string;
+            source: string;
+            target: string;
+        };
         /**
          * @description Request body for `POST /v1/admin/drivers/probe`. Tests a single
          *     backend URL without persisting it. A driver slot in the
@@ -5142,6 +5176,37 @@ export interface components {
             clients: components["schemas"]["ClientUsageGroup"][];
         };
         /**
+         * @description Acknowledgement returned by `POST /v1/admin/restart`. The
+         *     component schedules its own process exit shortly after returning
+         *     this response (typically a few hundred ms — long enough for the
+         *     HTTP response to flush). The component does NOT bring itself
+         *     back up; a process supervisor (systemd, docker-compose, the
+         *     deploy launcher, etc.) is expected to relaunch it. In v0.1
+         *     personal-use deploys without a supervisor, the operator
+         *     relaunches manually.
+         */
+        RestartResult: {
+            /**
+             * @description True if the component accepted the restart and an exit is
+             *     queued. Always true in v0.1 — the endpoint has no reason to
+             *     refuse — but typed as a boolean so future versions can gate
+             *     on (e.g.) an in-flight long-running operation.
+             */
+            scheduled: boolean;
+            /**
+             * @description How long the component intends to wait before calling exit,
+             *     measured from the moment the response is sent. Lets clients
+             *     time their UI ("restarting in 0.5s…") and decide when to
+             *     start polling `/healthz` for the relaunched process.
+             */
+            delayMs: number;
+            /**
+             * @description Optional human-readable note (e.g. "logs flushed, exiting
+             *     now"). UI may display this in the restart-progress dialog.
+             */
+            message?: string;
+        };
+        /**
          * @description Which wire protocol an inference-driver instance speaks to its
          *     backend. Reported by the driver's `/v1/info` so the gateway can
          *     log it and the UI can render a label.
@@ -5435,37 +5500,6 @@ export interface components {
             retryDisposition?: "safe" | "terminal" | "indeterminate";
             /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
             retryAfterSeconds?: number;
-        };
-        /**
-         * @description Acknowledgement returned by `POST /v1/admin/restart`. The
-         *     component schedules its own process exit shortly after returning
-         *     this response (typically a few hundred ms — long enough for the
-         *     HTTP response to flush). The component does NOT bring itself
-         *     back up; a process supervisor (systemd, docker-compose, the
-         *     deploy launcher, etc.) is expected to relaunch it. In v0.1
-         *     personal-use deploys without a supervisor, the operator
-         *     relaunches manually.
-         */
-        RestartResult: {
-            /**
-             * @description True if the component accepted the restart and an exit is
-             *     queued. Always true in v0.1 — the endpoint has no reason to
-             *     refuse — but typed as a boolean so future versions can gate
-             *     on (e.g.) an in-flight long-running operation.
-             */
-            scheduled: boolean;
-            /**
-             * @description How long the component intends to wait before calling exit,
-             *     measured from the moment the response is sent. Lets clients
-             *     time their UI ("restarting in 0.5s…") and decide when to
-             *     start polling `/healthz` for the relaunched process.
-             */
-            delayMs: number;
-            /**
-             * @description Optional human-readable note (e.g. "logs flushed, exiting
-             *     now"). UI may display this in the restart-progress dialog.
-             */
-            message?: string;
         };
         /**
          * @description Current effective config values, keyed by `ConfigField.key`: a
@@ -6015,6 +6049,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    switchRuntime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeSwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description Source stopped and target start accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestartResult"];
+                };
+            };
+            /** @description Busy, incompatible, or unable to complete the switch; detail explains recovery. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listModels: {
         parameters: {
             query?: never;
