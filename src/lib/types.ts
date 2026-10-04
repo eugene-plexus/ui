@@ -16,6 +16,8 @@ import type { components as GatewayComponents } from "@/generated/gateway";
 import type { components as LibraryComponents } from "@/generated/library";
 import type { components as AgentComponents } from "@/generated/agent";
 import type { components as ControlComponents } from "@/generated/control";
+export type NodeHelper = ControlComponents["schemas"]["NodeHelper"];
+export type HelperGrant = ControlComponents["schemas"]["HelperGrant"];
 
 export type Benchmark = AgentComponents["schemas"]["Benchmark"];
 export type BenchmarkList = AgentComponents["schemas"]["BenchmarkList"];

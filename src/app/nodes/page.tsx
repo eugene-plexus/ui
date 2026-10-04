@@ -466,6 +466,11 @@ export default function NodesPage() {
 
           <section className="section-panel mb-6">
             <h2 className="section-heading font-ui text-base font-semibold">This install</h2>
+            <p className="mb-3 text-sm">
+              <Link href="/people#node-files" className="underline">
+                Manage Workbench file access on these machines
+              </Link>
+            </p>
             {nodes === null ? (
               <p className="text-sm text-[color:var(--muted)]">Loading…</p>
             ) : locked ? (

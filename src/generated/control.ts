@@ -1168,10 +1168,287 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node-helpers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * listNodeHelpers
+         * @description Operator-only capability and folder administration. No implicit file access is granted.
+         */
+        get: operations["listNodeHelpers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/node-helpers/{node}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * configureNodeHelper
+         * @description Operator-only capability and folder administration. No implicit file access is granted.
+         */
+        put: operations["configureNodeHelper"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/node-helpers/{node}/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * createNodeHelperFolder
+         * @description Operator-only capability and folder administration. No implicit file access is granted.
+         */
+        post: operations["createNodeHelperFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/node-helpers/{node}/folders/{folder_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * removeNodeHelperFolder
+         * @description Operator-only capability and folder administration. No implicit file access is granted.
+         */
+        delete: operations["removeNodeHelperFolder"];
+        options?: never;
+        head?: never;
+        /** Set the owner's explicit Workbench permission for this folder */
+        patch: operations["setNodeFolderOwnerAccess"];
+        trace?: never;
+    };
+    "/v1/node-helpers/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * pollNodeHelper
+         * @description An enrolled agent service token addressed to control, for its own node only.
+         */
+        post: operations["pollNodeHelper"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/node-helpers/operations/{ident}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ident: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * claimNodeHelperOperation
+         * @description An enrolled agent service token addressed to control, for its own node only.
+         */
+        post: operations["claimNodeHelperOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/node-helpers/operations/{ident}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ident: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * finishNodeHelperOperation
+         * @description An enrolled agent service token addressed to control, for its own node only.
+         */
+        post: operations["finishNodeHelperOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/node-helpers/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * discoverNodeFolders
+         * @description An enrolled Workbench client secret and its signed-in person refresh credential. Current grants are checked for every call.
+         */
+        post: operations["discoverNodeFolders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/node-helpers/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * executeNodeFileOperation
+         * @description An enrolled Workbench client secret and its signed-in person refresh credential. Current grants are checked for every call.
+         */
+        post: operations["executeNodeFileOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/node-helpers/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a queued operation belonging to this Workbench sign-in
+         * @description Prevents a queued operation from being claimed. An already running write
+         *     may finish; cancellation never implies rollback. Reusing the same operation
+         *     ID is refused for five minutes while this root process remains running.
+         */
+        post: operations["cancelNodeFileOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        HelperGrant: {
+            folderId: string;
+            /** @default false */
+            writable: boolean;
+        };
+        HelperFolder: {
+            id: string;
+            name: string;
+            path: string;
+            identity: string;
+            /** @default false */
+            writable: boolean;
+            /**
+             * @default none
+             * @enum {string}
+             */
+            ownerAccess: "none" | "read" | "write";
+        };
+        NodeHelper: {
+            node: string;
+            nodeKey: string;
+            enrolledAt: string;
+            /** @default false */
+            enabled: boolean;
+            folders: components["schemas"]["HelperFolder"][];
+        };
+        HelperFolderCreate: {
+            name: string;
+            path: string;
+            /** @default false */
+            writable: boolean;
+            /**
+             * @default none
+             * @enum {string}
+             */
+            ownerAccess: "none" | "read" | "write";
+        };
+        HelperReport: {
+            supported: boolean;
+            ready: boolean;
+            reason?: string | null;
+            account?: string | null;
+        };
+        HelperResult: {
+            status: components["schemas"]["HelperOperationStatus"];
+            result?: Record<string, never>;
+            message?: string;
+        };
+        HelperCall: {
+            operationId?: string;
+            refreshToken: string;
+            folderId: string;
+            /** @enum {string} */
+            tool: "list_directory" | "read_text" | "write_text";
+            arguments: Record<string, never>;
+        };
+        HelperDiscovery: {
+            refreshToken: string;
+        };
+        HelperCancel: {
+            refreshToken: string;
+            operationId: string;
+        };
         ClientKeyLimits: {
             /**
              * @description Permit only backends explicitly classified local by drivers enforcing
@@ -1789,7 +2066,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -1923,6 +2200,7 @@ export interface components {
              *     same reason (a promoted standby signs people in).
              */
             people?: components["schemas"]["SnapshotPerson"][];
+            nodeHelpers?: components["schemas"]["NodeHelper"][];
             oidcClients?: components["schemas"]["SnapshotOidcClient"][];
             /**
              * @description The provider's RSA keys, newest first, each sealed under the
@@ -1933,6 +2211,8 @@ export interface components {
             revokedSignIns?: components["schemas"]["RevokedSession"][];
         };
         SnapshotPerson: {
+            /** @description Explicit access to folders on enrolled nodes; absent means no access. */
+            helperGrants?: components["schemas"]["HelperGrant"][];
             id: string;
             name: string;
             displayName?: string;
@@ -1970,6 +2250,8 @@ export interface components {
          *     a person's sign-in opens their apps and nothing in the hub.
          */
         Person: {
+            /** @description Explicit access to folders on enrolled nodes; absent means no access. */
+            helperGrants?: components["schemas"]["HelperGrant"][];
             /** @description Stable; the `sub` in their ID tokens. */
             id: string;
             /** @description What they sign in with. Unique, compared case-folded. */
@@ -1996,6 +2278,8 @@ export interface components {
             operatorName?: string;
         };
         PersonCreateRequest: {
+            /** @description Explicit access to folders on enrolled nodes; absent means no access. */
+            helperGrants?: components["schemas"]["HelperGrant"][];
             name: string;
             displayName?: string;
             email?: string;
@@ -2003,6 +2287,8 @@ export interface components {
             apps?: string[] | null;
         };
         PersonUpdateRequest: {
+            /** @description Explicit access to folders on enrolled nodes; absent means no access. */
+            helperGrants?: components["schemas"]["HelperGrant"][];
             displayName?: string;
             /** @description A new address, or `null` to clear it. */
             email?: string | null;
@@ -2956,6 +3242,8 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** @enum {string} */
+        HelperOperationStatus: "done" | "failed" | "uncertain";
     };
     responses: {
         /** @description Error response in RFC 7807 problem+json format. */
@@ -4512,6 +4800,579 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Health"];
                 };
+            };
+        };
+    };
+    listNodeHelpers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    configureNodeHelper: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createNodeHelperFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelperFolderCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    removeNodeHelperFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setNodeFolderOwnerAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    ownerAccess: "none" | "read" | "write";
+                };
+            };
+        };
+        responses: {
+            /** @description Updated folder; write access cannot exceed its configured maximum. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HelperFolder"];
+                };
+            };
+            /** @description An operator session is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The node or folder is no longer registered. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid permission or writes are disabled for this folder. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    pollNodeHelper: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelperReport"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    claimNodeHelperOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ident: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    finishNodeHelperOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ident: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelperResult"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    discoverNodeFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelperDiscovery"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    executeNodeFileOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelperCall"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancelNodeFileOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelperCancel"];
+            };
+        };
+        responses: {
+            /** @description Cancelled, already finished, or not yet submitted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description This sign-in or app access was withdrawn. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many recent operations. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

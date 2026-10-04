@@ -23,6 +23,7 @@ import { useCallback, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
+import { NodeHelpers } from "@/components/NodeHelpers";
 import { api, describeError } from "@/lib/api";
 import {
   MIN_PASSWORD,
@@ -109,6 +110,7 @@ export default function PeoplePage() {
           ) : (
             <>
               <PeopleSection loaded={loaded} onChanged={load} />
+              <NodeHelpers people={loaded.people} onChanged={load} />
               <AppsSection loaded={loaded} onChanged={load} />
             </>
           )}
