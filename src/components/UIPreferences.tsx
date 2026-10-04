@@ -26,7 +26,7 @@ export function UIPreferences() {
 
   return (
     <div className="overflow-y-auto p-6">
-      <h2 className="font-ui mb-1 text-lg font-semibold">UI</h2>
+      <h2 className="section-heading font-ui text-lg font-semibold">UI</h2>
       <p className="mb-4 text-sm text-[color:var(--muted)]">
         Local preferences. Saved to your browser; not synced anywhere.
       </p>

@@ -224,12 +224,8 @@ export function TryItCard({
   }, [pending, disabled]);
 
   return (
-    <section
-      ref={card}
-      data-testid="home-try-it"
-      className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4"
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+    <section ref={card} data-testid="home-try-it" className="section-panel">
+      <div className="section-heading flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-ui text-base font-semibold">Try it</h2>
         <Link href="/playground" className="font-ui text-sm underline" data-testid="home-continue">
           Continue in the Playground

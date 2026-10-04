@@ -553,6 +553,9 @@ describe("Low's smaller file", () => {
     await waitFor(() => expect(calls.map(key)).toContain("POST library/v1/downloads"));
     const posted = calls.find((c) => key(c) === "POST library/v1/downloads")!;
     expect(posted.body).toEqual({ repo: REPO, revision: "main", files: ["UD-Q3_K_XL.gguf"] });
+    expect(
+      within(screen.getByTestId("smaller-file-progress")).getByRole("progressbar"),
+    ).toHaveAttribute("aria-valuenow", "40");
     // Never rebuilt for the person: once it lands, a link to build it.
     const build = await screen.findByTestId("smaller-file-build", {}, { timeout: 5000 });
     expect(build).toHaveAttribute("href", "/library?model=smaller-model");

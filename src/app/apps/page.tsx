@@ -118,8 +118,14 @@ export default function AppsPage() {
             .
           </p>
 
-          <section aria-labelledby="installed-heading" className="flex flex-col gap-3">
-            <h2 id="installed-heading" className="font-ui text-base font-semibold">
+          <section
+            aria-labelledby="installed-heading"
+            className="section-panel flex flex-col gap-3"
+          >
+            <h2
+              id="installed-heading"
+              className="section-heading font-ui mb-0 text-base font-semibold"
+            >
               Installed
             </h2>
             {installed === null ? (
@@ -303,8 +309,8 @@ function Catalogue({
       : `/config?tab=${encodeURIComponent(`node:${chosen}`)}&sel=${encodeURIComponent(`agent:${chosen}`)}#allowCustomApps`;
 
   return (
-    <section aria-labelledby="catalogue-heading" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
+    <section aria-labelledby="catalogue-heading" className="section-panel flex flex-col gap-3">
+      <div className="section-heading mb-0 flex flex-wrap items-center gap-3">
         <h2 id="catalogue-heading" className="font-ui text-base font-semibold">
           Available
         </h2>

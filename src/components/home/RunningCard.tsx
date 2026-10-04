@@ -23,11 +23,8 @@ import type { ContextLookup } from "@/lib/modelContext";
 export function RunningCard({ rows, contexts }: { rows: Row[]; contexts: ContextLookup }) {
   if (rows.length === 0) return null;
   return (
-    <section
-      data-testid="home-running"
-      className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4"
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+    <section data-testid="home-running" className="section-panel">
+      <div className="section-heading flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-ui text-base font-semibold">Running</h2>
         <Link href="/inference" className="font-ui text-sm underline">
           Inference

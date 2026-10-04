@@ -74,7 +74,7 @@ export function FirstModelCard({
 
   return (
     <section data-testid="home-first-model" data-state={state.kind} className={card}>
-      <h2 className="font-ui text-base font-semibold">
+      <h2 className="section-heading font-ui text-base font-semibold">
         {state.kind === "no-models" ? "Get your first model" : "Run a model"}
       </h2>
       <p className="mt-1 text-sm text-[color:var(--muted)]">
@@ -215,7 +215,7 @@ function SuggestedModelCard({
 
   return (
     <section data-testid="home-first-model" data-state="no-models-recommended" className={card}>
-      <h2 className="font-ui text-base font-semibold">Get your first model</h2>
+      <h2 className="section-heading font-ui text-base font-semibold">Get your first model</h2>
       <p className="mt-1 text-sm text-[color:var(--muted)]">
         Nothing is on disk yet. <strong>{shortName(model.baseModel)}</strong> is a good first one
         for this machine.
@@ -302,8 +302,7 @@ function DownloadList({ downloads }: { downloads: Task[] }) {
   );
 }
 
-const card =
-  "rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4";
+const card = "section-panel";
 const primary =
   "action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-4 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110";
 const secondary =

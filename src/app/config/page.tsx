@@ -340,13 +340,13 @@ function SettingsView({
                 key={card.topic}
                 data-testid="settings-card"
                 data-topic={card.topic}
-                className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-4"
+                className="section-panel"
               >
-                <h2 className="font-ui text-base font-semibold">{card.label}</h2>
+                <h2 className="section-heading font-ui text-base font-semibold">{card.label}</h2>
                 {card.blurb && (
                   <p className="mt-0.5 mb-3 text-sm text-[color:var(--muted)]">{card.blurb}</p>
                 )}
-                <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-4">
                   {card.sections.map((section) => (
                     <ConfigEditor
                       key={section.owner.id}
@@ -370,7 +370,7 @@ function SettingsView({
               <section
                 data-testid="settings-card"
                 data-topic="appearance"
-                className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)]"
+                className="section-panel p-0"
               >
                 <UIPreferences />
               </section>
@@ -392,11 +392,8 @@ function SettingsView({
             })}
 
             {elsewhere.length > 0 && (
-              <section
-                data-testid="settings-elsewhere"
-                className="rounded-[var(--radius)] border border-dashed border-[color:var(--border)] p-4"
-              >
-                <h2 className="font-ui text-base font-semibold">On other pages</h2>
+              <section data-testid="settings-elsewhere" className="section-panel border-dashed">
+                <h2 className="section-heading font-ui text-base font-semibold">On other pages</h2>
                 <p className="mt-0.5 mb-2 text-sm text-[color:var(--muted)]">
                   Settings that live where the thing they change is.
                 </p>

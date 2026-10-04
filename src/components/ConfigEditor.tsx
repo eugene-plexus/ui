@@ -599,7 +599,7 @@ export function ConfigEditor({
 
   function renderCategories(fields: ConfigFieldDef[]) {
     return Object.entries(groupByCategory(fields)).map(([category, entries]) => (
-      <section key={category} className={compact ? "mb-3" : "mb-6"}>
+      <section key={category} className={compact ? "mb-3" : "section-panel mb-4"}>
         {showCategoryHeadings && (
           <h3 className="mb-2 font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
             {categories[category] ?? category}
@@ -720,9 +720,9 @@ export function ConfigEditor({
         data-testid="settings-section"
         data-target={target}
         data-dirty={dirtyInScope}
-        className="flex flex-col"
+        className="section-inset flex flex-col"
       >
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="section-heading flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-ui text-sm font-semibold" title={hint}>
             {label}
           </h3>

@@ -275,7 +275,13 @@ describe("Home on a fresh install", () => {
     render(<HomePage />);
     const strip = await screen.findByTestId("home-machine");
     await waitFor(() => expect(strip).toHaveTextContent("Amish_Station"));
-    expect(strip).toHaveTextContent("NVIDIA GeForce RTX 5090 · 34 GB · 32 GB free");
+    expect(strip).toHaveTextContent("NVIDIA GeForce RTX 5090");
+    expect(strip).toHaveTextContent("32.45 GB free of 34.19 GB");
+    const memory = within(strip).getByRole("meter", {
+      name: "NVIDIA GeForce RTX 5090 memory used",
+    });
+    expect(memory).toHaveAttribute("aria-valuenow", "1744830464");
+    expect(memory).toHaveAttribute("aria-valuemax", "34190917632");
     expect(strip).toHaveTextContent("llama.cpp b10948");
     expect(strip).toHaveTextContent("0 models on disk");
   });

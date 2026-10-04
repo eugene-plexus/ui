@@ -35,9 +35,9 @@ export function NeedsAttentionCard({
     <section
       data-testid="home-needs-attention"
       data-issue-count={issues.length}
-      className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4"
+      className="section-panel"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="section-heading flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-ui text-base font-semibold">Needs attention</h2>
         {blocking > 0 && (
           <span className="font-ui text-status-error text-sm">

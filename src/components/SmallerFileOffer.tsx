@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { DownloadProgress } from "@/components/DownloadProgress";
 
 import { ApiError, api, describeError } from "@/lib/api";
 import { fitQuery, type TargetNode } from "@/lib/nodeBudget";
@@ -193,11 +194,7 @@ export function SmallerFileOffer({
             Downloaded. Build settings for it
           </Link>
         ) : download ? (
-          <p role="status" data-testid="smaller-file-progress">
-            {download.state === "failed"
-              ? `The download failed: ${download.error ?? download.message ?? "no reason given"}`
-              : `Downloading… ${Math.round(((download.bytesDownloaded ?? 0) / Math.max(1, download.bytesTotal ?? 1)) * 100)}%`}
-          </p>
+          <DownloadProgress download={download} />
         ) : (
           <button
             type="button"

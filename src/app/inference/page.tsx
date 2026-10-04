@@ -541,8 +541,8 @@ function NodeSection({
   // runtime declared with no engine to run it, and the reason is here).
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
   return (
-    <section>
-      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+    <section className="section-panel">
+      <div className="section-heading flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h2 className="font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
           {label}
           {node?.local ? " · here" : ""}

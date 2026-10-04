@@ -355,8 +355,8 @@ function Overview({
         </p>
       )}
 
-      <section className="flex flex-col gap-2 border-t border-[color:var(--border)] pt-4">
-        <h3 className="font-ui text-sm font-semibold">Uninstall</h3>
+      <section className="section-panel flex flex-col gap-2">
+        <h3 className="section-heading font-ui mb-0 text-sm font-semibold">Uninstall</h3>
         <p className="text-sm text-[color:var(--muted)]">
           Stops it, turns its key off, and removes what was installed. Its saved data stays unless
           you tick the box, so installing it again picks up where it left off.

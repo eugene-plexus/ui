@@ -16,6 +16,27 @@ afterEach(() => {
 });
 
 describe("MachineStrip", () => {
+  it("keeps identical GPUs separate and labels retained readings after a failed poll", () => {
+    const device = {
+      kind: "cuda" as const,
+      name: "Twin GPU",
+      memoryTotalBytes: 32e9,
+      memoryFreeBytes: 24e9,
+    };
+    render(
+      <MachineStrip
+        strip={{ name: "gpu-box", devices: [], engine: "llama.cpp", models: "2 models on disk" }}
+        devices={[device, { ...device, memoryFreeBytes: 8e9 }]}
+        memoryStale
+      />,
+    );
+    const meters = screen.getAllByRole("meter", { name: "Twin GPU memory used" });
+    expect(meters).toHaveLength(2);
+    expect(meters[0]).toHaveAttribute("aria-valuenow", "8000000000");
+    expect(meters[1]).toHaveAttribute("aria-valuenow", "24000000000");
+    expect(screen.getByRole("status")).toHaveTextContent("showing last reported memory");
+  });
+
   it("renders two identical cards as two lines, with no duplicate key", () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const line = "NVIDIA GeForce RTX 3090 · 25.8 GB · 24.9 GB free";

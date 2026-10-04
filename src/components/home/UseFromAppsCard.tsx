@@ -345,9 +345,9 @@ export function UseFromAppsCard({
       // The Settings page's search answers "client key" with a link here.
       id="use-from-apps"
       data-testid="home-use-from-apps"
-      className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3"
+      className="section-panel"
     >
-      <h2 className="font-ui text-sm font-semibold">Use it from your apps</h2>
+      <h2 className="section-heading font-ui text-sm font-semibold">Use it from your apps</h2>
       <p className="font-ui mt-1 text-sm text-[color:var(--muted)]">
         One address for Claude Code, Codex and OpenAI-compatible apps such as Continue, Open WebUI
         and SillyTavern. Choose your app below for its connection settings.

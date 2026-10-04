@@ -464,8 +464,8 @@ export default function NodesPage() {
             </section>
           )}
 
-          <section className="mb-8">
-            <h2 className="font-ui mb-3 text-base font-semibold">This install</h2>
+          <section className="section-panel mb-6">
+            <h2 className="section-heading font-ui text-base font-semibold">This install</h2>
             {nodes === null ? (
               <p className="text-sm text-[color:var(--muted)]">Loading…</p>
             ) : locked ? (
@@ -601,8 +601,8 @@ export default function NodesPage() {
           {/* Versions, and updating a machine from here: the Update on
               each card runs on that machine, through its own agent. */}
           {!locked && nodes && nodes.length > 0 && (
-            <section className="mb-8" data-testid="node-versions">
-              <h2 className="font-ui mb-1 text-base font-semibold">Versions</h2>
+            <section className="section-panel mb-6" data-testid="node-versions">
+              <h2 className="section-heading font-ui text-base font-semibold">Versions</h2>
               <p className="mb-3 text-sm text-[color:var(--muted)]">
                 Each machine checks for a newer version of Eugene a minute after it starts and every
                 six hours. Nothing is installed until you press Update.
@@ -630,8 +630,8 @@ export default function NodesPage() {
           {/* Hidden rather than disabled while locked: minting a join token
           is a control-root write, so the button could only produce the
           same 503 the panel above already explains. */}
-          <section hidden={locked}>
-            <h2 className="font-ui mb-2 text-base font-semibold">Add a node</h2>
+          <section hidden={locked} className="section-panel">
+            <h2 className="section-heading font-ui text-base font-semibold">Add a node</h2>
             <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
               Make a token here, then run the command it gives you on the other machine. The token
               works once, for a short time, and is <strong>shown once</strong>. A lost one is

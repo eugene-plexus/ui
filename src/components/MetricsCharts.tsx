@@ -9,10 +9,9 @@
  *
  * Design rules these components enforce rather than hope for:
  *
- * - **One measure per chart, one axis.** Errors are not a second hue
- *   inside the requests bars — editorial's status-red against its green
- *   accent fails deuteranopia separation (measured, ΔE 5.2), so errors
- *   get their own panel. Position separates what hue cannot.
+ * - **One measure per chart, one axis.** Hourly errors have their own
+ *   panel. The outcome split uses a pattern as well as color, so it
+ *   remains legible when a theme's accent and error hues look alike.
  * - **Marks wear the series color; text wears text tokens.** Labels,
  *   ticks and values are foreground/muted ink, never the accent.
  * - **A null breaks the line.** "Nothing measured this hour" renders as
@@ -25,6 +24,81 @@
 import { useId, useMemo, useRef, useState } from "react";
 
 import { type HourPoint, hourLabel, niceMax } from "@/lib/metricsCharts";
+
+export function RequestOutcomes({ requests, errors }: { requests: number; errors: number }) {
+  const id = useId();
+  const valid =
+    Number.isSafeInteger(requests) &&
+    Number.isSafeInteger(errors) &&
+    requests > 0 &&
+    errors >= 0 &&
+    errors <= requests;
+  const served = valid ? requests - errors : 0;
+  const percent = valid ? (served / requests) * 100 : 0;
+  const percentText =
+    percent > 99.9 && percent < 100
+      ? ">99.9"
+      : percent > 0 && percent < 0.1
+        ? "<0.1"
+        : percent.toLocaleString(undefined, { maximumFractionDigits: 1 });
+
+  return (
+    <figure className="section-panel col-span-full" aria-labelledby={id}>
+      <figcaption id={id} className="font-ui mb-3 text-sm font-semibold">
+        Request outcomes{" "}
+        <span className="ml-2 font-normal text-[color:var(--muted)]">selected window</span>
+      </figcaption>
+      {valid ? (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
+          <p className="font-ui shrink-0 text-sm text-[color:var(--muted)]">
+            <span className="mr-2 text-2xl font-semibold text-[color:var(--foreground)] tabular-nums">
+              {percentText}%
+            </span>
+            served
+          </p>
+          <div className="min-w-0 flex-1 space-y-2">
+            <div
+              role="img"
+              aria-label={`${served.toLocaleString()} served, ${errors.toLocaleString()} not served, out of ${requests.toLocaleString()} recorded requests.`}
+              className="flex h-3 overflow-hidden rounded-full border border-[color:var(--border)] bg-[color:var(--panel-soft)]"
+            >
+              <span
+                className="h-full bg-[color:var(--accent-left)]"
+                style={{ width: `${percent}%` }}
+              />
+              <span
+                className="visual-hatch h-full bg-[color:var(--status-error-bg)] text-[color:var(--status-error-fg)]"
+                style={{ width: `${100 - percent}%` }}
+              />
+            </div>
+            <div className="font-ui flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-[color:var(--muted)] tabular-nums">
+              <span className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="h-2.5 w-2.5 rounded-sm bg-[color:var(--accent-left)]"
+                />
+                {served.toLocaleString()} served
+              </span>
+              <span className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="visual-hatch h-2.5 w-2.5 rounded-sm bg-[color:var(--status-error-bg)] text-[color:var(--status-error-fg)]"
+                />
+                {errors.toLocaleString()} not served
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className="font-ui text-sm text-[color:var(--muted)]">
+          {requests === 0 && errors === 0
+            ? "No requests in this window."
+            : "Request outcomes unavailable."}
+        </p>
+      )}
+    </figure>
+  );
+}
 
 const W = 460;
 const H = 150;
@@ -164,7 +238,7 @@ export function HourChart({
   const yFor = (v: number) => PAD_TOP + PLOT_H - (Math.min(v, max) / max) * PLOT_H;
 
   return (
-    <figure className="min-w-0">
+    <figure className="section-panel min-w-0">
       <figcaption className="font-ui mb-1 flex items-baseline gap-2 text-sm">
         <span className="font-semibold">{title}</span>
         {caption && <span className="text-xs text-[color:var(--muted)]">{caption}</span>}

@@ -108,6 +108,7 @@ export default function HomePage() {
   const ready = gate === "ready";
 
   const [node, setNode] = useState<NodeIdentity | null>(null);
+  const [nodeReadFailed, setNodeReadFailed] = useState(false);
   const [engines, setEngines] = useState<EngineList | null>(null);
   const [library, setLibrary] = useState<LibraryModelList | null>(null);
   const [libraryFailed, setLibraryFailed] = useState(false);
@@ -144,6 +145,7 @@ export default function HomePage() {
     if (nodeResult !== null) lastNode.current = nodeResult;
     const known = lastNode.current;
     if (nodeResult !== null) setNode(nodeResult);
+    setNodeReadFailed(nodeResult === null);
     if (enginesResult !== null) setEngines(enginesResult);
     // The starter set, scored against THIS machine's devices — the one a
     // Run from Home would use. On the poll rather than once, because
@@ -260,7 +262,7 @@ export default function HomePage() {
     <AppShell>
       <main data-testid="home" className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
-          <MachineStrip strip={strip} />
+          <MachineStrip strip={strip} devices={node?.devices} memoryStale={nodeReadFailed} />
           <FirstModelCard
             state={state}
             downloads={downloads}

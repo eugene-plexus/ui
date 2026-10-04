@@ -87,9 +87,9 @@ export function ReachCard({
       // The Settings page's search answers "firewall" or "advertise" with a link here.
       id="reach"
       data-testid="home-reach"
-      className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3"
+      className="section-panel"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="section-heading flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-ui text-sm font-semibold">Reach it from other devices</h2>
         <button
           type="button"

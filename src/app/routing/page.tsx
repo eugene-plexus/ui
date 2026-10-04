@@ -365,8 +365,10 @@ export default function RoutingPage() {
                     </p>
                   )}
 
-                  <section className="mt-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
-                    <h2 className="font-ui mb-2 text-base font-semibold">Add a priority list</h2>
+                  <section className="section-panel mt-6">
+                    <h2 className="section-heading font-ui text-base font-semibold">
+                      Add a priority list
+                    </h2>
                     <form
                       className="flex flex-wrap items-center gap-2"
                       onSubmit={(e) => {
@@ -579,12 +581,8 @@ function SlotCard({
   }
 
   return (
-    <section
-      ref={card}
-      data-testid="routing-slot"
-      className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4"
-    >
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+    <section ref={card} data-testid="routing-slot" className="section-panel">
+      <div className="section-heading flex flex-wrap items-center gap-2">
         <input
           value={slot.model}
           onChange={(e) => onRename(e.target.value)}
@@ -604,11 +602,14 @@ function SlotCard({
         </button>
       </div>
 
-      <ol className="space-y-2">
+      <ol className="space-y-3" aria-label={`Priority order for ${slot.model}`}>
         <li
           data-testid="self-tier"
-          className="flex flex-wrap items-baseline gap-2 rounded-[var(--radius)] border border-dashed border-[color:var(--border)] px-3 py-2"
+          className="routing-step flex flex-wrap items-baseline gap-2 rounded-[var(--radius)] border border-dashed border-[color:var(--border)] px-3 py-2"
         >
+          <span className="routing-step-number font-ui" aria-hidden>
+            1
+          </span>
           <span className="font-ui text-xs text-[color:var(--muted)]">tried first</span>
           <ModelName
             name={slot.model.trim() || "…"}
@@ -621,8 +622,11 @@ function SlotCard({
           <li
             key={j}
             data-testid="target-row"
-            className="flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2"
+            className="routing-step flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2"
           >
+            <span className="routing-step-number font-ui" aria-hidden>
+              {j + 2}
+            </span>
             <span className="font-ui text-xs text-[color:var(--muted)]">then</span>
             <input
               value={target}

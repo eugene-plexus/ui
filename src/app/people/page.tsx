@@ -125,8 +125,8 @@ export default function PeoplePage() {
 function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () => Promise<void> }) {
   const { people, operatorName, clients } = loaded;
   return (
-    <section aria-labelledby="people-heading" className="flex flex-col gap-3">
-      <h2 id="people-heading" className="font-ui text-base font-semibold">
+    <section aria-labelledby="people-heading" className="section-panel flex flex-col gap-3">
+      <h2 id="people-heading" className="section-heading font-ui mb-0 text-base font-semibold">
         People
       </h2>
       <p className="text-sm text-[color:var(--muted)]">
@@ -566,8 +566,11 @@ function AppsSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () => P
       : window.location;
   const address = signInAddress(loaded.issuer, page);
   return (
-    <section aria-labelledby="sign-in-apps-heading" className="flex flex-col gap-3">
-      <h2 id="sign-in-apps-heading" className="font-ui text-base font-semibold">
+    <section aria-labelledby="sign-in-apps-heading" className="section-panel flex flex-col gap-3">
+      <h2
+        id="sign-in-apps-heading"
+        className="section-heading font-ui mb-0 text-base font-semibold"
+      >
         Apps that sign in with Eugene
       </h2>
       <div className={rowClass} data-testid="people-sign-in-address">

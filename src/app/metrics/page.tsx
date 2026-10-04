@@ -45,7 +45,7 @@ import Link from "next/link";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { HourChart, StatTile } from "@/components/MetricsCharts";
+import { HourChart, RequestOutcomes, StatTile } from "@/components/MetricsCharts";
 import { CopyButton } from "@/components/CopyButton";
 import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
@@ -556,6 +556,7 @@ export default function MetricsPage() {
                         : "needs streamed requests with token counts"
                     }
                   />
+                  <RequestOutcomes requests={tiles.requests} errors={tiles.errors} />
                 </section>
               )}
 
@@ -864,8 +865,10 @@ export default function MetricsPage() {
               </p>
 
               {clientError && (
-                <section className="mt-8" aria-label="Usage by client key">
-                  <h2 className="font-ui mb-2 text-base font-semibold">Usage by client key</h2>
+                <section className="section-panel mt-6" aria-label="Usage by client key">
+                  <h2 className="section-heading font-ui text-base font-semibold">
+                    Usage by client key
+                  </h2>
                   <p className="text-status-error text-sm" role="status">
                     Could not read usage by client key: {clientError}
                   </p>
@@ -873,8 +876,13 @@ export default function MetricsPage() {
               )}
 
               {clientUsage && (
-                <section className="mt-8 overflow-x-auto" aria-label="Usage by client key">
-                  <h2 className="font-ui mb-2 text-base font-semibold">Usage by client key</h2>
+                <section
+                  className="section-panel mt-6 overflow-x-auto"
+                  aria-label="Usage by client key"
+                >
+                  <h2 className="section-heading font-ui text-base font-semibold">
+                    Usage by client key
+                  </h2>
                   <p className="mb-2 text-sm text-[color:var(--muted)]">
                     This gateway, within the selected window and retained request history — all
                     models, whatever the filter above says. Tokens are reported usage only; failed
@@ -947,8 +955,10 @@ export default function MetricsPage() {
               )}
 
               {recentError && (
-                <section className="mt-8" aria-label="Recent requests">
-                  <h2 className="font-ui mb-2 text-base font-semibold">Recent requests</h2>
+                <section className="section-panel mt-6" aria-label="Recent requests">
+                  <h2 className="section-heading font-ui text-base font-semibold">
+                    Recent requests
+                  </h2>
                   <p className="text-status-error text-sm" role="status">
                     Could not read recent requests: {recentError}
                   </p>
@@ -956,8 +966,10 @@ export default function MetricsPage() {
               )}
 
               {recent && recent.length > 0 && (
-                <section className="mt-8">
-                  <h2 className="font-ui mb-2 text-base font-semibold">Recent requests</h2>
+                <section className="section-panel mt-6">
+                  <h2 className="section-heading font-ui text-base font-semibold">
+                    Recent requests
+                  </h2>
                   <p className="mb-3 text-sm text-[color:var(--muted)]">
                     The rows behind the numbers above, newest first. A request that tried more than
                     one backend shows each attempt in the order it was tried, and one where there
