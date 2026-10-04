@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api } from "./api";
+import { api, onWrite } from "./api";
 import { isLockedError } from "./controlUnlock";
 import {
   issuesFrom,
@@ -223,6 +223,11 @@ export interface IssuesState {
  */
 const mounted = new Set<() => Promise<void>>();
 
+/** Reconcile all visible issue lists after a fix or an observed node update. */
+export async function refreshIssues(): Promise<void> {
+  await Promise.all([...mounted].map((each) => each()));
+}
+
 /**
  * Refresh something else whenever the Issues lists are pulled forward.
  * A fix made from the list -- an unlock, above all -- changes more than
@@ -233,8 +238,31 @@ const mounted = new Set<() => Promise<void>>();
 export function useRefreshWithIssues(load: () => Promise<void>): void {
   useEffect(() => {
     mounted.add(load);
+    // A write may resolve a problem outside the issue list. Folder checks
+    // are reads expressed as POST and must not trigger a refresh loop.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = onWrite((_target, path) => {
+      if (
+        !/^\/v1\/(node\/(update|enroll|unenroll)|config|runtimes|engines|library\/folders|control\/unlock|nodes)(\/|$)/.test(
+          path,
+        ) ||
+        (path.endsWith("/check") && !path.includes("/node/update/"))
+      )
+        return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void load();
+      }, 250);
+    });
+    const focus = () => {
+      void load();
+    };
+    window.addEventListener("focus", focus);
     return () => {
       mounted.delete(load);
+      stop();
+      clearTimeout(timer);
+      window.removeEventListener("focus", focus);
     };
   }, [load]);
 }
@@ -303,16 +331,16 @@ export function useIssues(): IssuesState {
   }, []);
 
   usePolling(load, POLL_MS);
-
-  useEffect(() => {
-    mounted.add(load);
-    return () => {
-      mounted.delete(load);
-    };
-  }, [load]);
+  useRefreshWithIssues(load);
+  useEffect(
+    () => () => {
+      sequence.current += 1;
+    },
+    [],
+  );
 
   const reload = useCallback(async () => {
-    await Promise.all([...mounted].map((each) => each()));
+    await refreshIssues();
   }, []);
 
   const worst = useMemo(() => worstSeverity(issues), [issues]);

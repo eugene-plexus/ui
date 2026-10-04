@@ -550,6 +550,10 @@ const LLAMA_FINE = body<EngineList>(
     '"modelFormats":["gguf"],"acquisition":{"policy":"managed","installable":true}}]}',
 );
 
+const NEEDS_LLAMA = body<RuntimeList>(
+  '{"runtimes":[{"name":"requested","engine":"llama_cpp","status":"starting"}]}',
+);
+
 describe("an engine that cannot be installed", () => {
   it("IGNORES policy: manual, on every host, forever", () => {
     // SABOTAGE-CHECKED. vLLM's `installable` is false on every host that
@@ -563,7 +567,12 @@ describe("an engine that cannot be installed", () => {
   });
 
   it("warns for a managed engine with no build for this machine, in upstream's words", () => {
-    const node = facts({ name: "tower", label: "tower", engines: LLAMA_NO_ASSET });
+    const node = facts({
+      name: "tower",
+      label: "tower",
+      engines: LLAMA_NO_ASSET,
+      runtimes: NEEDS_LLAMA,
+    });
     const [issue] = issuesFrom({ ...NOTHING, perNode: [node] });
     expect(issue!.kind).toBe("engine-unavailable");
     expect(issue!.severity).toBe("warning");
@@ -582,9 +591,47 @@ describe("an engine that cannot be installed", () => {
       '{"engines":[{"engine":"llama_cpp","available":false,"modelFormats":["gguf"],' +
         '"acquisition":{"policy":"managed","installable":false}}]}',
     );
-    const node = facts({ name: "tower", label: "tower", engines: bare });
+    const node = facts({ name: "tower", label: "tower", engines: bare, runtimes: NEEDS_LLAMA });
     const [issue] = issuesFrom({ ...NOTHING, perNode: [node] });
     expect(issue!.detail).toBe("No build is published that would run on this machine.");
+  });
+
+  it.each(["strata", "ninfer", "imp", "llama_cpp", "mlx_lm"])(
+    "does not warn about optional %s being unsupported on a container",
+    (engine) => {
+      const node = facts({
+        name: "804b1783c28d",
+        label: "804b1783c28d",
+        engines: body<EngineList>(
+          JSON.stringify({
+            engines: [
+              {
+                engine,
+                available: false,
+                acquisition: {
+                  policy: "managed",
+                  installable: false,
+                  reason: "Unsupported on this host",
+                },
+              },
+            ],
+          }),
+        ),
+      });
+      expect(issuesFrom({ ...NOTHING, perNode: [node] })).toEqual([]);
+    },
+  );
+
+  it("clears the warning when the runtime no longer needs the missing engine", () => {
+    const node = facts({
+      name: "tower",
+      label: "tower",
+      engines: LLAMA_NO_ASSET,
+      runtimes: NEEDS_LLAMA,
+    });
+    expect(issuesFrom({ ...NOTHING, perNode: [node] })).toHaveLength(1);
+    node.runtimes = body<RuntimeList>('{"runtimes":[]}');
+    expect(issuesFrom({ ...NOTHING, perNode: [node] })).toEqual([]);
   });
 });
 
@@ -860,7 +907,12 @@ describe("worstSeverity", () => {
   });
 
   it("is blocking if anything is, so the badge does not need opening", () => {
-    const node = facts({ name: "tower", label: "tower", engines: LLAMA_NO_ASSET });
+    const node = facts({
+      name: "tower",
+      label: "tower",
+      engines: LLAMA_NO_ASSET,
+      runtimes: NEEDS_LLAMA,
+    });
     expect(worstSeverity(issuesFrom({ ...NOTHING, perNode: [node] }))).toBe("warning");
     expect(worstSeverity(issuesFrom({ ...NOTHING, controlLocked: true, perNode: [node] }))).toBe(
       "blocking",
@@ -892,7 +944,6 @@ describe("the order of the list", () => {
       "control-sealed",
       "folder-unreachable",
       "node-down",
-      "engine-unavailable",
       "runtime-on-cpu",
     ]);
     // Stable: the same bodies give the same order, and the ids are keys.

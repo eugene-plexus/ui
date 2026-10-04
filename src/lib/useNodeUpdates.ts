@@ -11,12 +11,13 @@
  * back without anyone reloading.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
 import { targetFor } from "./nodeBudget";
 import type { NodeIdentity } from "./types";
 import { usePolling } from "./usePolling";
+import { refreshIssues } from "./useIssues";
 
 export interface NodeReading {
   name: string;
@@ -33,6 +34,7 @@ const WHILE_UPDATING_MS = 3_000;
 export function useNodeUpdates(names: string[] | null, updating: boolean) {
   const [localName, setLocalName] = useState<string | null | undefined>(undefined);
   const [readings, setReadings] = useState<Record<string, NodeReading>>({});
+  const previousVersions = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +67,18 @@ export function useNodeUpdates(names: string[] | null, updating: boolean) {
       }),
     );
     setReadings(Object.fromEntries(results.map((r) => [r.name, r])));
+    const versions = JSON.stringify(
+      results.map((r) => [
+        r.name,
+        r.identity?.install,
+        r.identity?.update?.available,
+        r.identity?.update?.last,
+        r.identity?.update?.running,
+      ]),
+    );
+    if (previousVersions.current !== null && previousVersions.current !== versions)
+      void refreshIssues();
+    previousVersions.current = versions;
   }, [names, localName]);
 
   usePolling(

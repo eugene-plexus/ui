@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
 import { api, describeError } from "@/lib/api";
-import type { NodeIdentity } from "@/lib/types";
+import type { NodeIdentity, NodeUpdate } from "@/lib/types";
+import { refreshIssues } from "@/lib/useIssues";
 import { describeUpdate } from "@/lib/updates";
 
 /** After this long without the machine reporting back, say so. */
@@ -56,6 +57,7 @@ export function NodeUpdateCard({
     if (!over) return;
     setRequested(null);
     onUpdating?.(false);
+    void refreshIssues();
   }, [over, onUpdating]);
 
   async function check() {
@@ -76,12 +78,21 @@ export function NodeUpdateCard({
     setBusy("updating");
     setError(null);
     try {
-      await api.post(target, "/v1/node/update", { target: view.target });
+      const fresh = await api.post<NodeUpdate>(target, "/v1/node/update/check", {});
+      if (fresh.error) throw new Error(`${fresh.error} Nothing was installed. Try Update again.`);
+      if (!fresh.available || !fresh.newest || !fresh.apply.possible) {
+        await onChanged();
+        await refreshIssues();
+        if (!fresh.available) return;
+        throw new Error(fresh.apply.reason ?? "This machine cannot update itself.");
+      }
+      await api.post(target, "/v1/node/update", { target: fresh.newest.ref });
       setRequested({ at: Date.now(), label: view.headline });
       onUpdating?.(true);
       await onChanged();
     } catch (e) {
       setError(describeError(e));
+      await onChanged();
     } finally {
       setBusy(null);
     }
@@ -156,9 +167,9 @@ export function NodeUpdateCard({
           {view.canUpdate && (
             <ConfirmButton
               testId="node-update-now"
-              label={busy === "updating" ? "Starting…" : "Update"}
+              label={busy === "updating" ? "Checking newest and starting…" : "Update"}
               confirmLabel={`Update ${name}`}
-              prompt={`${name} restarts, and the models on it stop for a minute or two.`}
+              prompt={`${name} restarts, and the models on it stop for a minute or two. The newest version on its channel is checked again before starting.`}
               disabled={busy !== null}
               onConfirm={update}
               className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:opacity-50"

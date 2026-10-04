@@ -712,21 +712,27 @@ function folderIssues(node: NodeFacts): Issue[] {
 // --- engines ------------------------------------------------------------
 
 /**
- * An engine we would install and cannot.
- *
- * **`policy: manual` is excluded, and that exclusion is the whole
- * subtlety.** vLLM's `installable` is false on every host that ever
- * runs, because its unit of installation is a Python environment we do
- * not own — so a rule that flagged every `installable: false` would put
- * a permanent, unfixable issue on every install in existence, which is
- * how a list of things needing attention becomes a thing nobody reads.
- * What is left is real: a managed engine with no build for this machine,
- * which is llama.cpp on Linux with an NVIDIA card, and a release
- * upstream published with its assets missing.
+ * An engine a requested runtime needs, which is missing and cannot be
+ * installed here. Merely listing an unsupported optional engine is not
+ * an issue: its platform limits belong on the engine's own card.
  */
 function engineIssues(node: NodeFacts): Issue[] {
+  // An optional engine's platform support is information in the engine
+  // list, not work the owner needs to do. Only warn when an existing
+  // runtime actually depends on the missing engine.
+  const needed = new Set(
+    (node.runtimes?.runtimes ?? [])
+      .filter((r) => r.status === "crashed" || r.status === "loading" || r.status === "starting")
+      .map((r) => r.engine),
+  );
   return (node.engines?.engines ?? [])
-    .filter((e) => e.acquisition?.policy === "managed" && e.acquisition?.installable === false)
+    .filter(
+      (e) =>
+        needed.has(e.engine) &&
+        !e.available &&
+        e.acquisition?.policy === "managed" &&
+        e.acquisition?.installable === false,
+    )
     .map((e) => ({
       id: `engine:${node.name ?? "local"}:${e.engine}`,
       kind: "engine-unavailable" as const,

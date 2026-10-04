@@ -283,7 +283,7 @@ async function jsonRequest<T>(
 
   let response: Response;
   try {
-    response = await fetch(url, { ...init, headers });
+    response = await fetch(url, { cache: "no-store", ...init, headers });
   } catch (e) {
     if (timedOut) {
       throw new ApiError(0, "request timed out", {

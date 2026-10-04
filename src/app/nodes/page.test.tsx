@@ -622,10 +622,12 @@ describe("versions, and updating a machine from here (2026-09-27)", () => {
     },
   };
   let posted: { url: string; body: unknown }[];
+  let freshUpdate: typeof behind.update & { error?: string };
 
   beforeEach(() => {
     sealed = false;
     posted = [];
+    freshUpdate = structuredClone(behind.update);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -639,6 +641,7 @@ describe("versions, and updating a machine from here (2026-09-27)", () => {
           });
         if (method === "POST" && url.includes("/v1/node/update")) {
           posted.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+          if (url.endsWith("/check")) return json(freshUpdate);
           return json(
             { target: EDGE, startedAt: new Date().toISOString(), outcome: "running" },
             url.endsWith("/check") ? 200 : 202,
@@ -679,11 +682,35 @@ describe("versions, and updating a machine from here (2026-09-27)", () => {
     expect(posted).toEqual([]);
     expect(amish).toHaveTextContent("the models on it stop for a minute or two");
     await user.click(within(amish).getByRole("button", { name: "Update Amish_Station" }));
-    await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]?.url).toContain("/api/proxy/node:Amish_Station/v1/node/update");
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect(posted[0]?.url).toBe("/api/proxy/node:Amish_Station/v1/node/update/check");
+    expect(posted[1]?.url).toBe("/api/proxy/node:Amish_Station/v1/node/update");
     // Exactly what that machine said it found.
-    expect(posted[0]?.body).toEqual({ target: EDGE });
+    expect(posted[1]?.body).toEqual({ target: EDGE });
     await waitFor(() => expect(amish).toHaveAttribute("data-state", "running"));
+  });
+
+  it("uses the newest target at confirmation instead of the one displayed earlier", async () => {
+    const user = userEvent.setup();
+    render(<NodesPage />);
+    const amish = await card("Amish_Station");
+    await user.click(within(amish).getByTestId("node-update-now"));
+    freshUpdate.newest.ref = "f".repeat(40);
+    await user.click(within(amish).getByRole("button", { name: "Update Amish_Station" }));
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect(posted[1]?.body).toEqual({ target: "f".repeat(40) });
+  });
+
+  it("does not install the retained target if the final check reports a failure", async () => {
+    const user = userEvent.setup();
+    render(<NodesPage />);
+    const amish = await card("Amish_Station");
+    freshUpdate.error = "GitHub could not be reached.";
+    await user.click(within(amish).getByTestId("node-update-now"));
+    await user.click(within(amish).getByRole("button", { name: "Update Amish_Station" }));
+    await waitFor(() => expect(amish).toHaveTextContent("Nothing was installed"));
+    expect(posted).toHaveLength(1);
+    expect(posted[0]?.url).toMatch(/\/check$/);
   });
 
   it("gives a container its steps and no button", async () => {

@@ -14,10 +14,13 @@
  * `app/page.test.tsx` does, so a call's target reads off the URL.
  */
 
-import { renderHook, waitFor } from "@testing-library/react";
+import { fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useIssues } from "./useIssues";
+import { api } from "./api";
+import { IssuesBadge } from "../components/IssuesBadge";
+import { useNodeUpdates } from "./useNodeUpdates";
 
 interface Call {
   method: string;
@@ -211,6 +214,72 @@ async function poll() {
 }
 
 describe("useIssues on a healthy standalone install", () => {
+  it("removes the mounted badge after a version mismatch is fixed, without reloading the page", async () => {
+    handlers = withWorkshop(handlers, 0);
+    let fixed = false;
+    const baseLocal = handlers.get("GET agent/v1/node")!;
+    const baseRemote = handlers.get("GET node:workshop/v1/node")!;
+    const install = (commit: string) => ({
+      components: [{ name: "agent", state: "stamped", commit }],
+    });
+    handlers.set("GET agent/v1/node", () => ({
+      ...baseLocal(),
+      body: { ...(baseLocal().body as object), install: install("a".repeat(40)) },
+    }));
+    handlers.set("GET node:workshop/v1/node", () => ({
+      ...baseRemote(),
+      body: { ...(baseRemote().body as object), install: install((fixed ? "a" : "b").repeat(40)) },
+    }));
+    render(<IssuesBadge />);
+    const badge = await screen.findByTestId("issues-badge");
+    fireEvent.click(badge);
+    expect(
+      await screen.findByText("Machines in this install run different versions of Eugene"),
+    ).toBeVisible();
+    fixed = true;
+    // The update page's refresh is a POST; completion also pulls all issue
+    // readers forward when its next identity read sees the new version.
+    handlers.set("POST node:workshop/v1/node/update/check", () => ({ status: 200, body: {} }));
+    await api.post("node:workshop", "/v1/node/update/check", {});
+    await waitFor(() => expect(screen.queryByTestId("issues-badge")).toBeNull());
+    expect(screen.queryByTestId("issues-popover")).toBeNull();
+  });
+
+  it("rechecks on window focus and does not loop on its own folder-check POST", async () => {
+    const result = await poll();
+    const before = calls.length;
+    fireEvent.focus(window);
+    await waitFor(() => expect(calls.length).toBeGreaterThan(before));
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(calls.length).toBe(before * 2);
+    expect(result.current.issues).toEqual([]);
+  });
+
+  it("clears version notices when the Versions poll observes the updated node", async () => {
+    handlers = withWorkshop(handlers, 0);
+    let commit = "b".repeat(40);
+    const baseLocal = handlers.get("GET agent/v1/node")!;
+    const baseRemote = handlers.get("GET node:workshop/v1/node")!;
+    const install = (sha: string) => ({
+      components: [{ name: "agent", state: "stamped", commit: sha }],
+    });
+    handlers.set("GET agent/v1/node", () => ({
+      status: 200,
+      body: { ...(baseLocal().body as object), install: install("a".repeat(40)) },
+    }));
+    handlers.set("GET node:workshop/v1/node", () => ({
+      status: 200,
+      body: { ...(baseRemote().body as object), install: install(commit) },
+    }));
+    render(<IssuesBadge />);
+    await screen.findByTestId("issues-badge");
+    const names = ["Amish_Station", "workshop"];
+    const versions = renderHook(() => useNodeUpdates(names, false));
+    await waitFor(() => expect(versions.result.current.readings.workshop?.loaded).toBe(true));
+    commit = "a".repeat(40);
+    await versions.result.current.refresh();
+    await waitFor(() => expect(screen.queryByTestId("issues-badge")).toBeNull());
+  });
   it("reports nothing, and says it has actually looked", async () => {
     const result = await poll();
     expect(result.current.issues).toEqual([]);
@@ -485,6 +554,10 @@ describe("the poll is not the thing that ends a session", () => {
 
 describe("every read is soft", () => {
   it("still reports what it could reach when the gateway is down", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: { runtimes: [{ name: "requested", engine: "llama_cpp", status: "starting" }] },
+    }));
     handlers.set("GET gateway/v1/admin/routing", () => ({ status: 500, body: null }));
     handlers.set("GET agent/v1/engines", () => ({
       status: 200,
