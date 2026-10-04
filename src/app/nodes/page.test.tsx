@@ -72,6 +72,7 @@ let nodesBody: typeof NODES | null;
 
 beforeEach(() => {
   sealed = true;
+  sessionStorage.setItem("eugene-session-token", "test-token");
   calls = [];
   tokenRows = [];
   nodesBody = null;
@@ -716,7 +717,7 @@ describe("versions, and updating a machine from here (2026-09-27)", () => {
   it("gives a container its steps and no button", async () => {
     render(<NodesPage />);
     const unraid = await card("unraid");
-    expect(unraid).toHaveAttribute("data-state", "current");
+    expect(unraid).toHaveAttribute("data-state", "different");
     expect(within(unraid).queryByTestId("node-update-now")).toBeNull();
   });
 

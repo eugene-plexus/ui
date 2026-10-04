@@ -62,6 +62,9 @@ jobs:
       - name: Home loading, recovery and cancellation in Chrome
         run: node scripts/a1-browser-acceptance.mjs out test-results/a1
 
+      - name: Machines and Needs Attention agree in Chrome
+        run: node scripts/update-status-browser-acceptance.mjs out test-results/update-status
+
   wheel:
     name: Build the eugene-plexus-ui wheel
     runs-on: ubuntu-latest

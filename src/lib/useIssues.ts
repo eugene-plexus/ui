@@ -19,13 +19,13 @@
  * tray watches work in flight and polls every five seconds; a sealed
  * root, an unmounted folder or a mixed engine fleet does not change
  * second to second, and four reads per node is a real cost on an
- * install with ten of them. Thirty seconds, and `usePolling` skips the
+ * install with ten of them. Thirty seconds, and the shared poll skips the
  * ticks while the tab is hidden.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 
-import { api, onWrite } from "./api";
+import { api, describeError, onWrite } from "./api";
 import { isLockedError } from "./controlUnlock";
 import {
   issuesFrom,
@@ -34,6 +34,7 @@ import {
   type Issue,
   type IssueSeverity,
   type NodeFacts,
+  type IssueSources,
 } from "./issues";
 import { targetFor } from "./nodeBudget";
 import { getSessionToken } from "./session";
@@ -42,11 +43,12 @@ import type {
   EngineList,
   LibraryFolderReach,
   NodeIdentity,
+  NodeUpdate,
   DriversInfo,
   RoutingTableView,
   RuntimeList,
 } from "./types";
-import { usePolling } from "./usePolling";
+import { versionDifference } from "./updates";
 
 const POLL_MS = 30_000;
 
@@ -206,6 +208,7 @@ export interface IssuesState {
   /** False until the first poll has answered, so a badge can stay quiet
    * rather than flashing "all clear" at a person whose root is sealed. */
   loaded: boolean;
+  checkingUpdates: boolean;
   /** Pull the list forward — what the sealed-root row calls after an
    * unlock, instead of leaving the issue on screen for half a minute
    * after it was fixed. */
@@ -213,19 +216,14 @@ export interface IssuesState {
 }
 
 /**
- * Every mounted list's loader, so a fix made from one refreshes them all.
- *
- * The header badge and Home's card are two `useIssues` calls with two
- * polls, and Inference is a third. Until 2026-09-23 an unlock from Home's
- * card pulled only the card's list forward, and the badge in the header
- * -- the one on screen everywhere -- kept saying the root was locked for
- * the rest of its thirty seconds.
+ * Other mounted readers (such as the resource tree) pulled forward by a
+ * fix. Issue lists and Machines already share a single subscription.
  */
 const mounted = new Set<() => Promise<void>>();
 
 /** Reconcile all visible issue lists after a fix or an observed node update. */
 export async function refreshIssues(): Promise<void> {
-  await Promise.all([...mounted].map((each) => each()));
+  await Promise.all([loadSnapshot(true), ...[...mounted].map((each) => each())]);
 }
 
 /**
@@ -267,82 +265,209 @@ export function useRefreshWithIssues(load: () => Promise<void>): void {
   }, [load]);
 }
 
-export function useIssues(): IssuesState {
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [facts, setFacts] = useState<NodeFacts[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  // `reload` can be called while a poll is in flight, and the two can
-  // finish in either order. Only the newest answer is allowed to land.
-  const sequence = useRef(0);
+async function readSources(token: string): Promise<IssueSources> {
+  const options = reads(token);
 
-  const load = useCallback(async () => {
-    const token = getSessionToken();
-    if (!token) return;
-    const options = reads(token);
-    const mine = (sequence.current += 1);
+  const [routing, drivers, local, roster] = await Promise.all([
+    api.get<RoutingTableView>("gateway", "/v1/admin/routing", options).catch(() => null),
+    api.get<DriversInfo>("gateway", "/v1/admin/drivers", options).catch(() => null),
+    readIdentity("agent", options),
+    readRoster(options),
+  ]);
 
-    const [routing, drivers, local, roster] = await Promise.all([
-      api.get<RoutingTableView>("gateway", "/v1/admin/routing", options).catch(() => null),
-      api.get<DriversInfo>("gateway", "/v1/admin/drivers", options).catch(() => null),
-      readIdentity("agent", options),
-      readRoster(options),
-    ]);
-
-    // The local node's name is what tells the others apart from it, and
-    // on a standalone host it is null — the agent has never enrolled, so
-    // it has no name in an install that does not exist. `targetFor`
-    // resolves that to the plain `agent` target.
-    const localName = local.identity?.name ?? null;
-    const perNode = await Promise.all([
-      readNode(
-        { name: localName, label: localName ?? "this machine", local: true, target: "agent" },
-        local,
-        options,
-      ),
-      ...(roster.nodes ?? [])
-        .filter((row) => row.name !== localName)
-        .map((row) =>
-          readNode(
-            {
-              name: row.name,
-              label: row.name,
-              local: false,
-              target: targetFor(row.name, localName),
-            },
-            null,
-            options,
-          ),
+  // The local node's name is what tells the others apart from it, and
+  // on a standalone host it is null — the agent has never enrolled, so
+  // it has no name in an install that does not exist. `targetFor`
+  // resolves that to the plain `agent` target.
+  const localName = local.identity?.name ?? null;
+  const perNode = await Promise.all([
+    readNode(
+      { name: localName, label: localName ?? "this machine", local: true, target: "agent" },
+      local,
+      options,
+    ),
+    ...(roster.nodes ?? [])
+      .filter((row) => row.name !== localName)
+      .map((row) =>
+        readNode(
+          {
+            name: row.name,
+            label: row.name,
+            local: false,
+            target: targetFor(row.name, localName),
+          },
+          null,
+          options,
         ),
-    ]);
+      ),
+  ]);
 
-    if (mine !== sequence.current) return;
-    setFacts(perNode);
-    setIssues(
-      issuesFrom({
-        controlRoot: routing?.control_root,
-        controlLocked: roster.locked,
-        nodes: roster.nodes,
-        perNode,
-        routing,
-        drivers: drivers?.drivers ?? null,
-      }),
-    );
-    setLoaded(true);
-  }, []);
+  return {
+    controlRoot: routing?.control_root,
+    controlLocked: roster.locked,
+    nodes: roster.nodes,
+    perNode,
+    routing,
+    drivers: drivers?.drivers ?? null,
+  };
+}
 
-  usePolling(load, POLL_MS);
-  useRefreshWithIssues(load);
-  useEffect(
-    () => () => {
-      sequence.current += 1;
-    },
-    [],
-  );
+// Machines and every issue list subscribe to one snapshot, including the
+// per-node identities. There is no separate Versions request to go stale.
+const EMPTY: IssuesState = {
+  issues: [],
+  facts: [],
+  worst: null,
+  loaded: false,
+  checkingUpdates: false,
+  reload: refreshIssues,
+};
+let snapshot = EMPTY;
+const subscribers = new Map<() => void, number>();
+let generation = 0;
+let flight: Promise<void> | null = null;
+let rerun = false;
+let timer: ReturnType<typeof setInterval> | undefined;
+let writeTimer: ReturnType<typeof setTimeout> | undefined;
+let stopWrites: (() => void) | undefined;
+const checked = new Map<string, number>();
+// GitHub's unauthenticated quota is shared by machines behind one router.
+// A minute-old result is stale enough to reconcile once; retries are spaced.
+const CHECK_AGAIN_MS = 5 * 60_000;
+const FRESH_CHECK_MS = 60_000;
 
-  const reload = useCallback(async () => {
-    await refreshIssues();
-  }, []);
+function publish(sources: IssueSources, checkingUpdates = false): void {
+  const issues = issuesFrom(sources);
+  snapshot = {
+    issues,
+    facts: sources.perNode,
+    worst: worstSeverity(issues),
+    loaded: true,
+    checkingUpdates,
+    reload: refreshIssues,
+  };
+  subscribers.forEach((_interval, notify) => notify());
+}
 
-  const worst = useMemo(() => worstSeverity(issues), [issues]);
-  return { issues, facts, worst, loaded, reload };
+function loadSnapshot(force = false): Promise<void> {
+  if (!subscribers.size) return Promise.resolve();
+  if (flight) {
+    // A write during a read must be observed by a subsequent read.
+    // Ordinary polling and additional subscribers share the current one.
+    if (force) rerun = true;
+    return flight;
+  }
+  const mine = generation;
+  flight = (async () => {
+    do {
+      rerun = false;
+      const token = getSessionToken();
+      if (!token) {
+        snapshot = EMPTY;
+        subscribers.forEach((_interval, notify) => notify());
+        return;
+      }
+      const current = () => mine === generation && token === getSessionToken();
+      const sources = await readSources(token);
+      if (!current()) return;
+      if (rerun) continue;
+      const needsCheck = versionDifference(sources.perNode)
+        ? sources.perNode.filter((node) => {
+            const update = node.identity?.update;
+            if (!update?.enabled || update.running || node.identity?.install?.development)
+              return false;
+            const target = node.local ? "agent" : `node:${node.name}`;
+            const last = checked.get(target);
+            if (last !== undefined && performance.now() - last < CHECK_AGAIN_MS) return false;
+            const age = Date.now() - Date.parse(update.checkedAt ?? "");
+            return !Number.isFinite(age) || age >= FRESH_CHECK_MS;
+          })
+        : [];
+      publish(sources, needsCheck.length > 0);
+      if (needsCheck.length) {
+        const refreshed = await Promise.all(
+          sources.perNode.map(async (node) => {
+            if (!needsCheck.includes(node)) return node;
+            const target = node.local ? "agent" : `node:${node.name}`;
+            checked.set(target, performance.now());
+            let update: NodeUpdate;
+            try {
+              update = await api.post<NodeUpdate>(
+                target,
+                "/v1/node/update/check",
+                {},
+                {
+                  bearer: token,
+                  timeoutMs: 60_000,
+                },
+              );
+            } catch (error) {
+              update = { ...node.identity!.update!, error: describeError(error) };
+            }
+            // Publish the check's answer directly, atomically for all consumers.
+            return { ...node, identity: { ...node.identity!, update } };
+          }),
+        );
+        if (!current()) return;
+        if (!rerun) publish({ ...sources, perNode: refreshed });
+      }
+    } while (rerun && mine === generation);
+  })().finally(() => {
+    if (mine === generation) flight = null;
+  });
+  return flight;
+}
+
+function tick(): void {
+  if (!document.hidden) void loadSnapshot();
+}
+
+function schedule(): void {
+  clearInterval(timer);
+  if (subscribers.size) timer = setInterval(tick, Math.min(...subscribers.values()));
+}
+
+function subscribe(notify: () => void, interval: number): () => void {
+  subscribers.set(notify, interval);
+  if (subscribers.size === 1) {
+    stopWrites = onWrite((_target, path) => {
+      if (
+        !/^\/v1\/(node\/(update|enroll|unenroll)|config|runtimes|engines|library\/folders|control\/unlock|nodes)(\/|$)/.test(
+          path,
+        )
+      )
+        return;
+      if (path.endsWith("/check") && (!path.includes("/node/update/") || snapshot.checkingUpdates))
+        return;
+      clearTimeout(writeTimer);
+      writeTimer = setTimeout(() => void loadSnapshot(true), 250);
+    });
+    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", tick);
+    tick();
+  }
+  schedule();
+  return () => {
+    subscribers.delete(notify);
+    schedule();
+    if (subscribers.size) return;
+    stopWrites?.();
+    clearTimeout(writeTimer);
+    window.removeEventListener("focus", tick);
+    document.removeEventListener("visibilitychange", tick);
+    // No old session or response can leak into a later sign-in.
+    generation += 1;
+    flight = null;
+    rerun = false;
+    snapshot = EMPTY;
+    checked.clear();
+  };
+}
+
+const getSnapshot = () => snapshot;
+const getServerSnapshot = () => EMPTY;
+
+export function useIssues(interval = POLL_MS): IssuesState {
+  const listen = useCallback((notify: () => void) => subscribe(notify, interval), [interval]);
+  return useSyncExternalStore(listen, getSnapshot, getServerSnapshot);
 }

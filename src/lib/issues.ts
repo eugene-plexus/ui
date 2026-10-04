@@ -52,6 +52,7 @@ import type {
   RuntimeList,
 } from "./types";
 import { nodeLiveness } from "./nodeLiveness";
+import { describeUpdate, versionDifference } from "./updates";
 
 export type IssueKind =
   | "control-sealed"
@@ -497,6 +498,8 @@ export function unservedTargetIssues(routing: IssueSources["routing"]): Issue[] 
 function updateIssues(node: NodeFacts): Issue[] {
   const update = node.identity?.update;
   if (!update || node.identity?.install?.development) return [];
+  const view = describeUpdate(node.identity, Date.now());
+  if (view.state === "running") return [];
   const last = update.last;
   // The same week the Versions card uses: a three-week-old failure read
   // "did not finish" here while the card, rightly, offered the update.
@@ -542,22 +545,14 @@ function updateIssues(node: NodeFacts): Issue[] {
  * channels, most likely. Only said when nothing is simply behind, which
  * already explains a difference. */
 function versionsDifferIssues(perNode: NodeFacts[]): Issue[] {
-  const versions = new Map<string, string[]>();
-  for (const node of perNode) {
-    const agent = node.identity?.install?.components.find((c) => c.name === "agent");
-    if (agent?.state !== "stamped" || !agent.commit) continue;
-    const key = agent.commit.slice(0, 7);
-    versions.set(key, [...(versions.get(key) ?? []), node.label]);
-  }
-  if (versions.size < 2) return [];
-  const which = [...versions.entries()].map(([v, names]) => `${names.join(", ")}: ${v}`).join("; ");
+  const difference = versionDifference(perNode);
+  if (!difference) return [];
   return [
     {
       id: "versions-differ",
       kind: "versions-differ",
       severity: "warning",
-      title: "Machines in this install run different versions of Eugene",
-      detail: `${which}. Check which update channel each follows, under Settings › Updates.`,
+      ...difference,
       href: "/nodes",
     },
   ];

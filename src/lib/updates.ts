@@ -26,6 +26,8 @@ export type UpdateState =
   | "off"
   | "unchecked"
   | "current"
+  | "different"
+  | "check-failed"
   | "available"
   /** Newer than its channel's newest: nothing is offered (2026-09-30). */
   | "ahead"
@@ -114,7 +116,11 @@ export function installerCommand(os: NodeIdentity["os"] | null | undefined): str
 const RESTART =
   "Updating restarts Eugene on this machine, and the models running on it stop until it is back, usually a minute or two.";
 
-export function describeUpdate(identity: NodeIdentity | null, now: number): UpdateView {
+export function describeUpdate(
+  identity: NodeIdentity | null,
+  now: number,
+  versionsDiffer = false,
+): UpdateView {
   const base = {
     version: versionLabel(identity),
     canUpdate: false,
@@ -270,12 +276,67 @@ export function describeUpdate(identity: NodeIdentity | null, now: number): Upda
         : "It checks a minute after it starts.",
     };
   }
+  if (update.error) {
+    return {
+      ...base,
+      last,
+      state: "check-failed",
+      headline: "Could not check for updates",
+      detail: checkNote,
+    };
+  }
   return {
     ...base,
     last,
-    state: failed ? "failed" : "current",
-    headline: failed ? "The last update did not finish" : `Up to date on ${update.channel}`,
+    state: failed ? "failed" : versionsDiffer ? "different" : "current",
+    headline: failed
+      ? "The last update did not finish"
+      : versionsDiffer
+        ? `No newer update found on ${update.channel}`
+        : `Up to date on ${update.channel}`,
     detail: failed?.detail ?? joined(checkNote, sourceNote(update)),
+  };
+}
+
+/** The same explanation in Needs Attention and on Machines. Compare full
+ * commits of shared components: a UI-only release need not change agent. */
+export function versionDifference(
+  nodes: { label: string; identity: NodeIdentity | null }[],
+): { title: string; detail: string } | null {
+  const installed = nodes.filter((n) => !n.identity?.install?.development);
+  const versions = new Map<string, Set<string>>();
+  for (const node of installed) {
+    for (const part of node.identity?.install?.components ?? []) {
+      if (part.state !== "stamped" || !part.commit) continue;
+      const values = versions.get(part.name) ?? new Set<string>();
+      values.add(part.commit);
+      versions.set(part.name, values);
+    }
+  }
+  const differing = [...versions].filter(([, values]) => values.size > 1).map(([name]) => name);
+  if (!differing.length) return null;
+  const which = installed
+    .map((node) => {
+      const parts = (node.identity?.install?.components ?? [])
+        .filter((part) => differing.includes(part.name) && part.state === "stamped" && part.commit)
+        .map(
+          (part) =>
+            `${differing.length === 1 && part.name === "agent" ? "" : `${part.name} `}${short(part.commit!)}`,
+        );
+      return parts.length ? `${node.label}: ${parts.join(", ")}` : null;
+    })
+    .filter(Boolean)
+    .join("; ");
+  const channels = new Set(installed.map((n) => n.identity?.update?.channel).filter(Boolean));
+  const explanation =
+    channels.size > 1
+      ? "These machines follow different update channels. Choose the same channel under Settings › Updates if you want them to match."
+      : channels.has("edge")
+        ? "Enabled update checks refresh automatically while versions differ. An Edge container can arrive before the remaining release checks finish; if no newer update is offered yet, check again shortly."
+        : "Check each machine’s update status below, and its channel under Settings › Updates. Different installed versions do not always mean a newer update is available.";
+  return {
+    title: "Machines in this install run different versions of Eugene",
+    detail: `${which}. ${explanation}`,
   };
 }
 

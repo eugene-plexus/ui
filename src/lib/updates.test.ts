@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { issuesFrom, type NodeFacts } from "./issues";
 import type { NodeIdentity } from "./types";
-import { ago, describeUpdate, installerCommand, versionLabel } from "./updates";
+import { ago, describeUpdate, installerCommand, versionDifference, versionLabel } from "./updates";
 
 const NOW = Date.parse("2026-09-27T18:00:00Z");
 const EDGE = "b8b30bd18a790a4af55e9b44786b61be4783adaa";
@@ -140,6 +140,15 @@ describe("describeUpdate", () => {
       NOW,
     );
     expect(view.detail).toMatch(/^The last check could not finish: GitHub's limit/);
+    expect(view.state).toBe("check-failed");
+    expect(view.headline).not.toContain("Up to date");
+  });
+
+  it("does not call differing installations up to date when no update is offered yet", () => {
+    const view = describeUpdate(identity({ newest: NEWEST }), NOW, true);
+    expect(view.state).toBe("different");
+    expect(view.headline).toBe("No newer update found on edge");
+    expect(view.canUpdate).toBe(false);
   });
 
   it("says an update is running while it is", () => {
@@ -312,6 +321,35 @@ function sources(perNode: NodeFacts[]) {
 }
 
 describe("the issues", () => {
+  it("detects a UI-only release using full commits, without comparing absent components", () => {
+    const local = identity({}, { install: structuredClone(SEVEN) });
+    const remote = identity({}, { install: structuredClone(SEVEN) });
+    remote.install!.components = remote.install!.components.filter(
+      (part) => part.name !== "control",
+    );
+    expect(versionDifference([facts("NAS", local), facts("worker", remote)])).toBeNull();
+    remote.install!.components.find((part) => part.name === "ui")!.commit = "c".repeat(39) + "d";
+    const nodes = [facts("NAS", local), facts("worker", remote)];
+    expect(versionDifference(nodes)?.detail).toContain("ui ccccccc");
+    expect(issuesFrom(sources(nodes)).map((issue) => issue.kind)).toContain("versions-differ");
+  });
+
+  it("explains differing channels instead of implying an update is available", () => {
+    const a = identity({ channel: "edge" }, { install: structuredClone(SEVEN) });
+    const b = identity({ channel: "releases" });
+    const difference = versionDifference([facts("NAS", a), facts("worker", b)]);
+    expect(difference?.detail).toContain("different update channels");
+    expect(difference?.detail).not.toContain("release checks finish");
+  });
+
+  it("does not offer an update in the badge when the card says it is already running", () => {
+    const running = identity({
+      available: true,
+      newest: NEWEST,
+      running: { target: EDGE, startedAt: new Date().toISOString(), outcome: "running" },
+    });
+    expect(issuesFrom(sources([facts("worker", running)]))).toEqual([]);
+  });
   it("lists a machine that is behind, with where to fix it", () => {
     const issues = issuesFrom(
       sources([

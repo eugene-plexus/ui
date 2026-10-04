@@ -29,6 +29,7 @@ export function NodeUpdateCard({
   now,
   onChanged,
   onUpdating,
+  versionsDiffer = false,
 }: {
   name: string;
   /** The proxy target that reaches this machine's agent. */
@@ -38,11 +39,12 @@ export function NodeUpdateCard({
   now: number;
   onChanged: () => void | Promise<void>;
   onUpdating?: (updating: boolean) => void;
+  versionsDiffer?: boolean;
 }) {
   const [busy, setBusy] = useState<"checking" | "updating" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [requested, setRequested] = useState<{ at: number; label: string } | null>(null);
-  const view = describeUpdate(identity, now);
+  const view = describeUpdate(identity, now, versionsDiffer);
 
   // An update this page asked for is over once the machine says it finished
   // after the request -- or, having never reported back, after a long wait.
@@ -114,7 +116,7 @@ export function NodeUpdateCard({
         ? null
         : view.detail;
   const tone =
-    view.state === "failed" || silent
+    view.state === "failed" || view.state === "check-failed" || silent
       ? "status-error"
       : view.state === "available" || view.state === "manual"
         ? "status-warn"

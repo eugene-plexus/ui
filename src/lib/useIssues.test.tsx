@@ -14,13 +14,15 @@
  * `app/page.test.tsx` does, so a call's target reads off the URL.
  */
 
-import { fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useIssues } from "./useIssues";
 import { api } from "./api";
 import { IssuesBadge } from "../components/IssuesBadge";
 import { useNodeUpdates } from "./useNodeUpdates";
+import type { NodeIdentity, NodeUpdate } from "./types";
+import { describeUpdate } from "./updates";
 
 interface Call {
   method: string;
@@ -205,6 +207,158 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("one update status for Needs Attention and Machines", () => {
+  function mismatched() {
+    handlers = withWorkshop(standalone(), 0);
+    const update: NodeUpdate = {
+      enabled: true,
+      channel: "edge",
+      channelSource: "setting",
+      checkedAt: new Date(Date.now() - 6 * 3600_000).toISOString(),
+      available: false,
+      behind: [],
+      ahead: [],
+      newest: { channel: "edge", ref: "b".repeat(40), components: { agent: "b".repeat(40) } },
+      apply: { possible: true },
+    };
+    const worker: NodeIdentity = {
+      enrolled: true,
+      name: "workshop",
+      install: {
+        mechanism: "windows_service",
+        development: false,
+        components: [{ name: "agent", state: "stamped", commit: "b".repeat(40) }],
+      },
+      update,
+    };
+    handlers.set("GET agent/v1/node", () => ({
+      status: 200,
+      body: {
+        ...worker,
+        name: "Amish_Station",
+        install: {
+          ...worker.install,
+          mechanism: "container",
+          components: [{ name: "agent", state: "stamped", commit: "a".repeat(40) }],
+        },
+        update: { ...update, checkedAt: new Date().toISOString(), apply: { possible: false } },
+      },
+    }));
+    handlers.set("GET node:workshop/v1/node", () => ({ status: 200, body: worker }));
+    return worker;
+  }
+
+  it("shares one read and publishes a stale worker's newly available update to every consumer", async () => {
+    const worker = mismatched();
+    handlers.set("POST node:workshop/v1/node/update/check", () => {
+      worker.update = {
+        ...worker.update!,
+        checkedAt: new Date().toISOString(),
+        available: true,
+        behind: ["agent"],
+      };
+      return { status: 200, body: worker.update, delayMs: 100 };
+    });
+    const names = ["Amish_Station", "workshop"];
+    const badge = renderHook(() => useIssues());
+    const home = renderHook(() => useIssues());
+    const machines = renderHook(() => useNodeUpdates(names, false));
+    await waitFor(() =>
+      expect(machines.result.current.readings.workshop?.identity?.update?.available).toBe(true),
+    );
+    expect(badge.result.current).toBe(home.result.current);
+    expect(badge.result.current.facts.find((n) => n.name === "workshop")?.identity).toBe(
+      machines.result.current.readings.workshop!.identity,
+    );
+    expect(badge.result.current.issues.map((issue) => issue.kind)).toContain("update-available");
+    expect(badge.result.current.issues.map((issue) => issue.kind)).not.toContain("versions-differ");
+    expect(routes().filter((route) => route === "GET node:workshop/v1/node")).toHaveLength(1);
+    expect(
+      routes().filter((route) => route === "POST node:workshop/v1/node/update/check"),
+    ).toHaveLength(1);
+    expect(routes()).not.toContain("POST node:workshop/v1/node/update");
+  });
+
+  it("keeps the same mismatch explanation when Edge is still pending and retries without flooding", async () => {
+    const worker = mismatched();
+    let newer = false;
+    const monotonic = vi.spyOn(performance, "now").mockReturnValue(1000);
+    handlers.set("POST node:workshop/v1/node/update/check", () => {
+      worker.update = { ...worker.update!, available: newer, behind: newer ? ["agent"] : [] };
+      return { status: 200, body: worker.update };
+    });
+    const names = ["Amish_Station", "workshop"];
+    const badge = renderHook(() => useIssues());
+    const machines = renderHook(() => useNodeUpdates(names, false));
+    await waitFor(() => expect(machines.result.current.difference).not.toBeNull());
+    await waitFor(() => expect(machines.result.current.checkingUpdates).toBe(false));
+    expect(
+      badge.result.current.issues.find((issue) => issue.kind === "versions-differ")?.detail,
+    ).toBe(machines.result.current.difference?.detail);
+    expect(
+      describeUpdate(machines.result.current.readings.workshop!.identity, Date.now(), true)
+        .headline,
+    ).toBe("No newer update found on edge");
+    await act(() => machines.result.current.refresh());
+    expect(routes().filter((route) => route.endsWith("/update/check"))).toHaveLength(1);
+    newer = true;
+    monotonic.mockReturnValue(301_001);
+    await act(() => machines.result.current.refresh());
+    expect(machines.result.current.readings.workshop!.identity?.update?.available).toBe(true);
+    expect(badge.result.current.issues.map((issue) => issue.kind)).toContain("update-available");
+  });
+
+  it("shows check failures instead of an all-clear, and respects disabled checks", async () => {
+    const worker = mismatched();
+    handlers.set("POST node:workshop/v1/node/update/check", () => ({
+      status: 503,
+      body: { detail: "GitHub unavailable" },
+    }));
+    const names = ["Amish_Station", "workshop"];
+    const machines = renderHook(() => useNodeUpdates(names, false));
+    await waitFor(() =>
+      expect(machines.result.current.readings.workshop?.identity?.update?.error).toBe(
+        "GitHub unavailable",
+      ),
+    );
+    expect(
+      describeUpdate(machines.result.current.readings.workshop!.identity, Date.now(), true).state,
+    ).toBe("check-failed");
+    worker.update!.enabled = false;
+    vi.spyOn(performance, "now").mockReturnValue(1_000_000);
+    await act(() => machines.result.current.refresh());
+    expect(routes().filter((route) => route.endsWith("/update/check"))).toHaveLength(1);
+    expect(
+      describeUpdate(machines.result.current.readings.workshop!.identity, Date.now(), true).state,
+    ).toBe("off");
+  });
+
+  it("serializes a refresh during an older read so resolved warnings cannot land last", async () => {
+    const worker = mismatched();
+    worker.update!.enabled = false;
+    let delay = 0;
+    handlers.set("GET node:workshop/v1/node", () => ({
+      status: 200,
+      body: structuredClone(worker),
+      delayMs: delay,
+    }));
+    const badge = await poll();
+    expect(badge.current.issues.map((issue) => issue.kind)).toContain("versions-differ");
+    delay = 100;
+    const old = badge.current.reload();
+    await waitFor(() =>
+      expect(routes().filter((route) => route === "GET node:workshop/v1/node")).toHaveLength(2),
+    );
+    worker.install!.components[0]!.commit = "a".repeat(40);
+    delay = 0;
+    await act(async () => {
+      await Promise.all([old, badge.current.reload()]);
+    });
+    expect(badge.current.issues.map((issue) => issue.kind)).not.toContain("versions-differ");
+  });
 });
 
 async function poll() {
@@ -521,7 +675,7 @@ describe("after an unlock", () => {
     const card = renderHook(() => useIssues());
     await waitFor(() => expect(badge.result.current.loaded).toBe(true));
     await waitFor(() => expect(card.result.current.loaded).toBe(true));
-    const onePoll = routes().length / 2;
+    const onePoll = routes().length;
 
     card.unmount();
     calls = [];

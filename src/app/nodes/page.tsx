@@ -201,10 +201,12 @@ export default function NodesPage() {
   // reads on every one of them.
   const nameKey = nodes ? nodes.map((n) => n.name).join("\n") : null;
   const nodeNames = useMemo(() => (nameKey === null ? null : nameKey.split("\n")), [nameKey]);
-  const { readings, refresh: refreshVersions } = useNodeUpdates(
-    locked ? null : nodeNames,
-    updating.size > 0,
-  );
+  const {
+    readings,
+    refresh: refreshVersions,
+    difference,
+    checkingUpdates,
+  } = useNodeUpdates(locked ? null : nodeNames, updating.size > 0);
   const markUpdating = useCallback(
     (name: string) => (on: boolean) =>
       setUpdating((current) => {
@@ -609,9 +611,23 @@ export default function NodesPage() {
             <section className="section-panel mb-6" data-testid="node-versions">
               <h2 className="section-heading font-ui text-base font-semibold">Versions</h2>
               <p className="mb-3 text-sm text-[color:var(--muted)]">
-                Each machine checks for a newer version of Eugene a minute after it starts and every
-                six hours. Nothing is installed until you press Update.
+                These versions and Needs Attention use the same status. When versions differ, update
+                checks refresh automatically. Nothing is installed until you press Update.
               </p>
+              {difference && (
+                <div
+                  data-testid="version-difference"
+                  className="status-warn mb-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
+                >
+                  <p className="font-semibold">{difference.title}</p>
+                  <p>{difference.detail}</p>
+                </div>
+              )}
+              {checkingUpdates && (
+                <p role="status" className="mb-3 text-sm text-[color:var(--muted)]">
+                  Checking for newer versions on the machines’ update channels…
+                </p>
+              )}
               <div className="grid gap-3 sm:grid-cols-2">
                 {nodes.map((n) => {
                   const reading = readings[n.name];
@@ -625,6 +641,7 @@ export default function NodesPage() {
                       now={Date.now()}
                       onChanged={refreshVersions}
                       onUpdating={markUpdating(n.name)}
+                      versionsDiffer={difference !== null}
                     />
                   );
                 })}
