@@ -881,6 +881,21 @@ export interface components {
             /** @description A hint, as `promptCacheKey`. */
             safetyIdentifier?: string;
             /**
+             * @description **Internal, from the gateway: never forwarded upstream** (CB4,
+             *     2026-10-02). The conversation this turn continues, as the
+             *     gateway's affinity table keys it. A driver with
+             *     `slotPinning` on (llama-server only, set by the agent with
+             *     `--no-cache-idle-slots`) keeps each conversation in one
+             *     engine slot by `id_slot`, least recently used out, and
+             *     **never names a slot that is busy**: a turn whose slot is
+             *     busy, or a new conversation when no slot is idle, waits in
+             *     the driver. Measured: pinning a request to a busy slot
+             *     wedged llama-server b11211 for up to 30 minutes; waiting in
+             *     front of it, no stall in 1,224 turns. Absent, a turn takes
+             *     any idle slot and keeps none.
+             */
+            conversationKey?: string;
+            /**
              * @description On `POST /v1/generate/stream` only: emit `event: progress`
              *     frames saying what the backend is doing when it is not yet,
              *     or not at the moment, producing output -- see
@@ -2333,10 +2348,11 @@ export interface components {
          *     `reasoning_effort` (P2c, 2026-09-28). Measured on
          *     `openai/gpt-oss-20b` through OpenRouter: 17 reasoning tokens at
          *     `low`, 275 at `high`. A setting, so it routes only to a model
-         *     that lists it (A2).
+         *     that lists it (A2). `max` was added 2026-10-03: GPT-6 and
+         *     OpenRouter accept it, and a caller sending it was refused here.
          * @enum {string}
          */
-        ReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+        ReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
         /**
          * @description OpenAI's `verbosity`, how long the answer is. A setting, routed as A2 says.
          * @enum {string}

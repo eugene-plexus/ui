@@ -62,7 +62,30 @@ export interface paths {
     "/v1/chat/completions": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Override repeated-passage protection for this request: off, observe,
+                 *     or stop. Omission inherits gateway settings; the initial default is
+                 *     observe. Invalid values fail before generation. This is a gateway
+                 *     control and is never forwarded to a provider or treated as a sampler.
+                 *
+                 *     Stop applies only to streaming plain-text output. Reasoning, tool
+                 *     arguments, structured output, audio and non-streamed responses remain
+                 *     observation-only. The initial detector requires a substantial passage
+                 *     of at least 100 whitespace-normalized characters, repeated four times;
+                 *     it has a bounded window, not a universal output-token cap.
+                 *
+                 *     A stop closes the upstream stream, preserves already-delivered output,
+                 *     and never retries on another backend. Chat and Completions emit an SSE
+                 *     error with type and code repetition_detected, then [DONE], without a
+                 *     success finish_reason. Responses emits response.failed with
+                 *     invalid_prompt to prevent retrying clients replaying the loop;
+                 *     Messages emits an invalid_request_error. All name repetition in their
+                 *     human-readable message. Time and token limits remain independent.
+                 *     Use off for intentional repeated passages.
+                 */
+                "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -226,7 +249,30 @@ export interface paths {
     "/v1/messages": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Override repeated-passage protection for this request: off, observe,
+                 *     or stop. Omission inherits gateway settings; the initial default is
+                 *     observe. Invalid values fail before generation. This is a gateway
+                 *     control and is never forwarded to a provider or treated as a sampler.
+                 *
+                 *     Stop applies only to streaming plain-text output. Reasoning, tool
+                 *     arguments, structured output, audio and non-streamed responses remain
+                 *     observation-only. The initial detector requires a substantial passage
+                 *     of at least 100 whitespace-normalized characters, repeated four times;
+                 *     it has a bounded window, not a universal output-token cap.
+                 *
+                 *     A stop closes the upstream stream, preserves already-delivered output,
+                 *     and never retries on another backend. Chat and Completions emit an SSE
+                 *     error with type and code repetition_detected, then [DONE], without a
+                 *     success finish_reason. Responses emits response.failed with
+                 *     invalid_prompt to prevent retrying clients replaying the loop;
+                 *     Messages emits an invalid_request_error. All name repetition in their
+                 *     human-readable message. Time and token limits remain independent.
+                 *     Use off for intentional repeated passages.
+                 */
+                "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -296,8 +342,30 @@ export interface paths {
          *     decides whether the model's reasoning is returned as `thinking`
          *     blocks (see below) and nothing more. Ignored hints are named in
          *     `x-eugene-plexus-ignored-settings` on both response modes.
-         *     `metadata` is discarded as an opaque annotation. Unknown top-level
-         *     fields are rejected with 400 naming the field.
+         *     `metadata` is discarded as an opaque annotation.
+         *
+         *     **`output_config.format` is honoured** (2026-10-03): a
+         *     `{"type": "json_schema", "schema": {...}}` is carried as the chat
+         *     path's `response_format` of type `json_schema`, so the answer's
+         *     text is JSON matching the schema. Claude Code sends it, under the
+         *     `structured-outputs-2025-12-15` beta, for session titles, memory
+         *     recall and prompt hooks, and those failed through this door while
+         *     it was refused.
+         *
+         *     Four top-level fields Claude Code's request builder can add --
+         *     `safeguards`, `speed`, `thread` and `diagnostics` (2.1.288) -- are
+         *     accepted, not enforced, and named on the ignored-settings header.
+         *     Any other unknown top-level field is rejected with 400 naming the
+         *     field.
+         *
+         *     A prompt the backend reports as too long for the model's context
+         *     is a 400 `invalid_request_error` (on a stream, whose 200 is already
+         *     sent, the `error` event of that type) whose message **begins
+         *     `prompt is too long`**, followed by `: N tokens > M maximum` when
+         *     the backend reported both numbers. Claude Code compacts the
+         *     conversation and retries only on that wording, so a local model's
+         *     overflow relayed in the engine's own words ended the session
+         *     instead.
          *
          *     `cache_control` appears on system blocks, on the last user
          *     content block **and on `tool_result` blocks**; prompt caching is
@@ -592,7 +660,30 @@ export interface paths {
     "/v1/responses": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Override repeated-passage protection for this request: off, observe,
+                 *     or stop. Omission inherits gateway settings; the initial default is
+                 *     observe. Invalid values fail before generation. This is a gateway
+                 *     control and is never forwarded to a provider or treated as a sampler.
+                 *
+                 *     Stop applies only to streaming plain-text output. Reasoning, tool
+                 *     arguments, structured output, audio and non-streamed responses remain
+                 *     observation-only. The initial detector requires a substantial passage
+                 *     of at least 100 whitespace-normalized characters, repeated four times;
+                 *     it has a bounded window, not a universal output-token cap.
+                 *
+                 *     A stop closes the upstream stream, preserves already-delivered output,
+                 *     and never retries on another backend. Chat and Completions emit an SSE
+                 *     error with type and code repetition_detected, then [DONE], without a
+                 *     success finish_reason. Responses emits response.failed with
+                 *     invalid_prompt to prevent retrying clients replaying the loop;
+                 *     Messages emits an invalid_request_error. All name repetition in their
+                 *     human-readable message. Time and token limits remain independent.
+                 *     Use off for intentional repeated passages.
+                 */
+                "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -645,13 +736,31 @@ export interface paths {
          *     removed, and named on the ignored-settings header, with the
          *     reason in `x-eugene-plexus-web-search`. Refusing it would refuse
          *     the first request of every session, as `/v1/messages` once did
-         *     with `output_config`. `filters.allowed_domains`, `user_location`
-         *     and `search_context_size` are honoured. `image_generation` runs
+         *     with `output_config`. `filters.allowed_domains`,
+         *     `filters.blocked_domains`, `user_location` and
+         *     `search_context_size` are honoured; any other filter or setting
+         *     on the tool (`search_content_types`, `image_settings`,
+         *     `return_token_budget`, and the `indexed_web_access` Codex 0.160
+         *     sends in its Indexed mode) is named on the ignored-settings
+         *     header.
+         *     `image_generation` runs
          *     through this install's image models (P8e, "Server-run tools"
          *     above) or is refused with a 400 naming why. Every other
          *     server-side tool (file search, code interpreter, computer use,
          *     MCP, a custom or local-shell tool) is refused with a 400 naming
          *     its type.
+         *
+         *     **A `namespace` tool is accepted** (2026-10-03): `{"type":
+         *     "namespace", "name", "description", "tools": [...]}`, a group of
+         *     tools Codex sends to every custom provider since 0.133.0 (its
+         *     sub-agent tools as `multi_agent_v1`, MCP servers as theirs). Each
+         *     `function` member is offered to the model under its own `name`,
+         *     and a call to one comes back as a `function_call` carrying
+         *     `namespace`, because Codex routes a call by namespace and name
+         *     together. A member of any other type is not offered and is named
+         *     on the ignored-settings header. Two offered tools with one name
+         *     are refused with a 400 naming it. Before this, every request from
+         *     Codex 0.133 to 0.160 was refused.
          *
          *     ### Reasoning goes out as `reasoning_text` and comes back
          *
@@ -851,7 +960,30 @@ export interface paths {
     "/v1/completions": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Override repeated-passage protection for this request: off, observe,
+                 *     or stop. Omission inherits gateway settings; the initial default is
+                 *     observe. Invalid values fail before generation. This is a gateway
+                 *     control and is never forwarded to a provider or treated as a sampler.
+                 *
+                 *     Stop applies only to streaming plain-text output. Reasoning, tool
+                 *     arguments, structured output, audio and non-streamed responses remain
+                 *     observation-only. The initial detector requires a substantial passage
+                 *     of at least 100 whitespace-normalized characters, repeated four times;
+                 *     it has a bounded window, not a universal output-token cap.
+                 *
+                 *     A stop closes the upstream stream, preserves already-delivered output,
+                 *     and never retries on another backend. Chat and Completions emit an SSE
+                 *     error with type and code repetition_detected, then [DONE], without a
+                 *     success finish_reason. Responses emits response.failed with
+                 *     invalid_prompt to prevent retrying clients replaying the loop;
+                 *     Messages emits an invalid_request_error. All name repetition in their
+                 *     human-readable message. Time and token limits remain independent.
+                 *     Use off for intentional repeated passages.
+                 */
+                "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3303,6 +3435,15 @@ export interface components {
              *     fire on a merely token-dense prompt, and it needs no
              *     tokenizer of ours.
              *
+             *     **And by a second test where the window is known**
+             *     (2026-10-03): `prompt_tokens` reached at least 90% of
+             *     `context_length` while the prompt's characters, at four to a
+             *     token, exceed the whole window. The ratio alone cannot see a
+             *     cut that keeps a near-full window: Ollama's default context is
+             *     4,096 tokens on a card under 23 GiB and it still keeps the
+             *     newest turns and drops the middle, so a prompt cut to 4k went
+             *     unflagged below about 82,000 characters.
+             *
              *     **Three states, and the difference matters.** `null` means
              *     not evaluated — the backend reported no usage, or the prompt
              *     was too small for the test to mean anything — and must not
@@ -3604,7 +3745,9 @@ export interface components {
          *     Measured Claude Code hints (`cache_control`, `context_management`)
          *     are accepted with a response header naming ignored settings;
          *     `thinking` chooses whether reasoning is returned. Metadata is
-         *     discarded. Unknown top-level settings are explicitly rejected.
+         *     discarded. Claude Code's `safeguards`, `speed`, `thread` and
+         *     `diagnostics` are accepted and named as ignored; any other unknown
+         *     top-level setting is explicitly rejected.
          *     This is a text, image, document and tool translation, not full parity.
          *
          *     Consequently **this schema does not decide what is refused**.
@@ -3747,9 +3890,14 @@ export interface components {
              *     `thinkingMode`, exactly as for `thinking.budget_tokens`, so a
              *     non-null value is named on the ignored-settings header.
              *
-             *     Any other key -- structured output's `format` above all --
-             *     is refused with a 400 naming it: it changes what the answer
-             *     is, and this door does not implement it.
+             *     **`format` is honoured** (2026-10-03): `{"type":
+             *     "json_schema", "schema": {...}}` becomes the chat path's
+             *     `response_format` of type `json_schema`. Claude Code sends it
+             *     for session titles, memory recall and prompt hooks. Any other
+             *     `format` type, a `format` without a `schema` or with a key
+             *     beside `type` and `schema`, and any other key, is refused
+             *     with a 400 naming it: it changes what the answer is, and this
+             *     door does not implement it.
              */
             output_config?: {
                 [key: string]: unknown;
@@ -3944,7 +4092,9 @@ export interface components {
          *     search** (`web_search_<date>`), which this install's search
          *     account runs since P8. There is no sandbox to run code in, and
          *     pretending otherwise would fail at the moment the model chose to
-         *     use one.
+         *     use one. The refusal's message contains `Input tag '<type>'`, the
+         *     wording Claude Code (2.1.280 and later) looks for to retry
+         *     without an optional server tool such as its advisor.
          */
         AnthropicToolDefinition: {
             name: string;
@@ -4143,7 +4293,8 @@ export interface components {
                  *     explanation** — measured, a 400 and a 403 are shown to
                  *     the user verbatim while a 404's message is discarded,
                  *     which is why this door answers 400 for a model nothing
-                 *     serves.
+                 *     serves. A prompt too long for the model's context begins
+                 *     `prompt is too long`, the wording Claude Code compacts on.
                  */
                 message: string;
             };
@@ -4252,7 +4403,8 @@ export interface components {
          *
          *     Carried: `message` (`role` user, assistant, system or developer;
          *     `content` a string or parts; `type` may be omitted), `function_call`
-         *     (`call_id`, `name`, `arguments` as a JSON string),
+         *     (`call_id`, `name`, `arguments` as a JSON string, and `namespace`
+         *     when the call was to a member of a `namespace` tool),
          *     `function_call_output` (`call_id`, `output` as a string or a list
          *     of `input_text` / `input_image` parts), and `reasoning`
          *     (`content` of `reasoning_text` parts, `encrypted_content`), and a
@@ -4272,6 +4424,8 @@ export interface components {
             content?: unknown;
             call_id?: string;
             name?: string;
+            /** @description The `namespace` tool a `function_call` was to (Codex 0.133 and later). */
+            namespace?: string;
             arguments?: string;
             /** @description A string, or a list of `input_text` / `input_image` parts. */
             output?: unknown;
@@ -4284,15 +4438,21 @@ export interface components {
         };
         /**
          * @description A `function` tool (`name`, `description`, `parameters`, `strict`)
-         *     maps onto an OpenAI chat function. `web_search` runs on this
-         *     install's search account, or is removed and named when it cannot
-         *     (see the endpoint); `image_generation` runs on this install's
-         *     image models, or is refused naming why (P8e); any other `type` is
-         *     refused.
+         *     maps onto an OpenAI chat function. A `namespace` tool (`name`,
+         *     `description`, `tools`) offers each of its `function` members the
+         *     same way and marks calls to them with its `namespace` (see the
+         *     endpoint). `web_search` runs on this install's search account, or
+         *     is removed and named when it cannot (see the endpoint);
+         *     `image_generation` runs on this install's image models, or is
+         *     refused naming why (P8e); any other `type` is refused.
          */
         ResponsesTool: {
             type: string;
             name?: string;
+            /** @description A `namespace` tool's members, each a tool object of its own. */
+            tools?: {
+                [key: string]: unknown;
+            }[];
             description?: string;
             parameters?: {
                 [key: string]: unknown;
@@ -4338,7 +4498,8 @@ export interface components {
          *     `{"type": "message", "id", "role": "assistant", "status",
          *     "content": [{"type": "output_text", "text", "annotations": []}]}`,
          *     `{"type": "function_call", "id", "status", "call_id", "name",
-         *     "arguments"}`, for a search this install ran (P8),
+         *     "arguments", "namespace"?}` (`namespace` when the call is to a
+         *     member of a `namespace` tool), for a search this install ran (P8),
          *     `{"type": "web_search_call", "id", "status", "action": {"type":
          *     "search", "query", "sources": [{"type": "url", "url"}]}}`, or for
          *     an image it made (P8e), `{"type": "image_generation_call", "id",
@@ -5171,10 +5332,11 @@ export interface components {
          *     `reasoning_effort` (P2c, 2026-09-28). Measured on
          *     `openai/gpt-oss-20b` through OpenRouter: 17 reasoning tokens at
          *     `low`, 275 at `high`. A setting, so it routes only to a model
-         *     that lists it (A2).
+         *     that lists it (A2). `max` was added 2026-10-03: GPT-6 and
+         *     OpenRouter accept it, and a caller sending it was refused here.
          * @enum {string}
          */
-        ReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+        ReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
         /**
          * @description OpenAI's `verbosity`, how long the answer is. A setting, routed as A2 says.
          * @enum {string}
@@ -5823,7 +5985,30 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /**
+         * @description Override repeated-passage protection for this request: off, observe,
+         *     or stop. Omission inherits gateway settings; the initial default is
+         *     observe. Invalid values fail before generation. This is a gateway
+         *     control and is never forwarded to a provider or treated as a sampler.
+         *
+         *     Stop applies only to streaming plain-text output. Reasoning, tool
+         *     arguments, structured output, audio and non-streamed responses remain
+         *     observation-only. The initial detector requires a substantial passage
+         *     of at least 100 whitespace-normalized characters, repeated four times;
+         *     it has a bounded window, not a universal output-token cap.
+         *
+         *     A stop closes the upstream stream, preserves already-delivered output,
+         *     and never retries on another backend. Chat and Completions emit an SSE
+         *     error with type and code repetition_detected, then [DONE], without a
+         *     success finish_reason. Responses emits response.failed with
+         *     invalid_prompt to prevent retrying clients replaying the loop;
+         *     Messages emits an invalid_request_error. All name repetition in their
+         *     human-readable message. Time and token limits remain independent.
+         *     Use off for intentional repeated passages.
+         */
+        RepetitionMode: "off" | "observe" | "stop";
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -5894,7 +6079,30 @@ export interface operations {
     createChatCompletion: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Override repeated-passage protection for this request: off, observe,
+                 *     or stop. Omission inherits gateway settings; the initial default is
+                 *     observe. Invalid values fail before generation. This is a gateway
+                 *     control and is never forwarded to a provider or treated as a sampler.
+                 *
+                 *     Stop applies only to streaming plain-text output. Reasoning, tool
+                 *     arguments, structured output, audio and non-streamed responses remain
+                 *     observation-only. The initial detector requires a substantial passage
+                 *     of at least 100 whitespace-normalized characters, repeated four times;
+                 *     it has a bounded window, not a universal output-token cap.
+                 *
+                 *     A stop closes the upstream stream, preserves already-delivered output,
+                 *     and never retries on another backend. Chat and Completions emit an SSE
+                 *     error with type and code repetition_detected, then [DONE], without a
+                 *     success finish_reason. Responses emits response.failed with
+                 *     invalid_prompt to prevent retrying clients replaying the loop;
+                 *     Messages emits an invalid_request_error. All name repetition in their
+                 *     human-readable message. Time and token limits remain independent.
+                 *     Use off for intentional repeated passages.
+                 */
+                "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -6065,6 +6273,28 @@ export interface operations {
                 beta?: boolean;
             };
             header?: {
+                /**
+                 * @description Override repeated-passage protection for this request: off, observe,
+                 *     or stop. Omission inherits gateway settings; the initial default is
+                 *     observe. Invalid values fail before generation. This is a gateway
+                 *     control and is never forwarded to a provider or treated as a sampler.
+                 *
+                 *     Stop applies only to streaming plain-text output. Reasoning, tool
+                 *     arguments, structured output, audio and non-streamed responses remain
+                 *     observation-only. The initial detector requires a substantial passage
+                 *     of at least 100 whitespace-normalized characters, repeated four times;
+                 *     it has a bounded window, not a universal output-token cap.
+                 *
+                 *     A stop closes the upstream stream, preserves already-delivered output,
+                 *     and never retries on another backend. Chat and Completions emit an SSE
+                 *     error with type and code repetition_detected, then [DONE], without a
+                 *     success finish_reason. Responses emits response.failed with
+                 *     invalid_prompt to prevent retrying clients replaying the loop;
+                 *     Messages emits an invalid_request_error. All name repetition in their
+                 *     human-readable message. Time and token limits remain independent.
+                 *     Use off for intentional repeated passages.
+                 */
+                "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
                 /**
                  * @description Anthropic's API version, `2023-06-01` from every observed
                  *     client. Accepted and not enforced: we serve local models, so
@@ -6240,7 +6470,30 @@ export interface operations {
     createResponse: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Override repeated-passage protection for this request: off, observe,
+                 *     or stop. Omission inherits gateway settings; the initial default is
+                 *     observe. Invalid values fail before generation. This is a gateway
+                 *     control and is never forwarded to a provider or treated as a sampler.
+                 *
+                 *     Stop applies only to streaming plain-text output. Reasoning, tool
+                 *     arguments, structured output, audio and non-streamed responses remain
+                 *     observation-only. The initial detector requires a substantial passage
+                 *     of at least 100 whitespace-normalized characters, repeated four times;
+                 *     it has a bounded window, not a universal output-token cap.
+                 *
+                 *     A stop closes the upstream stream, preserves already-delivered output,
+                 *     and never retries on another backend. Chat and Completions emit an SSE
+                 *     error with type and code repetition_detected, then [DONE], without a
+                 *     success finish_reason. Responses emits response.failed with
+                 *     invalid_prompt to prevent retrying clients replaying the loop;
+                 *     Messages emits an invalid_request_error. All name repetition in their
+                 *     human-readable message. Time and token limits remain independent.
+                 *     Use off for intentional repeated passages.
+                 */
+                "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -6402,7 +6655,30 @@ export interface operations {
     createCompletion: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Override repeated-passage protection for this request: off, observe,
+                 *     or stop. Omission inherits gateway settings; the initial default is
+                 *     observe. Invalid values fail before generation. This is a gateway
+                 *     control and is never forwarded to a provider or treated as a sampler.
+                 *
+                 *     Stop applies only to streaming plain-text output. Reasoning, tool
+                 *     arguments, structured output, audio and non-streamed responses remain
+                 *     observation-only. The initial detector requires a substantial passage
+                 *     of at least 100 whitespace-normalized characters, repeated four times;
+                 *     it has a bounded window, not a universal output-token cap.
+                 *
+                 *     A stop closes the upstream stream, preserves already-delivered output,
+                 *     and never retries on another backend. Chat and Completions emit an SSE
+                 *     error with type and code repetition_detected, then [DONE], without a
+                 *     success finish_reason. Responses emits response.failed with
+                 *     invalid_prompt to prevent retrying clients replaying the loop;
+                 *     Messages emits an invalid_request_error. All name repetition in their
+                 *     human-readable message. Time and token limits remain independent.
+                 *     Use off for intentional repeated passages.
+                 */
+                "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+            };
             path?: never;
             cookie?: never;
         };
