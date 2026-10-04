@@ -1,0 +1,125 @@
+/**
+ * Agent-specific helpers.
+ *
+ * The wire shapes that used to be hand-typed here are generated now —
+ * `openapi/agent.yaml` joined `scripts/codegen.mjs` with the runtime
+ * dashboard, which is what the old TODO in this file asked for. Import
+ * `Component`, `ComponentList`, `Runtime`, `EngineDescriptor` and the
+ * rest from `@/lib/types`.
+ *
+ * What is left is the one thing codegen cannot give us: a provider list
+ * the wizard can render before any driver process exists to ask.
+ */
+
+export interface AgentConfigDocument extends Record<string, unknown> {
+  firstRunComplete?: boolean;
+  uiTheme?: "light" | "dark" | "auto";
+  uiFontSize?: "small" | "medium" | "large";
+}
+
+/**
+ * Hardcoded provider catalog mirroring
+ * `inference-driver/src/eugene_plexus_inference_driver/providers.py`.
+ *
+ * The first-run wizard duplicates the keys / labels here so the provider
+ * dropdown can render before any driver process exists. The full
+ * provider schema (extra fields, default base URLs) stays server-side —
+ * the wizard only needs key + label + which credential field to ask
+ * for. Operators who want anything fancier go through the post-setup
+ * Config tab against the live driver's schema.
+ *
+ * Keep these keys in lockstep with the driver registry — a mismatch
+ * means the wizard writes a `provider:` value the driver rejects on
+ * load. If this list grows past ~12 entries or we add provider-specific
+ * extra fields, move to fetching the schema from a wizard-spawned
+ * driver instead.
+ */
+export type WizardCredential = "claude_cli" | "codex_cli" | "api_key" | "base_url";
+
+/**
+ * A server the person runs themselves, usually on this machine: its
+ * address and its key are both offered and neither is required.
+ *
+ * **It used to be `credentials: ["none"]` and the words "needs no key".**
+ * LM Studio 0.4.0 can require an API token ("Require Authentication for
+ * each request", off by default) and an Ollama is often reached through a
+ * proxy that asks for one, so both were unreachable from the form
+ * (upstream drift audit, 2026-10-03). The driver reads `apiKey` and
+ * `baseUrl` for both providers already; an empty box is left unset, so
+ * the driver keeps its own default address and sends no key.
+ */
+export interface LocalServerFields {
+  /** The driver's own default, `default_base_url` in `providers.py`. */
+  defaultAddress: string;
+  /** What the app itself calls the key. */
+  keyLabel: string;
+  /** When a key is needed, in the person's words. */
+  keyWhen: string;
+}
+
+export interface WizardProvider {
+  key: string;
+  label: string;
+  /**
+   * Which credential input(s) to render on the driver screen. `api_key`
+   * + `base_url` can combine (e.g. custom OpenAI-compat); most providers
+   * pick exactly one. Every one listed here is required.
+   */
+  credentials: WizardCredential[];
+  /** An address and a key, both optional; see `LocalServerFields`. */
+  localServer?: LocalServerFields;
+}
+
+export const WIZARD_PROVIDERS: WizardProvider[] = [
+  // A local engine runtime the agent supervises is reached the same
+  // way as any other OpenAI-compatible endpoint — the driver points its
+  // `baseUrl` at the runtime's `url`. That is the whole integration:
+  // fronting a runtime is configuration, not a distinct provider kind.
+  // The label says none of that: it is read on `/backends/add`, in the
+  // person's words (hobbyist UX P5), and "runtime" is this project's.
+  {
+    key: "openai_compat_custom",
+    label: "Any OpenAI-compatible server, by its URL",
+    credentials: ["base_url", "api_key"],
+  },
+  {
+    key: "claude_subscription",
+    label: "Claude (Pro/Max subscription via Claude Code CLI)",
+    credentials: ["claude_cli"],
+  },
+  {
+    key: "chatgpt_subscription",
+    label: "ChatGPT (subscription via Codex CLI)",
+    credentials: ["codex_cli"],
+  },
+  { key: "openai", label: "OpenAI API", credentials: ["api_key"] },
+  { key: "xai", label: "xAI (Grok)", credentials: ["api_key"] },
+  { key: "openrouter", label: "OpenRouter", credentials: ["api_key"] },
+  { key: "minimax", label: "MiniMax", credentials: ["api_key"] },
+  {
+    key: "ollama_local",
+    label: "Local — Ollama",
+    credentials: [],
+    localServer: {
+      defaultAddress: "http://127.0.0.1:11434",
+      keyLabel: "Key",
+      keyWhen:
+        "Only if your Ollama sits behind a proxy that asks for one. Ollama itself never does.",
+    },
+  },
+  {
+    key: "lmstudio_local",
+    label: "Local — LM Studio",
+    credentials: [],
+    localServer: {
+      defaultAddress: "http://127.0.0.1:1234",
+      keyLabel: "API token",
+      keyWhen:
+        "Only if “Require Authentication for each request” is on in LM Studio's server settings.",
+    },
+  },
+];
+
+export function providerLabel(key: string): string {
+  return WIZARD_PROVIDERS.find((p) => p.key === key)?.label ?? key;
+}

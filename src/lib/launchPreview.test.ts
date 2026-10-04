@@ -1,0 +1,252 @@
+/**
+ * The launch panel's sentence, composed from the agent's real answer
+ * shapes (M11).
+ *
+ * The fixtures are the bodies the agent's own suite asserts on: a model
+ * the node does not have (with and without a mapping that applied), a
+ * memory refusal, and an admit with the location attached.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import { configTabHref, describeAdmission } from "./launchPreview";
+import type { Admission } from "./types";
+
+const NOT_HERE_MAPPED: Admission = {
+  decision: "refuse",
+  fit: "unknown",
+  basis: "file_size",
+  blockers: [],
+  location: {
+    path: "/models/q.gguf",
+    localPath: "Z:\\models\\q.gguf",
+    exists: false,
+    mapping: { from: "/models", to: "Z:\\models" },
+  },
+  reason:
+    "refuse: /models/q.gguf is not on Amish_Station. The mapping /models -> Z:\\models applied " +
+    "and nothing exists at Z:\\models\\q.gguf. Check that the share is mounted at Z:\\models, or " +
+    "fix the mapping: Config -> Agent @ Amish_Station -> Model directory mappings. Or pass " +
+    "?force=true to launch anyway.",
+};
+
+const NOT_HERE_UNMAPPED: Admission = {
+  ...NOT_HERE_MAPPED,
+  location: { path: "/models/q.gguf", localPath: "/models/q.gguf", exists: false },
+};
+
+const TOO_BIG: Admission = {
+  decision: "refuse",
+  fit: "no",
+  basis: "metadata",
+  requiredBytes: 36 * 1024 ** 3,
+  freeBytes: 26.5 * 1024 ** 3,
+  totalBytes: 32 * 1024 ** 3,
+  reason: "refuse: /models/big.gguf needs about 36.0 GiB at 131072 context ...",
+  location: { path: "/models/big.gguf", localPath: "Z:\\models\\big.gguf", exists: true },
+};
+
+const ADMIT: Admission = {
+  decision: "admit",
+  fit: "fits",
+  basis: "metadata",
+  requiredBytes: 3 * 1024 ** 3,
+  freeBytes: 24 * 1024 ** 3,
+  totalBytes: 32 * 1024 ** 3,
+  device: { kind: "cuda", index: 0, name: "NVIDIA GeForce RTX 5090" },
+  reason: "admit: ...",
+  location: {
+    path: "/models/q.gguf",
+    localPath: "Z:\\models\\q.gguf",
+    exists: true,
+    mapping: { from: "/models", to: "Z:\\models" },
+    sizeBytes: 1_800_000_000,
+    librarySizeBytes: 1_800_000_000,
+    sizeMatchesLibrary: true,
+  },
+};
+
+describe("describeAdmission", () => {
+  it("a model the node does not have is an error that points at the mapping tab", () => {
+    const preview = describeAdmission(NOT_HERE_MAPPED, "Amish_Station", "node:Amish_Station");
+    expect(preview.tone).toBe("error");
+    expect(preview.headline).toBe("Not on Amish_Station");
+    expect(preview.detail).toContain("resolves to Z:\\models\\q.gguf there");
+    expect(preview.detail).toContain("/models → Z:\\models");
+    expect(preview.detail).toContain("Check the mount");
+    expect(preview.fixTarget).toBe("node:Amish_Station");
+  });
+
+  it("with no rule it says to state the folder's mount, or an override", () => {
+    const preview = describeAdmission(NOT_HERE_UNMAPPED, "Amish_Station", "node:Amish_Station");
+    expect(preview.detail).toContain("/models/q.gguf does not exist there");
+    expect(preview.detail).toContain("say where that folder is mounted");
+    expect(preview.fixTarget).toBe("node:Amish_Station");
+  });
+
+  it("a memory refusal keeps the agent's own arithmetic and offers no tab", () => {
+    const preview = describeAdmission(TOO_BIG, "Amish_Station", "node:Amish_Station");
+    expect(preview.tone).toBe("error");
+    expect(preview.headline).toBe("Will not fit on Amish_Station");
+    expect(preview.detail).toBe(TOO_BIG.reason);
+    expect(preview.fixTarget).toBeNull();
+  });
+
+  it("an admit says what will be opened, through which mapping, and the numbers", () => {
+    const preview = describeAdmission(ADMIT, "Amish_Station", "node:Amish_Station");
+    expect(preview.tone).toBe("ok");
+    expect(preview.headline).toBe("Launch on Amish_Station: fits");
+    expect(preview.detail).toContain("Opens Z:\\models\\q.gguf");
+    expect(preview.detail).toContain("through /models → Z:\\models");
+    expect(preview.detail).toContain(
+      "Needs about 3.0 GiB; 24.0 GiB free on NVIDIA GeForce RTX 5090",
+    );
+    expect(preview.detail).toContain("from the library's metadata");
+    expect(preview.fixTarget).toBeNull();
+  });
+
+  it("a file that is not the size the library says is a warning, not a refusal", () => {
+    const preview = describeAdmission(
+      {
+        ...ADMIT,
+        location: {
+          ...ADMIT.location!,
+          sizeBytes: 5,
+          librarySizeBytes: 10,
+          sizeMatchesLibrary: false,
+        },
+        warning: "Z:\\models\\q.gguf is 5 bytes here but the library lists 10 for /models/q.gguf",
+      },
+      "Amish_Station",
+      "node:Amish_Station",
+    );
+    expect(preview.tone).toBe("warn");
+    expect(preview.detail).toContain("a different file, or a stale scan");
+  });
+
+  it("an admit on faith or with partial offload is a warning", () => {
+    expect(
+      describeAdmission({ ...ADMIT, fit: "unknown", warning: "no vendor tool" }, "here", "agent")
+        .headline,
+    ).toBe("Launch on here: admitted on faith");
+    expect(describeAdmission({ ...ADMIT, fit: "split" }, "here", "agent").tone).toBe("warn");
+  });
+
+  it("an older agent with no location is described from the decision alone", () => {
+    const preview = describeAdmission(
+      { decision: "admit", fit: "fits", basis: "file_size", reason: "admit: ..." },
+      "here",
+      "agent",
+    );
+    expect(preview.tone).toBe("ok");
+    expect(preview.detail).toBeNull();
+  });
+});
+
+describe("describeAdmission: the context that would fit", () => {
+  // The live case, 2026-09-15: Discover said `fits` at 8,192, the default
+  // profile left contextSize to the engine, admission refused at 262,144.
+  const REFUSED_AT_FULL_CONTEXT: Admission = {
+    ...TOO_BIG,
+    fit: "split",
+    requiredBytes: 41.1 * 1024 ** 3,
+    freeBytes: 29.7 * 1024 ** 3,
+    contextLength: 262144,
+    maxContextLength: 90112,
+    reason:
+      "refuse: ... needs about 41.1 GiB at 262144 context ... It fits up to 90112 context on this device. ...",
+  };
+
+  it("a refusal carries the agent's number as a one-click suggestion", () => {
+    const preview = describeAdmission(
+      REFUSED_AT_FULL_CONTEXT,
+      "Amish_Station",
+      "node:Amish_Station",
+    );
+    expect(preview.tone).toBe("error");
+    expect(preview.suggestedContext).toBe(90112);
+    expect(preview.detail).toBe(REFUSED_AT_FULL_CONTEXT.reason);
+  });
+
+  it("no number when the weights alone do not fit, or the agent did not say", () => {
+    expect(
+      describeAdmission({ ...REFUSED_AT_FULL_CONTEXT, maxContextLength: 0 }, "n", "agent")
+        .suggestedContext,
+    ).toBeNull();
+    expect(describeAdmission(TOO_BIG, "n", "agent").suggestedContext).toBeNull();
+  });
+
+  it("an admit with partial offload names the context that would fit cleanly", () => {
+    const preview = describeAdmission(
+      { ...ADMIT, fit: "split", contextLength: 131072, maxContextLength: 90112 },
+      "here",
+      "agent",
+    );
+    expect(preview.tone).toBe("warn");
+    expect(preview.suggestedContext).toBe(90112);
+    expect(preview.detail).toContain("Fits entirely in GPU memory up to 90,112 context.");
+  });
+
+  it("a clean fit suggests nothing, even when the agent reports a maximum", () => {
+    const preview = describeAdmission(
+      { ...ADMIT, contextLength: 8192, maxContextLength: 90112 },
+      "here",
+      "agent",
+    );
+    expect(preview.suggestedContext).toBeNull();
+    expect(preview.detail).not.toContain("Fits entirely");
+  });
+});
+
+describe("configTabHref", () => {
+  it("links to the node's agent tab", () => {
+    expect(configTabHref("node:Amish_Station")).toBe(
+      "/config?tab=node%3AAmish_Station#pathMappings",
+    );
+    expect(configTabHref("agent")).toBe("/config?tab=agent#pathMappings");
+  });
+});
+
+describe("memory promised to a launch already under way", () => {
+  it("is named on the admit line, or the panel and the launch disagree", () => {
+    const preview = describeAdmission(
+      {
+        ...ADMIT,
+        requiredBytes: 8 * 1024 ** 3,
+        freeBytes: 24 * 1024 ** 3,
+        reservedBytes: 20 * 1024 ** 3,
+      },
+      "Amish_Station",
+      "agent",
+    );
+    expect(preview.detail).toContain("24.0 GiB free");
+    expect(preview.detail).toContain("20.0 GiB of that is reserved");
+  });
+
+  it("says nothing when nothing is in flight", () => {
+    const preview = describeAdmission(ADMIT, "Amish_Station", "agent");
+    expect(preview.detail ?? "").not.toContain("reserved");
+  });
+});
+
+describe("a launch spread across several cards", () => {
+  it("says the free memory is across the cards, not on one of them", () => {
+    // 2026-09-27: admission measures a split launch against every card it
+    // uses, and `freeBytes` is their sum. Naming only the main card put
+    // one card's name beside two cards' memory.
+    const card = { kind: "cuda" as const, name: "NVIDIA GeForce RTX 5090" };
+    const split: Admission = {
+      ...ADMIT,
+      requiredBytes: 41 * 1024 ** 3,
+      freeBytes: 58.8 * 1024 ** 3,
+      device: { ...card, index: 0 },
+      devices: [
+        { ...card, index: 0 },
+        { ...card, index: 1 },
+      ],
+    };
+    const preview = describeAdmission(split, "tower", "agent");
+    expect(preview.detail).toContain("Needs about 41.0 GiB; 58.8 GiB free across 2 cards");
+    expect(preview.detail).not.toContain("free on NVIDIA");
+  });
+});

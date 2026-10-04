@@ -1,5 +1,49 @@
-# The payload is a built static export. Nothing compiled at import
-# time belongs in it: a stray __pycache__ shipped into the wheel once
-# and is bytes every installer downloads for nothing.
+# --- Node ---
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+*.tsbuildinfo
+
+# --- Next.js ---
+.next/
+out/
+build/
+dist/
+.swc/
+.vercel/
+
+# --- TypeScript ---
+*.log
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Local Claude state ---
+.claude/projects/
+.claude/settings.local.json
+CLAUDE.md
+
+# --- Local config / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Codegen working dirs ---
+.codegen-cache/
+
+# Playwright acceptance artifacts (traces, screenshots) from a local run.
+/test-results/
+/playwright-report/
+
+# --- Python packaging (staged build output, never committed) ---
+python/eugene_plexus_ui/static/
+# Left behind when the agent imports this package as an editable install,
+# which is how the navigation acceptance run serves this working tree.
 __pycache__/
-*.pyc
+*.egg-info/
