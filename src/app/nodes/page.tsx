@@ -30,7 +30,7 @@
  */
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { CopyButton } from "@/components/CopyButton";
@@ -207,6 +207,21 @@ export default function NodesPage() {
     difference,
     checkingUpdates,
   } = useNodeUpdates(locked ? null : nodeNames, updating.size > 0);
+  const rootName = nodes?.find((node) => node.role === "control")?.name;
+  const entrypoint = rootName ? readings[rootName]?.identity?.entrypoint : undefined;
+  useEffect(() => {
+    if (entrypoint?.nodesUrl) {
+      setControlUrl((current) =>
+        !current || (rootAgentUrl && current === rootControlUrl(rootAgentUrl))
+          ? entrypoint.nodesUrl!
+          : current,
+      );
+    } else if (entrypoint) {
+      setControlUrl((current) =>
+        rootAgentUrl && current === rootControlUrl(rootAgentUrl) ? "" : current,
+      );
+    }
+  }, [entrypoint, rootAgentUrl]);
   const markUpdating = useCallback(
     (name: string) => (on: boolean) =>
       setUpdating((current) => {
@@ -369,7 +384,7 @@ export default function NodesPage() {
   // placeholder vanished at the first keystroke and left the person to
   // guess which of three ports was wanted (2026-09-26).
   const ports = installPorts(rootAgentUrl);
-  const addressCheck = checkControlAddress(controlUrl, ports);
+  const addressCheck = entrypoint ? null : checkControlAddress(controlUrl, ports);
 
   const joinDetails = minted
     ? {
@@ -677,7 +692,11 @@ export default function NodesPage() {
                 <input
                   value={controlUrl}
                   onChange={(e) => setControlUrl(e.target.value)}
-                  placeholder={`http://100.64.0.1:${ports.control}`}
+                  placeholder={
+                    entrypoint
+                      ? (entrypoint.nodesUrl ?? "Node connections are not published")
+                      : `http://100.64.0.1:${ports.control}`
+                  }
                   aria-describedby="port-guide"
                   className="w-72 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 font-mono text-sm"
                 />
@@ -685,7 +704,7 @@ export default function NodesPage() {
               <button
                 type="button"
                 onClick={() => void mint()}
-                disabled={minting}
+                disabled={minting || Boolean(entrypoint && !entrypoint.nodesUrl)}
                 className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {minting ? "Making…" : "Make a join token"}
@@ -697,26 +716,46 @@ export default function NodesPage() {
               data-testid="port-guide"
               className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
             >
-              <p>
-                Which port? The control root&rsquo;s machine listens on three
-                {ports.offset !== 0 &&
-                  `, each moved by ${ports.offset > 0 ? "+" : ""}${ports.offset} on this install`}
-                :
-              </p>
-              <ul className="mt-1 space-y-0.5">
-                <li>
-                  <span className="font-mono">{ports.agent}</span> &mdash; the console, where you
-                  manage the install
-                </li>
-                <li>
-                  <span className="font-mono">{ports.gateway}</span> &mdash; where your apps send
-                  their requests
-                </li>
-                <li className="text-[color:var(--foreground)]">
-                  <span className="font-mono">{ports.control}</span> &mdash; the control root.{" "}
-                  <strong>A new machine joins here.</strong>
-                </li>
-              </ul>
+              {entrypoint ? (
+                <p>
+                  These services share one HTTPS port and use separate hostnames.
+                  {entrypoint.nodesUrl ? (
+                    <>
+                      {" "}
+                      New machines join at <span className="font-mono">{entrypoint.nodesUrl}</span>.
+                    </>
+                  ) : (
+                    <>
+                      {" "}
+                      Node connections are not published. Configure a node hostname before adding a
+                      remote machine.
+                    </>
+                  )}
+                </p>
+              ) : (
+                <>
+                  <p>
+                    Which port? The control root&rsquo;s machine listens on three
+                    {ports.offset !== 0 &&
+                      `, each moved by ${ports.offset > 0 ? "+" : ""}${ports.offset} on this install`}
+                    :
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    <li>
+                      <span className="font-mono">{ports.agent}</span> &mdash; the console, where
+                      you manage the install
+                    </li>
+                    <li>
+                      <span className="font-mono">{ports.gateway}</span> &mdash; where your apps
+                      send their requests
+                    </li>
+                    <li className="text-[color:var(--foreground)]">
+                      <span className="font-mono">{ports.control}</span> &mdash; the control root.{" "}
+                      <strong>A new machine joins here.</strong>
+                    </li>
+                  </ul>
+                </>
+              )}
             </div>
 
             {addressCheck && (

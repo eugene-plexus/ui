@@ -69,6 +69,7 @@ let tokenRows: { id: string; expiresAt: string; nodeName?: string | null; used: 
 let mintBody: { id: string; token: string; expiresAt: string; nodeName?: string | null };
 /** A node list to use instead of `NODES`, when set. */
 let nodesBody: typeof NODES | null;
+let nodeIdentityBody: Record<string, unknown> | null;
 
 beforeEach(() => {
   sealed = true;
@@ -76,6 +77,7 @@ beforeEach(() => {
   calls = [];
   tokenRows = [];
   nodesBody = null;
+  nodeIdentityBody = null;
   mintBody = {
     id: "jt-1",
     token: "eyJ.join.token",
@@ -107,6 +109,7 @@ beforeEach(() => {
       if (url.includes("/v1/nodes") && nodesBody) return json(nodesBody);
       if (url.includes("/v1/nodes")) return json(NODES);
       if (url.includes("/v1/control/status")) return json({ role: "control", epoch: 1 });
+      if (url.endsWith("/v1/node") && nodeIdentityBody) return json(nodeIdentityBody);
       return json({});
     }),
   );
@@ -434,6 +437,43 @@ describe("the join command", () => {
     await screen.findAllByText("Amish_Station");
     await user.click(screen.getByRole("button", { name: "Make a join token" }));
   }
+
+  it("uses the configured HTTPS node hostname without guessing another port", async () => {
+    nodeIdentityBody = {
+      name: "unraid",
+      enrolled: true,
+      entrypoint: {
+        consoleUrl: "https://eugene.home.arpa:8443",
+        workbenchUrl: "https://workbench.home.arpa:8443",
+        nodesUrl: "https://nodes.home.arpa:8443",
+      },
+    };
+    render(<NodesPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Control root URL/)).toHaveValue("https://nodes.home.arpa:8443"),
+    );
+    expect(screen.getByTestId("port-guide")).toHaveTextContent("share one HTTPS port");
+    expect(screen.queryByTestId("control-address-warning")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Make a join token" }));
+    expect(await screen.findByTestId("join-command-windows")).toHaveTextContent(
+      "-Join https://nodes.home.arpa:8443",
+    );
+  });
+
+  it("does not offer a command to a closed node endpoint", async () => {
+    nodeIdentityBody = {
+      name: "unraid",
+      enrolled: true,
+      entrypoint: {
+        consoleUrl: "https://eugene.home.arpa:8443",
+        workbenchUrl: "https://workbench.home.arpa:8443",
+      },
+    };
+    render(<NodesPage />);
+    await screen.findByText(/Node connections are not published/);
+    expect(screen.getByRole("button", { name: "Make a join token" })).toBeDisabled();
+    expect(screen.getByLabelText(/Control root URL/)).toHaveValue("");
+  });
 
   it("names the control root on the port its own agent's offset implies", async () => {
     nodesBody = {

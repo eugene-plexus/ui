@@ -2389,6 +2389,7 @@ export interface components {
          *     this is the half only the host itself can answer.
          */
         NodeIdentity: {
+            entrypoint?: components["schemas"]["PublicEntryPoint"];
             /**
              * @description False on a fresh agent, and not an error state — supervision
              *     works without a trust relationship, which is what lets the
@@ -4928,6 +4929,22 @@ export interface components {
          * @enum {string}
          */
         FolderReachSource: "same_path" | "inherited" | "override";
+        /**
+         * @description Explicit external HTTPS origins for this node's optional single-port
+         *     container entry point. An absent optional service is not published.
+         *     These addresses select services, never users or permissions. Backend
+         *     listener addresses and this node's own controlUrl remain unchanged.
+         */
+        PublicEntryPoint: {
+            /** Format: uri */
+            consoleUrl: string;
+            /** Format: uri */
+            workbenchUrl: string;
+            /** Format: uri */
+            inferenceUrl?: string;
+            /** Format: uri */
+            nodesUrl?: string;
+        };
         /**
          * @description What an app is, how to install it, and what it needs from the hub.
          *     The shipped catalogue is a list of these; so is a custom entry.

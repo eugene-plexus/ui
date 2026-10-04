@@ -64,6 +64,7 @@ import type {
   CompletionRoutingInfo,
   MessageContentPart,
   Model,
+  NodeIdentity,
   ToolChoice,
 } from "@/lib/types";
 import { useSetupGate } from "@/lib/useSetupGate";
@@ -291,9 +292,14 @@ function PlaygroundPageInner() {
     let cancelled = false;
     void (async () => {
       try {
-        const list = await api.get<ComponentList>("agent", "/v1/components");
+        const [list, identity] = await Promise.all([
+          api.get<ComponentList>("agent", "/v1/components"),
+          api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),
+        ]);
         if (cancelled) return;
-        const guessed = guessGatewayBaseUrl(list.components ?? [], page);
+        const guessed = identity?.entrypoint
+          ? (identity.entrypoint.inferenceUrl ?? null)
+          : guessGatewayBaseUrl(list.components ?? [], page);
         setGuess(guessed);
         // Prefill only an empty field: an address the operator typed is
         // theirs, and a guess overwriting it would be the panel deciding

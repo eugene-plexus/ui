@@ -241,17 +241,19 @@ export default function HomePage() {
   // wrong in exactly the way a harness handed the same numbers would be.
   const gatewayPortUrl = useMemo(
     () =>
-      typeof window === "undefined" || components === null
-        ? null
-        : guessGatewayBaseUrl(
-            (components.components ?? []).map((c) => ({
-              kind: String(c.kind ?? ""),
-              url: c.url ?? "",
-              advertiseUrl: c.advertiseUrl ?? undefined,
-            })),
-            { protocol: window.location.protocol, hostname: window.location.hostname },
-          ),
-    [components],
+      node?.entrypoint
+        ? (node.entrypoint.inferenceUrl ?? null)
+        : typeof window === "undefined" || components === null
+          ? null
+          : guessGatewayBaseUrl(
+              (components.components ?? []).map((c) => ({
+                kind: String(c.kind ?? ""),
+                url: c.url ?? "",
+                advertiseUrl: c.advertiseUrl ?? undefined,
+              })),
+              { protocol: window.location.protocol, hostname: window.location.hostname },
+            ),
+    [components, node?.entrypoint],
   );
 
   if (gate !== "ready") {
