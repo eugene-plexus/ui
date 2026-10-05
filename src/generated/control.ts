@@ -383,6 +383,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/oidc/clients/{clientId}/redirect-uris": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace where an app's sign-ins return to
+         * @description Replaces the client's exact redirect URIs and nothing else: the
+         *     same client id and secret, so the app's sign-ins carry on.
+         *
+         *     Operator only, a member node acting for the operator
+         *     (`SubjectToken`), **or a member node on its own**, with its own
+         *     `sub: agent` token. The last is how an app's return address
+         *     follows a change of address made at that machine (one HTTPS
+         *     port, 2026-10-05): at boot the agent updates the clients of its
+         *     own apps, with no operator present. A node, either way, may
+         *     change only clients whose `owner` is `app:<id>@<that node>`. It
+         *     could already take every sign-in to those apps, because it runs
+         *     them and holds their secrets, so this gives it nothing new.
+         */
+        put: operations["setOidcClientRedirectUris"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/nodes": {
         parameters: {
             query?: never;
@@ -2036,7 +2069,9 @@ export interface components {
          * @description **The seven sign-in operations (C2, 2026-10-01)** replicate people,
          *     the apps that sign in, the provider's sealed RSA key and revoked
          *     sign-ins, so a promoted standby signs people in as the old root
-         *     did and keeps refusing what it refused.
+         *     did and keeps refusing what it refused. **`setOidcClientRedirects`**
+         *     (2026-10-05) replaces one client's redirect URIs and nothing else,
+         *     where `putOidcClient` only ever adds a client.
          *
          *     The complete set of control-state mutations. Closed on purpose:
          *     **every change goes through one writer and one ordered path**, and
@@ -2066,7 +2101,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -2316,6 +2351,9 @@ export interface components {
             name: string;
             redirectUris: string[];
             owner?: string;
+        };
+        OidcClientRedirectsRequest: {
+            redirectUris: string[];
         };
         OidcClientCreated: {
             client: components["schemas"]["OidcClient"];
@@ -4000,6 +4038,56 @@ export interface operations {
             };
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+        };
+    };
+    setOidcClientRedirectUris: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description **A member node acting for an operator who is acting on it**
+                 *     (2026-10-01). The console reaches another machine with a
+                 *     five-minute token addressed to that machine alone (`POST
+                 *     /v1/auth/token`), and installing an app there needs its key and
+                 *     its sign-in registration from this root -- which that token, not
+                 *     being addressed here, cannot ask for. So the machine sends its
+                 *     own `agent` service token as the bearer (the actor) and the
+                 *     operator's token, addressed to that same machine, here (the
+                 *     subject; RFC 8693's roles).
+                 *
+                 *     Taken only by the operations that reference it, and only for
+                 *     things named for the acting node: a client key named
+                 *     `app:<id>@<node>`, a sign-in registration whose `owner` is. Any
+                 *     other name is a 403. A subject addressed to another machine, an
+                 *     actor that is not an agent speaking for itself, or a signed-out
+                 *     session is a 401. A node's own token without a subject opens
+                 *     none of these.
+                 */
+                "X-Eugene-Plexus-Subject-Token"?: components["parameters"]["SubjectToken"];
+            };
+            path: {
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OidcClientRedirectsRequest"];
+            };
+        };
+        responses: {
+            /** @description The app as it is now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcClient"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
     listNodes: {

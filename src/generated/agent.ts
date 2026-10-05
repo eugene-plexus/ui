@@ -1475,6 +1475,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/entrypoint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether this container serves on one HTTPS port, and why or why not.
+         * @description Operator session required. Says which file this agent reads, whether
+         *     the entry point is running in this process, and, when it is not,
+         *     the reason: the file is missing, it was turned off from Settings, or
+         *     an applied configuration went back to the direct ports because
+         *     nobody signed in through it in time.
+         */
+        get: operations["getEntryPoint"];
+        put?: never;
+        post?: never;
+        /**
+         * Go back to the direct ports, and restart.
+         * @description Operator session required. Keeps the file beside itself as
+         *     `<file>.disabled`, then restarts this agent in place, which brings
+         *     the direct ports back. The answer arrives before the restart.
+         */
+        delete: operations["turnOffEntryPoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/entrypoint/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save a container access setup and restart into it.
+         * @description Operator session required. Validates as the preview does, also
+         *     checks that any certificate files exist, writes the file this
+         *     agent reads, and restarts this agent in place. The answer arrives
+         *     before the restart.
+         *
+         *     **A safety net, because the page that applies it stops answering
+         *     at the address it was opened at.** Until an operator request
+         *     arrives through the new entry point, the configuration is on
+         *     approval: if none arrives within `confirmBy` (15 minutes from each
+         *     start), the agent puts the previous file back, or removes it, and
+         *     restarts on what it had before. So a wrong proxy address or DNS
+         *     name costs fifteen minutes, never the console.
+         *
+         *     Refused with 409 where the entry point cannot run (anywhere but a
+         *     Linux container with the bundled proxy).
+         */
+        post: operations["applyEntryPoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node": {
         parameters: {
             query?: never;
@@ -4964,6 +5028,37 @@ export interface components {
             publicUrls: components["schemas"]["PublicEntryPoint"];
             instructions: string[];
         };
+        EntryPointStatus: {
+            /** @description This machine can run the entry point (a Linux container with the bundled proxy). */
+            available: boolean;
+            /** @description Why not, when `available` is false. */
+            unavailableReason?: string;
+            /**
+             * @description The file this agent reads: `EUGENE_PLEXUS_AGENT_ENTRYPOINT_CONFIG`
+             *     when set, otherwise `entrypoint.json` beside `agent.yaml`.
+             */
+            path: string;
+            /** @description The entry point is running in this process. */
+            active: boolean;
+            publicUrls?: components["schemas"]["PublicEntryPoint"];
+            /** @description The configuration in effect, when `active`. */
+            configuration?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: date-time
+             * @description When a just-applied configuration goes back to what was there
+             *     before, unless an operator request arrives through it first.
+             *     Absent once confirmed.
+             */
+            confirmBy?: string;
+            /** @description Why the file is not in effect, in one sentence, when it is not. */
+            fallback?: string;
+            /** @description Why the last applied configuration went back, when it did. */
+            reverted?: string;
+            /** @description True in the answer to an apply or turn-off; the agent restarts next. */
+            restarting?: boolean;
+        };
         /**
          * @description Explicit external HTTPS origins for this node's optional single-port
          *     container entry point. An absent optional service is not published.
@@ -8045,6 +8140,133 @@ export interface operations {
             };
             /** @description An operator session is required. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getEntryPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The entry point as it stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryPointStatus"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An operator session is required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    turnOffEntryPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Turning off; the agent restarts in a moment. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryPointStatus"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An operator session is required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The entry point is not running here, so there is nothing to turn off. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    applyEntryPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryPointPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the agent restarts in a moment. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryPointStatus"];
+                };
+            };
+            /** @description Invalid startup configuration. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An operator session is required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The entry point cannot run on this machine. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

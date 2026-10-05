@@ -29,10 +29,30 @@ const browser = await chromium.launch({ channel: "chrome", headless: true });
 const page = await browser.newPage();
 const errors = [];
 let submitted;
+let applied;
 page.on("pageerror", (error) => errors.push(String(error)));
 await page.addInitScript(() => sessionStorage.setItem("eugene-session-token", "disposable-access"));
 await page.route("**/api/**", async (route) => {
   const path = new URL(route.request().url()).pathname;
+  if (path.endsWith("/entrypoint/apply")) {
+    applied = route.request().postDataJSON().configuration;
+    return route.fulfill({
+      status: 202,
+      json: {
+        available: true,
+        path: "/data/entrypoint.json",
+        active: true,
+        restarting: true,
+        publicUrls: { consoleUrl: applied.console.origin, workbenchUrl: applied.workbench.origin },
+        confirmBy: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      },
+    });
+  }
+  if (path.endsWith("/entrypoint")) {
+    return route.fulfill({
+      json: { available: true, path: "/data/entrypoint.json", active: false },
+    });
+  }
   if (path.endsWith("/entrypoint/preview")) {
     submitted = route.request().postDataJSON().configuration;
     return route.fulfill({
@@ -62,12 +82,16 @@ await page.route("**/api/**", async (route) => {
 try {
   await page.goto(`http://127.0.0.1:${server.address().port}/access/`);
   await expect(page.getByRole("heading", { name: "Container access setup" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "In effect" })).toContainText("direct ports");
   await page.getByLabel("Base domain", { exact: false }).fill("example.org");
   await page.getByLabel("Allowed private networks", { exact: false }).fill("192.168.16.0/24");
   await page.getByLabel("Trusted proxy IP addresses", { exact: false }).fill("172.30.0.2");
   await page.getByRole("button", { name: "Prepare setup" }).click();
   await expect(page.getByRole("region", { name: "Prepared setup" })).toBeVisible();
   assert.equal(submitted.proxy.transport, "http");
+  // Two names by default: inference and nodes are extras.
+  assert.equal(submitted.inference, undefined);
+  assert.equal(submitted.nodes, undefined);
   const downloadWait = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download configuration" }).click();
   const download = await downloadWait;
@@ -104,9 +128,25 @@ try {
   await expect(page.getByRole("button", { name: "Download instructions" })).toBeInViewport();
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: join(output, "phone.png") });
+
+  // Apply asks once, sends the prepared configuration, and says where to go.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: "Apply…" }).click();
+  await expect(page.getByRole("group", { name: "Apply this setup" })).toContainText(
+    "within 15 minutes",
+  );
+  assert.equal(applied, undefined);
+  await page.getByRole("button", { name: "Apply and restart" }).click();
+  await expect(page.getByRole("region", { name: "Restarting" })).toBeVisible();
+  assert.deepEqual(applied, submitted);
+  await expect(page.getByRole("link", { name: submitted.console.origin })).toHaveAttribute(
+    "href",
+    submitted.console.origin,
+  );
+  await page.screenshot({ path: join(output, "applied.png") });
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: exported setup works in Chrome for all four modes; download bytes, stale preview removal and mobile scrolling verified",
+    "PASS: exported setup works in Chrome for all four modes; two names by default; Apply asks once and sends the prepared bytes; download bytes, stale preview removal and mobile scrolling verified",
   );
 } finally {
   await browser.close();
