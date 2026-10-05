@@ -240,7 +240,12 @@ it("opens the console to any network only after its risks are acknowledged", asy
   const user = await fillCommon();
   await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
   expect(screen.queryByRole("group", { name: /Risks of a console/ })).not.toBeInTheDocument();
-  await user.click(screen.getByLabelText(/Allow the console from any network/));
+  // Only a console served through this setup can be opened to any network.
+  expect(
+    screen.queryByRole("checkbox", { name: /Allow the console from any network/ }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("radio", { name: /Through this setup too/ }));
+  await user.click(screen.getByRole("checkbox", { name: /Allow the console from any network/ }));
   const risks = screen.getByRole("group", { name: /Risks of a console/ });
   expect(risks).toHaveTextContent("Anyone on the internet can open the console’s sign-in page");
   expect(risks).toHaveTextContent("5 wrong passphrases a minute");
@@ -252,13 +257,14 @@ it("opens the console to any network only after its risks are acknowledged", asy
   await screen.findByRole("region", { name: "Prepared setup" });
   const body = vi.mocked(api.post).mock.calls[0]![2] as { configuration: Record<string, unknown> };
   expect(body.configuration.public_console).toBe(true);
+  expect(body.configuration).not.toHaveProperty("console_direct");
   expect(body.configuration.console).toEqual({
     origin: "https://eugene.example.org",
     networks: ["0.0.0.0/0", "::/0"],
   });
   // Unticking it asks again next time.
-  await user.click(screen.getByLabelText(/Allow the console from any network/));
-  await user.click(screen.getByLabelText(/Allow the console from any network/));
+  await user.click(screen.getByRole("checkbox", { name: /Allow the console from any network/ }));
+  await user.click(screen.getByRole("checkbox", { name: /Allow the console from any network/ }));
   expect(screen.getByLabelText(/I understand that anyone on the internet/)).not.toBeChecked();
 });
 
@@ -270,4 +276,72 @@ it("reads back a console open to any network", () => {
     workbench: { origin: "https://workbench.example.org", networks: ["0.0.0.0/0", "::/0"] },
   });
   expect(read).toMatchObject({ publicConsole: true, mode: "proxy" });
+});
+
+it("keeps the console on its own port by default, with its name for sign-in only", async () => {
+  vi.mocked(api.post).mockResolvedValue(PREVIEW);
+  render(<AccessSetup />);
+  const user = userEvent.setup();
+  expect(screen.getByRole("radio", { name: /On its own port, as now/ })).toBeChecked();
+  await user.type(screen.getByLabelText(/Base domain/), "example.org");
+  await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
+  // No networks needed: nothing it serves is for the console's own network.
+  await user.click(screen.getByLabelText(/Allow Workbench access/));
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  await screen.findByRole("region", { name: "Prepared setup" });
+  const body = vi.mocked(api.post).mock.calls[0]![2] as { configuration: Record<string, unknown> };
+  expect(body.configuration.console_direct).toBe(true);
+  expect(body.configuration.console).toEqual({
+    origin: "https://eugene.example.org",
+    networks: [],
+  });
+  expect(body.configuration).not.toHaveProperty("public_console");
+  expect(screen.getByRole("region", { name: "Prepared setup" })).toHaveTextContent(
+    "Console: on its own port, as now",
+  );
+  // The node and inference names still need your networks.
+  await user.click(screen.getByLabelText(/Also an inference name/));
+  expect(screen.getByLabelText(/Allowed private networks/)).toBeRequired();
+});
+
+it("comes back by itself after applying a setup that keeps the console here", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const applied = {
+      ...DIRECT,
+      active: true,
+      restarting: true,
+      publicUrls: PREVIEW.publicUrls,
+      configuration: { console_direct: true },
+      confirmBy: "2026-10-05T12:15:00Z",
+    };
+    vi.mocked(api.post).mockImplementation(async (_t, path) =>
+      path === "/v1/entrypoint/apply" ? applied : PREVIEW,
+    );
+    render(<AccessSetup />);
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.type(screen.getByLabelText(/Base domain/), "example.org");
+    await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
+    await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+    await user.click(await screen.findByRole("button", { name: "Apply…" }));
+    expect(screen.getByRole("group", { name: "Apply this setup" })).toHaveTextContent(
+      "this page comes back in a few seconds",
+    );
+    vi.mocked(api.get).mockRejectedValueOnce(new Error("restarting"));
+    await user.click(screen.getByRole("button", { name: "Apply and restart" }));
+    expect(await screen.findByRole("region", { name: "Restarting" })).toHaveTextContent(
+      "The console stays at this address",
+    );
+    vi.mocked(api.get).mockResolvedValue({
+      ...applied,
+      restarting: undefined,
+      confirmBy: undefined,
+    });
+    await vi.advanceTimersByTimeAsync(4500);
+    expect(await screen.findByRole("region", { name: "In effect" })).toHaveTextContent(
+      "One HTTPS port is on for Workbench",
+    );
+  } finally {
+    vi.useRealTimers();
+  }
 });

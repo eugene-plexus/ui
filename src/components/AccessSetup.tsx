@@ -21,6 +21,7 @@ interface Fields {
   privateNetworks: string;
   publicWorkbench: boolean;
   publicConsole: boolean;
+  consoleDirect: boolean;
   inference: boolean;
   nodes: boolean;
   proxies: string;
@@ -38,6 +39,10 @@ const EMPTY: Fields = {
   privateNetworks: "",
   publicWorkbench: false,
   publicConsole: false,
+  // The console on its own port by default (Troy, 2026-10-05): Workbench through
+  // the proxy and the console at home is the safest setup, and it needs no
+  // local DNS entry. The console's name then serves Workbench's sign-in only.
+  consoleDirect: true,
   // Two names by default (2026-10-05): the console and Workbench. Inference
   // and node names are for setups that need them, each a DNS entry, a proxy
   // host and a certificate more.
@@ -83,6 +88,7 @@ export function fieldsFrom(configuration: Record<string, unknown> | undefined): 
     privateNetworks: (console_.networks ?? []).join(", "),
     publicWorkbench: PUBLIC.every((n) => workbench?.networks?.includes(n)),
     publicConsole: configuration?.public_console === true,
+    consoleDirect: configuration?.console_direct === true,
     inference: Boolean(configuration?.inference),
     nodes: Boolean(configuration?.nodes),
     proxies: (proxy?.addresses ?? []).join(", "),
@@ -100,22 +106,35 @@ function when(value: string): string {
 
 function StatusCard({ status }: { status: Status }) {
   if (status.active) {
+    const direct = status.configuration?.console_direct === true;
     return (
       <section
         className="status-success mt-4 rounded-[var(--radius)] px-4 py-3"
         aria-label="In effect"
       >
-        <p>
-          One HTTPS port is on. The console is at{" "}
-          <a className="underline" href={status.publicUrls?.consoleUrl}>
-            {status.publicUrls?.consoleUrl}
-          </a>
-          .
-        </p>
+        {direct ? (
+          <p>
+            One HTTPS port is on for Workbench, at{" "}
+            <a className="underline" href={status.publicUrls?.workbenchUrl}>
+              {status.publicUrls?.workbenchUrl}
+            </a>
+            . The console stays on its own port, here.
+          </p>
+        ) : (
+          <p>
+            One HTTPS port is on. The console is at{" "}
+            <a className="underline" href={status.publicUrls?.consoleUrl}>
+              {status.publicUrls?.consoleUrl}
+            </a>
+            .
+          </p>
+        )}
         {status.confirmBy && (
           <p className="mt-1">
-            Waiting for you to sign in through it. If nobody does by {when(status.confirmBy)},
-            Eugene goes back to how it was before.
+            {direct
+              ? "Waiting for you to sign in to the console again"
+              : "Waiting for you to sign in through it"}
+            . If nobody does by {when(status.confirmBy)}, Eugene goes back to how it was before.
           </p>
         )}
       </section>
@@ -159,6 +178,7 @@ export function AccessSetup() {
     privateNetworks,
     publicWorkbench,
     publicConsole,
+    consoleDirect,
     inference,
     nodes,
     proxies,
@@ -187,6 +207,37 @@ export function AccessSetup() {
     };
   }, []);
 
+  // A restart that keeps this page's address (the console on its own port)
+  // comes back here: ask until it answers. That operator request is also what
+  // confirms the new setup.
+  const comesBack =
+    restarting !== null &&
+    (restarting.active
+      ? restarting.configuration?.console_direct === true
+      : status?.configuration?.console_direct === true);
+  useEffect(() => {
+    if (!comesBack) return;
+    let live = true;
+    const timer = setInterval(() => {
+      api
+        .get<Status>("agent", "/v1/entrypoint")
+        .then((found) => {
+          if (!live || found.restarting) return;
+          live = false;
+          clearInterval(timer);
+          setStatus(found);
+          setRestarting(null);
+        })
+        .catch(() => {
+          // Still restarting.
+        });
+    }, 2000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [comesBack]);
+
   function set<K extends keyof Fields>(name: K, value: Fields[K]) {
     setFields((current) => ({ ...current, [name]: value }));
   }
@@ -213,8 +264,9 @@ export function AccessSetup() {
     const privateAccess = networks(privateNetworks);
     const configuration = {
       listen_port: mode === "proxy" && !proxyTls ? 8088 : 8443,
-      console: service("eugene", publicConsole ? PUBLIC : privateAccess),
-      ...(publicConsole ? { public_console: true } : {}),
+      console: service("eugene", publicConsole && !consoleDirect ? PUBLIC : privateAccess),
+      ...(consoleDirect ? { console_direct: true } : {}),
+      ...(publicConsole && !consoleDirect ? { public_console: true } : {}),
       workbench: service("workbench", publicWorkbench ? PUBLIC : privateAccess),
       ...(inference ? { inference: service("inference", privateAccess) } : {}),
       ...(nodes ? { nodes: service("nodes", privateAccess) } : {}),
@@ -279,6 +331,23 @@ export function AccessSetup() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  if (restarting && comesBack) {
+    return (
+      <main className="mx-auto w-full max-w-3xl px-6 py-8">
+        <h1 className="font-ui text-2xl font-semibold">Container access setup</h1>
+        <section className="section-panel mt-6" aria-label="Restarting">
+          <h2 className="font-ui text-lg font-semibold">Eugene is restarting</h2>
+          <p className="mt-2">
+            The console stays at this address, and this page comes back by itself in a few seconds.
+            {restarting.active && restarting.publicUrls?.workbenchUrl && (
+              <> Workbench will be at {restarting.publicUrls.workbenchUrl}.</>
+            )}
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   if (restarting) {
     const next = restarting.active ? restarting.publicUrls?.consoleUrl : null;
     return (
@@ -317,7 +386,8 @@ export function AccessSetup() {
     <main className="mx-auto w-full max-w-3xl px-6 py-8">
       <h1 className="font-ui text-2xl font-semibold">Container access setup</h1>
       <p className="mt-2 text-[color:var(--muted)]">
-        Serve the console and Workbench on one HTTPS port. Nothing changes until you apply it.
+        Serve Workbench, and the console if you like, on one HTTPS port. Nothing changes until you
+        apply it.
       </p>
       {status && <StatusCard status={status} />}
       {status?.active && (
@@ -424,11 +494,50 @@ export function AccessSetup() {
           />
           <span className={hintClass}>The port browsers use: 443 unless you chose another.</span>
         </label>
+        <fieldset className="space-y-2">
+          <legend>Where do you open the console?</legend>
+          <label className="flex items-start gap-2">
+            <input
+              className="mt-1.5"
+              type="radio"
+              name="console-place"
+              checked={consoleDirect}
+              onChange={() => {
+                set("consoleDirect", true);
+                set("publicConsole", false);
+                setRisksRead(false);
+              }}
+            />
+            <span>
+              On its own port, as now (recommended)
+              <span className={hintClass}>
+                Only Workbench goes through this setup. You keep opening the console at its own
+                address on your network, with no DNS entry to add. Its name, eugene.
+                {domain || "your-domain"}, is still needed, only for signing in to Workbench.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2">
+            <input
+              className="mt-1.5"
+              type="radio"
+              name="console-place"
+              checked={!consoleDirect}
+              onChange={() => set("consoleDirect", false)}
+            />
+            <span>
+              Through this setup too, at eugene.{domain || "your-domain"}
+              <span className={hintClass}>
+                The console moves to its HTTPS name and leaves its own port.
+              </span>
+            </span>
+          </label>
+        </fieldset>
         <label className="block">
           Allowed private networks
           <input
             className={inputClass}
-            required
+            required={!consoleDirect || inference || nodes}
             placeholder="192.168.16.0/24, 10.20.0.0/24"
             value={privateNetworks}
             onChange={(e) => set("privateNetworks", e.target.value)}
@@ -440,25 +549,28 @@ export function AccessSetup() {
             local DNS, or allow the console from any network below.
           </span>
         </label>
-        <label className="flex items-start gap-2">
-          <input
-            className="mt-1.5"
-            type="checkbox"
-            checked={publicConsole}
-            onChange={(e) => {
-              set("publicConsole", e.target.checked);
-              setRisksRead(false);
-            }}
-          />
-          <span>
-            Allow the console from any network, with sign-in
-            <span className={hintClass}>
-              Off: only the networks above can open the console. Safer ways to reach it from outside
-              are a VPN such as Tailscale, or Cloudflare Access in front of the console’s name.
+        {!consoleDirect && (
+          <label className="flex items-start gap-2">
+            <input
+              className="mt-1.5"
+              type="checkbox"
+              checked={publicConsole}
+              onChange={(e) => {
+                set("publicConsole", e.target.checked);
+                setRisksRead(false);
+              }}
+            />
+            <span>
+              Allow the console from any network, with sign-in
+              <span className={hintClass}>
+                Off: only the networks above can open the console. Safer ways to reach it from
+                outside are a VPN such as Tailscale, or Cloudflare Access in front of the console’s
+                name.
+              </span>
             </span>
-          </span>
-        </label>
-        {publicConsole && (
+          </label>
+        )}
+        {publicConsole && !consoleDirect && (
           <div
             className="status-warn rounded-[var(--radius)] px-4 py-3"
             role="group"
@@ -666,9 +778,16 @@ export function AccessSetup() {
         <section className="section-panel mt-6" aria-label="Prepared setup">
           <h2 className="font-ui text-lg font-semibold">Your prepared setup</h2>
           <p className="mt-2">
-            Eugene console: {preview.publicUrls.consoleUrl}
-            <br />
             Workbench: {preview.publicUrls.workbenchUrl}
+            <br />
+            {consoleDirect ? (
+              <>
+                Console: on its own port, as now. Sign-in for Workbench:{" "}
+                {preview.publicUrls.consoleUrl}
+              </>
+            ) : (
+              <>Eugene console: {preview.publicUrls.consoleUrl}</>
+            )}
           </p>
           <ol className="mt-4 list-decimal space-y-3 pl-5">
             {preview.instructions.map((step) => (
@@ -678,11 +797,19 @@ export function AccessSetup() {
           {status?.available &&
             (confirming === "apply" ? (
               <div className="mt-5" role="group" aria-label="Apply this setup">
-                <p>
-                  Eugene saves this and restarts. This page stops answering here. Open{" "}
-                  {preview.publicUrls.consoleUrl} and sign in within 15 minutes, or Eugene goes back
-                  to how it was.
-                </p>
+                {consoleDirect ? (
+                  <p>
+                    Eugene saves this and restarts, and this page comes back in a few seconds. If
+                    nobody signs in to the console within 15 minutes, Eugene goes back to how it
+                    was.
+                  </p>
+                ) : (
+                  <p>
+                    Eugene saves this and restarts. This page stops answering here. Open{" "}
+                    {preview.publicUrls.consoleUrl} and sign in within 15 minutes, or Eugene goes
+                    back to how it was.
+                  </p>
+                )}
                 <div className="mt-3 flex gap-3">
                   <button
                     type="button"
