@@ -32,6 +32,7 @@ import { LayerIcon } from "./LayerIcon";
 import { LayerMap } from "./LayerMap";
 import { pageHref, ResourceTree, TopologyContext, useTopology } from "./ResourceTree";
 import { RunDialog } from "./RunDialog";
+import { InstallModeBanner } from "./InstallModeBanner";
 import { IssuesBadge } from "./IssuesBadge";
 import { TasksTray } from "./TasksTray";
 
@@ -222,6 +223,7 @@ function AppShellInner({
           </button>
         </div>
       </header>
+      <InstallModeBanner />
 
       {mapOpen && <LayerMap id={mapId} current={null} onClose={closeMap} />}
       {/* One-click run's one question, wherever the person is when a run

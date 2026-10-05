@@ -45,6 +45,24 @@ describe("the join commands", () => {
     expect(posixJoinCommand(odd)).toContain("--join 'http://<this-host>:8083'");
     expect(posixJoinCommand(odd)).toContain(`--name 'Troy'"'"'s box'`);
   });
+
+  it("joins a job site naming its owner and the root key, and never a password", () => {
+    const site = {
+      ...details,
+      controlUrl: "https://nodes.example.com",
+      jobSite: { owner: "Ada O'Neil", rootKey: "AbC+/def=" },
+    };
+    expect(windowsJoinCommand(site)).toContain(
+      "-JobSite -Owner 'Ada O''Neil' -RootKey AbC+/def= -NodeName Amish_Station",
+    );
+    expect(posixJoinCommand(site)).toContain(
+      `--job-site --owner 'Ada O'"'"'Neil' --root-key AbC+/def= --name Amish_Station`,
+    );
+    for (const command of [windowsJoinCommand(site), posixJoinCommand(site)]) {
+      expect(command.toLowerCase()).not.toContain("password");
+    }
+    expect(windowsJoinCommand(details)).not.toContain("-JobSite");
+  });
 });
 
 describe("installPorts", () => {

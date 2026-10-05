@@ -877,8 +877,53 @@ export interface paths {
          *     A sealed root still answers, with the last bundle it signed,
          *     which it keeps on disk. A root that has never signed one answers
          *     503.
+         *
+         *     **A bearer, when sent, must verify**: a member's own `sub: agent`
+         *     token, or 401. **Through the public node route it is required**
+         *     (`docs/design/remote-nodes.md` §3.1, J3): the bundle names every
+         *     machine, its keys and grants, and the signed-out session ids,
+         *     which is nobody's business on the internet. The entry point marks
+         *     a request that came that way (`X-Eugene-Plexus-Entry:
+         *     public-nodes`, set by it and stripped from everything else), and
+         *     this root then refuses one without a token. A Job Site sends its
+         *     token on every pull; an ordinary node on the root's network need
+         *     not.
          */
         get: operations["getTrustBundle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/trust/tls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The TLS public keys this root's nodes name presents, signed by its identity.
+         * @description **Public, and safe to be: public keys only** (J7a, Troy,
+         *     2026-10-05). A Job Site pins this root's identity key from its
+         *     join command, not a certificate. Before it sends a join token or
+         *     a password, and whenever a connection presents a key it has not
+         *     seen, it fetches this list over that same connection, checks the
+         *     signature against the pinned key, and accepts the connection only
+         *     when the key it was shown is listed and its certificate has not
+         *     expired. So renewals need nobody, and no public CA or DNS name is
+         *     needed.
+         *
+         *     The root learns the keys by connecting to its own nodes name: to
+         *     its entry point on loopback, or to the public name when an
+         *     outside proxy holds the certificate. When it cannot, this answers
+         *     503 with the reason, and a site joins nothing rather than trust
+         *     what it was shown.
+         */
+        get: operations["getRootTls"];
         put?: never;
         post?: never;
         delete?: never;
@@ -929,7 +974,11 @@ export interface paths {
         put?: never;
         /**
          * Declare a runtime on a node, forwarded to that node's agent.
-         * @description Accepted here and **forwarded** to the target node's agent, which
+         * @description **A Job Site runs nothing** (`Node.grants` holds `files`): a
+         *     placement that names one is refused with 409, as its own agent
+         *     would refuse it.
+         *
+         *     Accepted here and **forwarded** to the target node's agent, which
          *     is what makes "the operator talks to the control root" true
          *     rather than aspirational. `node` selects the host; omitted, it
          *     means the node the control root runs on, which keeps a
@@ -1211,6 +1260,13 @@ export interface paths {
         /**
          * listNodeHelpers
          * @description Operator-only capability and folder administration. No implicit file access is granted.
+         *
+         *     **A Job Site** (`jobSite: true`) is listed with its owner and whether it is
+         *     online, and nothing else, in production mode: `folders` is empty and
+         *     `hidden` is true. In dev mode (`installMode`) its folders and their grants
+         *     are shown, and the owner may set `ownerAccess` on them; every other change
+         *     to a Job Site is its owner's, from Workbench (`/oidc/job-sites`), and is
+         *     refused here with 403.
          */
         get: operations["listNodeHelpers"];
         put?: never;
@@ -1415,6 +1471,191 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/oidc/install-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The install's mode, for an app to tell every person it serves
+         * @description `production` or `dev` (J13, J18). In dev mode Eugene's owner sees all
+         *     tool information, Job Site results included, and may grant themselves
+         *     a site's folders; every person is told. Results produced in production
+         *     stay hidden from the owner after a switch to dev. A new install starts
+         *     in production. An enrolled Workbench client authenticates; no person
+         *     is needed, because the mode is the same for everyone.
+         */
+        post: operations["getInstallMode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The signed-in person's own Job Sites
+         * @description Every Job Site this person owns, with its folders and who may use
+         *     them. A Job Site's owner is the only one who grants its folders
+         *     (J11). Authenticated as `/oidc/node-helpers/*` is: an enrolled
+         *     Workbench client and the person's refresh credential.
+         */
+        post: operations["listMyJobSites"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A join command for one of the signed-in person's own machines
+         * @description Self-service (J9): any signed-in person may add a Job Site for a
+         *     machine of their own. Mints a `files` join token naming them, valid
+         *     15 minutes, at most three outstanding per person. The machine joins
+         *     through the public node route, and the person confirms there with
+         *     their own password. 409 when the owner has not opened that route.
+         *     Eugene's owner signs in with the passphrase and owns no Job Sites:
+         *     to use one, they make a person account for themselves.
+         */
+        post: operations["inviteMyJobSite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{node}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn a Job Site's file helper on or off */
+        post: operations["enableMyJobSite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{node}/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register an existing folder on the person's own Job Site
+         * @description As the operator's folder registration on an ordinary node: the
+         *     machine's helper opens the folder and reports its identity, and
+         *     nobody is granted anything.
+         */
+        post: operations["addMyJobSiteFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{node}/folders/{folder_id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove a folder from the person's own Job Site */
+        post: operations["removeMyJobSiteFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{node}/folders/{folder_id}/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Say who may use a folder on the person's own Job Site
+         * @description Replaces the folder's list of people, the site's owner included
+         *     (J11: the owner grants their own access too). People are named by
+         *     how they sign in. Write access cannot exceed the folder's.
+         */
+        post: operations["grantMyJobSiteFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{node}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take the person's own machine out of the install
+         * @description Leaving needs no one's permission (§3.3). The site's key leaves the
+         *     trust bundle at once, as when Eugene's owner removes it.
+         */
+        post: operations["leaveMyJobSite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1436,6 +1677,8 @@ export interface components {
              * @enum {string}
              */
             ownerAccess: "none" | "read" | "write";
+            /** @description On a Job Site only: who may use this folder, set by the site's owner and nobody else (J11). Empty on every other node, whose grants are each person's helperGrants. On a Job Site, `ownerAccess` (Eugene's owner's own access) may be set only in dev mode, and works only while the install is in dev mode (J13b). */
+            people?: components["schemas"]["SitePersonGrant"][];
         };
         NodeHelper: {
             node: string;
@@ -1481,6 +1724,99 @@ export interface components {
         HelperCancel: {
             refreshToken: string;
             operationId: string;
+        };
+        InstallMode: {
+            mode: components["schemas"]["InstallModeName"];
+            /**
+             * Format: date-time
+             * @description When the mode last changed; null when it never has.
+             */
+            changedAt?: string | null;
+        };
+        JobSite: {
+            node: string;
+            enabled: boolean;
+            online: boolean;
+            ready: boolean;
+            supported?: boolean | null;
+            reason?: string | null;
+            /** @description The OS account to give folder permission to. */
+            account?: string | null;
+            /** Format: date-time */
+            lastContactAt?: string | null;
+            folders: components["schemas"]["JobSiteFolder"][];
+        };
+        JobSiteList: {
+            sites: components["schemas"]["JobSite"][];
+            installMode: components["schemas"]["InstallMode"];
+            /** @description Whether the owner has opened the public route for machines, so this person can add one. */
+            canInvite: boolean;
+        };
+        JobSiteInviteRequest: {
+            refreshToken: string;
+            /** @description The machine's name in the install. Its own host name when left out. */
+            nodeName?: string;
+        };
+        JobSiteInvite: {
+            /** @description Shown once. */
+            token: string;
+            /** Format: date-time */
+            expiresAt: string;
+            nodeName?: string | null;
+            /** @description The public node route the machine joins through. */
+            nodesUrl: string;
+            /** @description The root's identity key the machine pins. */
+            rootKey: string;
+            /** @description The sign-in name the machine will ask for. */
+            owner: string;
+        };
+        JobSiteEnable: {
+            refreshToken: string;
+            enabled: boolean;
+        };
+        JobSiteFolderCreate: {
+            refreshToken: string;
+            name: string;
+            path: string;
+            /** @default false */
+            writable: boolean;
+        };
+        JobSitePeopleRequest: {
+            refreshToken: string;
+            people: components["schemas"]["JobSitePersonGrant"][];
+        };
+        SignedRootTls: {
+            /**
+             * @description A JWS compact serialization with header
+             *     `{"alg": "EdDSA", "typ": "ep-root-tls+jwt"}`, whose payload is
+             *     a `RootTls`, signed with this root's identity key (the key a
+             *     trust bundle's `authority` names, and a join command's
+             *     `rootKey`).
+             */
+            jws: string;
+        };
+        /** @description What a Job Site checks a connection to this root against. */
+        RootTls: {
+            /**
+             * Format: int64
+             * @description When it was signed, in seconds since the epoch.
+             */
+            iat: number;
+            /** @description The nodes name these keys were seen on, `https://host[:port]`. */
+            origin: string;
+            keys: components["schemas"]["RootTlsKey"][];
+        };
+        RootTlsKey: {
+            /**
+             * @description Base64url (no padding) of the SHA-256 of the presented
+             *     certificate's DER SubjectPublicKeyInfo.
+             */
+            spki: string;
+            /**
+             * Format: int64
+             * @description The certificate's expiry, in seconds since the epoch. A site refuses a key past it.
+             */
+            notAfter: number;
         };
         ClientKeyLimits: {
             /**
@@ -1674,11 +2010,32 @@ export interface components {
             tokenPublicKey?: string;
             /**
              * @description What this node's key may issue, as the trust bundle lists it:
-             *     always `node`, plus `gateway` when the join token that
-             *     enrolled it said so. Given by the operator, never claimed by
-             *     the node.
+             *     `node`, plus `gateway` when the join token that enrolled it
+             *     said so. **A Job Site holds `files` instead of `node`**
+             *     (`docs/design/remote-nodes.md` §3.2): it has no address, is
+             *     sent no inference work, and its key opens only the helper
+             *     routes and the trust bundle. Given by the join token, never
+             *     claimed by the node.
              */
             grants?: components["schemas"]["TrustGrant"][];
+            /**
+             * @description A Job Site's owner: the id of the person who confirmed the
+             *     join at the machine with their own password. Only that person
+             *     grants the site's folders to other people. `null` for every
+             *     other node.
+             */
+            owner?: string | null;
+            /** @description The owner's sign-in name, for display. `null` when `owner` is. */
+            ownerName?: string | null;
+            /**
+             * Format: date-time
+             * @description When this node last reached this root with its own token (the
+             *     file helper's poll). It is the status of a Job Site, which has
+             *     no address to probe: *last contact N s ago*, never *down*.
+             *     Observation, not applied state, so never replicated; `null`
+             *     until it has called.
+             */
+            lastContactAt?: string | null;
             /**
              * Format: int64
              * @description The trust bundle version this node reported holding on the
@@ -1772,8 +2129,20 @@ export interface components {
              *     other machines, which the install's gateway needs in order to
              *     reach every node's drivers and agent. The wizard asks for it
              *     on the machine that runs the gateway; `/nodes` does not.
+             *
+             *     `files` makes the machine a **Job Site** in place of an
+             *     ordinary node, and needs `owner`. It cannot be combined with
+             *     `gateway`.
              */
-            grants?: "gateway"[];
+            grants?: ("gateway" | "files")[];
+            /**
+             * @description The person this Job Site invitation names (`files` only). The
+             *     join succeeds only when that person signs in at the machine
+             *     with their own password (`EnrollmentRequest.owner`), and they
+             *     become the site's owner. Eugene's owner invites; the person
+             *     owns.
+             */
+            owner?: string;
         };
         JoinToken: {
             /**
@@ -1797,7 +2166,17 @@ export interface components {
             expiresAt: string;
             /** @description The node name this token is bound to, when it is bound. */
             nodeName?: string;
-            grants?: "gateway"[];
+            grants?: ("gateway" | "files")[];
+            /** @description The person a Job Site invitation names. */
+            owner?: string;
+            /**
+             * @description Base64 of this root's raw Ed25519 identity public key, for the
+             *     join command. A Job Site pins it **before** it sends anything
+             *     (J7a): it checks the root's signed TLS key list
+             *     (`GET /v1/trust/tls`) against it, and later every trust
+             *     bundle.
+             */
+            rootKey?: string;
         };
         /**
          * @description One outstanding join token, **without the token**.
@@ -1815,7 +2194,9 @@ export interface components {
             /** @description The node name this token is bound to, when it is bound. */
             nodeName?: string;
             /** @description What the node it enrolls will be granted, as minted. */
-            grants?: "gateway"[];
+            grants?: ("gateway" | "files")[];
+            /** @description The person a Job Site invitation names. */
+            owner?: string;
             /**
              * @description True once this token has enrolled a node. A spent token is
              *     kept until it expires so a replay answers 409 "already
@@ -1858,14 +2239,30 @@ export interface components {
              *     interface it used to reach this root; a root deriving it from
              *     the request's source address would be right on a flat mesh
              *     network and wrong behind anything else.
+             *
+             *     **Refused for a Job Site**, which has no address: nothing is
+             *     ever sent to it.
              */
             url?: string;
+            owner?: components["schemas"]["SiteOwnerProof"];
             agentVersion?: string;
             /** @enum {string} */
             os?: "windows" | "linux" | "macos";
             /** @enum {string} */
             arch?: "x64" | "arm64";
             devices?: components["schemas"]["ComputeDevice"][];
+        };
+        /**
+         * @description The person a Job Site invitation names, confirming the join at the
+         *     machine with their own password (`docs/design/remote-nodes.md`
+         *     §3.3, rule 1). Required with a `files` join token and refused with
+         *     any other. Checked after the token, rate-limited as a sign-in is,
+         *     and never stored: the root records the site's owner from it, so
+         *     ownership comes from presence plus the person's own credential.
+         */
+        SiteOwnerProof: {
+            name: string;
+            password: string;
         };
         /**
          * @description A node telling this root where it now is. Signed by the node, not
@@ -1961,6 +2358,12 @@ export interface components {
              *     by nobody else.
              */
             recoveryPublicKey?: string;
+            /**
+             * @description What this node's key was granted. `files` tells the agent it is
+             *     a Job Site: it announces no address, polls for no run
+             *     operations, and refuses runtimes and engines.
+             */
+            grants?: components["schemas"]["TrustGrant"][];
         };
         ControlStatus: {
             role: components["schemas"]["NodeRole"];
@@ -2624,9 +3027,14 @@ export interface components {
          *     * `gateway`: given to a node by the operator's join token, never
          *       claimed by the node. Service tokens with `sub: gateway` to
          *       other machines and to `control`.
+         *     * `files`: a Job Site's token key, **instead of** `node`, never
+         *       beside it (`docs/design/remote-nodes.md` §3.2). Service tokens
+         *       with `sub: agent` to `control`, and to **its own machine**.
+         *       Nothing else: a site that joined with a leaked token reaches no
+         *       other machine and no other component, on any network.
          * @enum {string}
          */
-        TrustGrant: "authority" | "node" | "gateway";
+        TrustGrant: "authority" | "node" | "gateway" | "files";
         /**
          * @description What kind of device this is.
          *
@@ -2769,6 +3177,11 @@ export interface components {
              * @description The session's own `exp`, unix seconds.
              */
             exp: number;
+        };
+        SitePersonGrant: {
+            person: string;
+            /** @default false */
+            writable: boolean;
         };
         /**
          * @description Which engine adapter constructs the argv and interprets
@@ -3282,6 +3695,26 @@ export interface components {
         };
         /** @enum {string} */
         HelperOperationStatus: "done" | "failed" | "uncertain";
+        /** @enum {string} */
+        InstallModeName: "production" | "dev";
+        JobSiteFolderPerson: {
+            person: string;
+            /** @description How the person signs in. */
+            name: string;
+            writable: boolean;
+        };
+        JobSiteFolder: {
+            id: string;
+            name: string;
+            path: string;
+            writable: boolean;
+            people: components["schemas"]["JobSiteFolderPerson"][];
+        };
+        JobSitePersonGrant: {
+            /** @description How the person signs in. */
+            name: string;
+            writable: boolean;
+        };
     };
     responses: {
         /** @description Error response in RFC 7807 problem+json format. */
@@ -4545,6 +4978,28 @@ export interface operations {
                     "application/json": components["schemas"]["SignedTrustBundle"];
                 };
             };
+            401: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getRootTls: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current signed list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedRootTls"];
+                };
+            };
             503: components["responses"]["Problem"];
         };
     };
@@ -5168,7 +5623,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Success. */
+            /**
+             * @description `configuration`, the queued `operation` id or null, and, for a Job
+             *     Site, `siteOwner`: the person whose commands alone may register its
+             *     folders, which the site's own relay checks again (J11).
+             */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5457,6 +5916,482 @@ export interface operations {
             };
             /** @description Too many recent operations. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getInstallMode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mode, and when it last changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallMode"];
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listMyJobSites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelperDiscovery"];
+            };
+        };
+        responses: {
+            /** @description The person's sites. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteList"];
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    inviteMyJobSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description The invitation. The token is shown once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteInvite"];
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    enableMyJobSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteEnable"];
+            };
+        };
+        responses: {
+            /** @description The site. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSite"];
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    addMyJobSiteFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteFolderCreate"];
+            };
+        };
+        responses: {
+            /** @description The folder. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HelperFolder"];
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    removeMyJobSiteFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelperDiscovery"];
+            };
+        };
+        responses: {
+            /** @description Removed, with every grant to it. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    grantMyJobSiteFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSitePeopleRequest"];
+            };
+        };
+        responses: {
+            /** @description The folder. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HelperFolder"];
+                };
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    leaveMyJobSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelperDiscovery"];
+            };
+        };
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, current permission, state, or availability refused the request. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

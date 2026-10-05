@@ -10,10 +10,17 @@ import { usePolling } from "@/lib/usePolling";
 
 type Helper = NodeHelper & {
   online: boolean;
-  ready: boolean;
-  supported: boolean | null;
+  ready?: boolean;
+  supported?: boolean | null;
   reason?: string | null;
   account?: string | null;
+  /** A job site (remote-nodes.md §3.3): its folders and who may use them are
+   * its owner's. In production mode only that it exists and whether it is
+   * online is shown (`hidden`); dev mode shows its folders, read-only, and
+   * lets the owner give themselves access. */
+  jobSite?: boolean;
+  hidden?: boolean;
+  ownerName?: string | null;
 };
 const button =
   "action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm disabled:opacity-40";
@@ -63,9 +70,13 @@ export function NodeHelpers({
         </p>
       )}
       {helpers?.length === 0 && <p>No enrolled machines yet.</p>}
-      {helpers?.map((helper) => (
-        <HelperMachine key={helper.node} helper={helper} onChanged={load} />
-      ))}
+      {helpers?.map((helper) =>
+        helper.jobSite ? (
+          <JobSiteMachine key={helper.node} helper={helper} onChanged={load} />
+        ) : (
+          <HelperMachine key={helper.node} helper={helper} onChanged={load} />
+        ),
+      )}
       {helpers && people.length > 0 && (
         <div className="flex flex-col gap-3 border-t border-[color:var(--border)] pt-4">
           <label className="flex flex-col gap-1 text-sm">
@@ -100,6 +111,69 @@ export function NodeHelpers({
         conversations intact.
       </p>
     </section>
+  );
+}
+
+function JobSiteMachine({ helper, onChanged }: { helper: Helper; onChanged: () => Promise<void> }) {
+  const [error, setError] = useState<string | null>(null);
+  const endpoint = `/v1/node-helpers/${encodeURIComponent(helper.node)}`;
+  return (
+    <details
+      className="rounded-[var(--radius)] border border-[color:var(--border)] p-3"
+      data-testid={`job-site-files-${helper.node}`}
+    >
+      <summary className="font-ui cursor-pointer text-sm font-semibold">
+        {helper.node} · job site of {helper.ownerName ?? "a person"} ·{" "}
+        {helper.online ? "Online" : "Offline"}
+      </summary>
+      <div className="mt-3 flex flex-col gap-3 text-sm">
+        <p>
+          A job site&apos;s folders, and who may use them, are its owner&apos;s: they manage them
+          from Workbench (Job sites).
+          {helper.hidden
+            ? " This install is in production mode, so they are not shown here."
+            : " This install is in dev mode, so they are shown, and you may give yourself access."}
+        </p>
+        {error && (
+          <p role="alert" className="status-error">
+            {error}
+          </p>
+        )}
+        {!helper.hidden &&
+          helper.folders.map((folder) => (
+            <div
+              key={folder.id}
+              className="flex flex-col gap-2 border-t border-[color:var(--border)] pt-2"
+            >
+              <p className="font-semibold">
+                {folder.name} · {folder.writable ? "Text writes allowed" : "Read only"}
+              </p>
+              <p className="break-all text-[color:var(--muted)]">{folder.path}</p>
+              <label className="flex flex-wrap items-center gap-2">
+                Your Workbench access (dev mode only)
+                <select
+                  aria-label={`Owner access to ${folder.name} on ${helper.node}`}
+                  className={input}
+                  value={folder.ownerAccess}
+                  onChange={(e) => {
+                    setError(null);
+                    api
+                      .patch("control", `${endpoint}/folders/${folder.id}`, {
+                        ownerAccess: e.target.value,
+                      })
+                      .then(onChanged)
+                      .catch((problem) => setError(describeError(problem)));
+                  }}
+                >
+                  <option value="none">No access</option>
+                  <option value="read">Read only</option>
+                  {folder.writable && <option value="write">Read and write text</option>}
+                </select>
+              </label>
+            </div>
+          ))}
+      </div>
+    </details>
   );
 }
 
@@ -289,9 +363,10 @@ function PersonFolders({
   const [grants, setGrants] = useState<HelperGrant[]>(person.helperGrants || []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const folders = helpers.flatMap((helper) =>
-    helper.folders.map((folder) => ({ ...folder, node: helper.node })),
-  );
+  // A job site's folders are granted by its owner, never from here.
+  const folders = helpers
+    .filter((helper) => !helper.jobSite)
+    .flatMap((helper) => helper.folders.map((folder) => ({ ...folder, node: helper.node })));
   const missing = grants.filter((grant) => !folders.some((f) => f.id === grant.folderId));
   return (
     <form

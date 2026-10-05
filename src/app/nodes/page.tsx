@@ -82,6 +82,14 @@ interface NodeRow {
   signingPublicKey?: string | null;
   advertiseSequence?: number | null;
   devices?: { kind?: string; name?: string | null; memoryTotalBytes?: number | null }[] | null;
+  grants?: string[] | null;
+  ownerName?: string | null;
+  lastContactAt?: string | null;
+}
+
+/** A job site (remote-nodes.md §3.2): files only, no address, never probed. */
+function isJobSite(n: NodeRow): boolean {
+  return Boolean(n.grants?.includes("files"));
 }
 
 /** What a node serves, from the two views that know: the control root's
@@ -100,6 +108,15 @@ interface MintedToken {
   token: string;
   expiresAt: string;
   nodeName?: string | null;
+  owner?: string | null;
+  rootKey?: string | null;
+}
+
+interface PersonRow {
+  id: string;
+  name: string;
+  displayName?: string | null;
+  disabled?: boolean;
 }
 
 /** An outstanding token, as the root lists it: never the token itself. */
@@ -190,6 +207,17 @@ export default function NodesPage() {
   const [outstanding, setOutstanding] = useState<TokenRecord[]>([]);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [newNodeName, setNewNodeName] = useState("");
+  // Whose machine a new join is for: empty for an ordinary node, or the
+  // person a job site belongs to. Eugene's owner invites; the person owns,
+  // and confirms at the machine with their own password (§3.3, rule 1).
+  const [siteOwner, setSiteOwner] = useState("");
+  const [people, setPeople] = useState<PersonRow[]>([]);
+  useEffect(() => {
+    api
+      .get<{ people: PersonRow[] }>("control", "/v1/people")
+      .then((data) => setPeople(data.people.filter((p) => !p.disabled)))
+      .catch(() => setPeople([]));
+  }, []);
   const [controlUrl, setControlUrl] = useState("");
   /** The control root's own machine, as the registry lists it: what every port guess starts from. */
   const [rootAgentUrl, setRootAgentUrl] = useState<string | null>(null);
@@ -335,7 +363,10 @@ export default function NodesPage() {
     setMintError(null);
     setMinted(null);
     try {
-      const body = newNodeName.trim() ? { nodeName: newNodeName.trim() } : {};
+      const body = {
+        ...(newNodeName.trim() ? { nodeName: newNodeName.trim() } : {}),
+        ...(siteOwner ? { grants: ["files"], owner: siteOwner } : {}),
+      };
       setMinted(await api.post<MintedToken>("control", "/v1/nodes/join-token", body));
       await loadTokens();
     } catch (e) {
@@ -391,6 +422,13 @@ export default function NodesPage() {
         controlUrl: controlUrl.trim() || `http://<this-host>:${ports.control}`,
         token: minted.token,
         nodeName: minted.nodeName,
+        jobSite:
+          minted.owner && minted.rootKey
+            ? {
+                owner: people.find((p) => p.id === minted.owner)?.name ?? minted.owner,
+                rootKey: minted.rootKey,
+              }
+            : null,
       }
     : null;
   const joinCommands = joinDetails
@@ -519,11 +557,24 @@ export default function NodesPage() {
                     {nodes.map((n) => (
                       <tr key={n.name} className="border-t border-[color:var(--border)]">
                         <td className="py-2 pr-4 font-medium">{n.name}</td>
-                        <td className="py-2 pr-4 text-[color:var(--muted)]">{n.role}</td>
-                        <td className="py-2 pr-4 font-mono text-xs">
-                          {n.url ?? (
-                            <span className="text-[color:var(--muted)]">none recorded</span>
+                        <td className="py-2 pr-4 text-[color:var(--muted)]">
+                          {isJobSite(n) ? (
+                            <span data-testid="job-site-role">
+                              job site{n.ownerName ? ` of ${n.ownerName}` : ""}
+                            </span>
+                          ) : (
+                            n.role
                           )}
+                        </td>
+                        <td className="py-2 pr-4 font-mono text-xs">
+                          {n.url ??
+                            (isJobSite(n) ? (
+                              <span className="font-ui text-[color:var(--muted)]">
+                                connects out only
+                              </span>
+                            ) : (
+                              <span className="text-[color:var(--muted)]">none recorded</span>
+                            ))}
                           {/* A node that has re-advertised has moved at least
                           once. Surfaced because a changed address used to
                           be invisible until routing failed. */}
@@ -539,7 +590,17 @@ export default function NodesPage() {
                             looked", and a root that has just been unlocked is
                             always the second -- which read as every node being
                             down for a poll interval. See `nodeLiveness.ts`. */}
-                          <LivenessCell node={n} />
+                          {isJobSite(n) ? (
+                            // Never probed: nothing connects to a job site.
+                            // Its status is when it last reached this root.
+                            <span data-testid="job-site-contact">
+                              {n.lastContactAt
+                                ? `last contact ${timeAgo(n.lastContactAt)}`
+                                : "no contact yet"}
+                            </span>
+                          ) : (
+                            <LivenessCell node={n} />
+                          )}
                           {/* When the root last heard from it. Always on the
                             wire and never shown, so a node that was down read
                             the same whether it left a minute or a week ago. */}
@@ -676,6 +737,22 @@ export default function NodesPage() {
             </p>
 
             <div className="mb-4 flex flex-wrap items-end gap-3">
+              <label className="font-ui text-sm">
+                <span className="mb-1 block text-[color:var(--muted)]">Whose machine</span>
+                <select
+                  value={siteOwner}
+                  onChange={(e) => setSiteOwner(e.target.value)}
+                  data-testid="join-site-owner"
+                  className="w-56 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 text-sm"
+                >
+                  <option value="">An install machine (runs models)</option>
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      A job site of {p.displayName || p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="font-ui text-sm">
                 <span className="mb-1 block text-[color:var(--muted)]">Node name (optional)</span>
                 <input

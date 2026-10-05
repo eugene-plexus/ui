@@ -56,6 +56,7 @@ interface Fields {
   consoleDirect: boolean;
   inference: boolean;
   nodes: boolean;
+  publicNodes: boolean;
   proxies: string;
   proxyTls: boolean;
   email: string;
@@ -80,6 +81,7 @@ const EMPTY: Fields = {
   // host and a certificate more.
   inference: false,
   nodes: false,
+  publicNodes: false,
   proxies: "",
   proxyTls: false,
   email: "",
@@ -123,6 +125,7 @@ export function fieldsFrom(configuration: Record<string, unknown> | undefined): 
     consoleDirect: configuration?.console_direct === true,
     inference: Boolean(configuration?.inference),
     nodes: Boolean(configuration?.nodes),
+    publicNodes: configuration?.public_nodes === true,
     proxies: (proxy?.addresses ?? []).join(", "),
     proxyTls: proxy?.transport === "https",
     email: acme?.email ?? "",
@@ -202,6 +205,7 @@ export function AccessSetup() {
   const [terms, setTerms] = useState(false);
   const [staging, setStaging] = useState(false);
   const [risksRead, setRisksRead] = useState(false);
+  const [nodeRisksRead, setNodeRisksRead] = useState(false);
   const generation = useRef(0);
   const {
     mode,
@@ -213,6 +217,7 @@ export function AccessSetup() {
     consoleDirect,
     inference,
     nodes,
+    publicNodes,
     proxies,
     proxyTls,
     email,
@@ -302,6 +307,7 @@ export function AccessSetup() {
       workbench: service("workbench", publicWorkbench ? PUBLIC : privateAccess),
       ...(inference ? { inference: service("inference", privateAccess) } : {}),
       ...(nodes ? { nodes: service("nodes", privateAccess) } : {}),
+      ...(nodes && publicNodes ? { public_nodes: true } : {}),
       ...(mode === "local" ? { internal_ca: true } : {}),
       ...(mode === "automatic" ? { acme: { email, accept_terms: terms, staging } } : {}),
       ...(mode === "proxy"
@@ -685,6 +691,62 @@ export function AccessSetup() {
             </span>
           </span>
         </label>
+        {nodes && (
+          <label className="flex items-start gap-2 pl-6">
+            <input
+              className="mt-1.5"
+              type="checkbox"
+              checked={publicNodes}
+              data-testid="public-nodes"
+              onChange={(e) => {
+                set("publicNodes", e.target.checked);
+                setNodeRisksRead(false);
+              }}
+            />
+            <span>
+              Let job sites join from any network
+              <span className={hintClass}>
+                People’s own machines, anywhere, use Workbench’s file tools through this name. It
+                answers them for joining and the file helper only; the console and everything else
+                stay on your networks.
+              </span>
+            </span>
+          </label>
+        )}
+        {nodes && publicNodes && (
+          <div
+            className="status-warn rounded-[var(--radius)] px-4 py-3"
+            role="group"
+            aria-label="Risks of letting job sites join from any network"
+          >
+            <p className="font-semibold">What this risks</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>
+                The internet can reach Eugene’s control root on this name, for six paths: joining
+                with a token, the trust bundle and the file helper’s three calls, each with a
+                machine’s own key. A flaw found later in them would be reachable from anywhere.
+              </li>
+              <li>
+                A leaked join token lets someone join a machine as a job site within its 15 minutes,
+                if they also know the invited person’s password. It is listed on Nodes, runs nothing
+                and gets no folders until its owner grants them.
+              </li>
+              <li>
+                Forward this port to Eugene on your router. Without a public certificate, machines
+                trust this one by the key in their join command, so no outside service is needed.
+              </li>
+            </ul>
+            <label className="mt-3 flex gap-2">
+              <input
+                type="checkbox"
+                required
+                checked={nodeRisksRead}
+                onChange={(e) => setNodeRisksRead(e.target.checked)}
+              />
+              I understand that anyone on the internet can reach these six paths
+            </label>
+          </div>
+        )}
         {mode === "proxy" && (
           <>
             <label className="block">

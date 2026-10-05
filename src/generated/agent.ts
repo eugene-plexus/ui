@@ -2477,6 +2477,15 @@ export interface components {
         NodeIdentity: {
             entrypoint?: components["schemas"]["PublicEntryPoint"];
             /**
+             * @description True when this machine joined as a Job Site
+             *     (`docs/design/remote-nodes.md` §3.2): it connects out to the
+             *     root and nothing connects to it, it announces no address, and
+             *     it runs no inference work. Declaring a runtime, installing an
+             *     engine, starting a benchmark or a profile build here answers
+             *     409. Its files are managed by its owner, from Workbench.
+             */
+            jobSite?: boolean;
+            /**
              * @description False on a fresh agent, and not an error state — supervision
              *     works without a trust relationship, which is what lets the
              *     agent on the control host boot first and start the control
@@ -5074,6 +5083,17 @@ export interface components {
             inferenceUrl?: string;
             /** Format: uri */
             nodesUrl?: string;
+            /**
+             * @description The nodes name also answers machines on any network, for the
+             *     node paths only (`public_nodes`, J3,
+             *     `docs/design/remote-nodes.md` §3.1): joining as a Job Site,
+             *     the trust bundle with a node's token, the signed TLS key list,
+             *     and the file helper's poll, claim and result. Every other path
+             *     on that name is refused with a sentence naming the console.
+             *     The networks listed for the name keep the whole control API,
+             *     as before. Set only with an acknowledgement of the risks.
+             */
+            publicNodes?: boolean;
         };
         /**
          * @description What an app is, how to install it, and what it needs from the hub.

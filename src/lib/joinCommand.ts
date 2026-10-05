@@ -181,6 +181,10 @@ export interface JoinDetails {
   controlUrl: string;
   token: string;
   nodeName?: string | null;
+  /** A job site (remote-nodes.md §3.2): whose machine it is, by how they sign
+   * in, and the root's identity key the machine pins (J7a). The person types
+   * their own password at the machine; the command never carries one. */
+  jobSite?: { owner: string; rootKey: string } | null;
 }
 
 /** Characters both shells take as one plain word, so nothing needs quoting. */
@@ -208,15 +212,29 @@ function shellWord(value: string): string {
  * lines with `\`, which PowerShell rejects ("Missing expression after
  * unary operator '--'").
  */
-export function windowsJoinCommand({ controlUrl, token, nodeName }: JoinDetails): string {
+export function windowsJoinCommand({ controlUrl, token, nodeName, jobSite }: JoinDetails): string {
   const args = [`-Join ${powershellWord(controlUrl)}`, `-Token ${powershellWord(token)}`];
+  if (jobSite) {
+    args.push(
+      "-JobSite",
+      `-Owner ${powershellWord(jobSite.owner)}`,
+      `-RootKey ${powershellWord(jobSite.rootKey)}`,
+    );
+  }
   if (nodeName) args.push(`-NodeName ${powershellWord(nodeName)}`);
   return `& ([scriptblock]::Create((irm ${INSTALLER_BASE}/install.ps1))) ${args.join(" ")}`;
 }
 
 /** The same join on Linux or macOS, as `tailnet.md` gives it. */
-export function posixJoinCommand({ controlUrl, token, nodeName }: JoinDetails): string {
+export function posixJoinCommand({ controlUrl, token, nodeName, jobSite }: JoinDetails): string {
   const args = [`--join ${shellWord(controlUrl)}`, `--token ${shellWord(token)}`];
+  if (jobSite) {
+    args.push(
+      "--job-site",
+      `--owner ${shellWord(jobSite.owner)}`,
+      `--root-key ${shellWord(jobSite.rootKey)}`,
+    );
+  }
   if (nodeName) args.push(`--name ${shellWord(nodeName)}`);
   return `curl -fsSL ${INSTALLER_BASE}/install.sh | sh -s -- ${args.join(" ")}`;
 }
