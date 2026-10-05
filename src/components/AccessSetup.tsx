@@ -13,6 +13,38 @@ const hintClass = "mt-1 block text-sm text-[color:var(--muted)]";
 const networks = (value: string) => value.split(/[\s,]+/).filter(Boolean);
 const PUBLIC = ["0.0.0.0/0", "::/0"];
 
+function ipv4(text: string): number | null {
+  const parts = text.split(".");
+  if (parts.length !== 4 || !parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255)) {
+    return null;
+  }
+  return parts.reduce((value, part) => value * 256 + Number(part), 0);
+}
+
+/** Each trusted proxy address that lies inside an allowed network (ui #16).
+ * Allowed networks are matched against the people's addresses, read after
+ * the proxy, so a network holding the proxy usually means the two fields
+ * were swapped. Usually, not always: a proxy on another machine can share
+ * the LAN with the people. IPv4 only; anything unparsed is skipped. */
+export function proxiesInsideNetworks(
+  proxies: string[],
+  allowed: string[],
+): { proxy: string; network: string }[] {
+  const found: { proxy: string; network: string }[] = [];
+  for (const proxy of proxies) {
+    const address = ipv4(proxy);
+    if (address === null) continue;
+    for (const network of allowed) {
+      const [base, bits = "32", ...rest] = network.split("/");
+      const start = ipv4(base!);
+      if (start === null || rest.length || !/^\d{1,2}$/.test(bits) || Number(bits) > 32) continue;
+      const size = 2 ** (32 - Number(bits));
+      if (Math.floor(address / size) === Math.floor(start / size)) found.push({ proxy, network });
+    }
+  }
+  return found;
+}
+
 /** The form's fields, read back from the configuration in effect. */
 interface Fields {
   mode: Mode;
@@ -676,6 +708,21 @@ export function AccessSetup() {
                 . Give the proxy a fixed address there, so it does not change.
               </span>
             </label>
+            {proxiesInsideNetworks(networks(proxies), networks(privateNetworks)).map(
+              ({ proxy, network }) => (
+                <p
+                  key={proxy + " " + network}
+                  className="status-warn rounded-[var(--radius)] px-4 py-3"
+                  role="note"
+                >
+                  Your proxy, {proxy}, is inside {network} in Allowed private networks. Those
+                  networks are checked against the people using Eugene, not the proxy. If {network}{" "}
+                  is the Docker network your proxy shares with Eugene, no one connects from it: put
+                  your home or VPN network there instead. If your proxy is on another machine on the
+                  same network as the people using it, this is fine.
+                </p>
+              ),
+            )}
             <label className="flex gap-2">
               <input
                 type="checkbox"

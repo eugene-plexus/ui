@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { AccessSetup, fieldsFrom } from "./AccessSetup";
+import { AccessSetup, fieldsFrom, proxiesInsideNetworks } from "./AccessSetup";
 import { api } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
@@ -344,4 +344,33 @@ it("comes back by itself after applying a setup that keeps the console here", as
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("finds a trusted proxy inside an allowed network, at the network's edges too", () => {
+  expect(proxiesInsideNetworks(["172.18.0.4"], ["172.18.0.0/16", "192.168.16.0/24"])).toEqual([
+    { proxy: "172.18.0.4", network: "172.18.0.0/16" },
+  ]);
+  expect(proxiesInsideNetworks(["10.0.0.255"], ["10.0.0.0/24"])).toHaveLength(1);
+  expect(proxiesInsideNetworks(["10.0.1.0"], ["10.0.0.0/24"])).toEqual([]);
+  expect(proxiesInsideNetworks(["10.0.0.7"], ["10.0.0.7"])).toHaveLength(1);
+  expect(proxiesInsideNetworks(["200.1.2.3"], ["0.0.0.0/0"])).toHaveLength(1);
+  expect(
+    proxiesInsideNetworks(
+      ["fd00::1", "nope", "10.0.0.7", "10.0.0.300"],
+      ["fd00::/8", "10.0.0.7/33", "10.0.0.7/32/8", "10.0.1.44"],
+    ),
+  ).toEqual([]);
+});
+
+it("warns when the proxy's address is inside the allowed networks (ui #16)", async () => {
+  render(<AccessSetup />);
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText(/Allowed private networks/), "172.18.2.0/24");
+  await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.18.0.4");
+  expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  await user.clear(screen.getByLabelText(/Allowed private networks/));
+  await user.type(screen.getByLabelText(/Allowed private networks/), "172.18.0.0/16");
+  expect(await screen.findByRole("note")).toHaveTextContent(
+    "Your proxy, 172.18.0.4, is inside 172.18.0.0/16",
+  );
 });
