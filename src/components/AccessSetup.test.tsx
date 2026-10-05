@@ -233,3 +233,41 @@ it("reads back only configurations it could have made", () => {
     inference: false,
   });
 });
+
+it("opens the console to any network only after its risks are acknowledged", async () => {
+  vi.mocked(api.post).mockResolvedValue(PREVIEW);
+  render(<AccessSetup />);
+  const user = await fillCommon();
+  await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
+  expect(screen.queryByRole("group", { name: /Risks of a console/ })).not.toBeInTheDocument();
+  await user.click(screen.getByLabelText(/Allow the console from any network/));
+  const risks = screen.getByRole("group", { name: /Risks of a console/ });
+  expect(risks).toHaveTextContent("Anyone on the internet can open the console’s sign-in page");
+  expect(risks).toHaveTextContent("5 wrong passphrases a minute");
+  expect(risks).toHaveTextContent("14 days");
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  expect(api.post).not.toHaveBeenCalled();
+  await user.click(screen.getByLabelText(/I understand that anyone on the internet/));
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  await screen.findByRole("region", { name: "Prepared setup" });
+  const body = vi.mocked(api.post).mock.calls[0]![2] as { configuration: Record<string, unknown> };
+  expect(body.configuration.public_console).toBe(true);
+  expect(body.configuration.console).toEqual({
+    origin: "https://eugene.example.org",
+    networks: ["0.0.0.0/0", "::/0"],
+  });
+  // Unticking it asks again next time.
+  await user.click(screen.getByLabelText(/Allow the console from any network/));
+  await user.click(screen.getByLabelText(/Allow the console from any network/));
+  expect(screen.getByLabelText(/I understand that anyone on the internet/)).not.toBeChecked();
+});
+
+it("reads back a console open to any network", () => {
+  const read = fieldsFrom({
+    proxy: { addresses: ["172.18.0.4"] },
+    public_console: true,
+    console: { origin: "https://eugene.example.org", networks: ["0.0.0.0/0", "::/0"] },
+    workbench: { origin: "https://workbench.example.org", networks: ["0.0.0.0/0", "::/0"] },
+  });
+  expect(read).toMatchObject({ publicConsole: true, mode: "proxy" });
+});

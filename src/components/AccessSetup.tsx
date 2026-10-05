@@ -20,6 +20,7 @@ interface Fields {
   port: string;
   privateNetworks: string;
   publicWorkbench: boolean;
+  publicConsole: boolean;
   inference: boolean;
   nodes: boolean;
   proxies: string;
@@ -36,6 +37,7 @@ const EMPTY: Fields = {
   port: "443",
   privateNetworks: "",
   publicWorkbench: false,
+  publicConsole: false,
   // Two names by default (2026-10-05): the console and Workbench. Inference
   // and node names are for setups that need them, each a DNS entry, a proxy
   // host and a certificate more.
@@ -80,6 +82,7 @@ export function fieldsFrom(configuration: Record<string, unknown> | undefined): 
     port: url.port || "443",
     privateNetworks: (console_.networks ?? []).join(", "),
     publicWorkbench: PUBLIC.every((n) => workbench?.networks?.includes(n)),
+    publicConsole: configuration?.public_console === true,
     inference: Boolean(configuration?.inference),
     nodes: Boolean(configuration?.nodes),
     proxies: (proxy?.addresses ?? []).join(", "),
@@ -147,6 +150,7 @@ export function AccessSetup() {
   const [restarting, setRestarting] = useState<Status | null>(null);
   const [terms, setTerms] = useState(false);
   const [staging, setStaging] = useState(false);
+  const [risksRead, setRisksRead] = useState(false);
   const generation = useRef(0);
   const {
     mode,
@@ -154,6 +158,7 @@ export function AccessSetup() {
     port,
     privateNetworks,
     publicWorkbench,
+    publicConsole,
     inference,
     nodes,
     proxies,
@@ -208,7 +213,8 @@ export function AccessSetup() {
     const privateAccess = networks(privateNetworks);
     const configuration = {
       listen_port: mode === "proxy" && !proxyTls ? 8088 : 8443,
-      console: service("eugene", privateAccess),
+      console: service("eugene", publicConsole ? PUBLIC : privateAccess),
+      ...(publicConsole ? { public_console: true } : {}),
       workbench: service("workbench", publicWorkbench ? PUBLIC : privateAccess),
       ...(inference ? { inference: service("inference", privateAccess) } : {}),
       ...(nodes ? { nodes: service("nodes", privateAccess) } : {}),
@@ -431,9 +437,71 @@ export function AccessSetup() {
             Where the people and machines that use the console are: your home or office network, or
             your VPN. Not your proxy’s Docker network. Through Cloudflare, every visitor looks like
             Cloudflare, so to reach the console from home, point its name at your proxy in your
-            local DNS.
+            local DNS, or allow the console from any network below.
           </span>
         </label>
+        <label className="flex items-start gap-2">
+          <input
+            className="mt-1.5"
+            type="checkbox"
+            checked={publicConsole}
+            onChange={(e) => {
+              set("publicConsole", e.target.checked);
+              setRisksRead(false);
+            }}
+          />
+          <span>
+            Allow the console from any network, with sign-in
+            <span className={hintClass}>
+              Off: only the networks above can open the console. Safer ways to reach it from outside
+              are a VPN such as Tailscale, or Cloudflare Access in front of the console’s name.
+            </span>
+          </span>
+        </label>
+        {publicConsole && (
+          <div
+            className="status-warn rounded-[var(--radius)] px-4 py-3"
+            role="group"
+            aria-label="Risks of a console open to any network"
+          >
+            <p className="font-semibold">What this risks</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>
+                Anyone on the internet can open the console’s sign-in page and try passphrases. Your
+                passphrase is then all that stands between them and the whole install: its models,
+                backends and their keys, Library folders, apps, people’s accounts and connected
+                machines.
+              </li>
+              <li>
+                Eugene allows 5 wrong passphrases a minute from each visitor address. Behind
+                Cloudflare or a similar service, visitors share that service’s addresses, so an
+                attacker spread across them gets more tries, and other people’s wrong guesses can
+                lock you out for a minute.
+              </li>
+              <li>
+                A signed-in console stays signed in for 14 days, from wherever it is, until you sign
+                out.
+              </li>
+              <li>
+                A flaw found later in the console or its API would be reachable from the internet,
+                not just your network.
+              </li>
+            </ul>
+            <p className="mt-2">
+              If you do it, use a long passphrase you use nowhere else, and check Logs for failed
+              sign-ins. Connections from other machines stay limited to your networks either way.
+            </p>
+            <label className="mt-3 flex gap-2">
+              <input
+                type="checkbox"
+                required
+                checked={risksRead}
+                onChange={(e) => setRisksRead(e.target.checked)}
+              />
+              I understand that anyone on the internet can try to sign in to the console
+            </label>
+          </div>
+        )}
         <label className="flex gap-2">
           <input
             type="checkbox"

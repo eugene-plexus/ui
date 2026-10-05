@@ -83,6 +83,14 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/access/`);
   await expect(page.getByRole("heading", { name: "Container access setup" })).toBeVisible();
   await expect(page.getByRole("region", { name: "In effect" })).toContainText("direct ports");
+  // The console from any network: off by default, its risks spelled out when ticked.
+  await page.getByRole("checkbox", { name: /Allow the console from any network/ }).check();
+  const risks = page.getByRole("group", { name: "Risks of a console open to any network" });
+  await expect(risks).toContainText("Anyone on the internet can open the console");
+  await expect(page.getByLabel("I understand", { exact: false })).not.toBeChecked();
+  await risks.screenshot({ path: join(output, "public-console-risks.png") });
+  await page.getByRole("checkbox", { name: /Allow the console from any network/ }).uncheck();
+  await expect(risks).toHaveCount(0);
   await page.getByLabel("Base domain", { exact: false }).fill("example.org");
   await page.getByLabel("Allowed private networks", { exact: false }).fill("192.168.16.0/24");
   await page.getByLabel("Trusted proxy IP addresses", { exact: false }).fill("172.30.0.2");
