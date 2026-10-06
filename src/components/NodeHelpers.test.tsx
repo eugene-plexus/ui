@@ -34,7 +34,7 @@ const base = {
   ],
 };
 
-function stub(helper = base) {
+function stub(helper: Record<string, unknown> = base) {
   const mutations: { path: string; body: unknown }[] = [];
   vi.stubGlobal(
     "fetch",
@@ -108,6 +108,24 @@ describe("central node folders", () => {
     fireEvent.click(await screen.findByText(/desktop · File support off/));
     expect(screen.getByRole("button", { name: "Enable file support" })).toBeDisabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says a job site's owner has not let Eugene's owner in, in dev mode", async () => {
+    const site = { ...base, jobSite: true, hidden: false, ownerName: "ada", ownerInDevMode: false };
+    stub(site);
+    render(<NodeHelpers people={[]} onChanged={async () => {}} />);
+    fireEvent.click(await screen.findByText(/desktop · job site of ada/));
+    expect(screen.getByTestId("job-site-closed-desktop")).toHaveTextContent(
+      "ada has not let Eugene's owner in on this machine",
+    );
+    expect(screen.getByLabelText("Owner access to Notes on desktop")).toHaveValue("none");
+  });
+
+  it("says nothing more once the site's owner has let Eugene's owner in", async () => {
+    stub({ ...base, jobSite: true, hidden: false, ownerName: "ada", ownerInDevMode: true });
+    render(<NodeHelpers people={[]} onChanged={async () => {}} />);
+    fireEvent.click(await screen.findByText(/desktop · job site of ada/));
+    expect(screen.queryByTestId("job-site-closed-desktop")).not.toBeInTheDocument();
   });
 
   it("requires deliberate cleanup of grants from removed folders", async () => {

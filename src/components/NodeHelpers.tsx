@@ -21,6 +21,9 @@ type Helper = NodeHelper & {
   jobSite?: boolean;
   hidden?: boolean;
   ownerName?: string | null;
+  /** Dev mode only: whether the site's owner lets Eugene's owner in there
+   * (J6e). Access given here works only if they do; null until it reports. */
+  ownerInDevMode?: boolean | null;
 };
 const button =
   "action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm disabled:opacity-40";
@@ -132,8 +135,15 @@ function JobSiteMachine({ helper, onChanged }: { helper: Helper; onChanged: () =
           from Workbench (Job sites).
           {helper.hidden
             ? " This install is in production mode, so they are not shown here."
-            : " This install is in dev mode, so they are shown, and you may give yourself access."}
+            : " This install is in dev mode, so they are shown, as the machine last reported them, and you may give yourself access."}
         </p>
+        {!helper.hidden && helper.ownerInDevMode !== true && (
+          <p data-testid={`job-site-closed-${helper.node}`}>
+            {helper.ownerInDevMode === false
+              ? `${helper.ownerName ?? "Its owner"} has not let Eugene's owner in on this machine, so access you give yourself here does nothing until they do (Workbench, Job sites). Dev mode alone opens nothing on a job site.`
+              : "This machine has not said yet whether its owner lets Eugene's owner in."}
+          </p>
+        )}
         {error && (
           <p role="alert" className="status-error">
             {error}
