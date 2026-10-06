@@ -95,8 +95,8 @@ describe("the registry agrees with the website", () => {
 });
 
 describe("every screen resolves", () => {
-  it("has twelve navigable screens", () => {
-    expect(SCREENS).toHaveLength(12);
+  it("has thirteen navigable screens", () => {
+    expect(SCREENS).toHaveLength(13);
   });
 
   it("puts Home at the root and the playground beside it, both under Your tools", () => {
@@ -202,8 +202,19 @@ describe("the groups are the page's two halves", () => {
       "/config",
       "/logs",
       "/nodes",
+      "/sites",
       "/people",
     ]);
+  });
+});
+
+describe("Job sites screen", () => {
+  it("files under the control root beside Machines, with its own icon", () => {
+    const sites = SCREENS.find((s) => s.href === "/sites");
+    expect(sites?.label).toBe("Job sites");
+    expect(sites?.layer).toBe("control");
+    expect(sites?.icon).toBe("Laptop");
+    expect(activeScreen("/sites/")?.href).toBe("/sites");
   });
 });
 

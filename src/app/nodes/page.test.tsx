@@ -70,6 +70,8 @@ let mintBody: { id: string; token: string; expiresAt: string; nodeName?: string 
 /** A node list to use instead of `NODES`, when set. */
 let nodesBody: typeof NODES | null;
 let nodeIdentityBody: Record<string, unknown> | null;
+/** What `GET /v1/sites` answers: job sites are their own enrollment (J19). */
+let sitesBody: { sites: Record<string, unknown>[] };
 
 beforeEach(() => {
   sealed = true;
@@ -78,6 +80,7 @@ beforeEach(() => {
   tokenRows = [];
   nodesBody = null;
   nodeIdentityBody = null;
+  sitesBody = { sites: [] };
   mintBody = {
     id: "jt-1",
     token: "eyJ.join.token",
@@ -104,6 +107,7 @@ beforeEach(() => {
       // Before `/v1/nodes` — it is a prefix of this one, and answering
       // the node list here is the same collision the control root's own
       // router had.
+      if (url.includes("/v1/sites")) return json({ ...sitesBody, installMode: "production" });
       if (url.includes("/v1/nodes/join-token") && method === "POST") return json(mintBody);
       if (url.includes("/v1/nodes/join-tokens")) return json({ tokens: tokenRows });
       if (url.includes("/v1/nodes") && nodesBody) return json(nodesBody);
@@ -771,5 +775,73 @@ describe("versions, and updating a machine from here (2026-09-27)", () => {
         "/api/proxy/node:Amish_Station/v1/node/update/check",
       ),
     );
+  });
+});
+
+describe("job sites are not machines (J19)", () => {
+  beforeEach(() => {
+    sealed = false;
+  });
+
+  it("offers no job-site choice when making a join token", async () => {
+    render(<NodesPage />);
+    await screen.findAllByText("Amish_Station");
+    expect(screen.queryByTestId("join-site-owner")).toBeNull();
+    expect(screen.queryByText(/A job site of/)).toBeNull();
+  });
+
+  it("never reads a node as a job site, whatever its grants say", async () => {
+    nodesBody = {
+      nodes: [
+        { name: "unraid", role: "control", reachable: true, url: "http://192.168.16.252:8283" },
+        {
+          name: "old-site",
+          role: "worker",
+          reachable: true,
+          grants: ["files"],
+          url: "http://10.0.0.5:8079",
+        },
+      ],
+    } as never;
+    render(<NodesPage />);
+    await screen.findAllByText("old-site");
+    expect(screen.queryByTestId("job-site-role")).toBeNull();
+    expect(screen.queryByTestId("job-site-contact")).toBeNull();
+    expect(screen.queryByText(/connects out only/)).toBeNull();
+  });
+
+  it("says a machine is also a job site, linking to it", async () => {
+    sitesBody = {
+      sites: [
+        {
+          id: "s-aaa",
+          label: "Amish_Station",
+          ownerName: "troy",
+          owner: "p-troy",
+          hostNode: "Amish_Station",
+        },
+        { id: "s-bbb", label: "Elsewhere", ownerName: "ada", owner: "p-ada", hostNode: null },
+      ],
+    };
+    render(<NodesPage />);
+    const line = await screen.findByTestId("node-site-Amish_Station");
+    expect(line).toHaveTextContent("Also a job site: troy’s");
+    expect(within(line).getByRole("link")).toHaveAttribute("href", "/sites?sel=site%3As-aaa");
+    // The other machine hosts no site, and a site with no host is nobody's line.
+    expect(screen.queryByTestId("node-site-unraid")).toBeNull();
+  });
+
+  it("labels a job site's invitation in the outstanding list", async () => {
+    tokenRows = [
+      {
+        id: "jt-9",
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+        used: false,
+        kind: "site",
+      },
+    ] as never;
+    render(<NodesPage />);
+    const row = await screen.findByTestId("token-row");
+    expect(within(row).getByTestId("token-site")).toHaveTextContent("job site");
   });
 });

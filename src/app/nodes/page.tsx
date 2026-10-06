@@ -48,6 +48,8 @@ import {
 } from "@/lib/joinCommand";
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
 import { timeAgo, timeUntil } from "@/lib/relativeTime";
+import { siteHref, sitesHostedBy } from "@/lib/sites";
+import type { Site, SiteList } from "@/lib/types";
 import { useNodeUpdates } from "@/lib/useNodeUpdates";
 import { usePolling } from "@/lib/usePolling";
 import { expertHint } from "@/lib/vocabulary";
@@ -83,13 +85,6 @@ interface NodeRow {
   advertiseSequence?: number | null;
   devices?: { kind?: string; name?: string | null; memoryTotalBytes?: number | null }[] | null;
   grants?: string[] | null;
-  ownerName?: string | null;
-  lastContactAt?: string | null;
-}
-
-/** A job site (remote-nodes.md §3.2): files only, no address, never probed. */
-function isJobSite(n: NodeRow): boolean {
-  return Boolean(n.grants?.includes("files"));
 }
 
 /** What a node serves, from the two views that know: the control root's
@@ -108,15 +103,6 @@ interface MintedToken {
   token: string;
   expiresAt: string;
   nodeName?: string | null;
-  owner?: string | null;
-  rootKey?: string | null;
-}
-
-interface PersonRow {
-  id: string;
-  name: string;
-  displayName?: string | null;
-  disabled?: boolean;
 }
 
 /** An outstanding token, as the root lists it: never the token itself. */
@@ -125,6 +111,8 @@ interface TokenRecord {
   expiresAt: string;
   nodeName?: string | null;
   used: boolean;
+  /** A job site's invitation is listed here too, and withdrawn the same way. */
+  kind?: "node" | "site";
 }
 
 interface ControlStatus {
@@ -207,16 +195,14 @@ export default function NodesPage() {
   const [outstanding, setOutstanding] = useState<TokenRecord[]>([]);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [newNodeName, setNewNodeName] = useState("");
-  // Whose machine a new join is for: empty for an ordinary node, or the
-  // person a job site belongs to. Eugene's owner invites; the person owns,
-  // and confirms at the machine with their own password (§3.3, rule 1).
-  const [siteOwner, setSiteOwner] = useState("");
-  const [people, setPeople] = useState<PersonRow[]>([]);
+  // The job sites, for the "Also a job site" line under a machine that hosts
+  // one. Read once and soft: a root that cannot answer shows no line.
+  const [sites, setSites] = useState<Site[]>([]);
   useEffect(() => {
     api
-      .get<{ people: PersonRow[] }>("control", "/v1/people")
-      .then((data) => setPeople(data.people.filter((p) => !p.disabled)))
-      .catch(() => setPeople([]));
+      .get<SiteList>("control", "/v1/sites")
+      .then((data) => setSites(data.sites ?? []))
+      .catch(() => setSites([]));
   }, []);
   const [controlUrl, setControlUrl] = useState("");
   /** The control root's own machine, as the registry lists it: what every port guess starts from. */
@@ -365,7 +351,6 @@ export default function NodesPage() {
     try {
       const body = {
         ...(newNodeName.trim() ? { nodeName: newNodeName.trim() } : {}),
-        ...(siteOwner ? { grants: ["files"], owner: siteOwner } : {}),
       };
       setMinted(await api.post<MintedToken>("control", "/v1/nodes/join-token", body));
       await loadTokens();
@@ -422,13 +407,6 @@ export default function NodesPage() {
         controlUrl: controlUrl.trim() || `http://<this-host>:${ports.control}`,
         token: minted.token,
         nodeName: minted.nodeName,
-        jobSite:
-          minted.owner && minted.rootKey
-            ? {
-                owner: people.find((p) => p.id === minted.owner)?.name ?? minted.owner,
-                rootKey: minted.rootKey,
-              }
-            : null,
       }
     : null;
   const joinCommands = joinDetails
@@ -521,10 +499,12 @@ export default function NodesPage() {
 
           <section className="section-panel mb-6">
             <h2 className="section-heading font-ui text-base font-semibold">This install</h2>
-            <p className="mb-3 text-sm">
-              <Link href="/people#node-files" className="underline">
-                Manage Workbench file access on these machines
+            <p className="mb-3 text-sm text-[color:var(--muted)]">
+              A machine can also be a job site, which is listed on its own under{" "}
+              <Link href="/sites" className="underline">
+                Job sites
               </Link>
+              .
             </p>
             {nodes === null ? (
               <p className="text-sm text-[color:var(--muted)]">Loading…</p>
@@ -556,25 +536,26 @@ export default function NodesPage() {
                   <tbody>
                     {nodes.map((n) => (
                       <tr key={n.name} className="border-t border-[color:var(--border)]">
-                        <td className="py-2 pr-4 font-medium">{n.name}</td>
-                        <td className="py-2 pr-4 text-[color:var(--muted)]">
-                          {isJobSite(n) ? (
-                            <span data-testid="job-site-role">
-                              job site{n.ownerName ? ` of ${n.ownerName}` : ""}
-                            </span>
-                          ) : (
-                            n.role
-                          )}
+                        <td className="py-2 pr-4 font-medium">
+                          {n.name}
+                          {sitesHostedBy(sites, n.name).map((site) => (
+                            <div
+                              key={site.id}
+                              className="font-ui text-sm font-normal"
+                              data-testid={`node-site-${n.name}`}
+                            >
+                              <span className="text-[color:var(--muted)]">Also a job site: </span>
+                              <Link href={siteHref(site.id)} className="underline">
+                                {site.ownerName}&rsquo;s
+                              </Link>
+                            </div>
+                          ))}
                         </td>
+                        <td className="py-2 pr-4 text-[color:var(--muted)]">{n.role}</td>
                         <td className="py-2 pr-4 font-mono text-xs">
-                          {n.url ??
-                            (isJobSite(n) ? (
-                              <span className="font-ui text-[color:var(--muted)]">
-                                connects out only
-                              </span>
-                            ) : (
-                              <span className="text-[color:var(--muted)]">none recorded</span>
-                            ))}
+                          {n.url ?? (
+                            <span className="text-[color:var(--muted)]">none recorded</span>
+                          )}
                           {/* A node that has re-advertised has moved at least
                           once. Surfaced because a changed address used to
                           be invisible until routing failed. */}
@@ -590,17 +571,7 @@ export default function NodesPage() {
                             looked", and a root that has just been unlocked is
                             always the second -- which read as every node being
                             down for a poll interval. See `nodeLiveness.ts`. */}
-                          {isJobSite(n) ? (
-                            // Never probed: nothing connects to a job site.
-                            // Its status is when it last reached this root.
-                            <span data-testid="job-site-contact">
-                              {n.lastContactAt
-                                ? `last contact ${timeAgo(n.lastContactAt)}`
-                                : "no contact yet"}
-                            </span>
-                          ) : (
-                            <LivenessCell node={n} />
-                          )}
+                          <LivenessCell node={n} />
                           {/* When the root last heard from it. Always on the
                             wire and never shown, so a node that was down read
                             the same whether it left a minute or a week ago. */}
@@ -738,22 +709,6 @@ export default function NodesPage() {
 
             <div className="mb-4 flex flex-wrap items-end gap-3">
               <label className="font-ui text-sm">
-                <span className="mb-1 block text-[color:var(--muted)]">Whose machine</span>
-                <select
-                  value={siteOwner}
-                  onChange={(e) => setSiteOwner(e.target.value)}
-                  data-testid="join-site-owner"
-                  className="w-56 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 text-sm"
-                >
-                  <option value="">An install machine (runs models)</option>
-                  {people.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      A job site of {p.displayName || p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="font-ui text-sm">
                 <span className="mb-1 block text-[color:var(--muted)]">Node name (optional)</span>
                 <input
                   value={newNodeName}
@@ -882,7 +837,15 @@ export default function NodesPage() {
                     >
                       <span>
                         <span className="font-mono">{t.id}</span>
-                        {t.nodeName ? (
+                        {t.kind === "site" ? (
+                          <span data-testid="token-site">
+                            {" "}
+                            · invitation for a{" "}
+                            <Link href="/sites" className="underline">
+                              job site
+                            </Link>
+                          </span>
+                        ) : t.nodeName ? (
                           <>
                             {" "}
                             · for <span className="font-mono">{t.nodeName}</span>

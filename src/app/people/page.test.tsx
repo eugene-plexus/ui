@@ -54,6 +54,19 @@ beforeEach(() => {
       "GET control/v1/people",
       () => ({ status: 200, body: { people: [ADA], operatorName: "operator" } }),
     ],
+    [
+      "GET control/v1/sites",
+      () => ({
+        status: 200,
+        body: {
+          sites: [
+            { id: "s-1", label: "One", owner: "p-ada", ownerName: "Ada" },
+            { id: "s-2", label: "Two", owner: "p-ada", ownerName: "Ada" },
+          ],
+          installMode: "production",
+        },
+      }),
+    ],
     ["GET control/v1/oidc/clients", () => ({ status: 200, body: { clients: [WORKBENCH] } })],
     ["POST control/v1/people", () => ({ status: 201, body: { ...ADA, id: "p-new" } })],
     ["PATCH control/v1/people/p-ada", () => ({ status: 200, body: { ...ADA, disabled: true } })],
@@ -112,6 +125,24 @@ describe("people", () => {
     expect(within(row).getByTestId("person-state-Ada")).toHaveTextContent("Can sign in");
     expect(within(row).getByTestId("person-apps-Ada")).toHaveTextContent("Every app");
     expect(screen.getByText(/You sign in to apps as/)).toHaveTextContent("operator");
+  });
+
+  it("shows how many job sites a person owns, linking to them, and no folder access", async () => {
+    render(<PeoplePage />);
+    const row = await screen.findByTestId("person-Ada", {}, { timeout: 5000 });
+    const sites = await within(row).findByText("2 job sites");
+    expect(sites).toHaveAttribute("href", "/sites?owner=p-ada");
+    expect(row).toHaveAttribute("id", "person-p-ada");
+    // The Files on your machines section is gone (J19, J20).
+    expect(screen.queryByText("Files on your machines")).toBeNull();
+    expect(screen.queryByText(/Folder access for/)).toBeNull();
+  });
+
+  it("says a person with no job sites has none, and survives a root that lists none", async () => {
+    handlers.set("GET control/v1/sites", () => ({ status: 503, body: { detail: "locked" } }));
+    render(<PeoplePage />);
+    const row = await screen.findByTestId("person-Ada", {}, { timeout: 5000 });
+    expect(within(row).getByTestId("person-sites-Ada")).toHaveTextContent("None");
   });
 
   it("adds a person for every app unless apps are chosen", async () => {

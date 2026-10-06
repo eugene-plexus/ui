@@ -108,13 +108,18 @@ export function useTopology(): { topology: Topology; ready: boolean } {
   }, []);
 
   const load = useCallback(async () => {
-    const [local, node, placement, nodeNames] = await Promise.all([
+    const [local, node, placement, nodeNames, siteList] = await Promise.all([
       api.get<ComponentList>("agent", "/v1/components").catch(() => null),
       api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),
       api
         .get<{ components?: Partial<ComponentPlacement>[] }>("control", "/v1/components")
         .catch(() => null),
       api.get<{ nodes?: { name?: unknown }[] }>("control", "/v1/nodes").catch(() => null),
+      // Job sites are their own enrollments (J19); a root that cannot
+      // answer contributes none rather than an error, like every read here.
+      api
+        .get<{ sites?: { id?: unknown; label?: unknown }[] }>("control", "/v1/sites")
+        .catch(() => null),
     ]);
     if (!live.current) return;
 
@@ -157,9 +162,14 @@ export function useTopology(): { topology: Topology; ready: boolean } {
       apps.map((a) => ({ id: a.id, name: a.name, node: a.node ?? machine })),
     );
 
+    const sites = (siteList?.sites ?? [])
+      .filter((x): x is { id: string; label?: unknown } => typeof x?.id === "string" && x.id !== "")
+      .map((x) => ({ id: x.id, label: typeof x.label === "string" ? x.label : "" }));
+
     const next: Topology = {
       localNode: node?.name ?? null,
       apps,
+      sites,
       nodes: (nodeNames?.nodes ?? [])
         .map((n) => n.name)
         .filter((n): n is string => typeof n === "string" && n.length > 0),

@@ -56,7 +56,7 @@ interface Fields {
   consoleDirect: boolean;
   inference: boolean;
   nodes: boolean;
-  publicNodes: boolean;
+  publicSites: boolean;
   proxies: string;
   proxyTls: boolean;
   email: string;
@@ -81,7 +81,7 @@ const EMPTY: Fields = {
   // host and a certificate more.
   inference: false,
   nodes: false,
-  publicNodes: false,
+  publicSites: false,
   proxies: "",
   proxyTls: false,
   email: "",
@@ -125,7 +125,9 @@ export function fieldsFrom(configuration: Record<string, unknown> | undefined): 
     consoleDirect: configuration?.console_direct === true,
     inference: Boolean(configuration?.inference),
     nodes: Boolean(configuration?.nodes),
-    publicNodes: configuration?.public_nodes === true,
+    // The entry point's key was `public_nodes` before job sites became their
+    // own enrollment; an existing file may still carry it, so either shows.
+    publicSites: configuration?.public_sites === true || configuration?.public_nodes === true,
     proxies: (proxy?.addresses ?? []).join(", "),
     proxyTls: proxy?.transport === "https",
     email: acme?.email ?? "",
@@ -217,7 +219,7 @@ export function AccessSetup() {
     consoleDirect,
     inference,
     nodes,
-    publicNodes,
+    publicSites,
     proxies,
     proxyTls,
     email,
@@ -307,7 +309,7 @@ export function AccessSetup() {
       workbench: service("workbench", publicWorkbench ? PUBLIC : privateAccess),
       ...(inference ? { inference: service("inference", privateAccess) } : {}),
       ...(nodes ? { nodes: service("nodes", privateAccess) } : {}),
-      ...(nodes && publicNodes ? { public_nodes: true } : {}),
+      ...(nodes && publicSites ? { public_sites: true } : {}),
       ...(mode === "local" ? { internal_ca: true } : {}),
       ...(mode === "automatic" ? { acme: { email, accept_terms: terms, staging } } : {}),
       ...(mode === "proxy"
@@ -696,40 +698,41 @@ export function AccessSetup() {
             <input
               className="mt-1.5"
               type="checkbox"
-              checked={publicNodes}
-              data-testid="public-nodes"
+              checked={publicSites}
+              data-testid="public-sites"
               onChange={(e) => {
-                set("publicNodes", e.target.checked);
+                set("publicSites", e.target.checked);
                 setNodeRisksRead(false);
               }}
             />
             <span>
-              Let job sites join from any network
+              Job sites can connect from anywhere
               <span className={hintClass}>
                 People’s own machines, anywhere, use Workbench’s file tools through this name. It
-                answers them for joining and the file helper only; the console and everything else
-                stay on your networks.
+                answers job sites for joining and their own calls only; the console and everything
+                else stay on your networks.
               </span>
             </span>
           </label>
         )}
-        {nodes && publicNodes && (
+        {nodes && publicSites && (
           <div
             className="status-warn rounded-[var(--radius)] px-4 py-3"
             role="group"
-            aria-label="Risks of letting job sites join from any network"
+            aria-label="Risks of letting job sites connect from anywhere"
           >
             <p className="font-semibold">What this risks</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>
                 The internet can reach Eugene’s control root on this name, for six paths: joining
-                with a token, the trust bundle and the file helper’s three calls, each with a
-                machine’s own key. A flaw found later in them would be reachable from anywhere.
+                with a token, the list of trusted certificates and a job site’s four calls, each
+                with that site’s own key. A flaw found later in them would be reachable from
+                anywhere.
               </li>
               <li>
                 A leaked join token lets someone join a machine as a job site within its 15 minutes,
-                if they also know the invited person’s password. It is listed on Nodes, runs nothing
-                and gets no folders until its owner grants them.
+                if they also know the invited person’s password. It is listed under Job sites, runs
+                nothing and gets no folders until its owner grants them.
               </li>
               <li>
                 Forward this port to Eugene on your router. Without a public certificate, machines

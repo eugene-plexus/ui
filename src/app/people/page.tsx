@@ -23,7 +23,6 @@ import { useCallback, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
-import { NodeHelpers } from "@/components/NodeHelpers";
 import { api, describeError } from "@/lib/api";
 import {
   MIN_PASSWORD,
@@ -37,6 +36,7 @@ import {
   returnAddressProblem,
   signInAddress,
 } from "@/lib/people";
+import { ownerSitesHref, siteCountsByOwner } from "@/lib/sites";
 import type {
   OidcClient,
   OidcClientCreated,
@@ -44,6 +44,7 @@ import type {
   Person,
   PersonCreateRequest,
   PersonList,
+  SiteList,
 } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
 
@@ -66,6 +67,8 @@ interface Loaded {
   operatorName: string;
   clients: OidcClient[];
   issuer: string | null;
+  /** How many job sites each person owns, by person id. */
+  sites: Map<string, number>;
 }
 
 export default function PeoplePage() {
@@ -74,15 +77,18 @@ export default function PeoplePage() {
 
   const load = useCallback(async () => {
     try {
-      const [people, clients] = await Promise.all([
+      const [people, clients, sites] = await Promise.all([
         api.get<PersonList>("control", "/v1/people"),
         api.get<OidcClientList>("control", "/v1/oidc/clients"),
+        // Job sites are a count beside each person, never a reason to fail.
+        api.get<SiteList>("control", "/v1/sites").catch(() => null),
       ]);
       setLoaded({
         people: people.people ?? [],
         operatorName: people.operatorName ?? "operator",
         clients: clients.clients ?? [],
         issuer: clients.issuer ?? null,
+        sites: siteCountsByOwner(sites?.sites ?? []),
       });
       setError(null);
     } catch (e) {
@@ -110,7 +116,6 @@ export default function PeoplePage() {
           ) : (
             <>
               <PeopleSection loaded={loaded} onChanged={load} />
-              <NodeHelpers people={loaded.people} onChanged={load} />
               <AppsSection loaded={loaded} onChanged={load} />
             </>
           )}
@@ -125,7 +130,7 @@ export default function PeoplePage() {
 // --------------------------------------------------------------------------- #
 
 function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () => Promise<void> }) {
-  const { people, operatorName, clients } = loaded;
+  const { people, operatorName, clients, sites } = loaded;
   return (
     <section aria-labelledby="people-heading" className="section-panel flex flex-col gap-3">
       <h2 id="people-heading" className="section-heading font-ui mb-0 text-base font-semibold">
@@ -139,7 +144,13 @@ function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () =>
       {people.length > 0 && (
         <ul className="flex flex-col gap-2" data-testid="people-list">
           {people.map((person) => (
-            <PersonRow key={person.id} person={person} clients={clients} onChanged={onChanged} />
+            <PersonRow
+              key={person.id}
+              person={person}
+              clients={clients}
+              sites={sites.get(person.id) ?? 0}
+              onChanged={onChanged}
+            />
           ))}
         </ul>
       )}
@@ -151,10 +162,13 @@ function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () =>
 function PersonRow({
   person,
   clients,
+  sites,
   onChanged,
 }: {
   person: Person;
   clients: OidcClient[];
+  /** How many job sites this person owns. */
+  sites: number;
   onChanged: () => Promise<void>;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -175,7 +189,7 @@ function PersonRow({
 
   const path = `/v1/people/${encodeURIComponent(person.id)}`;
   return (
-    <li className={rowClass} data-testid={`person-${person.name}`}>
+    <li className={rowClass} id={`person-${person.id}`} data-testid={`person-${person.name}`}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="font-ui font-semibold">{person.name}</span>
         {person.displayName && (
@@ -222,6 +236,20 @@ function PersonRow({
       <p className="text-sm">
         <span className="text-[color:var(--muted)]">Apps: </span>
         <span data-testid={`person-apps-${person.name}`}>{appsSummary(person, clients)}</span>
+      </p>
+      <p className="text-sm">
+        <span className="text-[color:var(--muted)]">Job sites: </span>
+        {sites > 0 ? (
+          <Link
+            href={ownerSitesHref(person.id)}
+            className="underline"
+            data-testid={`person-sites-${person.name}`}
+          >
+            {sites === 1 ? "1 job site" : `${sites} job sites`}
+          </Link>
+        ) : (
+          <span data-testid={`person-sites-${person.name}`}>None</span>
+        )}
       </p>
       <div className="flex flex-wrap gap-4">
         <ChooseApps

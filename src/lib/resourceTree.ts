@@ -80,6 +80,12 @@ export interface AppPlacement {
   node: string | null;
 }
 
+/** One job site, as the control root lists it. */
+export interface SitePlacement {
+  id: string;
+  label: string;
+}
+
 /** Everything the tree is built from. Every field may be empty. */
 export interface Topology {
   /** This node's name, from `GET /v1/node`. Null before enrollment. */
@@ -96,6 +102,12 @@ export interface Topology {
    * written before apps existed is still a whole one.
    */
   apps?: AppPlacement[];
+  /**
+   * Job sites (`GET /v1/sites`): machines that are their own enrollment,
+   * separate from the nodes above (job-sites-own-enrollment.md §2.9).
+   * Optional, and empty when the root cannot answer.
+   */
+  sites?: SitePlacement[];
   /**
    * True when the control root could not be reached or answered `503
    * Locked`. The tree still renders; it says what is missing.
@@ -164,6 +176,9 @@ const BRANCH_ORDER: ReadonlyArray<{ layer: LayerId; label: string; expert: strin
   { layer: "gateway", label: "Gateway", expert: "gateway" },
   { layer: "control", label: "Machines", expert: "control root and agents" },
 ];
+
+/** The Job sites branch, which sits right after Machines (J19). */
+const SITES_BRANCH = { label: "Job sites", expert: "site enrollments" } as const;
 
 /** The page menu's word for every component's settings page. */
 const SETTINGS: PageRef = { id: "config", label: "Settings", route: "/config", icon: "Server" };
@@ -240,6 +255,10 @@ const PAGES: Record<string, PageRef[]> = {
   // A machine's group under Backends: the same page, that machine only.
   backendsNode: [{ id: "overview", label: "Overview", route: "/inference", icon: "Cpu" }],
   control: [{ id: "overview", label: "Overview", route: "/nodes", icon: "ShieldCheck" }, SETTINGS],
+  // Job sites: membership only. A site is its own enrollment and has no
+  // settings page here: what it shares is its owner's, in Workbench.
+  sites: [{ id: "overview", label: "Overview", route: "/sites", icon: "Laptop" }],
+  site: [{ id: "overview", label: "Overview", route: "/sites", icon: "Laptop" }],
   agent: [
     SETTINGS,
     // That machine's own log: its agent and everything it runs.
@@ -293,6 +312,7 @@ export function buildTree(topology: Topology): TreeNode {
       );
     } else if (branch.layer === "control") {
       children.push(machinesBranch(layer, branch.label, branch.expert, nodes, localNode));
+      children.push(sitesBranch(topology.sites ?? []));
     } else if (branch.layer === "library") {
       // The deliberate exception to "machines only under kinds that
       // multiply" (design §5.1): a machine under Library is how that
@@ -515,6 +535,42 @@ function machinesBranch(
     children,
     pages: PAGES.control ?? [],
     expert,
+  };
+}
+
+/**
+ * Job sites: one branch, one leaf per site, always present (like Machines).
+ *
+ * **Always rendered**, even with no sites: it is where a person invites the
+ * first one. Leaves are named by label and keyed by the site's random id,
+ * never by a node name, because a site is not a node and one machine can be
+ * both (J19). The `sel` tokens are `sites` and `site:<id>`.
+ */
+function sitesBranch(sites: SitePlacement[]): TreeNode {
+  const layer = layerOf("control");
+  const leaves: TreeNode[] = [...sites]
+    .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id))
+    .map((site) => ({
+      sel: `site:${site.id}`,
+      kind: "leaf" as const,
+      label: site.label || site.id,
+      layer: layer.id,
+      icon: "Laptop" as const,
+      node: null,
+      children: [],
+      pages: PAGES.site ?? [],
+      expert: "job site",
+    }));
+  return {
+    sel: "sites",
+    kind: "branch",
+    label: SITES_BRANCH.label,
+    layer: layer.id,
+    icon: "Laptop",
+    node: null,
+    children: leaves,
+    pages: PAGES.sites ?? [],
+    expert: SITES_BRANCH.expert,
   };
 }
 
@@ -761,12 +817,14 @@ export interface Selection {
     | "backends"
     | "backendsNode"
     | "control"
+    | "sites"
+    | "site"
     | "agent"
     | "driver"
     | "app";
   /** The machine, for an agent, a driver, an app, or a node under the Library or Backends. */
   node: string | null;
-  /** The driver's own name, or the app's id. */
+  /** The driver's own name, the app's id, or the job site's id. */
   name: string | null;
 }
 
@@ -795,8 +853,19 @@ export function parseSelection(raw: string | null | undefined): Selection | null
     const node = value.slice("backends:node:".length);
     return node ? { type: "backendsNode", node, name: null } : null;
   }
-  if (value === "gateway" || value === "library" || value === "control" || value === "backends") {
+  if (
+    value === "gateway" ||
+    value === "library" ||
+    value === "control" ||
+    value === "backends" ||
+    value === "sites"
+  ) {
     return { type: value, node: null, name: null };
+  }
+  // A job site is `site:<id>`: its own enrollment, so never `@<node>`.
+  if (value.startsWith("site:")) {
+    const id = value.slice("site:".length);
+    return id ? { type: "site", node: null, name: id } : null;
   }
   // The bare `agent` is the local one on a machine with no name yet,
   // and is the same token the Config page has always used for it.
@@ -831,7 +900,10 @@ export function formatSelection(selection: Selection): string {
     case "library":
     case "control":
     case "backends":
+    case "sites":
       return selection.type;
+    case "site":
+      return `site:${selection.name ?? ""}`;
     case "agent":
       return selection.node ? `agent:${selection.node}` : "agent";
     case "libraryNode":
@@ -929,6 +1001,8 @@ export function configTabFor(selection: Selection, localNode: string | null): st
     case "install":
     case "backends":
     case "backendsNode":
+    case "sites":
+    case "site":
       return null;
   }
 }
@@ -977,6 +1051,9 @@ export function defaultSelectionFor(
       return "library";
     case "/nodes":
       return "control";
+    // Job sites are their own branch, not a page of Machines (J19).
+    case "/sites":
+      return "sites";
     case "/config":
       return selectionFromConfigTab(tab) ?? "install";
     default:

@@ -16,8 +16,15 @@ import type { components as GatewayComponents } from "@/generated/gateway";
 import type { components as LibraryComponents } from "@/generated/library";
 import type { components as AgentComponents } from "@/generated/agent";
 import type { components as ControlComponents } from "@/generated/control";
-export type NodeHelper = ControlComponents["schemas"]["NodeHelper"];
-export type HelperGrant = ControlComponents["schemas"]["HelperGrant"];
+
+// Job Sites (specs docs/design/job-sites-own-enrollment.md §2.9): a site is
+// its own enrollment, not a node, and the console shows membership only.
+export type Site = ControlComponents["schemas"]["Site"];
+export type SiteList = ControlComponents["schemas"]["SiteList"];
+export type SiteInvitation = ControlComponents["schemas"]["SiteInvitation"];
+export type SiteDevView = ControlComponents["schemas"]["SiteDevView"];
+export type SiteDevFolder = ControlComponents["schemas"]["SiteDevFolder"];
+export type SiteOwnerAccess = ControlComponents["schemas"]["SiteOwnerAccess"];
 
 export type Benchmark = AgentComponents["schemas"]["Benchmark"];
 export type BenchmarkList = AgentComponents["schemas"]["BenchmarkList"];

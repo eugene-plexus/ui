@@ -54,4 +54,7 @@ export const COPY_SCREENS: Record<string, string[]> = {
   // C2: the owner of a small business reads this page to add the people
   // who sign in to the apps.
   people: ["app/people", "lib/people.ts"],
+  // Job sites: the same reader as People, inviting one of their own
+  // people's machines.
+  sites: ["app/sites", "lib/sites.ts"],
 };

@@ -76,6 +76,34 @@ it("adds the inference and node names only when asked", async () => {
   });
 });
 
+it("writes public_sites, worded as job sites connecting from anywhere", async () => {
+  vi.mocked(api.post).mockResolvedValue(PREVIEW);
+  render(<AccessSetup />);
+  const user = await fillCommon();
+  await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
+  await user.click(screen.getByLabelText(/Also a name for other machines/));
+  await user.click(screen.getByLabelText(/Job sites can connect from anywhere/));
+  await user.click(screen.getByLabelText(/anyone on the internet can reach these six paths/));
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  await screen.findByRole("region", { name: "Prepared setup" });
+  const body = vi.mocked(api.post).mock.calls[0]![2] as { configuration: Record<string, unknown> };
+  expect(body.configuration.public_sites).toBe(true);
+  expect(body.configuration).not.toHaveProperty("public_nodes");
+});
+
+it("reads either key when showing an existing configuration", () => {
+  const base = {
+    internal_ca: true,
+    console: { origin: "https://eugene.home.arpa:8443", networks: ["10.0.0.0/8"] },
+    workbench: { origin: "https://workbench.home.arpa:8443", networks: ["10.0.0.0/8"] },
+    nodes: { origin: "https://nodes.home.arpa:8443", networks: ["10.0.0.0/8"] },
+  };
+  expect(fieldsFrom({ ...base, public_sites: true })).toMatchObject({ publicSites: true });
+  // A file written before job sites became their own enrollment.
+  expect(fieldsFrom({ ...base, public_nodes: true })).toMatchObject({ publicSites: true });
+  expect(fieldsFrom({ ...base })).toMatchObject({ publicSites: false });
+});
+
 it("discards a response when the user edits its configuration while validation is pending", async () => {
   let complete: (value: unknown) => void = () => {};
   vi.mocked(api.post).mockReturnValue(

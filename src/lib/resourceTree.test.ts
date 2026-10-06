@@ -137,7 +137,13 @@ describe("the branches", () => {
     // 2026-09-29 (ui-settings-reorganisation.md, decision #5). It read
     // down the architecture page, gateway first, before; the layer map
     // still does.
-    expect(labels(buildTree(TWO_MACHINE))).toEqual(["Library", "Backends", "Gateway", "Machines"]);
+    expect(labels(buildTree(TWO_MACHINE))).toEqual([
+      "Library",
+      "Backends",
+      "Gateway",
+      "Machines",
+      "Job sites",
+    ]);
   });
 
   it("carries the implementation noun on hover, not in the label", () => {
@@ -163,7 +169,7 @@ describe("the branches", () => {
     // such thing". Machines always exists: this machine has settings and
     // a log whether or not a root answered.
     const tree = buildTree({ ...TWO_MACHINE, components: [] });
-    expect(labels(tree)).toEqual(["Backends", "Machines"]);
+    expect(labels(tree)).toEqual(["Backends", "Machines", "Job sites"]);
     expect(findNode(tree, "gateway")).toBeNull();
     expect(findNode(tree, "library")).toBeNull();
   });
@@ -326,7 +332,7 @@ describe("it holds the install the tab strip could not", () => {
   it("renders ten nodes with four drivers each as a bounded tree", () => {
     // §0.1: this topology is 54 buttons in a horizontal strip.
     const tree = buildTree(largeInstall(10, 4));
-    expect(tree.children).toHaveLength(4);
+    expect(tree.children).toHaveLength(5);
     const drivers = branchOf(tree, "Backends");
     expect(drivers?.children).toHaveLength(10);
     expect(drivers?.children.every((g) => g.children.length === 4)).toBe(true);
@@ -334,8 +340,8 @@ describe("it holds the install the tab strip could not", () => {
     // 40 drivers, 10 machines, 2 singleton leaves (Machines is a branch),
     // and the 10 machines under Library.
     expect(leaves).toHaveLength(40 + 10 + 2 + 10);
-    // The top level stays four whatever the install does.
-    expect(tree.children).toHaveLength(4);
+    // The top level stays five whatever the install does.
+    expect(tree.children).toHaveLength(5);
   });
 });
 
@@ -545,6 +551,11 @@ describe("selection round-trips", () => {
     ["gateway", { type: "gateway", node: null, name: null }],
     ["library", { type: "library", node: null, name: null }],
     ["control", { type: "control", node: null, name: null }],
+    ["sites", { type: "sites", node: null, name: null }],
+    [
+      "site:s-abcdefghijklmnopqrstuvwxyz",
+      { type: "site", node: null, name: "s-abcdefghijklmnopqrstuvwxyz" },
+    ],
     ["agent", { type: "agent", node: null, name: null }],
     ["agent:Amish_Station", { type: "agent", node: "Amish_Station", name: null }],
     ["library:node", { type: "libraryNode", node: null, name: null }],
@@ -560,7 +571,17 @@ describe("selection round-trips", () => {
   });
 
   it("selects nothing for a malformed or stale value, rather than the wrong thing", () => {
-    for (const bad of [null, undefined, "", "   ", "nope", "agent:", "driver:", "driver:@n"]) {
+    for (const bad of [
+      null,
+      undefined,
+      "",
+      "   ",
+      "nope",
+      "agent:",
+      "driver:",
+      "driver:@n",
+      "site:",
+    ]) {
       expect(parseSelection(bad), `"${bad}" should select nothing`).toBeNull();
     }
   });
@@ -809,5 +830,53 @@ describe("search accounts (P8)", () => {
     expect(search.pages.map((p) => p.label)).toEqual(["Settings"]);
     // Its settings page reaches it through the proxy by name.
     expect(configTabFor(parseSelection(search.sel)!, null)).toBe("searxng");
+  });
+});
+
+describe("the Job sites branch (J19)", () => {
+  const WITH_SITES: Topology = {
+    ...TWO_MACHINE,
+    sites: [
+      { id: "s-b", label: "Work laptop" },
+      { id: "s-a", label: "Amish_Station" },
+    ],
+  };
+
+  it("sits right after Machines, and is there with no sites so the first can be added", () => {
+    const names = labels(buildTree(WITH_SITES));
+    expect(names.indexOf("Job sites")).toBe(names.indexOf("Machines") + 1);
+    const empty = branchOf(buildTree(TWO_MACHINE), "Job sites")!;
+    expect(empty.sel).toBe("sites");
+    expect(empty.children).toEqual([]);
+    expect(empty.pages.map((p) => [p.label, p.route])).toEqual([["Overview", "/sites"]]);
+  });
+
+  it("lists each site by label under its own id, never as a machine", () => {
+    const tree = buildTree(WITH_SITES);
+    const branch = branchOf(tree, "Job sites")!;
+    expect(branch.children.map((c) => [c.label, c.sel])).toEqual([
+      ["Amish_Station", "site:s-a"],
+      ["Work laptop", "site:s-b"],
+    ]);
+    // One machine that is both a node and a site is two rows in two branches.
+    expect(findNode(tree, "agent:Amish_Station")).toBeTruthy();
+    expect(branchOf(tree, "Machines")!.children.some((c) => c.sel?.startsWith("site:"))).toBe(
+      false,
+    );
+  });
+
+  it("round-trips a site leaf's sel and finds the row", () => {
+    const tree = buildTree(WITH_SITES);
+    const leaf = findSelected(tree, "site:s-b")!;
+    expect(leaf.label).toBe("Work laptop");
+    expect(formatSelection(parseSelection(leaf.sel)!)).toBe("site:s-b");
+    expect(configTabFor(parseSelection("site:s-b")!, "a")).toBeNull();
+  });
+
+  it("makes /sites select the branch, and a site link keep its own page", () => {
+    expect(defaultSelectionFor("/sites")).toBe("sites");
+    expect(defaultSelectionFor("/sites/")).toBe("sites");
+    const leaf = findNode(buildTree(WITH_SITES), "site:s-a")!;
+    expect(hrefFor(leaf.pages[0]!, leaf.sel)).toBe("/sites?sel=site%3As-a");
   });
 });

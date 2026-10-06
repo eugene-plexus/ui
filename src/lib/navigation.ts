@@ -42,6 +42,7 @@ export type IconName =
   | "Server"
   | "Database"
   | "ShieldCheck"
+  | "Laptop"
   | "Monitor"
   | "FolderOpen"
   | "FolderTree"
@@ -307,6 +308,18 @@ export const SCREENS: readonly Screen[] = [
     layer: "control",
     spans: ["agent"],
     blurb: "The machines in this install, their versions, and the token a new one joins with.",
+  },
+  {
+    // Job sites (job-sites-own-enrollment.md §2.9): machines that are their
+    // own enrollment, listed for membership only. Filed under `control`
+    // beside Machines and People, because the root keeps the registry; the
+    // site's own page in Workbench is where its owner does the rest.
+    href: "/sites",
+    label: "Job sites",
+    icon: "Laptop",
+    layer: "control",
+    spans: ["tools"],
+    blurb: "Machines people lend to their tools, who owns each, and whether it is online.",
   },
   {
     // C2 (sign-in-with-eugene.md §4): who may sign in to apps, and the

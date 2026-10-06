@@ -32,6 +32,9 @@ beforeEach(() => {
       if (!rootUp) return json({ detail: "starting" }, 503);
       if (route === "control/v1/components") return json({ components: [] });
       if (route === "control/v1/nodes") return json({ nodes: [{ name: "box" }, { name: "gpu" }] });
+      if (route === "control/v1/sites") {
+        return json({ sites: [{ id: "s-abc", label: "Work laptop" }], installMode: "production" });
+      }
       return json({}, 404);
     }),
   );
@@ -48,7 +51,8 @@ function Probe() {
   return (
     <p data-testid="topology">
       {ready
-        ? `${topology.rootUnreachable ? "unreachable" : "up"} ${topology.nodes.join(",")}`
+        ? `${topology.rootUnreachable ? "unreachable" : "up"} ${topology.nodes.join(",")}` +
+          ` sites:${(topology.sites ?? []).map((x) => `${x.id}=${x.label}`).join(",")}`
         : ""}
     </p>
   );
@@ -61,4 +65,6 @@ it("asks again, so a root that came up later appears without leaving the page", 
   rootUp = true;
   await act(() => vi.advanceTimersByTimeAsync(30_000));
   expect(screen.getByTestId("topology")).toHaveTextContent("up box,gpu");
+  // Job sites come from the root's own list, beside the machines and never in them.
+  expect(screen.getByTestId("topology")).toHaveTextContent("sites:s-abc=Work laptop");
 });
