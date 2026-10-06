@@ -26,6 +26,7 @@ import { AppShell } from "@/components/AppShell";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
 import { api, describeError } from "@/lib/api";
+import { agentTarget, workbenchLink } from "@/lib/apps";
 import { isLoopbackUrl, rootControlUrl } from "@/lib/joinCommand";
 import { timeAgo, timeUntil } from "@/lib/relativeTime";
 import {
@@ -37,7 +38,15 @@ import {
   siteName,
 } from "@/lib/sites";
 import { parseSelection } from "@/lib/resourceTree";
-import type { Person, PersonList, Site, SiteInvitation, SiteList } from "@/lib/types";
+import type {
+  AppList,
+  NodeIdentity,
+  Person,
+  PersonList,
+  Site,
+  SiteInvitation,
+  SiteList,
+} from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
 
 const POLL_MS = 5000;
@@ -57,12 +66,64 @@ export default function SitesPage() {
   );
 }
 
+type WorkbenchLink = { href: string; note: string | null } | null;
+
+/** "Workbench", a real link when this install has the app, else the plain word. */
+function WorkbenchWord({ link }: { link: WorkbenchLink }) {
+  if (!link) return <>Workbench</>;
+  return (
+    <a
+      href={link.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={link.note ?? undefined}
+      className="underline"
+      data-testid="workbench-link"
+    >
+      Workbench
+    </a>
+  );
+}
+
+/** The Workbench app, read per machine from each agent. Soft: none found is null. */
+function useWorkbench(): WorkbenchLink {
+  const [link, setLink] = useState<WorkbenchLink>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [node, nodes] = await Promise.all([
+        api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),
+        api.get<{ nodes?: { name?: unknown }[] }>("control", "/v1/nodes").catch(() => null),
+      ]);
+      const local = node?.name ?? null;
+      const others = (nodes?.nodes ?? [])
+        .map((n) => n.name)
+        .filter((n): n is string => typeof n === "string" && n.length > 0 && n !== local);
+      const lists = await Promise.all(
+        [local, ...others].map((m) =>
+          api
+            .get<AppList>(agentTarget(m, local), "/v1/apps")
+            .then((l) => l.apps ?? [])
+            .catch(() => []),
+        ),
+      );
+      const host = typeof window === "undefined" ? "localhost" : window.location.hostname;
+      if (alive) setLink(workbenchLink(lists.flat(), host));
+    })().catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return link;
+}
+
 function Inner() {
   const searchParams = useSearchParams();
   const selection = parseSelection(searchParams.get("sel"));
   const onlySite = selection?.type === "site" ? selection.name : null;
   const onlyOwner = searchParams.get("owner");
 
+  const workbench = useWorkbench();
   const [list, setList] = useState<SiteList | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
   const [rootUrl, setRootUrl] = useState("");
@@ -109,7 +170,8 @@ function Inner() {
         <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-8">
           <p className="text-sm text-[color:var(--muted)]">
             A job site is a machine a person lends to their tools. Each site belongs to one person,
-            who manages it from Workbench (Job sites). It is separate from the machines under{" "}
+            who manages it from <WorkbenchWord link={workbench} /> (Job sites). It is separate from
+            the machines under{" "}
             <Link href="/nodes" className="underline">
               Machines
             </Link>
@@ -144,13 +206,14 @@ function Inner() {
             ) : (
               <ul className="flex flex-col gap-2" data-testid="sites-list">
                 {shown.map((site) => (
-                  <SiteRow key={site.id} site={site} onChanged={load} />
+                  <SiteRow key={site.id} site={site} onChanged={load} workbench={workbench} />
                 ))}
               </ul>
             )}
           </section>
 
           <Invite
+            workbench={workbench}
             people={people}
             joinUrl={list?.joinUrl ?? null}
             guessUrl={rootUrl}
@@ -162,7 +225,15 @@ function Inner() {
   );
 }
 
-function SiteRow({ site, onChanged }: { site: Site; onChanged: () => Promise<void> }) {
+function SiteRow({
+  site,
+  onChanged,
+  workbench,
+}: {
+  site: Site;
+  onChanged: () => Promise<void>;
+  workbench: WorkbenchLink;
+}) {
   const [error, setError] = useState<string | null>(null);
   const contact = describeContact(site, (iso) => timeAgo(iso));
   const name = siteName(site);
@@ -227,7 +298,7 @@ function SiteRow({ site, onChanged }: { site: Site; onChanged: () => Promise<voi
       {!site.ready && site.reason ? (
         <p className="text-sm text-[color:var(--muted)]">{site.reason}</p>
       ) : null}
-      {site.dev ? <DevSection site={site} onChanged={onChanged} /> : null}
+      {site.dev ? <DevSection site={site} onChanged={onChanged} workbench={workbench} /> : null}
       {error && (
         <p className="status-error text-sm" role="alert">
           {error}
@@ -238,7 +309,15 @@ function SiteRow({ site, onChanged }: { site: Site; onChanged: () => Promise<voi
 }
 
 /** Dev mode only (J33): what the site last reported, and Eugene's owner's own access. */
-function DevSection({ site, onChanged }: { site: Site; onChanged: () => Promise<void> }) {
+function DevSection({
+  site,
+  onChanged,
+  workbench,
+}: {
+  site: Site;
+  onChanged: () => Promise<void>;
+  workbench: WorkbenchLink;
+}) {
   const dev = site.dev!;
   const [error, setError] = useState<string | null>(null);
   const closed = describeOwnerInDevMode(dev.ownerInDevMode, site.ownerName);
@@ -266,7 +345,7 @@ function DevSection({ site, onChanged }: { site: Site; onChanged: () => Promise<
       <h3 className="font-ui text-sm font-semibold">Dev mode only</h3>
       <p className="text-[color:var(--muted)]">
         This install is in dev mode, so you see what the site last reported. Its owner manages all
-        of it from Workbench.
+        of it from <WorkbenchWord link={workbench} />.
       </p>
       {closed && <p data-testid={`site-closed-${site.id}`}>{closed}</p>}
       {dev.folders.length === 0 ? (
@@ -323,11 +402,13 @@ function DevSection({ site, onChanged }: { site: Site; onChanged: () => Promise<
 }
 
 function Invite({
+  workbench,
   people,
   joinUrl,
   guessUrl,
   onInvited,
 }: {
+  workbench: WorkbenchLink;
   people: Person[];
   joinUrl: string | null;
   guessUrl: string;
@@ -481,7 +562,8 @@ function Invite({
               {invitation.ownerName} confirms on that machine by typing their own Eugene password.
             </li>
             <li>
-              After that, {invitation.ownerName} manages the job site from Workbench (Job sites).
+              After that, {invitation.ownerName} manages the job site from{" "}
+              <WorkbenchWord link={workbench} /> (Job sites).
             </li>
           </ul>
           {!address && (

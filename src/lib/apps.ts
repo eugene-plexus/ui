@@ -117,3 +117,23 @@ export function installErrorSummary(error: string | null | undefined): string | 
   const first = error.split("\n").find((line) => line.trim().length > 0);
   return first?.trim() ?? null;
 }
+
+/**
+ * Where Workbench is, for a page that says "manage it in Workbench".
+ *
+ * The first enabled app whose catalogue id is `workbench` and that has a
+ * usable address; the link and its note come from `openTarget`, exactly as
+ * the Apps page's Open link. Null when there is none, so the page keeps its
+ * plain words.
+ */
+export function workbenchLink(
+  apps: readonly App[],
+  pageHost: string,
+): { href: string; note: string | null } | null {
+  for (const app of apps) {
+    if (app.id !== "workbench" || !app.enabled) continue;
+    const { href, note } = openTarget(app, pageHost);
+    if (href) return { href, note };
+  }
+  return null;
+}

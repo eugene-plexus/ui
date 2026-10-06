@@ -340,3 +340,40 @@ describe("job sites, in dev mode", () => {
     );
   });
 });
+
+describe("Workbench link", () => {
+  it("links Workbench when the install has the app", async () => {
+    handlers.set("GET agent/v1/node", () => ({ status: 200, body: { name: "root" } }));
+    handlers.set("GET agent/v1/apps", () => ({
+      status: 200,
+      body: {
+        apps: [
+          {
+            id: "workbench",
+            name: "Workbench",
+            version: "v1",
+            origin: "catalogue",
+            enabled: true,
+            status: "running",
+            port: 8191,
+            ui: true,
+            configTrio: true,
+            uses: [],
+            uiUrl: "http://192.168.1.20:8191/",
+          },
+        ],
+      },
+    }));
+    render(<SitesPage />);
+    const link = await screen.findByTestId("workbench-link");
+    expect(link).toHaveAttribute("href", "http://192.168.1.20:8191/");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("keeps the plain words without the app", async () => {
+    render(<SitesPage />);
+    await screen.findByText(/who manages it from/);
+    expect(screen.queryByTestId("workbench-link")).toBeNull();
+  });
+});

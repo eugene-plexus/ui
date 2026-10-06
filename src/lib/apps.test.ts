@@ -8,6 +8,7 @@ import {
   installFinished,
   openTarget,
   updateAvailable,
+  workbenchLink,
 } from "./apps";
 import type { App, AppCatalogueEntry, AppInstall } from "./types";
 
@@ -131,5 +132,29 @@ describe("openTarget", () => {
       href: null,
       note: null,
     });
+  });
+});
+
+describe("workbenchLink", () => {
+  it("links the enabled Workbench app", () => {
+    const link = workbenchLink(
+      [app({ id: "chat" }), app({ id: "workbench", uiUrl: "http://192.168.16.75:8191/" })],
+      "192.168.16.75",
+    );
+    expect(link).toEqual({ href: "http://192.168.16.75:8191/", note: null });
+  });
+
+  it("carries the loopback note from openTarget", () => {
+    const link = workbenchLink([app({ id: "workbench", uiUrl: "http://127.0.0.1:8191/" })], "nas");
+    expect(link?.href).toBe("http://127.0.0.1:8191/");
+    expect(link?.note).toMatch(/only in a browser on the machine/);
+  });
+
+  it("is null when absent, disabled or without an address", () => {
+    expect(workbenchLink([], "nas")).toBeNull();
+    expect(workbenchLink([app({ id: "chat" })], "nas")).toBeNull();
+    expect(workbenchLink([app({ id: "workbench", enabled: false })], "nas")).toBeNull();
+    expect(workbenchLink([app({ id: "workbench", uiUrl: undefined })], "nas")).toBeNull();
+    expect(workbenchLink([app({ id: "workbench", ui: false })], "nas")).toBeNull();
   });
 });
