@@ -169,6 +169,14 @@ export interface paths {
          *     `profile` and `email` are honoured and anything else is ignored.
          *     With `email`, a person who has an address gets `email` and
          *     `email_verified: false` (C4).
+         *
+         *     **One built-in client, `eugene-site-link`** (J37,
+         *     `job-sites-own-enrollment.md` §3.2): the agent's link page on a
+         *     site's machine. It is public, with no secret, and its only redirect
+         *     is a loopback one, `http://127.0.0.1:<port>/link/callback` with any
+         *     port (RFC 8252 §7.3). Every person with `use-job-sites` may use it
+         *     (J77; before 2b.3b every person), and Eugene's owner may not. It is
+         *     never in the client list and cannot be edited or removed.
          */
         get: operations["oidcAuthorize"];
         put?: never;
@@ -211,6 +219,10 @@ export interface paths {
          *     refresh is refused when the person has been disabled or deleted,
          *     their password changed after the sign-in, or the sign-in was
          *     revoked (D6).
+         *
+         *     The built-in `eugene-site-link` client sends `client_id` in the form
+         *     and no secret, and may only trade a code: it gets an ID token and no
+         *     refresh token.
          */
         post: operations["oidcToken"];
         delete?: never;
@@ -303,7 +315,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Change a person's name, apps, or whether they are disabled
+         * Change a person's name, apps, permissions, or whether they are disabled
          * @description Operator only. Disabling refuses their next sign-in and their apps' next refresh.
          */
         patch: operations["updatePerson"];
@@ -1313,7 +1325,7 @@ export interface paths {
          *     with their own password, rate-limited as a sign-in is; no site or
          *     node uses the token key. Then the token is spent and `enrollSite` is
          *     appended. A site has no address, so nothing on it is ever dialled:
-         *     it polls (J23). One of the six paths of the entry point's public mode
+         *     it polls (J23). One of the seven paths of the entry point's public mode
          *     (`public_sites`, J31), where failed joins are rate-limited too.
          */
         post: operations["enrollSite"];
@@ -1410,6 +1422,34 @@ export interface paths {
          *     once. The site host calls it when it is removed at the machine.
          */
         post: operations["leaveSite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sites/links/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A site checks a person's Eugene sign-in, typed at its machine to link them (J36)
+         * @description A site token. Used by the elevated link step on a Linux system
+         *     install (`install.sh --site-link`), which signs with the site's own
+         *     key: root reads it, as it reads the site host's directory. Answers
+         *     who the person is when the name and password are right, so root can
+         *     write the link; a wrong pair is 401, with the same sentence for
+         *     both. Rate-limited as a sign-in is, per site and per name, so a site
+         *     cannot use it to guess passwords at speed. A disabled person is 403.
+         *     Nothing is recorded at the root: the link lives on the machine. One
+         *     of the seven paths of the entry point's public mode (`public_sites`).
+         */
+        post: operations["checkSitePerson"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1536,8 +1576,10 @@ export interface paths {
          *     `tools/list`, `tools/call`) to the site, which claims it on its next
          *     poll (J6a). The root checks the Workbench client and the person's
          *     sign-in; the site's own policy decides (J8). A destructive tool runs
-         *     only under the site owner's standing pre-approval. The request is at
-         *     most 40,000 bytes; the answer at most 70,000. A `tools/call` the site
+         *     only under the site owner's standing pre-approval. Since 2b.3b each
+         *     call runs under its workspace's rule (J70): `allow` at once, `ask` only
+         *     with `asked` (J72), which this root carries and does not check. The
+         *     request is at most 40,000 bytes; the answer at most 70,000. A `tools/call` the site
          *     claimed but did not confirm is `uncertain`: it may have acted.
          */
         post: operations["callSiteServer"];
@@ -1564,6 +1606,34 @@ export interface paths {
          *     remains running.
          */
         post: operations["cancelSiteCall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/sites/link/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a person's link to an OS account on a site's machine
+         * @description A person removes their own link; the site's owner may name anyone's
+         *     (§3.2). The root asks the agent that hosts the site
+         *     (`DELETE /v1/site/links/{subject}` there, with the root's token),
+         *     because the link lives on the machine and only its starter writes
+         *     it. Removing a link only takes access away: from then on that
+         *     person's calls there run as the owner, confined, if the owner shares
+         *     a folder with them, and otherwise not at all. A Linux system install
+         *     removes a link with the elevated one-liner instead (J36); there the
+         *     answer is 409, saying so.
+         */
+        post: operations["removeSiteLink"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1605,9 +1675,12 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * The signed-in person's own Job Sites
+         * The signed-in person's own Job Sites, and those they are linked to
          * @description Every Job Site this person owns, with its folders, its servers and
-         *     who may use which tool, as each site last reported them. A Job Site's
+         *     who may use which tool, as each site last reported them. Since 2b.3b
+         *     also every site whose last report links them to an OS account there
+         *     (`role: linked`), showing only their own: their workspaces, their
+         *     link and their keys' state. A Job Site's
          *     owner is the only one who grants its tools (J11), and the site keeps
          *     that list itself (J6b). Authenticated as `/oidc/sites/*` is: an
          *     enrolled Workbench client and the person's refresh credential.
@@ -1630,8 +1703,9 @@ export interface paths {
         put?: never;
         /**
          * A join command for one of the signed-in person's own machines
-         * @description Self-service (J9): any signed-in person may add a Job Site for a
-         *     machine of their own. Mints a site invitation naming them, valid 15
+         * @description Self-service (J9): any signed-in person with `add-job-sites` (J77,
+         *     on by default) may add a Job Site for a machine of their own; 403
+         *     without it. Mints a site invitation naming them, valid 15
          *     minutes, at most three outstanding per person. The machine must
          *     already be a node (J21); the join command, run there, adds the site
          *     without reinstalling the node (J35), and the person confirms with
@@ -1711,9 +1785,9 @@ export interface paths {
          * @description Replaces the folder's list of people, the site's owner included (J11:
          *     the owner grants their own access too). People are named by how they
          *     sign in. `writable` lets a person change files without asking each
-         *     time, a standing pre-approval for `write_text`, and cannot exceed the
-         *     folder's. The site applies it to its own list and answers with what
-         *     it holds (J6b, J6g).
+         *     time, a standing pre-approval for `write_text` and `edit_text`, and
+         *     cannot exceed the folder's. The site applies it to its own list and
+         *     answers with what it holds (J6b, J6g).
          */
         post: operations["grantMyJobSiteFolder"];
         delete?: never;
@@ -1817,9 +1891,267 @@ export interface paths {
          * The newest lines of the person's own Job Site's audit log
          * @description Kept on the machine, read from it on each request (J8). Who asked for
          *     what, and what the site decided; never a file's contents or a tool's
-         *     result. Only the site's owner reads it, Eugene's owner never.
+         *     result. Eugene's owner never reads it. Since 2b.3b any person linked
+         *     there reads the lines that belong to them, and the site's owner the
+         *     rest (J80, `SiteAuditEntry`); before, only the site's owner.
          */
         post: operations["readMyJobSiteAudit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pin the owner's passkey at their Job Site, with the code shown at the machine (J14a.3)
+         * @description Workbench made the passkey at its HTTPS address and computed the MAC
+         *     in the browser from the code the person typed (`SitePasskeyBinding`,
+         *     site-host.yaml); the code itself never reaches this root. This root
+         *     carries the public half and the MAC to the site, which pins the
+         *     passkey only if the MAC checks with the code it showed. Since 2b.3b
+         *     any person linked there pairs their own, which approves only their
+         *     own items (J67); before, only the site's owner.
+         */
+        post: operations["pairMyJobSitePasskey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/passkeys/{id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove one of the owner's passkeys at their Job Site, from Workbench
+         * @description For a lost phone: the person need not be at the machine. Removing a
+         *     key only takes it away (`passkey.remove`, site-host.yaml); what it
+         *     approved stays, and if it was the person's last key there, nothing
+         *     runs under their rules until they add a key and approve them (J48,
+         *     J79). Since 2b.3b any person linked there removes their own.
+         */
+        post: operations["removeMyJobSitePasskey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/held": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What the owner's Job Site holds for their approval, read from the site (J14a.3)
+         * @description With `key`, one of the person's passkeys, each item carries the
+         *     canonical envelope to sign with it. The words are the site's own;
+         *     this root only carries them. Since 2b.3b, for any person linked
+         *     there, their own held changes only.
+         */
+        post: operations["listMyJobSiteHeld"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/held/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a held change with the person's own passkey (J14a.3; any linked person since 2b.3b)
+         * @description The assertion is over the envelope `held` listed; the site checks
+         *     it against the passkey it pinned (`SitePasskeyApproval`,
+         *     site-host.yaml) and then applies the change. `id` is `rules` for the
+         *     site's rules as a whole (J52).
+         */
+        post: operations["approveMyJobSiteHeld"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/held/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn down a held change from Workbench; it is dropped, never applied */
+        post: operations["rejectMyJobSiteHeld"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a workspace of the person's own on a site they own or are linked to (2b.3b)
+         * @description The workspace is the signed-in person's: their own worker on the
+         *     machine opens it, as their own account, and only they use it unless
+         *     they own the site and share it (J69). It takes a link at the machine
+         *     and `use-job-sites` (J77); the site's owner is not asked. The site holds the change until the person
+         *     approves it with their own key, at the machine or with a passkey from
+         *     Workbench, and never applies it on this root's word (J68); the site's
+         *     owner keeps J52's way. This root learns its id and name, never its
+         *     path (J76).
+         */
+        post: operations["addMyJobSiteWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/workspaces/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The person's own workspaces on a site, with their paths and rules, read live (J76)
+         * @description Asked of the site each time (`workspace.list`); this root carries the
+         *     answer and keeps none of it. Each person sees only their own, the
+         *     site's owner included.
+         */
+        post: operations["listMyJobSiteWorkspaces"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/workspaces/{workspace_id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove one of the person's own workspaces
+         * @description Only takes access away, so the site applies it at once (J51). Whom it was shared with lose it too.
+         */
+        post: operations["removeMyJobSiteWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/workspaces/{workspace_id}/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The person's own rules in one of their workspaces, and its deny patterns (J70)
+         * @description Allow, ask or deny for reading and searching, and for changing files;
+         *     path patterns that hide what they match from every tool, for everyone
+         *     who uses the workspace. A change that is nowhere looser applies at
+         *     once (J51); any other is held for the person's own key (J68).
+         */
+        post: operations["setMyJobSiteWorkspaceRules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/workspaces/{workspace_id}/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Whom the site's owner shares one of their workspaces with, and each one's rules there (J69, J70)
+         * @description The site's owner only, for their own workspaces only. Replaces the
+         *     list. People are named by how they sign in. Each person's `read` and
+         *     `change` say allow, ask or deny; "ask" is asked of that person in
+         *     Workbench, when they make the call (§2.6). A change that only takes
+         *     access away applies at once (J51); any other waits for the owner's
+         *     key (J14a).
+         */
+        post: operations["shareMyJobSiteWorkspace"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1854,6 +2186,51 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description A person's Eugene sign-in, typed at the machine to link them there (J36). */
+        SitePersonCheckRequest: {
+            /** @description How the person signs in. */
+            name: string;
+            password: string;
+        };
+        SitePersonCheck: {
+            /** @description The person's id. */
+            subject: string;
+            name: string;
+        };
+        /** @description One person linked to an OS account on a site's machine, as the site reports it. */
+        SitePersonLink: {
+            /** @description The person's id. */
+            subject: string;
+            /** @description The OS account, for display, e.g. `AMISH_STATION\jessie` or `jessie`. */
+            accountName: string;
+            /** @description Their worker is connected, so their calls can run now. */
+            available: boolean;
+            /** @description Why not, when it is not, e.g. that they are not signed in on a Windows machine (J25). */
+            reason?: string | null;
+            /** @description How many keys this person has here, at the machine and as passkeys (J14a, J67). Absent from a site older than J14a. */
+            keys?: number;
+            /**
+             * @description 2b.3b (J67, J68): the state of this person's own workspaces and
+             *     rules. `unsigned`: they have no key here, so their changes wait for
+             *     one. `unconfirmed`: rules from before 2b.3b they have not approved
+             *     with their key (the owner's, J69). `signed`: every rule of theirs
+             *     here was approved with their own key. Absent from an older site.
+             */
+            signing?: components["schemas"]["SiteSigningState"] | null;
+            /** @description Changes the site holds until this person approves them with their own key (2b.3b). Absent from an older site. */
+            held?: number;
+        };
+        /**
+         * @description Remove a link between a person and an OS account on a site's machine.
+         *     A person removes their own; the site's owner may name anyone's. Removing
+         *     a link only takes access away, so the root may ask for it (§3.2).
+         */
+        SiteLinkRemove: {
+            refreshToken: string;
+            site: components["schemas"]["SiteId"];
+            /** @description Whose link. Absent means the signed-in person's own. */
+            person?: string | null;
+        };
         /**
          * @description A site's id: random, given by the root at enrollment, and fixed for
          *     that enrollment. A machine that joins again gets a new one. Never a
@@ -1896,7 +2273,7 @@ export interface components {
             label: components["schemas"]["SiteLabel"];
             /** @description The owner's person id. */
             owner: string;
-            /** @description How the owner signs in */
+            /** @description How the owner signs in, for display. */
             ownerName: string;
             /** @description Base64 of the root's raw Ed25519 identity key. A site that pinned a key at its join (J7a) checks it is this one. */
             controlPublicKey: string;
@@ -1913,7 +2290,11 @@ export interface components {
             hostVersion?: string | null;
             ready: boolean;
             reason?: string | null;
-            /** @description The OS account the site's tools run as. */
+            /**
+             * @description The kind of OS account the site host itself runs in. Since 2b.2 the
+             *     site's tools run in each person's worker, as `SiteSummary.links`
+             *     says, and never in this account.
+             */
             account?: string | null;
             site?: components["schemas"]["SiteSummary"] | null;
         };
@@ -1944,10 +2325,23 @@ export interface components {
             request?: components["schemas"]["McpRequest"] | null;
             /** @description For `mcp` to the file server from Eugene's owner, their dev-mode grants (J6e). Empty otherwise. */
             grants?: components["schemas"]["SiteGrantHint"][];
+            /**
+             * @description For `mcp`, Workbench's word that the person approved this call (`SiteCall.asked`, J72).
+             * @default false
+             */
+            asked: boolean;
             /** @description For `manage`, the action. */
             action?: string | null;
             /** @description For `manage`, its arguments. */
             arguments?: Record<string, never> | null;
+            /**
+             * @description For `manage`, how the root names each person the arguments name, by
+             *     id. Display only: a site shows them on a held change marked as the
+             *     root's names (J54), and decides nothing by them.
+             */
+            names?: {
+                [key: string]: string;
+            } | null;
             installMode: components["schemas"]["InstallModeName"];
         };
         /** @description A site's answer to an operation it claimed (`POST /v1/sites/operations/{id}/result`). */
@@ -2023,9 +2417,9 @@ export interface components {
             /** @description The sign-in name the machine will ask for. */
             ownerName: string;
             label?: string | null;
-            /** @description The address the machine joins through */
+            /** @description The address the machine joins through, when this root knows one. */
             joinUrl?: string | null;
-            /** @description Base64 of the root's raw Ed25519 identity key */
+            /** @description Base64 of the root's raw Ed25519 identity key, which the site pins (J7a). */
             rootKey: string;
         };
         /** @description The sites a node's agent supervises, by id (J32). Display only. */
@@ -2051,6 +2445,13 @@ export interface components {
             request: components["schemas"]["McpRequest"];
             /** @description Lets `/oidc/sites/cancel` stop it before the site claims it. */
             operationId?: string;
+            /**
+             * @description The person approved this call in Workbench (J72), which Workbench
+             *     sends for a call whose rule is `ask`; the site refuses such a call
+             *     without it. Carried to the site as is.
+             * @default false
+             */
+            asked: boolean;
         };
         SiteMcpAnswer: {
             status: components["schemas"]["SiteAnswerStatus"];
@@ -2066,18 +2467,36 @@ export interface components {
              */
             changedAt?: string | null;
         };
-        /** @description One of the signed-in person's own sites, as Workbench's Job sites page shows it. */
+        /**
+         * @description One of the signed-in person's sites, as Workbench's Job sites page shows
+         *     it: one they own, or since 2b.3b one they are linked to (`role`). A
+         *     linked person who does not own it sees only their own: their workspaces,
+         *     their link, their keys' state; no folders of others, no servers.
+         */
         JobSite: {
             id: components["schemas"]["SiteId"];
             label: components["schemas"]["SiteLabel"];
+            role?: components["schemas"]["JobSiteRole"];
+            /**
+             * @description This person's own workspaces there, and for the owner whom each is
+             *     shared with, by id and name, as the site last reported them (2b.3b).
+             *     Paths are read live (`/oidc/job-sites/{site}/workspaces/list`, J76).
+             */
+            workspaces?: components["schemas"]["JobSiteWorkspace"][];
             online: boolean;
             ready: boolean;
             reason?: string | null;
-            /** @description The OS account the site's tools run as. */
+            /** @description The kind of OS account the site host itself runs in. Tools run in each person's worker (`links`). */
             account?: string | null;
+            /** @description The people linked to an OS account on that machine, and whether each one's calls can run now (§3.2). */
+            links?: components["schemas"]["SitePersonLink"][];
+            /** @description Where a person links their account on that machine, when it offers a page (a Windows service install). */
+            linkPage?: string | null;
+            /** @description Whether the site can serve anyone but its owner (false on macOS). Absent means true. */
+            sharing?: boolean;
             /** Format: date-time */
             lastContactAt?: string | null;
-            /** @description The node that hosts it (J32) */
+            /** @description The node that hosts it (J32), for display. */
             hostNode?: string | null;
             /** @description The folders registered on it, which its one file server offers by name (J6g), and who may use each. */
             folders: components["schemas"]["JobSiteFolder"][];
@@ -2085,6 +2504,8 @@ export interface components {
             servers: components["schemas"]["JobSiteServer"][];
             /** @description Whether the site lets Eugene's owner in while Eugene is in dev mode (J6e). Null until the site has reported. */
             ownerInDevMode?: boolean | null;
+            /** @description Whether the site checks its owner's changes with the owner's own key (J14a). Absent from a site older than J14a. */
+            signing?: components["schemas"]["SiteSigning"];
         };
         JobSiteList: {
             sites: components["schemas"]["JobSite"][];
@@ -2097,6 +2518,16 @@ export interface components {
              *     address (J31).
              */
             canInvite: boolean;
+        };
+        /**
+         * @description A change the site holds until its owner approves it at the machine with
+         *     their key (J14a, J50). Nothing changed yet; `message` says where to
+         *     approve it, in the site's words.
+         */
+        JobSiteHeld: {
+            /** @constant */
+            held: true;
+            message: string;
         };
         JobSiteInviteRequest: {
             refreshToken: string;
@@ -2145,6 +2576,48 @@ export interface components {
         };
         JobSiteAudit: {
             entries: components["schemas"]["SiteAuditEntry"][];
+        };
+        /** @description A passkey Workbench made, with the MAC keyed by the code shown at the machine (`SitePasskeyPair`, site-host.yaml). */
+        JobSitePasskeyPair: {
+            refreshToken: string;
+            credentialId: string;
+            publicKey: string;
+            alg: components["schemas"]["SitePasskeyAlgorithm"];
+            rpId: string;
+            label?: string | null;
+            mac: string;
+        };
+        JobSiteHeldListRequest: {
+            refreshToken: string;
+            key?: string | null;
+        };
+        /** @description A held change approved with a passkey (`SitePasskeyApproval`, site-host.yaml). */
+        JobSitePasskeyApproval: {
+            refreshToken: string;
+            envelope: string;
+            key: string;
+            credentialId: string;
+            authenticatorData: string;
+            clientDataJSON: string;
+            signature: string;
+        };
+        JobSiteWorkspaceCreate: {
+            refreshToken: string;
+            name: string;
+            path: string;
+            /** @default true */
+            writable: boolean;
+            rules?: components["schemas"]["SiteRules"] | null;
+            deny?: components["schemas"]["SiteDenyPattern"][];
+        };
+        JobSiteRulesRequest: {
+            refreshToken: string;
+            rules: components["schemas"]["SiteRules"];
+            deny: components["schemas"]["SiteDenyPattern"][];
+        };
+        JobSiteWorkspacePeopleRequest: {
+            refreshToken: string;
+            people: components["schemas"]["JobSiteWorkspaceGrant"][];
         };
         SignedRootTls: {
             /**
@@ -3011,6 +3484,8 @@ export interface components {
             /** @description Argon2id, the passphrase's parameters. */
             passwordVerifier: string;
             apps?: string[] | null;
+            /** @description Since 2b.3b (J77). Absent in a snapshot written before then, which reads as null, the install's defaults. */
+            permissions?: string[] | null;
             disabled: boolean;
             /** Format: date-time */
             createdAt: string;
@@ -3055,12 +3530,40 @@ export interface components {
             email?: string;
             /** @description The `clientId`s they may sign in to. Null is every app on the install. */
             apps?: string[] | null;
+            /**
+             * @description Exactly these permissions (J77). Null is the install's defaults,
+             *     the root's settings `peopleMayAddJobSites` and
+             *     `peopleMayUseJobSites`, so changing a default changes everyone
+             *     left on it.
+             */
+            permissions?: components["schemas"]["PersonPermission"][] | null;
+            /** @description What applies now, from `permissions` or, when it is null, the install's defaults. */
+            permissionsInEffect?: components["schemas"]["PersonPermission"][];
             disabled: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             passwordChangedAt: string;
         };
+        /**
+         * @description What a person may do with job sites (J77, `job-sites-own-enrollment.md`
+         *     §3.3). Kept at the root, set where People are managed. They only
+         *     narrow: whatever they say, a site still needs the person's OS
+         *     account on the machine, a link made there, and their own key on
+         *     their own changes, so a root that sets one wrongly gives no one more
+         *     than the machine allows.
+         *     - `add-job-sites`: add a machine of their own as a job site
+         *       (`/oidc/job-sites/invite`, J9).
+         *     - `use-job-sites`: link themselves at a site's machine (the link
+         *       page's sign-in and `/v1/sites/links/check`), and keep workspaces
+         *       of their own there (`/oidc/job-sites/{site}/workspaces…`, and calls
+         *       into those workspaces). Taking it away leaves a link on the machine
+         *       inert: the root refuses its workspaces and calls, and the person or
+         *       the site's owner can remove the link. A folder the site's owner
+         *       shares with them is the owner's grant and is not governed by it.
+         * @enum {string}
+         */
+        PersonPermission: "add-job-sites" | "use-job-sites";
         PersonList: {
             people: components["schemas"]["Person"][];
             /** @description The name the owner signs in with, once the install has people. */
@@ -3072,12 +3575,26 @@ export interface components {
             email?: string;
             password: string;
             apps?: string[] | null;
+            /**
+             * @description Exactly these permissions (J77). Null is the install's defaults,
+             *     the root's settings `peopleMayAddJobSites` and
+             *     `peopleMayUseJobSites`, so changing a default changes everyone
+             *     left on it.
+             */
+            permissions?: components["schemas"]["PersonPermission"][] | null;
         };
         PersonUpdateRequest: {
             displayName?: string;
             /** @description A new address, or `null` to clear it. */
             email?: string | null;
             apps?: string[] | null;
+            /**
+             * @description Exactly these permissions (J77). Null is the install's defaults,
+             *     the root's settings `peopleMayAddJobSites` and
+             *     `peopleMayUseJobSites`, so changing a default changes everyone
+             *     left on it.
+             */
+            permissions?: components["schemas"]["PersonPermission"][] | null;
             disabled?: boolean;
         };
         PersonPasswordRequest: {
@@ -4037,11 +4554,12 @@ export interface components {
         };
         /** @enum {string} */
         SiteOwnerAccess: "none" | "read" | "write";
-        /** @description A folder on a site, as the site last reported it, with Eugene's owner's own dev-mode access to it. */
+        /** @description A folder on a site (one of the site owner's workspaces), as the site last reported it, with Eugene's owner's own dev-mode access to it. */
         SiteDevFolder: {
             id: string;
             name: string;
-            path: string;
+            /** @description From a site before 2b.3b. A newer site reports no paths (J76). */
+            path?: string | null;
             /** @description Whether the folder was registered for writing at all. */
             writable: boolean;
             ownerAccess: components["schemas"]["SiteOwnerAccess"];
@@ -4068,8 +4586,8 @@ export interface components {
              * @description Whether the site treats the tool as able to change or delete
              *     something. True unless the server marks it read-only, or marks it
              *     `destructiveHint: false`. MCP's own default, so an unmarked tool is
-             *     destructive. A destructive tool runs only under a standing
-             *     pre-approval (J6b).
+             *     destructive. Since 2b.3b a destructive tool is granted `ask` unless
+             *     the site's owner grants it `allow` (`SiteToolGrant.decision`, J78).
              */
             destructive: boolean;
         };
@@ -4113,14 +4631,18 @@ export interface components {
             subject: string;
             /**
              * @description The person may change files in it: a standing pre-approval for
-             *     `write_text` (J6b). Otherwise they may list and read.
+             *     `write_text` and `edit_text` (J6b). Otherwise they may list, read
+             *     and search.
              */
             writable: boolean;
         };
         /**
-         * @description A folder registered on the machine. Eugene's file server offers it to
-         *     the people on its list, by its name, as its tools' `folder` argument
-         *     (J6g).
+         * @description A folder registered on the machine, as a site from before 2b.3b reports
+         *     it (a newer site reports `SiteWorkspace`, without the path, J76). Eugene's
+         *     file server offers it to the people on its list, by its name, as its
+         *     tools' `folder` argument (J6g). Since 2b.3b the site's `folder.add`,
+         *     `folder.remove` and `folder.people` act on its owner's workspaces, for a
+         *     root from before then, and answer with this shape.
          */
         SiteFolder: {
             id: string;
@@ -4138,13 +4660,82 @@ export interface components {
             /** @description Who may use it, the site's owner included (J11). Nobody is on it until the owner says so. */
             people: components["schemas"]["SiteFolderPerson"][];
         };
+        /**
+         * @description What a rule says of a group of tools (J70). `allow`: runs without
+         *     asking. `ask`: Workbench asks the person who made the call, and the site
+         *     runs it only when the call says they approved (`SiteCall.asked`, J72);
+         *     until person-held call signatures (J14b) the site cannot check that they
+         *     did, and its audit log says the approval was claimed. `deny`: never
+         *     offered, and refused.
+         * @enum {string}
+         */
+        SiteDecision: "allow" | "ask" | "deny";
+        /**
+         * @description One person's rules in one workspace, per group of tools (J70). `read`:
+         *     `list_directory`, `read_text`, `glob` and `grep`. `change`: `write_text`
+         *     and `edit_text`. The site stores them per tool, so commands (2b.4) add a
+         *     group of their own. `change` cannot be looser than `deny` in a workspace
+         *     registered read-only (`writable: false`).
+         */
+        SiteRules: {
+            read: components["schemas"]["SiteDecision"];
+            change: components["schemas"]["SiteDecision"];
+        };
+        /**
+         * @description Someone the site's owner shares one of their own workspaces with, and
+         *     their rules there (J69, J70). Only the owner's workspaces are shared.
+         */
+        SiteWorkspacePerson: {
+            /** @description A person's id. Never `operator`; Eugene's owner reaches a site only through `ownerInDevMode`. */
+            subject: string;
+            read: components["schemas"]["SiteDecision"];
+            change: components["schemas"]["SiteDecision"];
+        };
+        /**
+         * @description A workspace, as the site reports it in each poll (2b.3b): a folder on the
+         *     machine that one linked person, its holder, works in through the file
+         *     server (J69). Its id and name, never its path (J76): the holder reads the
+         *     path live (`workspace.list`). The root shows each person only their own,
+         *     and the people the owner shared theirs with only the ones shared.
+         */
+        SiteWorkspace: {
+            id: string;
+            /**
+             * @description The name its holder gave it, unique among the holder's own. Each
+             *     person's `folder` argument names their view: their own workspaces,
+             *     then those the owner shared with them, in the order reported, and a
+             *     name already taken there, ignoring case, reads `Name (2)`. The root
+             *     names a person's view the same way, so its names match the site's.
+             */
+            name: string;
+            /** @description The linked person it belongs to, whose own account opens it. */
+            holder: string;
+            /** @description Registered for changing files at all. When false, every `change` rule in it reads `deny`. */
+            writable: boolean;
+            rules: components["schemas"]["SiteRules"];
+            /** @description For the site owner's workspaces, whom they shared it with (J69). Empty otherwise. */
+            people?: components["schemas"]["SiteWorkspacePerson"][];
+        };
+        /**
+         * @description A `SiteDecision` for a tool granted by name; a tool not granted is denied.
+         * @enum {string}
+         */
+        SiteGrantDecision: "allow" | "ask";
         SiteToolGrant: {
             name: string;
             /**
-             * @description A standing pre-approval: the person may use this destructive tool
-             *     without the site's owner approving each call. Required for a
-             *     destructive tool, which is otherwise refused: approving each call at
-             *     the machine waits for the held channel (J6b).
+             * @description 2b.3b (J70, J78): `allow`, the tool runs without asking; `ask`, it
+             *     runs once the person who made the call approved it in Workbench
+             *     (`SiteCall.asked`, J72). Absent: `allow` for a tool the site does not
+             *     treat as destructive, or one granted `standing`; `ask` otherwise.
+             *     A tool not granted is denied: it is never offered.
+             */
+            decision?: components["schemas"]["SiteGrantDecision"] | null;
+            /**
+             * @description From before 2b.3b: a standing pre-approval, the person may use this
+             *     destructive tool without being asked. Reads as `decision: allow`.
+             *     Before 2b.3b it was required for a destructive tool, which was
+             *     otherwise refused.
              * @default false
              */
             standing: boolean;
@@ -4160,6 +4751,45 @@ export interface components {
             tools: components["schemas"]["SiteToolGrant"][];
         };
         /**
+         * @description `unsigned`: the site's owner has no key pinned at the machine. Its rules
+         *     are trusted to the root, and no tool runs there as anyone (J48).
+         *     `unconfirmed`: the owner has a key, but has not approved the site's
+         *     current rules with it (J52); no tool runs. `signed`: every rule the site
+         *     holds was approved with its owner's key, at the machine; tools run.
+         *     Since 2b.3b (J79) the owner's state governs what the owner's rules
+         *     govern: their own workspaces, what they shared, the local servers and
+         *     dev mode. Each other linked person's own workspaces run under their own
+         *     state (`SitePersonLink.signing`).
+         * @enum {string}
+         */
+        SiteSigningState: "unsigned" | "unconfirmed" | "signed";
+        /** @description Whether the site checks its owner's changes with the owner's own key (J14a). */
+        SiteSigning: {
+            state: components["schemas"]["SiteSigningState"];
+            /** @description Changes the site holds until its owner approves them with their key (J50). Since 2b.3b, the owner's alone; each person's own count is on their link. */
+            held: number;
+            /**
+             * @description Where a person adds a key and approves held changes, on the machine
+             *     itself: a Windows service install, and a per-user install on Windows,
+             *     Linux or macOS (J14a.2). Null where this install has no such page (a
+             *     Linux system install, whose owner pairs a passkey instead, J14a.3).
+             */
+            approvePage?: string | null;
+            /**
+             * @description The site takes its owner's passkey from Workbench, paired with a code
+             *     shown at the machine, and approvals made with it (J14a.3). Absent
+             *     from a site older than that.
+             */
+            passkeys?: boolean;
+            /**
+             * @description The site keeps each linked person's own workspaces, rules and keys
+             *     (2b.3b, J67): any linked person pairs a passkey, and adds, changes and
+             *     approves their own. Absent from an older site, whose root offers
+             *     these to the owner alone.
+             */
+            people?: boolean;
+        };
+        /**
          * @description What a job site holds, as the site itself reports it in each poll. The
          *     root keeps it as a cache: it answers Workbench's listings from it, and
          *     the site checks every call against its own copy again (rule 2 of §3.3).
@@ -4169,10 +4799,33 @@ export interface components {
             owner: string;
             /** @description The site's owner lets Eugene's owner in while Eugene is in dev mode (J6e). */
             ownerInDevMode: boolean;
-            folders: components["schemas"]["SiteFolder"][];
+            /** @description From a site before 2b.3b, which reports folders with their paths. A newer site reports `workspaces` instead. */
+            folders?: components["schemas"]["SiteFolder"][];
+            /** @description Every linked person's workspaces, by id and name, never path (2b.3b, J76). The root shows each person only their own and those shared with them. */
+            workspaces?: components["schemas"]["SiteWorkspace"][];
             servers: components["schemas"]["SiteServer"][];
             /** @description Who may use the local servers' tools. Folders carry their own people. */
             access: components["schemas"]["SiteAccess"][];
+            /**
+             * @description The people linked to an OS account on this machine (§2.2, J27), and
+             *     whether each one's worker is connected now. A linked person's calls
+             *     run as their own account; anyone else's run in the owner's worker,
+             *     as the owner, confined to the folder (J27).
+             */
+            links?: components["schemas"]["SitePersonLink"][];
+            /**
+             * @description Where a person links their account, on the machine itself: the
+             *     agent's loopback link page on a Windows service install. Null where
+             *     linking is the elevated one-liner (a Linux system install, J36) or
+             *     where only the installing person is served (a per-user install, J38).
+             */
+            linkPage?: string | null;
+            /**
+             * @description Whether this site can serve anyone but its owner. False on macOS,
+             *     which has no folder boundary yet (§2.6). Absent means true.
+             */
+            sharing?: boolean;
+            signing?: components["schemas"]["SiteSigning"];
         };
         /**
          * @description `mcp`: one MCP request to one of the site's servers. `manage`: one of the site host's management actions (`SiteManageAction`, site-host.yaml).
@@ -4206,14 +4859,18 @@ export interface components {
          * @description One of Eugene's owner's dev-mode folder grants on a site (J13b), carried
          *     with a call in a list (`grants`). The site honours them only if its
          *     owner opted in there (J6e) and Eugene is in dev mode. The host checks
-         *     the folder a call names against them.
+         *     the folder a call names against them. Only the site owner's workspaces
+         *     can be granted. Since 2b.3b the site matches a grant by `folderId` alone
+         *     (J76): the root keeps no paths, so a newer root sends none.
          */
         SiteGrantHint: {
             folderId: string;
             /** @description The folder's name on this machine, as the `folder` argument takes it. The root makes it unique; a folder that shares a name with an earlier one reads `Name (2)`. */
             name: string;
-            path: string;
-            identity: string;
+            /** @description From a root before 2b.3b; a newer site ignores it. */
+            path?: string | null;
+            /** @description From a root before 2b.3b; a newer site ignores it. */
+            identity?: string | null;
             writable: boolean;
         };
         /**
@@ -4221,10 +4878,12 @@ export interface components {
          *     `done`, inside `response`). `failed`: the site refused or could not run
          *     it, and `message` says why in the site's words; nothing ran. `uncertain`:
          *     a tool call started and its end could not be established; it may have
-         *     acted.
+         *     acted. `held` (J14a, J50): a change that gives access, from a person who
+         *     has a key pinned at the machine; the site keeps it until they approve it
+         *     there with that key, and `message` says where. Nothing changed yet.
          * @enum {string}
          */
-        SiteAnswerStatus: "done" | "failed" | "uncertain";
+        SiteAnswerStatus: "done" | "failed" | "uncertain" | "held";
         /**
          * @description The JSON-RPC response to an `McpRequest`, exactly as the site's server
          *     produced it after the site's policy filtered it: `result` or `error`.
@@ -4241,12 +4900,14 @@ export interface components {
         };
         SiteServerFolder: {
             id: string;
-            /** @description Unique on its site; the `folder` argument's value. */
+            /** @description Unique among the workspaces this person may use on its site; the `folder` argument's value. */
             name: string;
-            /** @description This person may change files in it. */
+            /** @description This person may change files in it (since 2b.3b, their `change` rule there is `allow` or `ask`). */
             writable: boolean;
+            /** @description One of this person's own workspaces, rather than one the site's owner shared with them (2b.3b). Absent from an older root. */
+            mine?: boolean;
         };
-        /** @description One server on one site that the signed-in person may use. The file server (`files`) appears once per site, with the folders the person may use there (J6g). */
+        /** @description One server on one site that the signed-in person may use. The file server (`files`) appears once per site, with the folders the person may use there (J6g): since 2b.3b, their own workspaces and those the site's owner shared with them. Which calls Workbench asks about is the site's word, in each tool's `_meta` (`eugene-plexus/ask`, site-host.yaml). */
         SiteServerGrant: {
             site: components["schemas"]["SiteId"];
             label: components["schemas"]["SiteLabel"];
@@ -4258,6 +4919,38 @@ export interface components {
             reason?: string | null;
             /** @description For the file server, the folders this person may use, each by the name its tools' `folder` argument takes. Empty for a local server. */
             folders: components["schemas"]["SiteServerFolder"][];
+            /**
+             * @description This person has linked their own OS account on that machine, so their
+             *     calls there run as it (J27). Otherwise they run as the site's owner,
+             *     confined to the folder. Absent from an older root.
+             */
+            linked?: boolean;
+            /** @description The OS account this person's calls run as there, for display, once the site has said. */
+            account?: string | null;
+            /** @description Where to link, on that machine, when they have not and the site offers a page (§3.2). */
+            linkPage?: string | null;
+        };
+        /**
+         * @description `owner`: the person owns the site. `linked`: they are linked to an OS account on its machine (2b.3b). Absent from an older root: `owner`.
+         * @enum {string}
+         */
+        JobSiteRole: "owner" | "linked";
+        /** @description Someone the site's owner shared a workspace with, and their rules there (J69, J70). */
+        JobSiteWorkspacePerson: {
+            person: string;
+            /** @description How the person signs in. */
+            name: string;
+            read: components["schemas"]["SiteDecision"];
+            change: components["schemas"]["SiteDecision"];
+        };
+        /** @description One of the person's own workspaces on a site, as the site last reported it, by id and name (J76). */
+        JobSiteWorkspace: {
+            id: string;
+            name: string;
+            writable: boolean;
+            rules: components["schemas"]["SiteRules"];
+            /** @description Whom it is shared with. Only the owner's workspaces are shared (J69). */
+            people: components["schemas"]["JobSiteWorkspacePerson"][];
         };
         JobSiteFolderPerson: {
             person: string;
@@ -4266,12 +4959,13 @@ export interface components {
             /** @description May change files in it, without asking the site's owner each time (a standing pre-approval). */
             writable: boolean;
         };
-        /** @description A folder on the site, as the site reports it, and who may use it (J6g). */
+        /** @description A folder on the site, as the site reports it, and who may use it (J6g). Since 2b.3b, one of the owner's workspaces, for a Workbench from before then. */
         JobSiteFolder: {
             id: string;
             /** @description Unique on the site; what Workbench and the model call it. */
             name: string;
-            path: string;
+            /** @description From a site before 2b.3b. A newer site reports no paths (J76); read them with `workspaces/list`. */
+            path?: string | null;
             writable: boolean;
             people: components["schemas"]["JobSiteFolderPerson"][];
         };
@@ -4304,7 +4998,11 @@ export interface components {
         /**
          * @description One line of the site's own audit log, kept on the machine and read by
          *     its owner (J8). It records who asked for what and what the site decided,
-         *     never a file's contents or a tool's result.
+         *     never a file's contents or a tool's result. Since 2b.3b (J80) each line
+         *     belongs to one person, who alone reads it through the root: a call or
+         *     change in a workspace, to its holder; one about a person's own keys, to
+         *     them; the rest (the local servers, sharing, settings, and anything not
+         *     yet tied to a workspace), to the site's owner.
          */
         SiteAuditEntry: {
             /** Format: date-time */
@@ -4320,6 +5018,83 @@ export interface components {
             decision: components["schemas"]["SiteAuditDecision"];
             outcome?: components["schemas"]["SiteAnswerStatus"] | null;
             reason?: string | null;
+            /** @description For a tool call since 2b.3b, the rule that applied (J72). */
+            rule?: components["schemas"]["SiteDecision"] | null;
+            /**
+             * @description For a tool call under an `ask` rule, whether the call said the person
+             *     approved it. Claimed, not checked, until person-held call signatures
+             *     (J14b).
+             */
+            asked?: boolean | null;
+        };
+        /**
+         * @description A passkey's COSE algorithm: -8 EdDSA, -7 ES256, -257 RS256.
+         * @enum {integer}
+         */
+        SitePasskeyAlgorithm: -8 | -7 | -257;
+        /** @description A passkey pinned to a person here (J14a.3). Its private half is in the person's own authenticator. */
+        SitePasskey: {
+            /** @description The key id an envelope names: the first 16 bytes of SHA-256 over the public key (`SubjectPublicKeyInfo`, DER), in hex. */
+            id: string;
+            /** @description The WebAuthn credential id, base64url without padding. */
+            credentialId: string;
+            alg: components["schemas"]["SitePasskeyAlgorithm"];
+            /** @description The WebAuthn relying party id it was made for (Workbench's HTTPS name). */
+            rpId: string;
+            label: string;
+            /** Format: date-time */
+            addedAt: string;
+        };
+        SiteHeldEdit: {
+            id: string;
+            action: string;
+            /** @description The change in the site host's own words, line by line, as the page shows it. */
+            words: string[];
+            /** Format: date-time */
+            heldAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the site drops it unapproved.
+             */
+            expiresAt?: string | null;
+            /** @description With `key`, the canonical `SiteEditEnvelope` to sign. */
+            envelope?: string | null;
+        };
+        SiteHeldList: {
+            subject: string;
+            /** @description The ids of the keys pinned to this person, at the machine and as passkeys. */
+            keys: string[];
+            /** @description Their passkeys (J14a.3), for Workbench to choose which one signs. */
+            passkeys?: components["schemas"]["SitePasskey"][];
+            /** @description The site's state for its owner; since 2b.3b, for anyone, the state of their own rules (`SitePersonLink.signing`). */
+            state?: components["schemas"]["SiteSigningState"] | null;
+            items: components["schemas"]["SiteHeldEdit"][];
+        };
+        /**
+         * @description A path inside a workspace that no tool may touch (J70), in `.gitignore`'s
+         *     syntax without `!`: `.env`, `secrets/`, `*.pem`. It is hidden from every
+         *     tool, for everyone who uses the workspace: listings and searches leave it
+         *     out, and a tool that names it is refused whether or not it exists.
+         */
+        SiteDenyPattern: string;
+        /** @description One of the person's own workspaces, read live from the site through the root, which keeps none of it (J76). */
+        JobSiteWorkspaceDetail: {
+            id: string;
+            name: string;
+            path: string;
+            writable: boolean;
+            rules: components["schemas"]["SiteRules"];
+            deny: components["schemas"]["SiteDenyPattern"][];
+            people: components["schemas"]["JobSiteWorkspacePerson"][];
+        };
+        JobSiteWorkspaceList: {
+            workspaces: components["schemas"]["JobSiteWorkspaceDetail"][];
+        };
+        JobSiteWorkspaceGrant: {
+            /** @description How the person signs in. */
+            name: string;
+            read: components["schemas"]["SiteDecision"];
+            change: components["schemas"]["SiteDecision"];
         };
     };
     responses: {
@@ -6234,6 +7009,58 @@ export interface operations {
             };
         };
     };
+    checkSitePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SitePersonCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description The person. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SitePersonCheck"];
+                };
+            };
+            /** @description Not an enrolled site's token, or the name or password is wrong. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person is disabled, lacks `use-job-sites` (J77), or is Eugene's owner, who is not a person on a site. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many failed checks; try again shortly. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The root is locked. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     removeSite: {
         parameters: {
             query?: never;
@@ -6500,6 +7327,63 @@ export interface operations {
             };
         };
     };
+    removeSiteLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteLinkRemove"];
+            };
+        };
+        responses: {
+            /** @description Removed, or there was none. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not the person's own link, and they do not own the site. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such site, or it is not one the person owns or may use. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site's machine links people only with the elevated one-liner, or no node hosts it now; `detail` says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The machine's agent did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getInstallMode: {
         parameters: {
             query?: never;
@@ -6697,6 +7581,15 @@ export interface operations {
                     "application/json": components["schemas"]["JobSiteFolder"];
                 };
             };
+            /** @description The site holds the change until its owner approves it at the machine with their key (J14a). Nothing changed yet. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteHeld"];
+                };
+            };
             /** @description Authentication, current permission, state, or availability refused the request. */
             401: {
                 headers: {
@@ -6819,6 +7712,15 @@ export interface operations {
                     "application/json": components["schemas"]["JobSiteFolder"];
                 };
             };
+            /** @description The site holds the change until its owner approves it at the machine with their key (J14a). Nothing changed yet. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteHeld"];
+                };
+            };
             /** @description Workbench client or person sign-in is invalid. */
             401: {
                 headers: {
@@ -6879,6 +7781,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobSiteServer"];
+                };
+            };
+            /** @description The site holds the change until its owner approves it at the machine with their key (J14a). Nothing changed yet. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteHeld"];
                 };
             };
             /** @description Workbench client or person sign-in is invalid. */
@@ -6943,6 +7854,15 @@ export interface operations {
                     "application/json": components["schemas"]["JobSiteServer"];
                 };
             };
+            /** @description The site holds the change until its owner approves it at the machine with their key (J14a). Nothing changed yet. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteHeld"];
+                };
+            };
             /** @description Workbench client or person sign-in is invalid. */
             401: {
                 headers: {
@@ -7002,6 +7922,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobSite"];
+                };
+            };
+            /** @description The site holds the change until its owner approves it at the machine with their key (J14a). Nothing changed yet. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteHeld"];
                 };
             };
             /** @description Workbench client or person sign-in is invalid. */
@@ -7087,6 +8016,671 @@ export interface operations {
                 content?: never;
             };
             /** @description The site is offline, its file support is off, or it needs an update. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    pairMyJobSitePasskey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSitePasskeyPair"];
+            };
+        };
+        responses: {
+            /** @description Pinned. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SitePasskey"];
+                };
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site, or nothing is held under that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to take passkeys. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    removeMyJobSitePasskey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it (no such passkey); `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to take passkeys. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listMyJobSiteHeld: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteHeldListRequest"];
+            };
+        };
+        responses: {
+            /** @description The held changes, oldest first, and the owner's passkeys. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteHeldList"];
+                };
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site, or nothing is held under that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to take passkeys. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    approveMyJobSiteHeld: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSitePasskeyApproval"];
+            };
+        };
+        responses: {
+            /** @description Applied. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSite"];
+                };
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site, or nothing is held under that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to take passkeys. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rejectMyJobSiteHeld: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteRequest"];
+            };
+        };
+        responses: {
+            /** @description Dropped. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site, or nothing is held under that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to take passkeys. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    addMyJobSiteWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteWorkspaceCreate"];
+            };
+        };
+        responses: {
+            /** @description The workspace, read live from the site. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteWorkspaceDetail"];
+                };
+            };
+            /** @description The site holds the change until the person approves it with their key. Nothing changed yet. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteHeld"];
+                };
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person lacks `use-job-sites` (J77). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site and is linked to none by that id, or it has no such workspace. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to keep each person's workspaces (`SiteSigning.people`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listMyJobSiteWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteRequest"];
+            };
+        };
+        responses: {
+            /** @description The workspaces. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteWorkspaceList"];
+                };
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person lacks `use-job-sites` (J77). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site and is linked to none by that id, or it has no such workspace. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to keep each person's workspaces (`SiteSigning.people`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    removeMyJobSiteWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person lacks `use-job-sites` (J77). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site and is linked to none by that id, or it has no such workspace. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to keep each person's workspaces (`SiteSigning.people`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setMyJobSiteWorkspaceRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteRulesRequest"];
+            };
+        };
+        responses: {
+            /** @description The workspace, read live from the site. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteWorkspaceDetail"];
+                };
+            };
+            /** @description The site holds the change until the person approves it with their key. Nothing changed yet. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteHeld"];
+                };
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person lacks `use-job-sites` (J77). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site and is linked to none by that id, or it has no such workspace. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to keep each person's workspaces (`SiteSigning.people`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    shareMyJobSiteWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteWorkspacePeopleRequest"];
+            };
+        };
+        responses: {
+            /** @description The workspace, read live from the site. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteWorkspaceDetail"];
+                };
+            };
+            /** @description The site holds the change until its owner approves it with their key. Nothing changed yet. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSiteHeld"];
+                };
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site, or it has no such workspace of theirs, or no such person signs in. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to keep each person's workspaces. */
             503: {
                 headers: {
                     [name: string]: unknown;

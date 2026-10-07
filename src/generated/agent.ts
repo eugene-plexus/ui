@@ -1539,6 +1539,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The page where a person links their Eugene sign-in to their OS account on this machine
+         * @description `docs/design/job-sites-own-enrollment.md` §2.2, §3.2 (J27, J37).
+         *     Served on a Windows service install that hosts a Job Site. It answers
+         *     only a loopback TCP peer with no forwarding header: a console hop, the
+         *     entry point and anything relayed get 403. The account is the one that
+         *     owns the connecting socket (the connection's process, and its token's
+         *     user), never a name sent in the request, and system and service
+         *     accounts are refused. The page names that account, shows its link if
+         *     it has one (with *Remove*), and otherwise offers *Sign in to link*.
+         *     `/link/start` redirects to the root's sign-in (`/oidc/authorize`,
+         *     client `eugene-site-link`, PKCE, `state` and `nonce` bound to a cookie
+         *     this page sets); `/link/callback` trades the code and checks the ID
+         *     token (RS256 against the root's JWKS, issuer, audience, nonce,
+         *     expiry), then shows a confirmation naming both the person and the
+         *     account; only its POST to `/link/confirm`, with that page's CSRF
+         *     token, writes the link. Each request reads the account from its
+         *     connection again, and a different one ends the attempt.
+         *     One link per person, one person per account: a conflict is a page
+         *     saying whose it is and how to remove it.
+         */
+        get: operations["linkPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/site/links/{subject}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * The root removes a person's link on this machine
+         * @description The root's token only (`require_operator_or_control`'s control half),
+         *     when a person removes their own link or the site's owner removes it
+         *     from Workbench (`control.yaml`, `/oidc/sites/link/remove`). Removing a
+         *     link only takes access away; the root can never make one. The
+         *     person's worker is stopped. On a Linux system install links are
+         *     root's (J36) and this is 409.
+         */
+        delete: operations["removeSiteLink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node": {
         parameters: {
             query?: never;
@@ -5084,11 +5146,13 @@ export interface components {
             /** Format: uri */
             nodesUrl?: string;
             /**
-             * @description The nodes name also answers Job Sites on any network, on six
+             * @description The nodes name also answers Job Sites on any network, on seven
              *     paths only (`public_sites`, J3, J31;
-             *     `docs/design/job-sites-own-enrollment.md` §2.3): a site's join
-             *     (`POST /v1/sites/enroll`), its poll, claim, result and leave, and
-             *     the signed TLS key list (`GET /v1/trust/tls`). The trust bundle
+             *     `docs/design/job-sites-own-enrollment.md` §2.3, §3.2): a site's
+             *     join (`POST /v1/sites/enroll`), its poll, claim, result and
+             *     leave, its check of a person typed at the machine to link them
+             *     (`POST /v1/sites/links/check`, J36), and the signed TLS key list
+             *     (`GET /v1/trust/tls`). The trust bundle
              *     is not among them. Every other path on that name is refused with
              *     a sentence naming the console. The networks listed for the name
              *     keep the whole control API, as before. Set only with an
@@ -8290,6 +8354,83 @@ export interface operations {
                 content?: never;
             };
             /** @description The entry point cannot run on this machine. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    linkPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Not a loopback connection from a person's own account, as a page. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description This install does not link people with a page (no Job Site here, a per-user install, or a Linux system install, J36). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    removeSiteLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subject: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed, or there was none. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not the root's token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description This install's links are made and removed by root at the machine (J36). */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -30,6 +30,9 @@ import {
   EMAIL_HINT,
   emailProblem,
   installedByAgent,
+  JOB_SITE_PERMISSIONS,
+  jobSitesSummary,
+  PERMISSION_DEFAULTS_HREF,
   newPersonProblem,
   ownerLabel,
   parseReturnAddresses,
@@ -251,11 +254,16 @@ function PersonRow({
           <span data-testid={`person-sites-${person.name}`}>None</span>
         )}
       </p>
+      <JobSitesLine person={person} />
       <div className="flex flex-wrap gap-4">
         <ChooseApps
           person={person}
           clients={clients}
           onSave={(apps) => change(() => api.patch("control", path, { apps }))}
+        />
+        <ChoosePermissions
+          person={person}
+          onSave={(permissions) => change(() => api.patch("control", path, { permissions }))}
         />
         <NewPassword
           name={person.name}
@@ -272,6 +280,107 @@ function PersonRow({
         </p>
       )}
     </li>
+  );
+}
+
+/**
+ * What a person may do with job sites now (J77): read from the root's
+ * `permissionsInEffect`, and said to be the install's defaults when they
+ * have none of their own, linking to where those are set.
+ */
+function JobSitesLine({ person }: { person: Person }) {
+  const summary = jobSitesSummary(person);
+  return (
+    <p className="text-sm" data-testid={`person-permissions-${person.name}`}>
+      <span className="text-[color:var(--muted)]">May with job sites: </span>
+      <span data-testid={`person-permissions-text-${person.name}`}>{summary.text}</span>{" "}
+      {summary.source === "defaults" ? (
+        <span className="text-[color:var(--muted)]">
+          (the install&rsquo;s defaults, set under{" "}
+          <Link href={PERMISSION_DEFAULTS_HREF} className="underline">
+            the control root&rsquo;s Settings
+          </Link>
+          )
+        </span>
+      ) : (
+        <span className="text-[color:var(--muted)]">(set for them)</span>
+      )}
+    </p>
+  );
+}
+
+/**
+ * The install's defaults, or exactly the permissions ticked. Null on the
+ * wire is the defaults, so changing a default changes everyone left on it.
+ */
+function ChoosePermissions({
+  person,
+  onSave,
+}: {
+  person: Pick<Person, "permissions" | "permissionsInEffect" | "name">;
+  onSave: (permissions: string[] | null) => Promise<void>;
+}) {
+  const [defaults, setDefaults] = useState(person.permissions == null);
+  const [chosen, setChosen] = useState<string[]>(
+    person.permissions ?? person.permissionsInEffect ?? [],
+  );
+  return (
+    <details className="text-sm" data-testid={`person-choose-permissions-${person.name}`}>
+      <summary className="font-ui cursor-pointer text-[color:var(--accent-left)]">
+        Choose what they may do with job sites
+      </summary>
+      <div className="mt-2 flex max-w-md flex-col gap-1">
+        <p className="text-[color:var(--muted)]">
+          These only narrow: a machine still needs their own account on it, a link they make there,
+          and their own key on their own changes. A folder a site&rsquo;s owner shares with them
+          works either way.
+        </p>
+        <label className="font-ui flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={defaults}
+            onChange={(e) => setDefaults(e.target.checked)}
+          />
+          Follow the install&rsquo;s defaults (
+          <Link href={PERMISSION_DEFAULTS_HREF} className="underline">
+            set in Settings
+          </Link>
+          )
+        </label>
+        {!defaults &&
+          JOB_SITE_PERMISSIONS.map((permission) => (
+            <label key={permission.id} className="font-ui flex items-center gap-2 pl-5">
+              <input
+                type="checkbox"
+                checked={chosen.includes(permission.id)}
+                onChange={(e) =>
+                  setChosen(
+                    e.target.checked
+                      ? [...chosen, permission.id]
+                      : chosen.filter((id) => id !== permission.id),
+                  )
+                }
+              />
+              {permission.label}
+            </label>
+          ))}
+        <div>
+          <button
+            type="button"
+            className={primaryClass}
+            onClick={() =>
+              void onSave(
+                defaults
+                  ? null
+                  : JOB_SITE_PERMISSIONS.map((p) => p.id).filter((id) => chosen.includes(id)),
+              )
+            }
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </details>
   );
 }
 

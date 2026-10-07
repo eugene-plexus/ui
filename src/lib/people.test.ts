@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   appsSummary,
+  jobSitesSummary,
   installedByAgent,
   newPersonProblem,
   ownerLabel,
@@ -107,5 +108,31 @@ describe("a new person", () => {
     expect(newPersonProblem("Operator", "a-long-enough-password", "operator")).toMatch(/is you/);
     expect(newPersonProblem("Ada", "short", "operator")).toMatch(/12/);
     expect(newPersonProblem("Ada", "a-long-enough-password", "operator")).toBeNull();
+  });
+});
+
+describe("what a person may do with job sites (J77)", () => {
+  it("says what is in effect, and that it is the install's defaults", () => {
+    expect(
+      jobSitesSummary({
+        permissions: null,
+        permissionsInEffect: ["add-job-sites", "use-job-sites"],
+      }),
+    ).toEqual({ text: "add machines; use job sites as themselves", source: "defaults" });
+  });
+
+  it("reads the root's answer, not the list asked for", () => {
+    // A default turned off: the list in effect is shorter than the choices.
+    expect(jobSitesSummary({ permissionsInEffect: ["use-job-sites"] })).toEqual({
+      text: "use job sites as themselves",
+      source: "defaults",
+    });
+  });
+
+  it("says nothing is allowed, set for them", () => {
+    expect(jobSitesSummary({ permissions: [], permissionsInEffect: [] })).toEqual({
+      text: "Nothing",
+      source: "own",
+    });
   });
 });

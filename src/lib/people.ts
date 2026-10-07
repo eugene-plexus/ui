@@ -13,6 +13,47 @@
 
 import type { OidcClient, Person } from "./types";
 
+/**
+ * What a person may do with job sites (J77, `job-sites-own-enrollment.md`
+ * §3.3), each with the root's setting that is its default. They only
+ * narrow: a site still needs the person's account on its machine, a link
+ * made there and their own key.
+ */
+export const JOB_SITE_PERMISSIONS = [
+  {
+    id: "add-job-sites",
+    label: "Add machines of their own as job sites",
+    short: "add machines",
+    setting: "peopleMayAddJobSites",
+  },
+  {
+    id: "use-job-sites",
+    label: "Use job sites as themselves: link their account on a machine and keep workspaces there",
+    short: "use job sites as themselves",
+    setting: "peopleMayUseJobSites",
+  },
+] as const;
+
+export type JobSitePermission = (typeof JOB_SITE_PERMISSIONS)[number]["id"];
+
+/** Where the install's defaults are set: the control root's Settings. */
+export const PERMISSION_DEFAULTS_HREF = "/config?sel=control#peopleMayAddJobSites";
+
+/**
+ * What a person may do with job sites now, in words, and whether that is
+ * the install's defaults or set for them. Read from `permissionsInEffect`,
+ * the root's own answer, so the line never shows a value not in effect.
+ */
+export function jobSitesSummary(person: Pick<Person, "permissions" | "permissionsInEffect">): {
+  text: string;
+  source: "defaults" | "own";
+} {
+  const inEffect = new Set<string>(person.permissionsInEffect ?? []);
+  const may = JOB_SITE_PERMISSIONS.filter((p) => inEffect.has(p.id)).map((p) => p.short);
+  const text = may.length === 0 ? "Nothing" : may.join("; ");
+  return { text, source: person.permissions == null ? "defaults" : "own" };
+}
+
 /** The shortest password the root accepts, the console's passphrase rule. */
 export const MIN_PASSWORD = 12;
 

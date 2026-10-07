@@ -34,6 +34,7 @@ const ADA = {
   displayName: "Ada Lovelace",
   email: "ada@example.org",
   apps: null,
+  permissionsInEffect: ["add-job-sites", "use-job-sites"],
   disabled: false,
   createdAt: "2026-10-01T00:00:00Z",
   passwordChangedAt: "2026-10-01T00:00:00Z",
@@ -218,6 +219,40 @@ describe("people", () => {
       expect(sent("PATCH control/v1/people/p-ada")).toEqual([
         { email: "ada@new.example" },
         { email: null },
+      ]),
+    );
+  });
+
+  it("says what a person may do with job sites, from the defaults, linking to them", async () => {
+    render(<PeoplePage />);
+    const line = await screen.findByTestId("person-permissions-Ada", {}, { timeout: 5000 });
+    expect(screen.getByTestId("person-permissions-text-Ada")).toHaveTextContent(
+      "add machines; use job sites as themselves",
+    );
+    expect(line).toHaveTextContent("the install’s defaults");
+    expect(within(line).getByRole("link")).toHaveAttribute(
+      "href",
+      "/config?sel=control#peopleMayAddJobSites",
+    );
+  });
+
+  it("sets a person's own job-site permissions, and returns them to the defaults", async () => {
+    render(<PeoplePage />);
+    const choose = await screen.findByTestId(
+      "person-choose-permissions-Ada",
+      {},
+      { timeout: 5000 },
+    );
+    await userEvent.click(within(choose).getByText("Choose what they may do with job sites"));
+    await userEvent.click(within(choose).getByLabelText(/Follow the install/));
+    await userEvent.click(within(choose).getByLabelText(/Add machines of their own/));
+    await userEvent.click(within(choose).getByText("Save"));
+    await userEvent.click(within(choose).getByLabelText(/Follow the install/));
+    await userEvent.click(within(choose).getByText("Save"));
+    await waitFor(() =>
+      expect(sent("PATCH control/v1/people/p-ada")).toEqual([
+        { permissions: ["use-job-sites"] },
+        { permissions: null },
       ]),
     );
   });

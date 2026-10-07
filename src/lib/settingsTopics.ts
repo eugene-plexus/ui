@@ -472,6 +472,22 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     topic: "access",
   },
   {
+    id: "people-permissions",
+    label: "Each person's job-site permissions",
+    description:
+      "Whether one person may add machines or use job sites as themselves, beyond the defaults here: on the People page.",
+    href: "/people",
+    keywords: [
+      "job sites",
+      "permissions",
+      "add job sites",
+      "use job sites",
+      "people",
+      "workspaces",
+    ],
+    topic: "access",
+  },
+  {
     id: "machines",
     label: "Add a machine, versions and updates",
     description: "Join tokens, each machine's version and the Update button.",
