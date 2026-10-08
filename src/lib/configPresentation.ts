@@ -13,7 +13,6 @@ const MORE: Record<string, readonly string[]> = {
     "allowedHosts",
   ],
   control: [
-    "standbyUrls",
     "joinTokenTtlSeconds",
     "nodePollIntervalSeconds",
     "nodeRequestTimeoutSeconds",

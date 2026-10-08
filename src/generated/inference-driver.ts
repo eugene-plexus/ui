@@ -2056,6 +2056,51 @@ export interface components {
             sizes?: string[] | null;
             /** @description Whether it takes a first frame (image-to-video). */
             firstFrame?: boolean;
+            /**
+             * @description Its price list, read from OpenRouter's `pricing_skus`, in the
+             *     lines a request can be priced by (`gateway.yaml`'s
+             *     `ModelRoutingInfo.video_prices` says how). Null when the listing
+             *     has no line for a second of output. Added 2026-10-08.
+             */
+            prices?: components["schemas"]["VideoPrice"][] | null;
+        };
+        /**
+         * @description What one unit of a `VideoPrice` is: a second of video made, one
+         *     image sent in (a first frame), or the least a job is billed.
+         * @enum {string}
+         */
+        VideoPriceUnit: "second" | "input_image" | "minimum";
+        /**
+         * @description One line of a video model's price list, in US dollars. Only lines
+         *     that price what a request asks for are carried: a second of
+         *     output, an input image, a job's minimum. Lines in units a request
+         *     cannot be counted in (video tokens, megapixel-seconds, a
+         *     continuation of a video sent in, a reference) are left out.
+         */
+        VideoPrice: {
+            /** @description The provider's own name for the line (`cents_per_video_output_second_480p`). */
+            sku: string;
+            per: components["schemas"]["VideoPriceUnit"];
+            /** @description Dollars per unit; a price listed in cents is divided by 100. */
+            usd: number;
+            /**
+             * @description The provider's resolution class (`480p`, `720p`, `1080p`, `2K`,
+             *     `4K`). Absent: the line holds at every resolution.
+             */
+            resolution?: string;
+            /**
+             * @description The model's listed sizes of that resolution: those whose
+             *     shorter side is its height (480p: 480; 2K: 1440; 4K: 2160).
+             *     Absent when `resolution` is, or when the model lists no sizes.
+             */
+            sizes?: string[];
+            /** @description True holds only with sound, false only without. Absent holds either way. */
+            audio?: boolean;
+            /**
+             * @description True holds only with a first frame (image to video), false
+             *     only without one. Absent holds either way.
+             */
+            firstFrame?: boolean;
         };
         /**
          * @description For an `image` model (P4): what its listing says it takes, which the

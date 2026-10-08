@@ -1383,6 +1383,10 @@ export interface paths {
          *     handle does not carry it). **Another key's handle, a forged one and
          *     one from another install all read as not found.**
          *
+         *     A job that has ended carries `x_eugene_plexus.cost_usd` when the
+         *     provider says what it billed (2026-10-08). OpenRouter says it on a
+         *     completed job.
+         *
          *     Remix, edits, extensions and delete are not routed (P5-2): only
          *     OpenAI's shut-down API served them.
          */
@@ -2301,6 +2305,27 @@ export interface components {
             /** @description For a `video` model, at least one backend takes an `input_reference`. */
             video_first_frame?: boolean;
             /**
+             * @description For a `video` model: the provider's price list, as its driver
+             *     reads it (OpenRouter's `pricing_skus`), so a client can say
+             *     what a job will cost before it sends one. **Listed only when
+             *     every backend serving the model lists the same prices**: a
+             *     request may land on any of them. Absent when none is listed
+             *     or they differ, which a client says as *no price listed*,
+             *     never as free. Added 2026-10-08 (Workbench media screens,
+             *     §6.4).
+             *
+             *     **A request's price** is its seconds times the `second` line
+             *     that applies, plus each input image (a first frame) times the
+             *     `input_image` line, and at least the `minimum` line. The
+             *     `second` line that applies is one whose `sizes` holds the
+             *     size sent; failing that, one with no `resolution`. Lines that
+             *     still differ only by `audio` (whether sound is added is the
+             *     provider's default) or are left open by an unsent size give a
+             *     range, not one figure. A line whose `first_frame` disagrees
+             *     with the request does not apply.
+             */
+            video_prices?: components["schemas"]["VideoPrice"][];
+            /**
              * @description At least one backend confirms this model answers with audio.
              *     A request with `modalities` including `audio` routes only to
              *     those backends, including fallback. Added 2026-09-28 (P2b).
@@ -2361,6 +2386,44 @@ export interface components {
              *     at least one declared `startOnDemand`.
              */
             on_demand?: boolean;
+        };
+        /**
+         * @description What one unit of a `VideoPrice` is: a second of video made, one
+         *     image sent in (a first frame), or the least a job is billed.
+         * @enum {string}
+         */
+        VideoPriceUnit: "second" | "input_image" | "minimum";
+        /**
+         * @description One line of a video model's price list, in US dollars. Only lines
+         *     that price what a request asks for are carried: a second of
+         *     output, an input image, a job's minimum. Lines in units a request
+         *     cannot be counted in (video tokens, megapixel-seconds, a
+         *     continuation of a video sent in) are left out.
+         */
+        VideoPrice: {
+            /** @description The provider's own name for the line (`cents_per_video_output_second_480p`). */
+            sku: string;
+            per: components["schemas"]["VideoPriceUnit"];
+            /** @description Dollars per unit; a price listed in cents is divided by 100. */
+            usd: number;
+            /**
+             * @description The provider's resolution class (`480p`, `720p`, `1080p`, `2K`,
+             *     `4K`). Absent: the line holds at every resolution.
+             */
+            resolution?: string;
+            /**
+             * @description The model's listed sizes of that resolution: those whose
+             *     shorter side is its height (480p: 480; 2K: 1440; 4K: 2160).
+             *     Absent when `resolution` is, or when the model lists no sizes.
+             */
+            sizes?: string[];
+            /** @description True holds only with sound, false only without. Absent holds either way. */
+            audio?: boolean;
+            /**
+             * @description True holds only with a first frame (image to video), false
+             *     only without one. Absent holds either way.
+             */
+            first_frame?: boolean;
         };
         /**
          * @description Where a request for this model may run, from the serving drivers'
@@ -3566,6 +3629,15 @@ export interface components {
              */
             prompt_truncated?: boolean;
             progress?: components["schemas"]["StreamProgress"];
+            /**
+             * @description What the provider says it billed for this request, in US
+             *     dollars. Only a video job carries it today: on the poll that
+             *     finds it `completed` (or `failed`), when the provider reports
+             *     one (OpenRouter's `usage.cost`). **Absent means not known,
+             *     never free.** Added 2026-10-08 (Workbench's video screen; the
+             *     gateway's first money).
+             */
+            cost_usd?: number;
         };
         /**
          * @description What the backend is doing while it is not producing output, on a

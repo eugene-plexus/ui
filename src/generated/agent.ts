@@ -2532,6 +2532,29 @@ export interface components {
          */
         ComponentStatus: "starting" | "running" | "safe_mode" | "exited" | "crashed" | "unreachable";
         /**
+         * @description The warm standby this agent runs because its node holds the
+         *     `standby` grant (`docs/design/warm-standby.md`, SB3). Absent when it
+         *     does not. The agent starts it when the grant arrives in the trust
+         *     bundle and stops it, deleting its copy of the replication set, when
+         *     the grant goes. How far behind it is, the active root says
+         *     (`ControlStatus.standbys`).
+         */
+        LocalStandby: {
+            /** @description Its id among this agent's components. */
+            component: string;
+            /**
+             * Format: uri
+             * @description Where it listens on this machine.
+             */
+            url: string;
+            status: components["schemas"]["ComponentStatus"];
+            /**
+             * Format: uri
+             * @description The active root it follows, this node's `controlUrl`.
+             */
+            following?: string;
+        };
+        /**
          * @description What this agent knows about its own host and its own place in an
          *     install. The install-wide `Node` view lives on the control root;
          *     this is the half only the host itself can answer.
@@ -2568,6 +2591,15 @@ export interface components {
              * @description The control root this node answers to.
              */
             controlUrl?: string;
+            standby?: components["schemas"]["LocalStandby"];
+            /**
+             * @description This agent supervises the install's active control root. The
+             *     root reads it from its probe of each node to know its own
+             *     machine, which can never be its standby
+             *     (`docs/design/warm-standby.md`). A standby this agent runs does
+             *     not count.
+             */
+            hostsControl?: boolean;
             /**
              * Format: int64
              * @description Highest control-root epoch this agent has acknowledged. **It

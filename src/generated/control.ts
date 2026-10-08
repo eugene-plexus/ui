@@ -745,9 +745,13 @@ export interface paths {
          *     ordering**, so clock skew between hosts cannot affect
          *     correctness.
          *
-         *     **An operator session only.** The entries include the ones that
-         *     wrote the install's key material, so this is the same door as
-         *     `readSnapshot` and takes the same level; see there for why.
+         *     **An operator session, or the standby's own token.** The entries
+         *     include the ones that wrote the install's key material, so this is
+         *     the same door as `readSnapshot` and takes the same credentials; see
+         *     there for why.
+         *
+         *     Each read by the standby records where it is: `after` is the index
+         *     it has applied (`ControlStatus.standbys`).
          */
         get: operations["readLog"];
         put?: never;
@@ -777,18 +781,21 @@ export interface paths {
          *     which are sealed on the hosts that read them and never travel
          *     here.
          *
-         *     **An operator session only** (2026-09-25), narrower than every
-         *     other read on this root and deliberately so. What comes back
+         *     **An operator session, or the standby's own token**, narrower than
+         *     every other read on this root and deliberately so. What comes back
          *     includes `sealedSigningKey`, `salt` and `passphraseVerifier`, so
          *     any other holder gains an **offline attack on the operator's
          *     passphrase** by reading it. Until 2026-09-25 a year-long
          *     `service:control` token opened it, and this root handed one to
-         *     every node on every poll. Service tokens are addressed to one
-         *     machine now, and none is addressed here for this.
+         *     every node on every poll.
          *
-         *     **Known gap:** a standby that follows the log unattended needs a
-         *     credential of its own, and no production path has ever given it
-         *     one. It is recorded in the design (§5), not solved here.
+         *     **The standby's token** (2026-10-08,
+         *     `docs/design/warm-standby.md`): a `sub: standby` service token,
+         *     addressed to `control`, signed by the key of the one node that
+         *     holds the `standby` grant (`makeStandby`). It is checked against
+         *     this root's applied state on every request, so removing the grant
+         *     shuts the next pull out while the token still has time left. No
+         *     other node, and no other token kind, opens this or the log.
          */
         get: operations["readSnapshot"];
         put?: never;
@@ -1506,6 +1513,52 @@ export interface paths {
          *     the install is in production.
          */
         patch: operations["setSiteFolderOwnerAccess"];
+        trace?: never;
+    };
+    "/v1/nodes/{name}/standby": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Make this node the install's warm standby
+         * @description One `setStandby` entry (`on: true`) that gives the node the
+         *     `standby` grant (`docs/design/warm-standby.md`, SB1). The new trust
+         *     bundle is pushed to every node. The node's agent then starts a
+         *     standby control root that follows this one with a `sub: standby`
+         *     token (SB2, SB3).
+         *
+         *     **What the standby holds.** It keeps a copy of the replication set:
+         *     the sealed keys, the salt and the passphrase verifier. Its node key
+         *     (until the grant is removed) or its disk is enough to try guessing
+         *     the passphrase offline. Promotion still needs the passphrase.
+         *
+         *     A session holding the `membership` capability. Doing it again for
+         *     the node that already holds the grant changes nothing and answers
+         *     the same.
+         */
+        put: operations["makeStandby"];
+        post?: never;
+        /**
+         * Stop this node being the standby
+         * @description One `setStandby` entry (`on: false`). The node's next pull is
+         *     refused, whatever its token's remaining life, because the
+         *     replication routes check the applied state on every request. Its
+         *     agent stops the standby and deletes its copy of the replication
+         *     set when the new bundle reaches it.
+         *
+         *     A session holding the `membership` capability. A node that is not
+         *     the standby answers the same, and nothing is appended.
+         */
+        delete: operations["stopStandby"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/nodes/{name}/hosted-sites": {
@@ -3184,6 +3237,9 @@ export interface components {
              *     cannot be promoted without losing the difference, and an
              *     operator should see that before a failure rather than during
              *     one.
+             *
+             *     Since 2026-10-08, the node that holds the `standby` grant, from
+             *     applied state; the `standbyUrls` setting is no longer read.
              */
             standbys?: components["schemas"]["StandbyStatus"][];
             /**
@@ -3193,10 +3249,25 @@ export interface components {
             activeUrl?: string;
             initialized?: boolean;
         };
+        /**
+         * @description What the active root knows of its standby, from the standby's own
+         *     pulls (`docs/design/warm-standby.md`, SB4), never from probing it.
+         *     A root that has restarted knows nothing until the next pull, and
+         *     says so with no `lastContactAt`.
+         */
         StandbyStatus: {
-            /** Format: uri */
-            url: string;
-            /** Format: int64 */
+            /** @description The node that holds the `standby` grant. */
+            node: string;
+            /**
+             * Format: uri
+             * @description That node's address, as `Node.url` records it. Absent when none is recorded.
+             */
+            url?: string;
+            /**
+             * Format: int64
+             * @description The index the standby had applied at its last pull: the `after`
+             *     of its last log read, or the index of its last snapshot.
+             */
             appliedIndex?: number;
             /**
              * Format: int64
@@ -3205,8 +3276,17 @@ export interface components {
              *     would be lost and seconds are not.
              */
             lagEntries?: number;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the standby last pulled. Absent until it has, since this root started.
+             */
             lastContactAt?: string;
+            /**
+             * @description The standby pulled within the last three follow intervals.
+             *     False when it has not pulled since this root started, which
+             *     `lastContactAt` being absent tells apart from a standby that
+             *     stopped.
+             */
             reachable?: boolean;
         };
         LogPage: {
@@ -3260,7 +3340,12 @@ export interface components {
             at?: string;
         };
         /**
-         * @description **The four Job Site operations (slice 2b.1, 2026-10-06)** are
+         * @description **`setStandby` (2026-10-08)** gives one node the `standby` grant
+         *     (`on: true`) or takes it away (`on: false`); `promote` takes it from
+         *     the node it promotes (`docs/design/warm-standby.md`). At most one
+         *     node holds it.
+         *
+         *     **The four Job Site operations (slice 2b.1, 2026-10-06)** are
          *     `enrollSite`, `removeSite`, `setSiteHost` (a node's display-only
          *     claim to host a site, J32) and `setSiteDevGrants` (Eugene's owner's
          *     own dev-mode grants on a site, J13b). A Job Site is its own
@@ -3305,7 +3390,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -3365,7 +3450,9 @@ export interface components {
              *     compaction. A promoted standby that came up without
              *     `standbyUrls` would silently have no standbys of its own,
              *     which is the failure mode where the second failover is the
-             *     one that hurts.
+             *     one that hurts. (Since 2026-10-08 the standby is the node with
+             *     the `standby` grant, which is in `nodes`, and `standbyUrls` is
+             *     no longer read.)
              */
             config?: {
                 [key: string]: unknown;
@@ -3686,10 +3773,18 @@ export interface components {
              * @description The bundle version this change produced.
              */
             version: number;
-            /** @enum {string} */
-            reason: "revocation" | "rotation";
+            /**
+             * @description `standby`: a `makeStandby` or `stopStandby` (2026-10-08).
+             * @enum {string}
+             */
+            reason: "revocation" | "rotation" | "standby";
             /** @description Set when `reason: revocation`. */
             revokedNode?: string;
+            /**
+             * @description Set when `reason: standby`: the node that holds the grant now.
+             *     Absent when no node does.
+             */
+            standbyNode?: string;
             /**
              * @description Nodes that had not acknowledged `version` when this answered:
              *     named, because "which host still trusts the old key" is the
@@ -3896,9 +3991,16 @@ export interface components {
          *       with `sub: agent` to `control`, and to **its own machine**.
          *       Nothing else: a site that joined with a leaked token reaches no
          *       other machine and no other component, on any network.
+         *     * `standby`: given to **one** node, beside `node`, by an owner's
+         *       `PUT /v1/nodes/{name}/standby` at the control root, never by a
+         *       join token and never claimed by the node
+         *       (`docs/design/warm-standby.md`, SB1). Service tokens with
+         *       `sub: standby` to `control`, and nothing else. The control root
+         *       accepts them on its replication routes alone, and only while
+         *       its applied state still names that node the standby (SB2).
          * @enum {string}
          */
-        TrustGrant: "authority" | "node" | "gateway" | "files";
+        TrustGrant: "authority" | "node" | "gateway" | "files" | "standby";
         /**
          * @description What kind of device this is.
          *
@@ -7137,6 +7239,99 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    makeStandby: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The node holds the grant; the new bundle is being pushed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrustChange"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /**
+             * @description Another node is already the standby (one at a time; the problem
+             *     names it), the node is this root's own, or this host is a
+             *     standby and accepts no writes. Nothing changed.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description Locked: the identity key that signs the bundle is not in
+             *     memory. Nothing changed.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    stopStandby: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The grant is gone; the new bundle is being pushed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrustChange"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description This host is a standby and accepts no writes. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Locked. Nothing changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
             };
         };
     };

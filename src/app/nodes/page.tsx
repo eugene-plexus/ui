@@ -35,6 +35,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { CopyButton } from "@/components/CopyButton";
 import { NodeUpdateCard } from "@/components/NodeUpdateCard";
+import { StandbyPanel } from "@/components/StandbyPanel";
 import { ApiError, api } from "@/lib/api";
 import { isLockedError } from "@/lib/controlUnlock";
 import {
@@ -49,6 +50,7 @@ import {
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
 import { timeAgo, timeUntil } from "@/lib/relativeTime";
 import { siteHref, sitesHostedBy } from "@/lib/sites";
+import { isStandby, type StandbyStatus } from "@/lib/standby";
 import type { Site, SiteList } from "@/lib/types";
 import { useNodeUpdates } from "@/lib/useNodeUpdates";
 import { usePolling } from "@/lib/usePolling";
@@ -119,6 +121,8 @@ interface ControlStatus {
   role?: string;
   epoch?: number;
   appliedIndex?: number;
+  /** The standby, from its own pulls (warm-standby.md SB4). */
+  standbys?: StandbyStatus[];
 }
 
 /** Drivers per node, with what the gateway knows about each. Both reads
@@ -551,7 +555,14 @@ export default function NodesPage() {
                             </div>
                           ))}
                         </td>
-                        <td className="py-2 pr-4 text-[color:var(--muted)]">{n.role}</td>
+                        <td className="py-2 pr-4 text-[color:var(--muted)]">
+                          {n.role}
+                          {isStandby(n.grants) ? (
+                            <span className="ml-1" data-testid={`node-standby-${n.name}`}>
+                              · standby
+                            </span>
+                          ) : null}
+                        </td>
                         <td className="py-2 pr-4 font-mono text-xs">
                           {n.url ?? (
                             <span className="text-[color:var(--muted)]">none recorded</span>
@@ -651,6 +662,14 @@ export default function NodesPage() {
               </div>
             )}
           </section>
+
+          {!locked && nodes && nodes.length > 0 && (
+            <StandbyPanel
+              nodes={nodes}
+              standbys={status?.standbys ?? []}
+              onChanged={() => void load()}
+            />
+          )}
 
           {/* Versions, and updating a machine from here: the Update on
               each card runs on that machine, through its own agent. */}
