@@ -60,6 +60,8 @@ const MODELS = {
     model("kokoro", {
       surfaces: ["speech"],
       voices: ["af_heart", "af_bella"],
+      // A provider that names a voice (ElevenLabs does): shown by name.
+      voice_names: { af_bella: "Bella" },
       speech_formats: ["mp3", "pcm"],
     }),
     model("scribe", { surfaces: ["transcription"] }),
@@ -138,6 +140,10 @@ describe("the speech door", () => {
       (o) => o.value,
     );
     expect(voices).toEqual(["af_heart", "af_bella"]);
+    const labels = [...screen.getByTestId("speech-voice").querySelectorAll("option")].map(
+      (o) => o.textContent,
+    );
+    expect(labels).toEqual(["af_heart", "Bella"]);
     const formats = [...screen.getByTestId("speech-format").querySelectorAll("option")].map(
       (o) => o.value,
     );

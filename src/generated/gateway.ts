@@ -2218,8 +2218,28 @@ export interface components {
              *     provider's own ids (P3a). Absent when the provider does not say,
              *     which is not the same as having none -- any voice is passed
              *     through and an unknown one is the provider's 400 (P3-3).
+             *
+             *     **When every backend that would speak the request lists its
+             *     voices, a voice none of them lists is refused before anything
+             *     is sent** (400, `param: voice`), naming the listed ones: a
+             *     provider's own refusal named nothing (OpenRouter: *"Provider
+             *     returned 400"*, measured 2026-10-08). OpenAI's TTS models list
+             *     the voices measured for their family that day. Added
+             *     2026-10-08 (Workbench media screens, M10).
              */
             voices?: string[];
+            /**
+             * @description For a `speech` model: a display name for each voice in
+             *     `voices` that its provider names, keyed by the voice's id
+             *     (ElevenLabs: `21m00Tcm4TlvDq8ikWAM` is *Rachel*), from the
+             *     backends that list `voices`. A request still sends the id; a
+             *     voice with no name here is shown by its id. Absent when no
+             *     backend names any. Added 2026-10-08 (Workbench media screens:
+             *     ElevenLabs voices showed as ids).
+             */
+            voice_names?: {
+                [key: string]: string;
+            };
             /**
              * @description For a `speech` model: the formats every backend serving it can
              *     give, `wav` included where it is made from `pcm`.
@@ -2241,6 +2261,39 @@ export interface components {
              *     (OpenAI's API only, measured).
              */
             image_mask?: boolean;
+            /**
+             * @description For an `image` model: the largest `n` a request may ask for,
+             *     across the backends serving it. Null when any of them checks
+             *     `n` itself (an OpenAI account's, whose API lists nothing per
+             *     model), which is not the same as no limit: the backend's own
+             *     refusal is relayed. A larger `n` is refused before anything
+             *     is sent. Added 2026-10-08 (Workbench media screens, so a form
+             *     can offer what the gateway would take).
+             */
+            image_max_images?: number;
+            /**
+             * @description For an `image` model: the `quality` values its backends take.
+             *     Null when any backend checks `quality` itself; empty when none
+             *     takes one. `auto` is always taken. Added 2026-10-08.
+             */
+            image_qualities?: string[];
+            /** @description For an `image` model, the `background` values taken, with the same null and empty as `image_qualities`. Added 2026-10-08. */
+            image_backgrounds?: string[];
+            /** @description For an `image` model, the `output_format` values taken, with the same null and empty as `image_qualities`. Added 2026-10-08. */
+            image_output_formats?: string[];
+            /**
+             * @description For an `image` model: the fewest reference images some backend
+             *     serving it needs. 1 for a model that only edits; 0 when one
+             *     makes images from a prompt alone. Added 2026-10-08.
+             */
+            image_min_references?: number;
+            /**
+             * @description For an `image` model: the most reference images some backend
+             *     serving it takes; 0 cannot edit. Null when any backend checks
+             *     the count itself. Added 2026-10-08.
+             */
+            image_max_references?: number;
+            locality?: components["schemas"]["ModelLocality"];
             /** @description For a `video` model, the whole seconds its backends list (P5). */
             video_durations?: number[];
             /** @description For a `video` model, the sizes its backends list. */
@@ -2309,6 +2362,19 @@ export interface components {
              */
             on_demand?: boolean;
         };
+        /**
+         * @description Where a request for this model may run, from the serving drivers'
+         *     own `locality` (their configured trust classification): `local`
+         *     only when every backend serving it is local, `external` when any
+         *     is (a cloud API, a subscription, someone else's server), and
+         *     `unknown` otherwise. A client can say *runs on <account>* before
+         *     it sends. External is not the same as billed; it names where the
+         *     request goes, not what it costs. A `localOnly` key sees only
+         *     local backends, so it sees `local`. Added 2026-10-08 (Workbench
+         *     media screens).
+         * @enum {string}
+         */
+        ModelLocality: "local" | "external" | "unknown";
         /**
          * @description Supported chat settings only. Unknown properties, including nested message,
          *     tool and response-format properties, return 400 with a field name. Arbitrary
@@ -2558,7 +2624,11 @@ export interface components {
         SpeechRequest: {
             model: string;
             input: string;
-            /** @description The provider's own voice id, passed through (P3-3). */
+            /**
+             * @description The provider's own voice id, passed through (P3-3) -- or refused
+             *     before sending when the model lists its voices and this is not
+             *     one of them (`ModelRoutingInfo.voices`, M10).
+             */
             voice: string;
             response_format?: components["schemas"]["SpeechFormat"];
             speed?: number;

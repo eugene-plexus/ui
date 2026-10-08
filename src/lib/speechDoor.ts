@@ -35,6 +35,17 @@ export function voicesFor(model: Model | undefined): string[] | null {
   return voices && voices.length > 0 ? voices : null;
 }
 
+/** How a voice is shown: its name where the provider gives one
+ * (`x_eugene_plexus.voice_names`; ElevenLabs' ids say nothing), with the id
+ * only when another listed voice shares the name. The id is what is sent. */
+export function voiceLabel(model: Model | undefined, id: string): string {
+  const names = model?.x_eugene_plexus?.voice_names ?? {};
+  const name = names[id];
+  if (!name) return id;
+  const shared = (model?.x_eugene_plexus?.voices ?? []).some((v) => v !== id && names[v] === name);
+  return shared ? `${name} (${id})` : name;
+}
+
 export function formatsFor(model: Model | undefined): string[] {
   const listed = model?.x_eugene_plexus?.speech_formats;
   return listed && listed.length > 0 ? [...listed] : [...SPEECH_FORMATS];

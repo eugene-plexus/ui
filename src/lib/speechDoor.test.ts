@@ -6,6 +6,7 @@ import {
   buildSpeechBody,
   formatsFor,
   speechPlayable,
+  voiceLabel,
   voicesFor,
 } from "./speechDoor";
 import type { Model } from "./types";
@@ -55,6 +56,21 @@ describe("the model's own listing", () => {
     expect(formatsFor(listed)).toEqual(["mp3", "wav"]);
     expect(voicesFor(model({}))).toBeNull();
     expect(formatsFor(model({}))).toEqual([...SPEECH_FORMATS]);
+  });
+
+  it("shows a voice by its name, with the id only where two share a name", () => {
+    const eleven = model({
+      voices: ["21m00Tcm4TlvDq8ikWAM", "EXAVITQu4vr4xnSDxMaL", "pNInz6obpgDQGcFmaJgB", "cl0n3d"],
+      voice_names: {
+        "21m00Tcm4TlvDq8ikWAM": "Rachel",
+        EXAVITQu4vr4xnSDxMaL: "Sarah",
+        cl0n3d: "Rachel",
+      },
+    });
+    expect(voiceLabel(eleven, "EXAVITQu4vr4xnSDxMaL")).toBe("Sarah");
+    expect(voiceLabel(eleven, "21m00Tcm4TlvDq8ikWAM")).toBe("Rachel (21m00Tcm4TlvDq8ikWAM)");
+    expect(voiceLabel(eleven, "pNInz6obpgDQGcFmaJgB")).toBe("pNInz6obpgDQGcFmaJgB");
+    expect(voiceLabel(model({ voices: ["af_heart"] }), "af_heart")).toBe("af_heart");
   });
 });
 

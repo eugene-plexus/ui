@@ -23,6 +23,7 @@ import {
   buildSpeechBody,
   formatsFor,
   speechPlayable,
+  voiceLabel,
   voicesFor,
 } from "@/lib/speechDoor";
 import type { Model } from "@/lib/types";
@@ -150,7 +151,7 @@ export function SpeechDoor({
               >
                 {voices.map((v) => (
                   <option key={v} value={v}>
-                    {v}
+                    {voiceLabel(selected, v)}
                   </option>
                 ))}
               </select>

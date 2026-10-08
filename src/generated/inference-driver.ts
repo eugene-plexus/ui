@@ -1843,6 +1843,18 @@ export interface components {
              *     later.
              */
             voices?: string[];
+            /**
+             * @description A display name for each voice in `voices` that the backend
+             *     names, keyed by the voice's id (ElevenLabs' `name` from
+             *     `GET /v1/voices`: `21m00Tcm4TlvDq8ikWAM` is *Rachel*). The id
+             *     is still what a request sends; a voice with no name here is
+             *     shown by its id. Absent when the backend names none. Added
+             *     2026-10-08 (Workbench media screens: ElevenLabs voices showed
+             *     as ids).
+             */
+            voiceNames?: {
+                [key: string]: string;
+            };
             capabilities?: components["schemas"]["Capabilities"];
         };
         /**
