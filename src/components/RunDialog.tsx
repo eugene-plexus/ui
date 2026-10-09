@@ -67,9 +67,11 @@ export function RunDialogView({
           I could not find {label} on {task.node.label}. Install it now?
         </p>
         <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted)]">
-          {label} is the program that runs models like {task.model.name}. The download is a few
-          hundred megabytes and lands in Eugene&rsquo;s own folder; nothing else on the machine
-          changes.
+          {task.preparing
+            ? `${label} is the program that prepares ${task.model.name} and then runs it.`
+            : `${label} is the program that runs models like ${task.model.name}.`}{" "}
+          The download is a few hundred megabytes and lands in Eugene&rsquo;s own folder; nothing
+          else on the machine changes.
         </p>
         {task.error && (
           <p role="alert" className="mt-2 text-sm">
@@ -86,14 +88,18 @@ export function RunDialogView({
           >
             Install
           </button>
-          <button
-            type="button"
-            onClick={() => onAnswer(task.id, "skip")}
-            data-testid="run-skip"
-            className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
-          >
-            Skip
-          </button>
+          {/* A preparation needs its engine: without it nothing can be
+              made, so there is no Skip (LS5, B54). */}
+          {!task.preparing && (
+            <button
+              type="button"
+              onClick={() => onAnswer(task.id, "skip")}
+              data-testid="run-skip"
+              className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+            >
+              Skip
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onCancel(task.id)}
@@ -103,10 +109,12 @@ export function RunDialogView({
             Cancel
           </button>
         </div>
-        <p className="mt-3 text-[0.6875rem] leading-relaxed text-[color:var(--muted)]">
-          Skip is for advanced users: the model cannot run until an engine is installed by hand. It
-          stays listed on Inference as stopped, with the reason, until then.
-        </p>
+        {!task.preparing && (
+          <p className="mt-3 text-[0.6875rem] leading-relaxed text-[color:var(--muted)]">
+            Skip is for advanced users: the model cannot run until an engine is installed by hand.
+            It stays listed on Inference as stopped, with the reason, until then.
+          </p>
+        )}
       </div>
     </div>
   );

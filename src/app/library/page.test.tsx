@@ -721,6 +721,117 @@ describe("which engines can run it: the Library judges (LS1)", () => {
   });
 });
 
+describe("preparing a GGUF for an engine that runs it only after (LS5)", () => {
+  // Strata's own list names this file (by its first shard's name), with what
+  // its setup needs on this node and the contexts it offers.
+  const LISTED = {
+    id: "IQ2_XS",
+    title: "Qwen3.8-Flash-Next IQ2_XS",
+    format: "gguf",
+    source: { repoId: "ISTA-DASLab/x", file: "IQ2_XS/gemma-3-27b-it-Q6_K_L.gguf", revision: "r" },
+    preparation: {
+      recipe: "strata-prepare",
+      note: "an expert pack, a lookup table and an MTP helper",
+      diskBytes: 8_000_000_000,
+      contexts: [8192, 32768],
+    },
+  };
+  function judged(llama: "runs" | "no") {
+    return ok({
+      models: [
+        {
+          modelId: "gemma",
+          level: llama === "runs" ? "works_here" : "other_engine",
+          engines: [
+            { engine: "llama_cpp", verdict: llama, available: true, reason: "llama.cpp says" },
+            {
+              engine: "strata",
+              verdict: "after_preparation",
+              available: true,
+              experimental: true,
+              reason: "runs it after preparing it",
+            },
+          ],
+        },
+      ],
+    });
+  }
+  beforeEach(() => {
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
+    handlers.set("GET agent/v1/engines", () =>
+      ok({
+        engines: [
+          { engine: "llama_cpp", available: true, modelFormats: ["gguf"], accepts: [] },
+          {
+            engine: "strata",
+            available: true,
+            experimental: true,
+            modelFormats: ["prepared"],
+            accepts: [],
+            supportedModels: [LISTED],
+          },
+        ],
+      }),
+    );
+  });
+
+  it("offers Prepare beside Run, with the node's disk and the engine's contexts", async () => {
+    handlers.set("POST library/v1/eligibility", () => judged("runs"));
+    await openTheModel();
+    expect(await screen.findByTestId("model-run")).toBeInTheDocument();
+    const prepare = await screen.findByTestId("prepare-model");
+    expect(prepare).toHaveTextContent("Prepare for Strata");
+    expect(prepare).toHaveTextContent("an expert pack, a lookup table and an MTP helper");
+    expect(within(prepare).getByTestId("prepare-disk")).toHaveTextContent("8");
+    const context = within(prepare).getByTestId("prepare-context");
+    expect(
+      within(context)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Strata's recommendation for Amish_Station", "8K tokens", "32K tokens"]);
+    fireEvent.change(context, { target: { value: "32768" } });
+    fireEvent.click(within(prepare).getByTestId("prepare-start"));
+    await waitFor(() =>
+      expect(posted.some((p) => p.startsWith("PUT library/v1/run-operations/prep_"))).toBe(true),
+    );
+    const put = posted.find((p) => p.startsWith("PUT library/v1/run-operations/prep_"))!;
+    expect(bodies.get(put)).toEqual({
+      node: "Amish_Station",
+      modelId: "gemma",
+      preparation: { engine: "strata", contextSize: 32768 },
+    });
+    // Run was not pressed and is not what the preparation started.
+    expect(posted.filter((p) => p.startsWith("PUT library/v1/run-operations/"))).toHaveLength(1);
+  });
+
+  it("offers Prepare alone when nothing here runs it as it is", async () => {
+    handlers.set("POST library/v1/eligibility", () => judged("no"));
+    await openTheModel();
+    expect(await screen.findByTestId("prepare-model")).toBeInTheDocument();
+    expect(screen.queryByTestId("model-run")).toBeNull();
+  });
+
+  it("is not offered for a file the engine does not prepare", async () => {
+    handlers.set("POST library/v1/eligibility", () =>
+      ok({
+        models: [
+          {
+            modelId: "gemma",
+            level: "works_here",
+            engines: [
+              { engine: "llama_cpp", verdict: "runs", available: true, reason: "runs it" },
+              { engine: "strata", verdict: "no", available: true, reason: "not on its list" },
+            ],
+          },
+        ],
+      }),
+    );
+    await openTheModel();
+    await screen.findByTestId("model-run");
+    expect(screen.queryByTestId("prepare-model")).toBeNull();
+  });
+});
+
 describe("prepared models are Library models (LS3)", () => {
   const PREPARED = {
     id: "qwen",

@@ -137,6 +137,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/run-operations/{id}/prepared": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepared Model
+         * @description The node prepared the model (LS5): list it and go on with it.
+         */
+        post: operations["prepared_model_v1_run_operations__id__prepared_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -165,6 +185,7 @@ export interface components {
             install?: {
                 [key: string]: unknown;
             } | null;
+            preparation?: components["schemas"]["PreparationStatus"] | null;
             /** Error */
             error?: string | null;
             /** Failedstep */
@@ -184,7 +205,7 @@ export interface components {
              * Step
              * @enum {string}
              */
-            step: "downloading" | "checking" | "awaiting-install" | "installing" | "settings" | "launching" | "loading" | "ready" | "skipped" | "failed" | "cancelled";
+            step: "downloading" | "checking" | "awaiting-install" | "installing" | "preparing" | "settings" | "launching" | "loading" | "ready" | "skipped" | "failed" | "cancelled";
             /** Engine */
             engine?: string | null;
             /** Runtime */
@@ -196,6 +217,9 @@ export interface components {
             install?: {
                 [key: string]: unknown;
             } | null;
+            preparation?: components["schemas"]["PreparationStatus"] | null;
+            /** @description The model a preparation started from; `model` is then the prepared one. */
+            preparedFrom?: components["schemas"]["LibraryModel"] | null;
             profile?: components["schemas"]["ModelProfile"] | null;
             /** Error */
             error?: string | null;
@@ -637,6 +661,7 @@ export interface components {
             download?: components["schemas"]["DownloadSpec"] | null;
             /** Downloadid */
             downloadId?: string | null;
+            preparation?: components["schemas"]["PreparationIntent"] | null;
         };
         /**
          * KevCheckpointDetail
@@ -1080,7 +1105,7 @@ export interface components {
              * Step
              * @enum {string}
              */
-            step: "downloading" | "checking" | "awaiting-install" | "installing" | "settings" | "launching" | "loading" | "ready" | "skipped" | "failed" | "cancelled";
+            step: "downloading" | "checking" | "awaiting-install" | "installing" | "preparing" | "settings" | "launching" | "loading" | "ready" | "skipped" | "failed" | "cancelled";
             /** Engine */
             engine?: string | null;
             /** Runtime */
@@ -1092,6 +1117,9 @@ export interface components {
             install?: {
                 [key: string]: unknown;
             } | null;
+            preparation?: components["schemas"]["PreparationStatus"] | null;
+            /** @description The model a preparation started from; `model` is then the prepared one. */
+            preparedFrom?: components["schemas"]["LibraryModel"] | null;
             profile?: components["schemas"]["ModelProfile"] | null;
             /** Error */
             error?: string | null;
@@ -1115,6 +1143,55 @@ export interface components {
         OperationList: {
             /** Operations */
             operations: components["schemas"]["Operation"][];
+        };
+        /**
+         * PreparationIntent
+         * @description Prepare the model for an engine before running it (LS5). Asked for,
+         *     never implied: Run without it picks an engine that runs the model as it is.
+         */
+        PreparationIntent: {
+            engine: components["schemas"]["EngineKind"];
+            /**
+             * Contextsize
+             * @description The context the engine prepares for. Absent: the engine's own recommendation for the node.
+             */
+            contextSize?: number | null;
+        };
+        /**
+         * PreparationStatus
+         * @description Where a preparation is, as the engine's node reports it (LS5).
+         */
+        PreparationStatus: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "waiting" | "running" | "done" | "failed" | "cancelled";
+            /**
+             * Step
+             * @description The recipe's own words for where it is.
+             */
+            step?: string | null;
+            /**
+             * Message
+             * @description Its last line of output.
+             */
+            message?: string | null;
+            /**
+             * Byteswritten
+             * @description What it has written beside the model so far.
+             */
+            bytesWritten?: number | null;
+            /**
+             * Bytesneeded
+             * @description What it expects to write in all, when known.
+             */
+            bytesNeeded?: number | null;
+            /**
+             * Warnings
+             * @description What the engine's own tools warned about.
+             */
+            warnings?: string[];
         };
         /**
          * PreparedDetail
@@ -1172,6 +1249,82 @@ export interface components {
             sourceModelId?: string | null;
             /** Preparedat */
             preparedAt?: string | null;
+        };
+        /**
+         * PreparedProvenance
+         * @description The file `<name>.eugene-prepared.json` that makes an engine's
+         *     prepared files a library model (`ModelFormat` `prepared`;
+         *     library-sources-and-engines.md §4.5, Troy's L6). A plain JSON
+         *     file in a Library folder, in the person's own layout like every
+         *     other model file, and the prepared model's `LibraryModel.path`.
+         *
+         *     Written by the library's `POST /v1/models/prepared` when a person
+         *     adopts a model prepared outside Eugene, and by a preparation job
+         *     (LS5). Read by the library's scan, which lists a `prepared` model
+         *     from it, and by the agent at every launch, which hands the engine
+         *     its entry file. Nothing reads the engine's own files beyond what
+         *     launching them needs: they stay usable without the library
+         *     parsing them (experimental-engines.md).
+         *
+         *     A reader keeps and ignores fields it does not know, so a newer
+         *     Eugene can add some; a `formatVersion` above the one it knows
+         *     means the file was written by a newer Eugene, and the model is
+         *     listed as unreadable rather than guessed at.
+         */
+        PreparedProvenance: {
+            /**
+             * Formatversion
+             * @description The layout of this file. Absent means 1, the only one so far.
+             */
+            formatVersion?: number | null;
+            /** @description The engine it was prepared for. Only that engine loads it. */
+            engine: components["schemas"]["EngineKind"];
+            /**
+             * Entry
+             * @description The engine's own entry file: for Strata, its JSON
+             *     configuration, which names the pack, tokenizer and MTP files.
+             *     Relative to the folder holding this file, or absolute. A
+             *     relative entry travels with the folder (through a node's
+             *     `pathMappings`, like any model path); an absolute one is a
+             *     path on the node that runs the model, used as written,
+             *     because an engine's prepared files belong on that node's own
+             *     fast drive.
+             */
+            entry: string;
+            /**
+             * Recipe
+             * @description The preparation that made it (`ModelPreparation.recipe`, e.g.
+             *     `strata-prepare`). Absent: it was made outside Eugene and
+             *     adopted as it is.
+             */
+            recipe?: string | null;
+            /**
+             * Recipeversion
+             * @description The recipe's or engine's version that made it, e.g. Strata `v0.1.39`.
+             */
+            recipeVersion?: string | null;
+            source?: components["schemas"]["PreparedSource"] | null;
+            /**
+             * Preparedat
+             * @description When this file was written.
+             */
+            preparedAt?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * PreparedRequest
+         * @description The engine's node has prepared the model: list it (LS5). The library
+         *     writes the provenance file beside the entry, as *Add a prepared model*
+         *     does, and the operation goes on with the prepared model.
+         */
+        PreparedRequest: {
+            /** Lease */
+            lease: string;
+            /** Name */
+            name: string;
+            /** @description `entry` is the engine's entry file as this library spells it, inside a Library folder. */
+            provenance: components["schemas"]["PreparedProvenance"];
         };
         /**
          * PreparedSource
@@ -1680,6 +1833,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepared_model_v1_run_operations__id__prepared_post: {
+        parameters: {
+            query?: {
+                node?: string | null;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreparedRequest"];
             };
         };
         responses: {

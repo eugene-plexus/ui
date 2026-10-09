@@ -9,9 +9,25 @@ import { engineLabel, formatBytesShort, type Task } from "./tasks";
 import type { Download, EngineInstall, LibraryModel, RuntimeStatus } from "./types";
 
 export type RunStep = RunProtocol["schemas"]["Operation"]["step"];
+/** Where a preparation is, as the engine's node reports it (LS5). */
+export type PreparationStatus = RunProtocol["schemas"]["PreparationStatus"];
 
 /** Which step a failure belongs to; "names which one failed if one does". */
-export type FailedStep = "download" | "check" | "install" | "settings" | "launch" | "load";
+export type FailedStep =
+  | "download"
+  | "check"
+  | "install"
+  | "prepare"
+  | "settings"
+  | "launch"
+  | "load";
+
+/** What a preparation run asked for (LS5): the engine, and the context it
+ * prepares for (null: the engine's own recommendation for the node). */
+export interface RunPreparation {
+  engine: string;
+  contextSize: number | null;
+}
 
 /** What a run needs to know about the transfer it is waiting on. */
 export interface RunDownload {
@@ -59,6 +75,12 @@ export interface RunTask {
   engine: string | null;
   /** The agent's install record while installing, for the bytes. */
   install: EngineInstall | null;
+  /** What a preparation run asked for; null for a plain Run (LS5). */
+  preparing: RunPreparation | null;
+  /** Where the preparation is, while the node reports it. */
+  preparation: PreparationStatus | null;
+  /** The model it was prepared from, once `model` is the prepared one. */
+  preparedFrom: RunModel | null;
   /** The transfer this run is waiting on, while it is waiting. */
   download: RunDownload | null;
   /** The runtime's name once declared or found. */
@@ -81,8 +103,14 @@ export interface RunOperation extends Pick<
   intent: {
     node: string | null;
     modelId?: string | null;
-    download?: { repo: string; files: string[] } | null;
+    download?: {
+      repo: string;
+      files: string[];
+      revision?: string | null;
+      source?: string | null;
+    } | null;
     downloadId?: string | null;
+    preparation?: { engine: string; contextSize?: number | null } | null;
   };
   model: RunModel | null;
   engine: string | null;
@@ -90,6 +118,8 @@ export interface RunOperation extends Pick<
   runtimeStatus: RuntimeStatus | null;
   download: Download | null;
   install: EngineInstall | null;
+  preparation?: PreparationStatus | null;
+  preparedFrom?: RunModel | null;
   error: string | null;
   failedStep: FailedStep | null;
   finishedAt: number | null;
@@ -139,6 +169,9 @@ function observe(record: RunOperation): RunTask {
     runtime: record.runtime,
     runtimeStatus: record.runtimeStatus,
     install: record.install,
+    preparing: preparingOf(record.intent),
+    preparation: record.preparation ?? null,
+    preparedFrom: record.preparedFrom ?? null,
     download: record.download
       ? {
           id: record.download.id,
@@ -155,6 +188,11 @@ function observe(record: RunOperation): RunTask {
     finishedAt: record.finishedAt,
     generation: record.startedAt,
   };
+}
+
+function preparingOf(intent: RunOperation["intent"]): RunPreparation | null {
+  const wanted = intent.preparation;
+  return wanted ? { engine: wanted.engine, contextSize: wanted.contextSize ?? null } : null;
 }
 
 /** Public for explicit refreshes and tests; transient read failures keep the last view. */
@@ -225,7 +263,14 @@ export function runId(modelId: string, target: string): string {
 }
 export function findRunFor(modelId: string, target: string): RunTask | null {
   if (!modelId) return null;
-  const matches = snapshot.filter((r) => r.model.id === modelId && r.node.target === target);
+  // A preparation is not a Run of the model it prepares (LS5): it is that
+  // model's run only once its model is the prepared one.
+  const matches = snapshot.filter(
+    (r) =>
+      r.model.id === modelId &&
+      r.node.target === target &&
+      (r.preparing === null || r.preparedFrom !== null),
+  );
   return matches.find((r) => !isTerminal(r.step)) ?? matches[0] ?? null;
 }
 export const findRun = findRunFor;
@@ -270,6 +315,9 @@ async function submit(
     runtime: null,
     runtimeStatus: null,
     install: null,
+    preparing: preparingOf(intent),
+    preparation: null,
+    preparedFrom: null,
     download: null,
     error: null,
     failedStep: null,
@@ -337,6 +385,86 @@ export function startDownloadAndRun(spec: RunDownloadSpec, node: TargetNode): st
     format: spec.format ?? "gguf",
     contextLength: null,
   });
+  return id;
+}
+/** A preparation in flight for this model on this node, if one is: Run and
+ * Prepare are separate actions on the same model (LS5, B54). */
+export function findPreparation(modelId: string, target: string): RunTask | null {
+  if (!modelId) return null;
+  const matches = snapshot.filter(
+    (r) =>
+      r.preparing !== null &&
+      (r.preparedFrom?.id ?? r.model.id) === modelId &&
+      r.node.target === target,
+  );
+  return matches.find((r) => !isTerminal(r.step)) ?? matches[0] ?? null;
+}
+/** The run with this id, once the store has it. */
+export function runById(id: string | null): RunTask | null {
+  if (!id) return null;
+  return snapshot.find((r) => r.id === id) ?? null;
+}
+/** Prepare a model on the Library for an engine, then run it (LS5). Asked
+ * for, never implied: Run picks an engine that runs a model as it is. */
+export function startPreparation(
+  model: RunModel,
+  node: TargetNode,
+  preparation: RunPreparation,
+): string {
+  const existing = findPreparation(model.id, node.target);
+  if (existing && !isTerminal(existing.step)) return existing.id;
+  const id = `prep_${crypto.randomUUID()}`;
+  void submit(
+    id,
+    {
+      node: node.name,
+      modelId: model.id,
+      preparation: {
+        engine: preparation.engine,
+        ...(preparation.contextSize ? { contextSize: preparation.contextSize } : {}),
+      },
+    },
+    node,
+    model,
+  );
+  return id;
+}
+export interface PrepareDownloadSpec {
+  repo: string;
+  /** Every file of it: each shard of a split GGUF. */
+  files: string[];
+  /** The revision the engine pins. */
+  revision: string | null;
+  /** The hub; null is the Library's default (LS4). */
+  source: string | null;
+  label: string;
+}
+/** Download an engine's listed model, prepare it, then run it: the one
+ * action of LS5 (library-sources-and-engines.md §5). */
+export function startDownloadAndPrepare(
+  spec: PrepareDownloadSpec,
+  node: TargetNode,
+  preparation: RunPreparation,
+): string {
+  const id = `dl_${crypto.randomUUID()}`;
+  void submit(
+    id,
+    {
+      node: node.name,
+      download: {
+        repo: spec.repo,
+        files: spec.files,
+        ...(spec.revision ? { revision: spec.revision } : {}),
+        ...(spec.source ? { source: spec.source } : {}),
+      },
+      preparation: {
+        engine: preparation.engine,
+        ...(preparation.contextSize ? { contextSize: preparation.contextSize } : {}),
+      },
+    },
+    node,
+    { id: "", name: spec.label, path: "", format: "gguf", contextLength: null },
+  );
   return id;
 }
 export function isDownloadAndRun(task: { kind: string; id: string }): boolean {
@@ -451,12 +579,14 @@ export function resetRunsForTests(): void {
 
 /** The step a failure is named after, in the person's words. */
 function stepWord(task: RunTask): string {
-  const label = engineLabel(task.engine ?? "llama_cpp");
+  const label = engineLabel(task.engine ?? task.preparing?.engine ?? "llama_cpp");
   switch (task.failedStep) {
     case "check":
       return "Checking";
     case "install":
       return `Installing ${label}`;
+    case "prepare":
+      return `Preparing it for ${label}`;
     case "settings":
       return "Saving settings";
     case "launch":
@@ -471,7 +601,7 @@ function stepWord(task: RunTask): string {
 /** One line under the title, per step. */
 export function describeRunDetail(task: RunTask): { detail: string; progress?: number } {
   if (task.error && task.step !== "failed") return { detail: task.error };
-  const label = engineLabel(task.engine ?? "llama_cpp");
+  const label = engineLabel(task.engine ?? task.preparing?.engine ?? "llama_cpp");
   switch (task.step) {
     case "downloading": {
       const d = task.download;
@@ -515,6 +645,8 @@ export function describeRunDetail(task: RunTask): { detail: string; progress?: n
         ...(fraction !== undefined ? { progress: fraction } : {}),
       };
     }
+    case "preparing":
+      return describePreparation(task);
     case "settings":
       return { detail: "choosing settings that fit" };
     case "launching":
@@ -543,6 +675,26 @@ export function describeRunDetail(task: RunTask): { detail: string; progress?: n
   }
 }
 
+/** A preparation's line (LS5): the engine's own step, what it has written of
+ * what it expects, and its last line; a bar when the total is known. */
+function describePreparation(task: RunTask): { detail: string; progress?: number } {
+  const label = engineLabel(task.preparing?.engine ?? task.engine ?? "strata");
+  const p = task.preparation;
+  if (!p) return { detail: `preparing it for ${label}` };
+  if (p.state === "waiting")
+    return { detail: p.message ?? "waiting for another preparation on this machine" };
+  const total = p.bytesNeeded ?? 0;
+  const got = p.bytesWritten ?? 0;
+  const fraction = total > 0 ? Math.min(1, got / total) : undefined;
+  const parts = [p.step ?? `preparing it for ${label}`];
+  if (total > 0) parts.push(`${formatBytesShort(got)} of about ${formatBytesShort(total)} written`);
+  if (p.message) parts.push(p.message);
+  return {
+    detail: parts.join(" · "),
+    ...(fraction !== undefined ? { progress: fraction } : {}),
+  };
+}
+
 /** Where a click on the task goes: the screen that can act on it. */
 export function runHref(task: RunTask): string {
   switch (task.step) {
@@ -553,6 +705,7 @@ export function runHref(task: RunTask): string {
     case "settings":
     case "checking":
     case "awaiting-install":
+    case "preparing":
       return task.model.id ? `/library?model=${enc(task.model.id)}` : "/";
     case "failed":
       return task.failedStep === "settings" || task.failedStep === "check"
@@ -563,6 +716,19 @@ export function runHref(task: RunTask): string {
   }
 }
 
+function runTitle(task: RunTask): string {
+  if (task.preparing) {
+    const label = engineLabel(task.preparing.engine);
+    const name = task.preparedFrom?.name ?? task.model.name;
+    return task.step === "downloading"
+      ? `Getting ${name} to prepare for ${label} on ${task.node.label}`
+      : `Prepare ${name} for ${label} on ${task.node.label}`;
+  }
+  return task.step === "downloading"
+    ? `Getting ${task.model.name} to run on ${task.node.label}`
+    : `Run ${task.model.name} on ${task.node.label}`;
+}
+
 /** A run as the tray shows it: one line, plain words, a bar while the
  * install downloads, a dismiss for the person once it has failed. */
 export function runTask(task: RunTask): Task {
@@ -570,10 +736,7 @@ export function runTask(task: RunTask): Task {
   return {
     id: task.id,
     kind: "run",
-    title:
-      task.step === "downloading"
-        ? `Getting ${task.model.name} to run on ${task.node.label}`
-        : `Run ${task.model.name} on ${task.node.label}`,
+    title: runTitle(task),
     detail,
     ...(progress !== undefined ? { progress } : {}),
     href: runHref(task),

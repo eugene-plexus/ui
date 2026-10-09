@@ -5918,6 +5918,23 @@ export interface components {
             recipe: string;
             /** @description What the step makes, in words. */
             note?: string;
+            /**
+             * @description About how much the preparation writes beside the files, by the
+             *     engine's own rule on the node that reported it (LS5): set on an
+             *     engine's `supportedModels`, where the model is known. Strata's
+             *     setup counts 8 GB, more when the node's RAM is short of the
+             *     model's experts. The agent checks free space against it before
+             *     the preparation starts. Absent: not known.
+             */
+            diskBytes?: number;
+            /**
+             * @description The context sizes, in tokens, the preparation can be asked for
+             *     (LS5): an engine that fixes the context when it prepares
+             *     offers its own choices, and without one takes its own
+             *     recommendation for the node. Strata's are its setup's own.
+             *     Absent: the preparation takes no context.
+             */
+            contexts?: number[];
         };
         /**
          * @description Who can say a match will load. Absent means `eugene`. `eugene`:

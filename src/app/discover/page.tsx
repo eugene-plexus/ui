@@ -14,9 +14,12 @@ import { NodePicker } from "@/components/NodePicker";
 import { StarterSetPanel } from "@/components/StarterSetPanel";
 import { contextLabel } from "@/lib/starter";
 import { relativeAge } from "@/lib/relativeTime";
-import { type NodeBudget, fitQuery, useTargetNode } from "@/lib/nodeBudget";
+import { type NodeBudget, type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
+import { startDownloadAndPrepare, startPreparation } from "@/lib/oneClickRun";
+import { PrepareControl } from "@/components/PrepareModel";
 import {
   bestAnswer,
+  eligibilityEngines,
   engineLists,
   hubFormatFor,
   LEVEL_RANK,
@@ -41,6 +44,7 @@ import type {
   EngineModelList,
   HostHardware,
   StarterModel,
+  SupportedModel,
 } from "@/lib/types";
 
 /**
@@ -530,6 +534,7 @@ function DiscoverPageInner() {
                 contextLength={contextLength}
                 budget={budget}
                 engines={engines}
+                node={selected}
                 where={where}
                 downloads={downloads}
                 onDownloadStarted={() => {
@@ -954,6 +959,7 @@ function RepoDetail({
   contextLength,
   budget,
   engines,
+  node,
   where,
   downloads,
   onDownloadStarted,
@@ -968,6 +974,8 @@ function RepoDetail({
   contextLength: number;
   budget: NodeBudget | null;
   engines: EngineDescriptor[] | null;
+  /** The picked node: where a preparation runs (LS5). */
+  node: TargetNode | null;
   where: string;
   downloads: Download[];
   onDownloadStarted: () => void;
@@ -1228,6 +1236,20 @@ function RepoDetail({
         </section>
       )}
 
+      {entry && listed && entry.preparation && (
+        <ListedPreparation
+          repo={repo}
+          source={source}
+          revision={pinned ?? detail.resolvedCommit ?? null}
+          engine={listed.engine}
+          entry={entry}
+          candidate={detail.candidates.find((c) => c.files[0]?.path === entry.source.file) ?? null}
+          descriptor={(engines ?? []).find((e) => e.engine === listed.engine) ?? null}
+          node={node}
+          where={where}
+        />
+      )}
+
       {warnings.map((warning) => (
         <p key={warning} className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm">
           {warning}
@@ -1385,6 +1407,82 @@ function RepoDetail({
 
       <ModelCard repo={repo} source={source} />
     </div>
+  );
+}
+
+/**
+ * *Download and prepare* for an entry of an engine's own list (LS5): the one
+ * action that takes it from the hub to running (download, preparation,
+ * settings, launch). A copy already on disk is prepared where it is.
+ */
+function ListedPreparation({
+  repo,
+  source,
+  revision,
+  engine,
+  entry,
+  candidate,
+  descriptor,
+  node,
+  where,
+}: {
+  repo: string;
+  source: string | null;
+  revision: string | null;
+  engine: string;
+  entry: SupportedModel;
+  /** The version the entry names, in this repo at its revision. */
+  candidate: CatalogueCandidate | null;
+  descriptor: EngineDescriptor | null;
+  node: TargetNode | null;
+  where: string;
+}) {
+  const owned = candidate?.alreadyOwned ?? null;
+  const cannotRun =
+    descriptor !== null &&
+    !descriptor.available &&
+    !eligibilityEngines([descriptor])[0]!.installable;
+  return (
+    <PrepareControl
+      engine={engine}
+      entry={entry}
+      node={node}
+      where={where}
+      download={owned ? null : (candidate?.sizeBytes ?? entry.sizeBytes ?? null)}
+      disabledReason={
+        cannotRun
+          ? `${engineName(engine)} cannot run on ${where}.`
+          : candidate === null
+            ? `${repo} at this revision has no ${entry.source.file ?? "file of this entry"}.`
+            : null
+      }
+      onStart={(preparation) => {
+        if (!node || !candidate) return "";
+        if (owned)
+          return startPreparation(
+            {
+              id: owned.modelId,
+              name: entry.title,
+              path: owned.path,
+              format: "gguf",
+              contextLength: null,
+            },
+            node,
+            preparation,
+          );
+        return startDownloadAndPrepare(
+          {
+            repo,
+            files: candidate.files.map((file) => file.path),
+            revision,
+            source,
+            label: entry.title,
+          },
+          node,
+          preparation,
+        );
+      }}
+    />
   );
 }
 

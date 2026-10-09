@@ -12,6 +12,7 @@ import { FitBreakdown, formatMemory } from "@/components/FitBadge";
 import { ProfileEditor } from "@/components/ProfileEditor";
 import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
+import { PrepareControl, entryForFile } from "@/components/PrepareModel";
 import { RunButton } from "@/components/RunButton";
 import { ApiError, api, describeError } from "@/lib/api";
 import { capableEngines } from "@/lib/engineCompat";
@@ -29,6 +30,7 @@ import { engineName as engineLabel } from "@/lib/issues";
 import { type NodeBudget, type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
 import { expertsContextSentence, placementSentence } from "@/lib/fitWords";
+import { runModelOf, startPreparation } from "@/lib/oneClickRun";
 import { formatBytesShort } from "@/lib/tasks";
 import { usePolling } from "@/lib/usePolling";
 import type {
@@ -1014,6 +1016,30 @@ function ModelDetail({
           )}
         </div>
       )}
+
+      {/* LS5: an engine that runs it only after preparing it offers that
+          as its own action, beside Run, never instead of asking (B54). */}
+      {model.status === "present" &&
+        model.format !== "prepared" &&
+        (verdicts ?? [])
+          .filter((v) => v.verdict === "after_preparation")
+          .map((v) => (
+            <PrepareControl
+              key={v.engine}
+              engine={v.engine}
+              entry={entryForFile(descriptor(v)?.supportedModels, model.path)}
+              node={node}
+              where={where}
+              disabledReason={
+                v.available || v.installable
+                  ? null
+                  : `${engineLabel(v.engine)} cannot run on ${where}.`
+              }
+              onStart={(preparation) =>
+                node ? startPreparation(runModelOf(model), node, preparation) : ""
+              }
+            />
+          ))}
 
       <ProfileEditor
         model={model}

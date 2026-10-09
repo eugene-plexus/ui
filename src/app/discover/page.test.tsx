@@ -904,6 +904,39 @@ describe("sources are a list (LS4)", () => {
     );
   });
 
+  it("an engine's entry is downloaded and prepared in one action (LS5)", async () => {
+    render(<DiscoverPage />);
+    const row = await screen.findByRole(
+      "button",
+      { name: /Qwen3\.8 27B for Strata/ },
+      { timeout: 5000 },
+    );
+    await act(async () => {
+      fireEvent.click(row);
+    });
+    const prepare = await screen.findByTestId("prepare-model", {}, { timeout: 5000 });
+    expect(prepare).toHaveTextContent("Download and prepare for Strata");
+    expect(prepare).toHaveTextContent("an expert pack and an MTP helper");
+    await act(async () => {
+      fireEvent.click(within(prepare).getByTestId("prepare-start"));
+    });
+    await waitFor(() =>
+      expect(seen.some((r) => r.path.startsWith("library/v1/run-operations/dl_"))).toBe(true),
+    );
+    const put = seen.find((r) => r.path.startsWith("library/v1/run-operations/dl_"))!;
+    expect(put.body).toMatchObject({
+      download: {
+        repo: REPO,
+        files: ["Qwen3.8-27B-Q4_K_M.gguf"],
+        revision: "abc1234def",
+        source: "huggingface",
+      },
+      preparation: { engine: "strata" },
+    });
+    // Never a plain download beside it: the run operation downloads.
+    expect(seen.filter((r) => r.path === "library/v1/downloads" && r.body)).toHaveLength(0);
+  });
+
   it("a repo from another hub is opened, and fetched, from that hub", async () => {
     render(<DiscoverPage />);
     const row = await screen.findByRole("button", { name: /Inside/ }, { timeout: 5000 });

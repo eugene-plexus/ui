@@ -18,6 +18,9 @@ const ASKING: RunTask = {
   failedStep: null,
   engine: "llama_cpp",
   install: null,
+  preparing: null,
+  preparation: null,
+  preparedFrom: null,
   download: null,
   runtime: null,
   runtimeStatus: null,
@@ -26,6 +29,25 @@ const ASKING: RunTask = {
   finishedAt: null,
   generation: 1,
 };
+
+describe("RunDialogView for a preparation (LS5)", () => {
+  it("offers no Skip: without the engine nothing can be prepared", () => {
+    const onAnswer = vi.fn();
+    render(
+      <RunDialogView
+        task={{ ...ASKING, engine: "strata", preparing: { engine: "strata", contextSize: null } }}
+        onAnswer={onAnswer}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("run-skip")).toBeNull();
+    expect(screen.getByTestId("run-dialog")).toHaveTextContent(
+      "Strata is the program that prepares Qwen3-14B and then runs it.",
+    );
+    fireEvent.click(screen.getByTestId("run-install"));
+    expect(onAnswer).toHaveBeenCalledWith(ASKING.id, "install");
+  });
+});
 
 describe("RunDialogView", () => {
   it("asks in the person's words, with Install focused as the default", () => {

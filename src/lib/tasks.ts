@@ -119,6 +119,8 @@ const ENGINE_LABEL: Record<string, string> = {
   llama_cpp: "llama.cpp",
   vllm: "vLLM",
   mlx: "MLX",
+  kev: "Kev",
+  strata: "Strata",
 };
 
 export function engineLabel(engine: string): string {
