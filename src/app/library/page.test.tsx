@@ -613,26 +613,93 @@ describe("before the picked node has said which engines it has", () => {
   });
 });
 
-describe("an engine installed on the node that cannot load this model", () => {
+describe("which engines can run it: the Library judges (LS1)", () => {
   beforeEach(() => {
     handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
-  });
-
-  it("is named with why, not just missing from the profile's engine list", async () => {
-    // Troy, 2026-10-09: Strata installed on Amish_Station, and a GGUF
-    // model's profile offered llama.cpp alone with nothing saying why.
     handlers.set("GET agent/v1/engines", () =>
       ok({
         engines: [
-          { engine: "llama_cpp", available: true, modelFormats: ["gguf"] },
-          { engine: "strata", available: true, modelFormats: [] },
+          {
+            engine: "llama_cpp",
+            available: true,
+            modelFormats: ["gguf"],
+            accepts: [{ format: "gguf", preference: 10 }],
+          },
+          { engine: "strata", available: true, modelFormats: [], experimental: true, accepts: [] },
+        ],
+      }),
+    );
+  });
+
+  it("asks with the node's engines and shows the dot and each engine's reason", async () => {
+    // Troy, 2026-10-09: Strata installed on Amish_Station, and a GGUF
+    // model's profile offered llama.cpp alone with nothing saying why.
+    let asked: unknown = null;
+    handlers.set("POST library/v1/eligibility", () => {
+      asked = true;
+      return ok({
+        models: [
+          {
+            modelId: "gemma",
+            level: "works_here",
+            engines: [
+              { engine: "llama_cpp", verdict: "runs", available: true, reason: "runs it as it is" },
+              {
+                engine: "strata",
+                verdict: "no",
+                available: true,
+                experimental: true,
+                reason: "loads only the qwen4exp architecture, and this one is gemma3",
+              },
+            ],
+          },
+        ],
+      });
+    });
+    await openTheModel();
+    const panel = await screen.findByTestId("model-eligibility");
+    expect(asked).toBe(true);
+    expect(panel).toHaveTextContent("Will work on this machine now");
+    expect(panel).toHaveTextContent("llama.cpp: runs it as it is");
+    expect(panel).toHaveTextContent(
+      "Strata (experimental): loads only the qwen4exp architecture, and this one is gemma3",
+    );
+    expect(screen.getByTestId("model-list-level")).toHaveTextContent("works here");
+  });
+
+  it("offers Run only when the Library says an engine here can run it", async () => {
+    // A GGUF the format alone would hand to llama.cpp: the judge decides.
+    handlers.set("POST library/v1/eligibility", () =>
+      ok({
+        models: [
+          {
+            modelId: "gemma",
+            level: "not_here",
+            engines: [
+              {
+                engine: "llama_cpp",
+                verdict: "no",
+                available: true,
+                reason: "loads only the llama architecture, and this one is gemma3",
+              },
+            ],
+          },
         ],
       }),
     );
     await openTheModel();
-    const note = await screen.findByTestId("engines-not-for-this");
-    expect(note).toHaveTextContent("strata is installed on Amish_Station");
-    expect(note).toHaveTextContent("prepared Strata models");
+    expect(await screen.findByTestId("model-eligibility")).toHaveTextContent(
+      "Can not work on this machine",
+    );
+    expect(screen.queryByTestId("model-run")).toBeNull();
+  });
+
+  it("falls back to the format alone on a library older than the judge", async () => {
+    handlers.set("POST library/v1/eligibility", () => ({ status: 404, body: {} }));
+    await openTheModel();
+    expect(screen.queryByTestId("model-eligibility")).toBeNull();
+    // llama.cpp still loads the GGUF by its format: Run is offered.
+    expect(await screen.findByTestId("model-run")).toBeInTheDocument();
   });
 });
 

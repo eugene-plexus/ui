@@ -1,5 +1,8 @@
 /**
- * Which engines can load a model — the join, in one place.
+ * Which engines can load a model, by format: **only for a library older than
+ * `POST /v1/eligibility`**, which judges since LS1 (lib/eligibility.ts).
+ *
+ * Was the join, in one place.
  *
  * The format match (`EngineDescriptor.modelFormats` × `model.format`)
  * has always been a first filter and not a promise. Since the MLX slice
@@ -29,33 +32,6 @@ export function capableEngines(
     return formatMatched.filter((e) => e.engine === "mlx");
   }
   return formatMatched;
-}
-
-/**
- * The engines installed on the node that cannot load this model, each
- * with why. A profile's engine list holds only `capableEngines`, so an
- * engine someone has just installed was simply missing from it, with
- * nothing saying why (Strata on Amish_Station, 2026-10-09).
- */
-export function installedButNotFor(
-  model: LibraryModel,
-  engines: EngineDescriptor[],
-): { engine: string; why: string }[] {
-  const capable = new Set(capableEngines(model, engines).map((e) => e.engine));
-  return engines
-    .filter((e) => e.available && !capable.has(e.engine))
-    .map((e) => {
-      const formats = e.modelFormats ?? [];
-      const why =
-        formats.length === 0
-          ? e.engine === "strata"
-            ? "runs only prepared Strata models, not Library files. Add one under Backends, in this machine's Strata section."
-            : "runs only models prepared for it, not Library files."
-          : formats.includes(model.format)
-            ? "cannot load MLX-quantized weights; only the mlx engine reads them."
-            : `loads ${formats.join(" or ")} models, and this one is ${model.format}.`;
-      return { engine: e.engine, why };
-    });
 }
 
 /**

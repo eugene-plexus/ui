@@ -13,7 +13,18 @@ import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
 import { RunButton } from "@/components/RunButton";
 import { ApiError, api, describeError } from "@/lib/api";
-import { capableEngines, installedButNotFor } from "@/lib/engineCompat";
+import { capableEngines } from "@/lib/engineCompat";
+import {
+  type EligibilityList,
+  type EngineVerdict,
+  type ModelEligibility,
+  LEVEL_CLASS,
+  LEVEL_SHORT,
+  LEVEL_WORDS,
+  eligibilityEngines,
+  runnable,
+} from "@/lib/eligibility";
+import { engineName as engineLabel } from "@/lib/issues";
 import { type NodeBudget, type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
 import { expertsContextSentence, placementSentence } from "@/lib/fitWords";
@@ -94,6 +105,11 @@ function LibraryPageInner() {
   // as one put "no engine" on every row and hid Run whenever the picked
   // node was slow or down.
   const [enginesError, setEnginesError] = useState<string | null>(null);
+  // The Library's verdicts on every model against the picked node's
+  // engines (LS1). Null while unknown; `older` when the install's library
+  // predates the judge, and the format alone decides, as it used to.
+  const [eligibility, setEligibility] = useState<Map<string, ModelEligibility> | null>(null);
+  const [eligibilityOlder, setEligibilityOlder] = useState(false);
   // What the picked node has LOADED, which neither the library nor the
   // engine list knows -- and without it this page told Troy a model that
   // was serving on Amish_Station would not fit there, and offered to
@@ -179,6 +195,29 @@ function LibraryPageInner() {
       cancelled = true;
     };
   }, [target]);
+
+  // Asked again whenever the engines or the models change: one call, and
+  // the answer is per node, so the previous node's is cleared first.
+  const modelIds = models?.map((m) => m.id).join(",") ?? null;
+  useEffect(() => {
+    setEligibility(null);
+    setEligibilityOlder(false);
+    if (engines === null || modelIds === null) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const judged = await api.post<EligibilityList>("library", "/v1/eligibility", {
+          engines: eligibilityEngines(engines),
+        });
+        if (!cancelled) setEligibility(new Map(judged.models.map((m) => [m.modelId, m])));
+      } catch (err) {
+        if (!cancelled && err instanceof ApiError && err.status === 404) setEligibilityOlder(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [engines, modelIds]);
 
   // Soft, and per the picked node: `node:<name>` reaches another
   // machine's own agent, which is the only party that knows what it has
@@ -332,7 +371,8 @@ function LibraryPageInner() {
             models={models}
             selected={selected}
             onSelect={setSelected}
-            loadableFormats={loadableFormats}
+            loadableFormats={eligibilityOlder ? loadableFormats : null}
+            eligibility={eligibility}
             runtimes={runtimes}
           />
           <div className="min-w-0 shrink-0 px-4 py-4 sm:min-h-0 sm:overflow-y-auto sm:px-5">
@@ -342,6 +382,8 @@ function LibraryPageInner() {
                 model={current}
                 engines={engines}
                 enginesError={enginesError}
+                verdicts={eligibility?.get(current.id)?.engines ?? null}
+                level={eligibility?.get(current.id)?.level ?? null}
                 node={picker.selected}
                 runtimes={runtimes}
                 onChanged={() => void loadModels()}
@@ -438,13 +480,17 @@ function ModelList({
   selected,
   onSelect,
   loadableFormats,
+  eligibility,
   runtimes,
 }: {
   models: LibraryModel[] | null;
   selected: string | null;
   onSelect: (id: string) => void;
-  /** Null while the picked node's engines are not known yet. */
+  /** Formats the picked node's engines load, for a library older than the
+   * judge only; null otherwise, or while the engines are not known. */
   loadableFormats: Set<string> | null;
+  /** The Library's level per model (LS1); null while unknown. */
+  eligibility: Map<string, ModelEligibility> | null;
   /** The picked node's runtimes, so a running model is visible without
    * clicking it -- the list is where someone scanning for "which of
    * these is up" looks first. */
@@ -527,6 +573,7 @@ function ModelList({
       )}
       {shown.map((m) => {
         const unloadable = loadableFormats !== null && !loadableFormats.has(m.format);
+        const level = eligibility?.get(m.id)?.level;
         const live = runningModel(m, runtimes);
         return (
           <button
@@ -576,6 +623,16 @@ function ModelList({
                 </span>
               )}
               {unloadable && <span className="status-warn px-1">no engine</span>}
+              {level && (
+                <span
+                  data-testid="model-list-level"
+                  title={LEVEL_WORDS[level]}
+                  className={`${LEVEL_CLASS[level]} inline-flex items-center gap-1 px-1`}
+                >
+                  <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
+                  {LEVEL_SHORT[level]}
+                </span>
+              )}
             </div>
           </button>
         );
@@ -662,6 +719,8 @@ function ModelDetail({
   model,
   engines,
   enginesError,
+  verdicts,
+  level,
   node,
   runtimes,
   onChanged,
@@ -672,6 +731,10 @@ function ModelDetail({
   engines: EngineDescriptor[] | null;
   /** Why the engine read failed, when it did. */
   enginesError: string | null;
+  /** The Library's verdict per engine (LS1), best first; null while
+   * unknown or when the library predates the judge. */
+  verdicts: EngineVerdict[] | null;
+  level: ModelEligibility["level"] | null;
   node: TargetNode | null;
   /** What the picked node is running, so this page does not offer to
    * start something that is already up. */
@@ -686,12 +749,17 @@ function ModelDetail({
   // join lives in lib/engineCompat: format first, and an MLX-quantized
   // directory narrows to the MLX engine (integer-packed weights nothing
   // else loads).
+  //
+  // Since LS1 the Library judges (`verdicts`); the format join remains only
+  // for a library older than the judge.
   const enginesKnown = engines !== null;
-  const capable = capableEngines(model, engines ?? []);
+  const descriptor = (v: EngineVerdict) => (engines ?? []).find((e) => e.engine === v.engine);
+  const capable = verdicts
+    ? runnable(verdicts)
+        .map(descriptor)
+        .filter((e): e is EngineDescriptor => e !== undefined)
+    : capableEngines(model, engines ?? []);
   const usable = capable.filter((e) => e.available);
-  // Installed here, but not in this model's engine list: said, so the
-  // list never just silently lacks an engine someone has installed.
-  const notForThis = installedButNotFor(model, engines ?? []);
 
   const running = runningModel(model, runtimes);
   // The machine's own name when it has one, even when it is this one:
@@ -809,7 +877,29 @@ function ModelDetail({
       {/* The format/engine join. Two distinct answers: no adapter exists
           for this format at all, or one does but no binary is installed.
           Since S3 the second is not a detour: Run asks to install it. */}
-      {!enginesKnown ? null : capable.length === 0 ? (
+      {verdicts && level && (
+        <div data-testid="model-eligibility" className="text-sm">
+          <p className={`${LEVEL_CLASS[level]} inline-flex items-center gap-2 font-medium`}>
+            <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-current" />
+            {LEVEL_WORDS[level]}
+          </p>
+          <ul className="mt-1 text-xs text-[color:var(--muted)]">
+            {verdicts.map((v) => (
+              <li key={v.engine}>
+                {engineLabel(v.engine)}
+                {v.experimental ? " (experimental)" : ""}: {v.reason}
+                {v.available
+                  ? ""
+                  : v.installable
+                    ? `; not installed on ${where} yet`
+                    : `; cannot run on ${where}`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!enginesKnown || verdicts ? null : capable.length === 0 ? (
         <p className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
           No engine here can load a <span className="font-mono">{model.format}</span> model.
           llama.cpp reads GGUF only; safetensors needs vLLM, which is installed by hand. You can
@@ -873,16 +963,6 @@ function ModelDetail({
             </>
           )}
         </div>
-      )}
-
-      {notForThis.length > 0 && (
-        <ul data-testid="engines-not-for-this" className="text-xs text-[color:var(--muted)]">
-          {notForThis.map((e) => (
-            <li key={e.engine}>
-              {e.engine} is installed on {where} but is not offered for this model: it {e.why}
-            </li>
-          ))}
-        </ul>
       )}
 
       <ProfileEditor

@@ -945,6 +945,8 @@ const ENGINE_NAME: Record<string, string> = {
   llama_cpp: "llama.cpp",
   vllm: "vLLM",
   mlx: "MLX",
+  kev: "Kev",
+  strata: "Strata",
 };
 
 export function engineName(engine: string | null | undefined): string {
