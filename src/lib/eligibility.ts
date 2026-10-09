@@ -105,6 +105,10 @@ export function hubFormatFor(
   const formats = new Set<string>();
   for (const e of eligibilityEngines(engines)) {
     for (const need of e.accepts) {
+      // No hub model is prepared: an engine makes those on this machine
+      // (LS3). Counting Strata's sent the hub `format=prepared`, which it
+      // ignores, and the filter then hid every row it returned.
+      if (need.format === "prepared") continue;
       const prepared = need.preparation != null;
       const here = e.available && !prepared;
       const other = (!e.available && e.installable) || (e.available && prepared);

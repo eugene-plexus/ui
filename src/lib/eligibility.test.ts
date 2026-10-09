@@ -73,6 +73,28 @@ describe("Discover's helpers (LS2)", () => {
     expect(verdictLine(v, "box", (e) => e)).toBe("vllm: r; cannot run on box");
   });
 
+  // Troy, 2026-10-09, on Amish_Station after LS3: "Works here now" found none
+  // of 30. Strata's `prepared` was counted as a format the hub could serve.
+  it("never asks the hub for prepared models, which only an engine makes", () => {
+    const strata = engine({
+      engine: "strata",
+      modelFormats: ["prepared"],
+      accepts: [
+        { format: "prepared", preparedFor: "strata", preference: 50 },
+        { format: "gguf", preparation: { recipe: "s" }, preference: 50 },
+      ],
+    });
+    const llama = engine({ accepts: [{ format: "gguf", preference: 10 }] });
+    expect(hubFormatFor("works_here", [llama, strata])).toBe("gguf");
+    const notInstalled = engine({
+      available: false,
+      accepts: [{ format: "gguf", preference: 10 }],
+      acquisition: { policy: "managed" } as never,
+    });
+    expect(hubFormatFor("works_here", [notInstalled, strata])).toBeNull();
+    expect(hubFormatFor("other_engine", [notInstalled, strata])).toBe("gguf");
+  });
+
   it("asks the hub for one format only when the filter's engines load one", () => {
     const engines = [
       engine({ accepts: [{ format: "gguf", preference: 10 }] }),
