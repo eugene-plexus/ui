@@ -129,3 +129,51 @@ it("lets the recommended MoE pick's reason say how it runs, and adds no spill wo
   expect(card).toHaveTextContent("runs here with its experts in system memory");
   expect(card).not.toHaveTextContent("partial offload");
 });
+
+it("gives every entry Troy's dot, judged by the Library from what the review recorded", async () => {
+  const facts = (id: string) => ({ id, format: "gguf", architecture: "qwen3moe" });
+  const withFacts = {
+    ...SET,
+    models: SET.models.map((m, i) => ({ ...m, facts: facts(`starter:${i}`) })),
+  };
+  const asked: unknown[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/v1/eligibility")) {
+        asked.push(JSON.parse(String(init?.body)));
+        return Response.json({
+          models: [
+            { modelId: "starter:0", level: "works_here", engines: [] },
+            { modelId: "starter:1", level: "other_engine", engines: [] },
+          ],
+        });
+      }
+      return Response.json(withFacts);
+    }),
+  );
+  render(
+    <StarterSetPanel
+      budget={null}
+      engines={[{ engine: "llama_cpp", available: true, accepts: [{ format: "gguf" }] } as never]}
+      where="Amish_Station"
+      contextLength={16384}
+      busy={null}
+      onDownload={() => {}}
+      onOpenRepo={() => {}}
+    />,
+  );
+  const rows = await screen.findAllByTestId("starter-row");
+  await waitFor(() =>
+    expect(within(rows[0]!).getByTestId("eligibility-dot")).toHaveTextContent("works here"),
+  );
+  expect(within(rows[1]!).getByTestId("eligibility-dot")).toHaveTextContent("other engine");
+  // The suggestion's card says it in Troy's whole phrase.
+  expect(
+    within(screen.getByTestId("starter-recommended")).getByTestId("eligibility-dot"),
+  ).toHaveTextContent("Will work on this machine now");
+  expect((asked[0] as { candidates: { id: string }[] }).candidates.map((c) => c.id)).toEqual([
+    "starter:0",
+    "starter:1",
+  ]);
+});

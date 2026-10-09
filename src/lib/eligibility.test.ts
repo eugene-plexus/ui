@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { eligibilityEngines, LEVEL_WORDS, runnable } from "./eligibility";
+import {
+  bestAnswer,
+  eligibilityEngines,
+  hubFormatFor,
+  LEVEL_WORDS,
+  runnable,
+  verdictLine,
+} from "./eligibility";
 import type { EngineDescriptor } from "./types";
 
 const engine = (over: Partial<EngineDescriptor>) =>
@@ -45,4 +52,54 @@ it("keeps Troy's words for the three levels", () => {
       { engine: "strata", verdict: "after_preparation", available: true, reason: "" },
     ] as never).map((v) => v.engine),
   ).toEqual(["vllm"]);
+});
+
+describe("Discover's helpers (LS2)", () => {
+  const answer = (level: "works_here" | "other_engine" | "not_here") =>
+    ({ modelId: level, level, engines: [] }) as never;
+
+  it("a row is as good as its best format", () => {
+    expect(bestAnswer([answer("not_here"), undefined, answer("other_engine")])).toEqual(
+      answer("other_engine"),
+    );
+    expect(bestAnswer([undefined])).toBeUndefined();
+  });
+
+  it("says each verdict about the machine in the picker", () => {
+    const v = { engine: "vllm", verdict: "may_run", reason: "r", available: false } as never;
+    expect(verdictLine({ ...(v as object), installable: true } as never, "box", (e) => e)).toBe(
+      "vllm: r; not installed on box yet",
+    );
+    expect(verdictLine(v, "box", (e) => e)).toBe("vllm: r; cannot run on box");
+  });
+
+  it("asks the hub for one format only when the filter's engines load one", () => {
+    const engines = [
+      engine({ accepts: [{ format: "gguf", preference: 10 }] }),
+      engine({
+        engine: "strata",
+        accepts: [{ format: "gguf", preparation: { recipe: "s" }, preference: 50 }],
+      }),
+      engine({
+        engine: "vllm",
+        available: false,
+        accepts: [{ format: "safetensors", preference: 20 }],
+        acquisition: { policy: "manual", installable: false } as never,
+      }),
+    ];
+    expect(hubFormatFor("works_here", engines)).toBe("gguf");
+    // Strata prepares a GGUF; vLLM cannot be installed here.
+    expect(hubFormatFor("other_engine", engines)).toBe("gguf");
+    expect(hubFormatFor(null, engines)).toBeNull();
+    expect(hubFormatFor("works_here", null)).toBeNull();
+    const mac = [
+      ...engines.slice(0, 2),
+      engine({
+        engine: "mlx",
+        available: false,
+        accepts: [{ format: "safetensors", preference: 10 }],
+      }),
+    ];
+    expect(hubFormatFor("other_engine", mac)).toBeNull();
+  });
 });

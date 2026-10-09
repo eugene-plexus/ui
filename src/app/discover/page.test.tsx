@@ -171,7 +171,7 @@ function ok(body: unknown) {
 }
 
 type Reply = { status: number; body?: unknown };
-type Handler = (params: URLSearchParams) => Reply | Promise<Reply>;
+type Handler = (params: URLSearchParams, body?: unknown) => Reply | Promise<Reply>;
 let handlers: Map<string, Handler>;
 
 beforeEach(() => {
@@ -208,14 +208,11 @@ beforeEach(() => {
       const route = String(input).replace(/^[/]api[/]proxy[/]/, "");
       const [path = "", query = ""] = route.split("?");
       const params = new URLSearchParams(query);
-      seen.push({
-        path,
-        params,
-        body: init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined,
-      });
+      const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined;
+      seen.push({ path, params, body });
       const handler = handlers.get(`${init?.method ?? "GET"} ${path}`);
       const result = handler
-        ? await handler(params)
+        ? await handler(params, body)
         : { status: 418, body: { detail: `?? ${path}` } };
       return new Response(result.body === undefined ? null : JSON.stringify(result.body), {
         status: result.status,
@@ -507,22 +504,201 @@ describe("the results list", () => {
   });
 });
 
-describe("a search that matched nothing", () => {
-  it("names the format filter, and one click searches every format", async () => {
-    const formats: (string | null)[] = [];
-    handlers.set("GET library/v1/catalogue/search", (params) => {
-      formats.push(params.get("format"));
-      return ok({ results: [] });
+describe("which engines can run it (LS2)", () => {
+  /** This node: llama.cpp installed; vLLM installable; Strata installed. */
+  const ENGINES = [
+    { engine: "llama_cpp", available: true, modelFormats: ["gguf"], accepts: [{ format: "gguf" }] },
+    {
+      engine: "vllm",
+      available: false,
+      modelFormats: ["safetensors"],
+      accepts: [{ format: "safetensors", authority: "engine" }],
+      acquisition: { policy: "manual", installable: false, manualInstall: { command: "pip" } },
+    },
+    {
+      engine: "strata",
+      available: true,
+      experimental: true,
+      modelFormats: [],
+      accepts: [{ format: "gguf", architectures: ["qwen4exp"], preparation: { recipe: "s" } }],
+    },
+  ];
+  const fact = (repo: string, format: string) => ({
+    id: `search:${repo}:${format}`,
+    format,
+    approximate: true,
+  });
+  const ROWS = [
+    { repo: "org/red", name: "Red", owner: "org", facts: [fact("org/red", "safetensors")] },
+    { repo: "org/amber", name: "Amber", owner: "org", facts: [fact("org/amber", "gguf")] },
+    { repo: "org/green", name: "Green", owner: "org", facts: [fact("org/green", "gguf")] },
+  ];
+  const verdict = (engine: string, v: string, reason: string, available = true) => ({
+    engine,
+    verdict: v,
+    reason,
+    available,
+    installable: !available,
+  });
+  /** The Library's answers, by candidate id: what the judge would say. */
+  const ANSWERS: Record<string, unknown> = {
+    "search:org/green:gguf": {
+      level: "works_here",
+      approximate: true,
+      engines: [verdict("llama_cpp", "runs", "runs it as it is")],
+    },
+    "search:org/amber:gguf": {
+      level: "other_engine",
+      approximate: true,
+      engines: [
+        verdict("strata", "after_preparation", "runs it after preparing it"),
+        verdict(
+          "llama_cpp",
+          "no",
+          "loads 156 named architectures, and qwen4exp is not one of them",
+        ),
+      ],
+    },
+    "search:org/red:safetensors": {
+      level: "not_here",
+      approximate: true,
+      engines: [verdict("llama_cpp", "no", "loads gguf models, and this one is safetensors")],
+    },
+    "catalogue:x:Q4_K_M": {
+      level: "other_engine",
+      approximate: false,
+      engines: [
+        verdict("vllm", "may_run", "vLLM checks the architecture when it loads", false),
+        verdict("llama_cpp", "no", "loads gguf models, and this one is safetensors"),
+      ],
+    },
+  };
+  let judged: { candidates?: { id: string }[]; engines?: unknown[] }[];
+
+  beforeEach(() => {
+    judged = [];
+    handlers.set("GET agent/v1/engines", () => ok({ engines: ENGINES }));
+    handlers.set("GET library/v1/catalogue/search", () => ok({ results: ROWS }));
+    handlers.set("POST library/v1/eligibility", (_params, body) => {
+      const asked = body as { candidates?: { id: string }[]; engines?: unknown[] };
+      judged.push(asked);
+      return ok({
+        models: (asked.candidates ?? [])
+          .filter((c) => ANSWERS[c.id])
+          .map((c) => ({ modelId: c.id, ...(ANSWERS[c.id] as object) })),
+      });
+    });
+  });
+
+  const rowText = () => screen.getAllByTestId("result-row").map((row) => row.textContent ?? "");
+
+  it("lists everything by default, green then amber then red, each row with its dot", async () => {
+    render(<DiscoverPage />);
+    await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
+    expect(screen.getByLabelText(/Which models/)).toHaveValue("");
+    await waitFor(() =>
+      expect(rowText()).toEqual([
+        expect.stringContaining("Green"),
+        expect.stringContaining("Amber"),
+        expect.stringContaining("Red"),
+      ]),
+    );
+    const dots = screen.getAllByTestId("eligibility-dot").map((d) => d.textContent);
+    expect(dots).toEqual(["works here(approx.)", "other engine(approx.)", "not here(approx.)"]);
+    // The Library judged the rows' own facts, against this node's engines.
+    const asked = judged.at(-1)!;
+    expect(asked.candidates!.map((c) => c.id)).toEqual(ROWS.map((r) => r.facts[0]!.id));
+    expect(asked.engines).toHaveLength(3);
+    // The hub is asked for every format when nothing is filtered.
+    expect(lastQuery("library/v1/catalogue/search").get("format")).toBeNull();
+  });
+
+  it("Works here now hides the rest, asks the hub for what runs here, and says what it hid", async () => {
+    render(<DiscoverPage />);
+    await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/Which models/), { target: { value: "works_here" } });
+    });
+    await waitFor(() => expect(screen.getAllByTestId("result-row")).toHaveLength(1));
+    expect(screen.getByTestId("result-row")).toHaveTextContent("Green");
+    // llama.cpp is the only engine here running anything as it is: GGUF.
+    expect(lastQuery("library/v1/catalogue/search").get("format")).toBe("gguf");
+    const hidden = screen.getByTestId("filter-hidden");
+    expect(hidden).toHaveTextContent("2 more matches hidden by “Works here now”.");
+    await act(async () => {
+      within(hidden).getByRole("button", { name: "Show everything" }).click();
+    });
+    await waitFor(() => expect(screen.getAllByTestId("result-row")).toHaveLength(3));
+  });
+
+  it("Works with another engine keeps only the amber rows", async () => {
+    render(<DiscoverPage />);
+    await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/Which models/), {
+        target: { value: "other_engine" },
+      });
+    });
+    await waitFor(() => expect(screen.getAllByTestId("result-row")).toHaveLength(1));
+    expect(screen.getByTestId("result-row")).toHaveTextContent("Amber");
+  });
+
+  it("a filter that leaves nothing names itself and undoes in one click", async () => {
+    handlers.set("GET library/v1/catalogue/search", () => ok({ results: [ROWS[0]] }));
+    render(<DiscoverPage />);
+    await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/Which models/), { target: { value: "works_here" } });
+    });
+    const empty = await screen.findByTestId("no-results");
+    expect(empty).toHaveTextContent("None of 1 matches works on this host now.");
+    await act(async () => {
+      within(empty).getByRole("button", { name: "Show everything" }).click();
+    });
+    expect(screen.getByLabelText(/Which models/)).toHaveValue("");
+  });
+
+  it("each version carries its dot, and the popover names every engine's reason", async () => {
+    handlers.set("GET library/v1/catalogue/model", (params) => {
+      const body = modelBody(Number(params.get("contextLength")));
+      body.candidates[0] = {
+        ...body.candidates[0]!,
+        facts: { id: "catalogue:x:Q4_K_M", format: "safetensors", mlxQuantized: false },
+      } as never;
+      return ok(body);
     });
     render(<DiscoverPage />);
-    const line = await screen.findByText(/Nothing matched/, {}, { timeout: 5000 });
-    const empty = line.parentElement as HTMLElement;
-    expect(empty).toHaveTextContent("Nothing matched in GGUF files.");
+    const row = await screen.findByRole("button", { name: /^Green/ }, { timeout: 5000 });
     await act(async () => {
-      within(empty).getByRole("button", { name: "Search every format" }).click();
+      fireEvent.click(row);
     });
-    await waitFor(() => expect(formats.at(-1)).toBeNull());
-    expect(screen.getByLabelText("Model format")).toHaveValue("");
+    const level = await screen.findByTestId("candidate-level", {}, { timeout: 5000 });
+    const dot = within(level).getByRole("button");
+    expect(dot).toHaveTextContent("other engine");
+    expect(dot).not.toHaveTextContent("approx");
+    await act(async () => {
+      fireEvent.click(dot);
+    });
+    const panel = within(level).getByRole("dialog");
+    expect(panel).toHaveTextContent("Will work with a different engine");
+    expect(within(panel).getByTestId("eligibility-verdicts")).toHaveTextContent(
+      "vLLM: vLLM checks the architecture when it loads; not installed on this host yet",
+    );
+    expect(panel).toHaveTextContent("llama.cpp: loads gguf models, and this one is safetensors");
+    // The version's facts went to the judge, not to a rule of this page's.
+    expect(judged.some((j) => j.candidates?.some((c) => c.id === "catalogue:x:Q4_K_M"))).toBe(true);
+  });
+
+  it("an older Library shows no dots and says why every model is listed", async () => {
+    handlers.set("POST library/v1/eligibility", () => ({
+      status: 422,
+      body: { detail: [{ type: "extra_forbidden", loc: ["body", "candidates"] }] },
+    }));
+    render(<DiscoverPage />);
+    const note = await screen.findByTestId("filter-note", {}, { timeout: 5000 });
+    expect(note).toHaveTextContent("This Library is older than the engine check");
+    expect(screen.queryByTestId("eligibility-dot")).toBeNull();
+    expect(screen.getAllByTestId("result-row")).toHaveLength(3);
   });
 });
 

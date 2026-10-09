@@ -53,3 +53,63 @@ export function eligibilityEngines(engines: EngineDescriptor[]): EligibilityEngi
 export function runnable(verdicts: EngineVerdict[]): EngineVerdict[] {
   return verdicts.filter((v) => v.verdict === "runs" || v.verdict === "may_run");
 }
+
+// --- models not downloaded yet (LS2) ----------------------------------------
+
+export type EligibilityCandidate = LibraryComponents["schemas"]["EligibilityCandidate"];
+
+/** Green, amber, red: the order Discover lists them in. */
+export const LEVEL_RANK: Record<EligibilityLevel, number> = {
+  works_here: 0,
+  other_engine: 1,
+  not_here: 2,
+};
+
+/** The best of several answers: a search row serving GGUF and safetensors
+ * is as good as its better format. */
+export function bestAnswer(
+  answers: (ModelEligibility | undefined)[],
+): ModelEligibility | undefined {
+  let best: ModelEligibility | undefined;
+  for (const answer of answers) {
+    if (answer && (!best || LEVEL_RANK[answer.level] < LEVEL_RANK[best.level])) best = answer;
+  }
+  return best;
+}
+
+/** One engine's verdict as a sentence about one machine. */
+export function verdictLine(v: EngineVerdict, where: string, name: (e: string) => string): string {
+  const state = v.available
+    ? ""
+    : v.installable
+      ? `; not installed on ${where} yet`
+      : `; cannot run on ${where}`;
+  return `${name(v.engine)}${v.experimental ? " (experimental)" : ""}: ${v.reason}${state}`;
+}
+
+/**
+ * Which formats an engine filter can ask the hub for, so a page of thirty
+ * results is not mostly rows the filter then hides. `null` when the
+ * engines in question load more than one format (or none is known): the
+ * hub is asked for everything and the judge sorts it out.
+ *
+ * Read off what the engines declare, not decided here: `works_here` is
+ * what installed engines load as it is; `other_engine` what an engine this
+ * machine could install loads, or what an installed one prepares.
+ */
+export function hubFormatFor(
+  level: EligibilityLevel | null,
+  engines: EngineDescriptor[] | null,
+): string | null {
+  if (level === null || level === "not_here" || engines === null) return null;
+  const formats = new Set<string>();
+  for (const e of eligibilityEngines(engines)) {
+    for (const need of e.accepts) {
+      const prepared = need.preparation != null;
+      const here = e.available && !prepared;
+      const other = (!e.available && e.installable) || (e.available && prepared);
+      if (level === "works_here" ? here : other) formats.add(need.format);
+    }
+  }
+  return formats.size === 1 ? [...formats][0]! : null;
+}

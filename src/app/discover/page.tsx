@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 
 import { AppShell } from "@/components/AppShell";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
+import { EligibilityDot } from "@/components/EligibilityDot";
 import { FitBadge, formatBytes, formatMemory } from "@/components/FitBadge";
 import { ModelCard } from "@/components/ModelCard";
 import { QuantReference } from "@/components/QuantReference";
@@ -14,6 +15,15 @@ import { StarterSetPanel } from "@/components/StarterSetPanel";
 import { contextLabel } from "@/lib/starter";
 import { relativeAge } from "@/lib/relativeTime";
 import { type NodeBudget, fitQuery, useTargetNode } from "@/lib/nodeBudget";
+import {
+  bestAnswer,
+  hubFormatFor,
+  LEVEL_RANK,
+  type EligibilityCandidate,
+  type EligibilityLevel,
+  type ModelEligibility,
+} from "@/lib/eligibility";
+import { useCandidateEligibility, useNodeEngines } from "@/lib/useEligibility";
 import type {
   CatalogueCandidate,
   CatalogueFile,
@@ -23,8 +33,8 @@ import type {
   CatalogueSort,
   CataloguePreflight,
   Download,
+  EngineDescriptor,
   HostHardware,
-  ModelFormat,
   StarterModel,
 } from "@/lib/types";
 
@@ -80,14 +90,35 @@ const SORT_LABEL: Record<CatalogueSort, string> = {
   created: "newest",
 };
 
-/** Format, sort and the scoring context survive a reload, per browser.
- * The person who always scores at 32k was being reset to 8k every
+/** The engine filter, sort and the scoring context survive a reload, per
+ * browser. The person who always scores at 32k was being reset to 8k every
  * visit, and the number silently decides every verdict on the screen. */
 const PREFS_KEY = "eugene-discover-prefs";
 
+/**
+ * Which models the list shows, by Troy's dot (L5, LS2). It replaced a
+ * format filter that defaulted to GGUF for its own sake: what a person
+ * wants to know is whether a model runs here, not what its files are
+ * called. `""` is everything, ordered green, amber, red.
+ */
+type LevelFilter = "" | "works_here" | "other_engine";
+
+const FILTER_LABEL: Record<LevelFilter, string> = {
+  works_here: "Works here now",
+  other_engine: "Works with another engine",
+  "": "Everything",
+};
+
+/** What "approximate" means on a search row. */
+const ROW_GUESS =
+  "Judged from the hub's listing, not from this repo's files. Open it for each version's answer.";
+/** And on a version, when a fact could not be read before download. */
+const CANDIDATE_GUESS =
+  "Something about this version could not be read before download; each reason says what was assumed.";
+
 interface DiscoverPrefs {
   contextLength?: number;
-  format?: ModelFormat | "";
+  level?: LevelFilter;
   sort?: CatalogueSort;
 }
 
@@ -106,7 +137,7 @@ function DiscoverPageInner() {
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [format, setFormat] = useState<ModelFormat | "">("gguf");
+  const [level, setLevel] = useState<LevelFilter>("");
   const [sort, setSort] = useState<CatalogueSort>("downloads");
   const [results, setResults] = useState<CatalogueSearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -133,6 +164,10 @@ function DiscoverPageInner() {
   // library runs on, which on a multi-host install is a different
   // machine -- see `nodeBudget.ts`.
   const { nodes, selected, select, budget } = useTargetNode();
+  // Which engines the verdicts are about: the picked node's, as its own
+  // agent reports them (LS2). The Library judges; this page only asks.
+  const { engines, error: enginesError } = useNodeEngines(selected?.target ?? null);
+  const where = selected?.label ?? "this machine";
   const { downloads, reload: reloadDownloads, active } = useDownloads();
   // Files a transfer is writing right now, by their path in the repo.
   const inFlightFiles = useMemo(
@@ -166,8 +201,10 @@ function DiscoverPageInner() {
         ) {
           setContextLength(prefs.contextLength);
         }
-        if (prefs.format === "" || prefs.format === "gguf" || prefs.format === "safetensors") {
-          setFormat(prefs.format);
+        // The old `format` preference is not carried over: GGUF was a
+        // default, not a choice, for nearly everyone who has it stored.
+        if (prefs.level === "" || prefs.level === "works_here" || prefs.level === "other_engine") {
+          setLevel(prefs.level);
         }
         if (typeof prefs.sort === "string" && prefs.sort in SORT_LABEL) setSort(prefs.sort);
       }
@@ -182,12 +219,12 @@ function DiscoverPageInner() {
     try {
       localStorage.setItem(
         PREFS_KEY,
-        JSON.stringify({ contextLength, format, sort } satisfies DiscoverPrefs),
+        JSON.stringify({ contextLength, level, sort } satisfies DiscoverPrefs),
       );
     } catch {
       // The screen just does not remember.
     }
-  }, [prefsLoaded, contextLength, format, sort]);
+  }, [prefsLoaded, contextLength, level, sort]);
 
   // The URL mirrors the selection; state drives. `replace` rather than
   // `push` so paging through repos does not bury Back under every
@@ -224,6 +261,9 @@ function DiscoverPageInner() {
   // stale pasted-link answer re-selected its repo over whatever had just
   // been clicked. RepoDetail already guarded this way; search did not.
   const searchSeq = useRef(0);
+  // A filter whose engines all load one format asks the hub for that
+  // format only, so a page of thirty is not mostly rows it then hides.
+  const hubFormat = hubFormatFor(level === "" ? null : level, engines);
   const search = useCallback(async () => {
     const mine = ++searchSeq.current;
     const current = () => mine === searchSeq.current;
@@ -232,7 +272,7 @@ function DiscoverPageInner() {
     try {
       const params = new URLSearchParams({ sort, limit: "30" });
       if (debouncedQuery) params.set("q", debouncedQuery);
-      if (format) params.set("format", format);
+      if (hubFormat) params.set("format", hubFormat);
       const page = await api.get<CatalogueSearchPage>(
         "library",
         `/v1/catalogue/search?${params.toString()}`,
@@ -254,7 +294,11 @@ function DiscoverPageInner() {
     } finally {
       if (current()) setSearching(false);
     }
-  }, [debouncedQuery, format, sort]);
+  }, [debouncedQuery, hubFormat, sort]);
+
+  // Every row's facts, judged in one call; a row is as good as its best format.
+  const rowFacts = useMemo(() => (results ?? []).flatMap((r) => r.facts ?? []), [results]);
+  const { byId: rowVerdicts, older: libraryOlder } = useCandidateEligibility(engines, rowFacts);
 
   /** Fetch a starter entry's one recommended file. Same endpoint the
    * candidate table posts to; the starter set just already knows which
@@ -308,14 +352,17 @@ function DiscoverPageInner() {
             aria-label="Search the model catalogue"
           />
           <select
-            value={format}
-            onChange={(event) => setFormat(event.target.value as ModelFormat | "")}
+            value={level}
+            onChange={(event) => setLevel(event.target.value as LevelFilter)}
             className={selectClass}
-            aria-label="Model format"
+            aria-label={`Which models, for ${where}`}
+            title={`By which engines can run them on ${where}`}
           >
-            <option value="gguf">GGUF</option>
-            <option value="safetensors">safetensors</option>
-            <option value="">any format</option>
+            {(["works_here", "other_engine", ""] as LevelFilter[]).map((value) => (
+              <option key={value} value={value}>
+                {FILTER_LABEL[value]}
+              </option>
+            ))}
           </select>
           <select
             value={sort}
@@ -339,8 +386,17 @@ function DiscoverPageInner() {
             interpreted={interpreted}
             selected={selectedRepo}
             onSelect={setSelectedRepo}
-            format={format}
-            onAnyFormat={() => setFormat("")}
+            level={level}
+            onEverything={() => setLevel("")}
+            verdicts={rowVerdicts}
+            where={where}
+            note={
+              enginesError
+                ? `Could not ask ${where} which engines it has (${enginesError}), so nothing is filtered.`
+                : libraryOlder
+                  ? "This Library is older than the engine check, so every model is listed."
+                  : null
+            }
           />
 
           <div className="min-h-0 overflow-y-auto px-5 py-4">
@@ -351,6 +407,8 @@ function DiscoverPageInner() {
                 repo={selectedRepo}
                 contextLength={contextLength}
                 budget={budget}
+                engines={engines}
+                where={where}
                 downloads={downloads}
                 onDownloadStarted={() => {
                   setShowDownloads(true);
@@ -361,6 +419,8 @@ function DiscoverPageInner() {
               <EmptyDetail
                 budget={budget}
                 hardware={hardware}
+                engines={engines}
+                where={where}
                 contextLength={contextLength}
                 busy={starterBusy}
                 inFlight={inFlightFiles}
@@ -489,8 +549,11 @@ function ResultsList({
   interpreted,
   selected,
   onSelect,
-  format,
-  onAnyFormat,
+  level,
+  onEverything,
+  verdicts,
+  where,
+  note,
 }: {
   results: CatalogueSearchResult[] | null;
   searching: boolean;
@@ -498,10 +561,32 @@ function ResultsList({
   interpreted: "search" | "repo";
   selected: string | null;
   onSelect: (repo: string) => void;
-  /** The format filter in effect; "" is any format. */
-  format: ModelFormat | "";
-  onAnyFormat: () => void;
+  /** The engine filter in effect; "" is everything. */
+  level: LevelFilter;
+  onEverything: () => void;
+  /** The Library's verdicts on the rows' facts, by fact id; null until known. */
+  verdicts: Map<string, ModelEligibility> | null;
+  where: string;
+  /** Why rows carry no dot, when they do not. */
+  note: string | null;
 }) {
+  const rows = useMemo(() => {
+    const judged = (results ?? []).map((result, index) => ({
+      result,
+      index,
+      answer: verdicts
+        ? bestAnswer((result.facts ?? []).map((f) => verdicts.get(f.id)))
+        : undefined,
+    }));
+    if (verdicts === null) return judged;
+    // Green, amber, red; the hub's own order within each. A row the
+    // Library said nothing about goes last rather than being guessed at.
+    const rank = (a: ModelEligibility | undefined) => (a ? LEVEL_RANK[a.level] : 3);
+    return judged
+      .filter((r) => level === "" || r.answer?.level === (level as EligibilityLevel))
+      .sort((a, b) => rank(a.answer) - rank(b.answer) || a.index - b.index);
+  }, [results, verdicts, level]);
+  const hidden = (results?.length ?? 0) - rows.length;
   return (
     <div className="min-h-0 overflow-y-auto border-r border-[color:var(--border)]">
       {interpreted === "repo" && (
@@ -523,15 +608,25 @@ function ResultsList({
       {results === null && !error && (
         <p className="px-4 py-3 text-sm text-[color:var(--muted)]">searching…</p>
       )}
-      {results?.length === 0 && !error && (
+      {note && (
+        <p
+          data-testid="filter-note"
+          className="border-b border-[color:var(--border)] px-4 py-2 text-[0.6875rem] text-[color:var(--muted)]"
+        >
+          {note}
+        </p>
+      )}
+      {results !== null && rows.length === 0 && !error && (
         <div className="px-4 py-3 text-sm text-[color:var(--muted)]" data-testid="no-results">
-          {/* The format filter is on by default and is often the reason:
-              a model published only as safetensors matches nothing here. */}
-          {format ? (
+          {/* A filter is often the reason: say which, and undo it in one click. */}
+          {level ? (
             <p>
-              Nothing matched in {format === "gguf" ? "GGUF" : format} files.{" "}
-              <button type="button" onClick={onAnyFormat} className="underline">
-                Search every format
+              {results.length === 0 ? "Nothing matched" : `None of ${results.length} matches`}{" "}
+              {level === "works_here"
+                ? `works on ${where} now.`
+                : `works on ${where} with another engine.`}{" "}
+              <button type="button" onClick={onEverything} className="underline">
+                Show everything
               </button>
             </p>
           ) : (
@@ -541,8 +636,13 @@ function ResultsList({
         </div>
       )}
       <ul className={searching ? "opacity-60 transition-opacity" : undefined}>
-        {(results ?? []).map((result) => (
-          <li key={result.repo}>
+        {rows.map(({ result, answer }) => (
+          <li key={result.repo} className="relative" data-testid="result-row">
+            {answer && (
+              <span className="absolute top-2 right-3 z-10">
+                <EligibilityDot answer={answer} where={where} short guessNote={ROW_GUESS} />
+              </span>
+            )}
             <button
               type="button"
               onClick={() => onSelect(result.repo)}
@@ -551,7 +651,10 @@ function ResultsList({
                 selected === result.repo ? "bg-[color:var(--panel-soft)]" : ""
               }`}
             >
-              <p className="font-ui truncate text-sm font-semibold" title={result.repo}>
+              <p
+                className={`font-ui truncate text-sm font-semibold ${answer ? "pr-24" : ""}`}
+                title={result.repo}
+              >
                 {result.name ?? result.repo}
               </p>
               <p className="truncate text-[0.6875rem] text-[color:var(--muted)]">
@@ -579,6 +682,18 @@ function ResultsList({
           </li>
         ))}
       </ul>
+      {hidden > 0 && rows.length > 0 && (
+        <p
+          data-testid="filter-hidden"
+          className="px-4 py-2 text-[0.6875rem] text-[color:var(--muted)]"
+        >
+          {hidden} more {hidden === 1 ? "match" : "matches"} hidden by &ldquo;
+          {FILTER_LABEL[level]}&rdquo;.{" "}
+          <button type="button" onClick={onEverything} className="underline">
+            Show everything
+          </button>
+        </p>
+      )}
     </div>
   );
 }
@@ -586,6 +701,8 @@ function ResultsList({
 function EmptyDetail({
   budget,
   hardware,
+  engines,
+  where: machine,
   contextLength,
   busy,
   inFlight,
@@ -595,6 +712,8 @@ function EmptyDetail({
 }: {
   budget: NodeBudget | null;
   hardware: HostHardware | null;
+  engines: EngineDescriptor[] | null;
+  where: string;
   contextLength: number;
   busy: string | null;
   inFlight: Set<string>;
@@ -607,6 +726,8 @@ function EmptyDetail({
     <div className="max-w-4xl space-y-4 text-sm text-[color:var(--muted)]">
       <StarterSetPanel
         budget={budget}
+        engines={engines}
+        where={machine}
         contextLength={contextLength}
         busy={busy}
         inFlight={inFlight}
@@ -667,12 +788,16 @@ function RepoDetail({
   repo,
   contextLength,
   budget,
+  engines,
+  where,
   downloads,
   onDownloadStarted,
 }: {
   repo: string;
   contextLength: number;
   budget: NodeBudget | null;
+  engines: EngineDescriptor[] | null;
+  where: string;
   downloads: Download[];
   onDownloadStarted: () => void;
 }) {
@@ -689,6 +814,18 @@ function RepoDetail({
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const requestId = useRef(0);
+  // Each version judged by its own facts, which the detail call read
+  // (a folder's remote config.json included) before anything downloads.
+  const facts = useMemo(
+    () =>
+      (detail?.candidates ?? [])
+        .map((c) => c.facts)
+        .filter((f): f is EligibilityCandidate => f != null),
+    [detail],
+  );
+  const { byId: verdicts } = useCandidateEligibility(engines, facts);
+  const answerFor = (candidate: CatalogueCandidate) =>
+    candidate.facts ? verdicts?.get(candidate.facts.id) : undefined;
 
   useEffect(() => {
     const id = ++requestId.current;
@@ -894,6 +1031,13 @@ function RepoDetail({
             <p className="font-ui text-sm font-semibold">
               Suggested version: {detail.recommended.label}
             </p>
+            {answerFor(recommendedCandidate) && (
+              <EligibilityDot
+                answer={answerFor(recommendedCandidate)!}
+                where={where}
+                guessNote={CANDIDATE_GUESS}
+              />
+            )}
             {/* A preflighted verdict wins here exactly as it does in the
                 table: the card is the golden path, so it must not keep
                 quoting the estimate after the real arithmetic arrived. */}
@@ -988,6 +1132,8 @@ function RepoDetail({
           activeDestinations={activeDestinations}
           onPreflight={preflight}
           onDownload={download}
+          answerFor={answerFor}
+          where={where}
         />
       )}
 
@@ -1010,7 +1156,12 @@ function CandidateTable({
   activeDestinations,
   onPreflight,
   onDownload,
+  answerFor,
+  where,
 }: {
+  /** The Library's verdict on one version, once it has answered. */
+  answerFor: (candidate: CatalogueCandidate) => ModelEligibility | undefined;
+  where: string;
   candidates: CatalogueCandidate[];
   contextLength: number;
   recommended: string | null;
@@ -1054,10 +1205,21 @@ function CandidateTable({
             const preflighted = preflights[candidate.label];
             const fit = preflighted?.fit ?? candidate.fit;
             const downloading = candidate.files.some((f) => activeDestinations.has(f.path));
+            const answer = answerFor(candidate);
             return (
               <tr key={candidate.label} className="border-t border-[color:var(--border)] align-top">
                 <td className="px-3 py-2">
                   <span className="font-ui font-semibold">{candidate.label}</span>
+                  {answer && (
+                    <span className="ml-2" data-testid="candidate-level">
+                      <EligibilityDot
+                        answer={answer}
+                        where={where}
+                        short
+                        guessNote={CANDIDATE_GUESS}
+                      />
+                    </span>
+                  )}
                   {recommended === candidate.label && (
                     <span className="text-status-success ml-2 text-[0.625rem] uppercase">
                       recommended

@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { EligibilityDot } from "@/components/EligibilityDot";
 import { FitBadge, formatBytes } from "@/components/FitBadge";
 import { ApiError, api, describeError } from "@/lib/api";
+import type { EligibilityCandidate } from "@/lib/eligibility";
 import { fitQuery, type NodeBudget } from "@/lib/nodeBudget";
 import {
   downloadSize,
@@ -13,7 +15,8 @@ import {
   reviewedOn,
   shortName,
 } from "@/lib/starter";
-import type { StarterModel, StarterSet } from "@/lib/types";
+import type { EngineDescriptor, StarterModel, StarterSet } from "@/lib/types";
+import { useCandidateEligibility } from "@/lib/useEligibility";
 
 /**
  * A handful of models, and the one this machine should take.
@@ -36,6 +39,8 @@ import type { StarterModel, StarterSet } from "@/lib/types";
  */
 export function StarterSetPanel({
   budget,
+  engines = null,
+  where = "this machine",
   contextLength,
   busy,
   inFlight = new Set<string>(),
@@ -44,6 +49,9 @@ export function StarterSetPanel({
   onOpenRepo,
 }: {
   budget: NodeBudget | null;
+  /** The picked node's engines, so each entry carries Troy's dot (LS2). */
+  engines?: EngineDescriptor[] | null;
+  where?: string;
   contextLength: number;
   /** The repo currently downloading, if any, so its button says so. */
   busy: string | null;
@@ -88,6 +96,16 @@ export function StarterSetPanel({
     };
   }, [budget, contextLength, attempt]);
 
+  // What the review recorded of each entry, judged like any version.
+  const facts = useMemo(
+    () =>
+      (set?.models ?? []).map((m) => m.facts).filter((f): f is EligibilityCandidate => f != null),
+    [set],
+  );
+  const { byId: verdicts } = useCandidateEligibility(engines, facts);
+  const answerFor = (model: StarterModel) =>
+    model.facts ? verdicts?.get(model.facts.id) : undefined;
+
   if (error) {
     return (
       <p className="text-sm text-[color:var(--muted)]">
@@ -127,9 +145,12 @@ export function StarterSetPanel({
           data-testid="starter-recommended"
           className="status-success rounded-[var(--radius)] border px-4 py-3"
         >
-          <p className="font-ui text-sm font-semibold">
-            Suggested for this machine: {shortName(pick.baseModel)}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-ui text-sm font-semibold">
+              Suggested for this machine: {shortName(pick.baseModel)}
+            </p>
+            {answerFor(pick) && <EligibilityDot answer={answerFor(pick)!} where={where} />}
+          </div>
           <p className="mt-1 text-sm">{set.recommended?.reason}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -212,6 +233,9 @@ export function StarterSetPanel({
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  {answerFor(model) && (
+                    <EligibilityDot answer={answerFor(model)!} where={where} short />
+                  )}
                   {model.fit && <FitBadge fit={model.fit} compact withContext />}
                   <button
                     type="button"
