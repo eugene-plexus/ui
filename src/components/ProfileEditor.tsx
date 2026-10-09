@@ -91,6 +91,8 @@ export function ProfileEditor({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [launched, setLaunched] = useState<string | null>(null);
+  // Declared and left stopped (autoStart false), not started.
+  const [launchedStopped, setLaunchedStopped] = useState(false);
   const [launching, setLaunching] = useState<string | null>(null);
   // What a NEW profile should start its contextSize at, asked of the
   // target node before the form renders: undefined while asking, null
@@ -187,7 +189,10 @@ export function ProfileEditor({
     }
   }
 
-  async function launch(profile: ModelProfile) {
+  /** `start: false` declares the runtime and leaves it stopped, to start or
+   * switch to later: two large prepared models are not loaded at once just
+   * to have both declared (LS3). */
+  async function launch(profile: ModelProfile, start = true) {
     // One launch at a time. The runtime's name is derived from the model
     // and the profile, so a second click posted the SAME name while the
     // first was still out: the first answered "Starting X" and the second
@@ -196,7 +201,8 @@ export function ProfileEditor({
     setLaunching(profile.id);
     setError(null);
     setLaunched(null);
-    const spec = composeSpec(model, profile);
+    setLaunchedStopped(!start);
+    const spec = composeSpec(model, profile, { autoStart: start });
     try {
       if (node && !node.local && node.name) {
         // Another node: through the control root, which forwards the
@@ -282,7 +288,18 @@ export function ProfileEditor({
           M2's acceptance run found the gap this message used to
           describe; M6 closed it. What is still honestly said here is
           that "ready" is the engine's to reach, not the button's. */}
-      {launched && (
+      {launched && launchedStopped && (
+        <p className="status-success mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
+          Added <span className="font-mono">{launched}</span>
+          {node && !node.local ? ` on ${node.label}` : ""}, stopped. Start it, or switch to it, on
+          the{" "}
+          <a href="/inference" className="underline">
+            Inference
+          </a>{" "}
+          page.
+        </p>
+      )}
+      {launched && !launchedStopped && (
         <p className="status-success mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
           Starting <span className="font-mono">{launched}</span>
           {node && !node.local ? ` on ${node.label}` : ""} and its driver{" "}
@@ -354,6 +371,7 @@ export function ProfileEditor({
               onEdit={() => setEditing(p.id)}
               onDelete={() => void remove(p)}
               onLaunch={() => void launch(p)}
+              onAddStopped={() => void launch(p, false)}
             />
           ),
         )}
@@ -475,6 +493,7 @@ function ProfileRow({
   onEdit,
   onDelete,
   onLaunch,
+  onAddStopped,
 }: {
   profile: ModelProfile;
   model: LibraryModel;
@@ -485,6 +504,7 @@ function ProfileRow({
   onEdit: () => void;
   onDelete: () => void;
   onLaunch: () => void;
+  onAddStopped: () => void;
 }) {
   const flags = Object.entries(profile.flags ?? {});
   const env = Object.entries(profile.env ?? {});
@@ -521,6 +541,21 @@ function ProfileRow({
             }
           >
             {launching === profile.id ? "launching…" : "launch"}
+          </button>
+          <button
+            type="button"
+            onClick={onAddStopped}
+            disabled={!canLaunch || launching !== null}
+            className={buttonClass}
+            title={
+              canLaunch
+                ? expertHint(
+                    "Declare the runtime and leave it stopped, to start or switch to later. It stays stopped when Eugene restarts.",
+                  )
+                : "No installed engine can load this model."
+            }
+          >
+            add stopped
           </button>
           <button type="button" onClick={onEdit} className={buttonClass}>
             edit

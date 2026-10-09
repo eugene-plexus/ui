@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AddPreparedModel } from "@/components/AddPreparedModel";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
@@ -36,6 +37,7 @@ import type {
   LibraryModel,
   LibraryModelList,
   ModelFit,
+  PreparedDetail,
   Runtime,
   RuntimeList,
   Scan,
@@ -120,6 +122,8 @@ function LibraryPageInner() {
   const picker = useTargetNode();
   const target = picker.selected?.target ?? null;
   const [selected, setSelected] = useState<string | null>(null);
+  // The detail pane holds the "Add a prepared model" form instead (LS3).
+  const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { downloads, reload: reloadDownloads, active: activeDownloads } = useDownloads();
@@ -211,7 +215,10 @@ function LibraryPageInner() {
         });
         if (!cancelled) setEligibility(new Map(judged.models.map((m) => [m.modelId, m])));
       } catch (err) {
-        if (!cancelled && err instanceof ApiError && err.status === 404) setEligibilityOlder(true);
+        // 404: a library older than the judge; 422: one older than a value
+        // the node's engines declare (LS3's `prepared`). Formats decide.
+        if (!cancelled && err instanceof ApiError && (err.status === 404 || err.status === 422))
+          setEligibilityOlder(true);
       }
     })();
     return () => {
@@ -310,6 +317,14 @@ function LibraryPageInner() {
               scanned {relativeAge(lastScanAt)}
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className={buttonClass}
+            title="A model an engine prepared for itself, such as one made by Strata's setup."
+          >
+            add prepared model
+          </button>
           {scanning ? (
             <button type="button" onClick={() => void cancelScan()} className={buttonClass}>
               cancel scan
@@ -370,13 +385,29 @@ function LibraryPageInner() {
           <ModelList
             models={models}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={(id) => {
+              setAdding(false);
+              setSelected(id);
+            }}
             loadableFormats={eligibilityOlder ? loadableFormats : null}
             eligibility={eligibility}
             runtimes={runtimes}
           />
           <div className="min-w-0 shrink-0 px-4 py-4 sm:min-h-0 sm:overflow-y-auto sm:px-5">
-            {current ? (
+            {adding ? (
+              <AddPreparedModel
+                engines={engines}
+                models={models ?? []}
+                eligibility={eligibility}
+                where={picker.selected?.name ?? "this machine"}
+                onClose={() => setAdding(false)}
+                onAdded={(model) => {
+                  setAdding(false);
+                  setSelected(model.id);
+                  void loadModels();
+                }}
+              />
+            ) : current ? (
               <ModelDetail
                 key={current.id}
                 model={current}
@@ -608,6 +639,7 @@ function ModelList({
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[0.625rem] text-[color:var(--muted)]">
               <span className="font-mono">{m.format}</span>
+              {m.prepared && <span>for {engineLabel(m.prepared.engine)}</span>}
               {m.gguf?.quantization && <span className="font-mono">{m.gguf.quantization}</span>}
               {m.sizeLabel && <span>{m.sizeLabel}</span>}
               {m.sizeBytes != null && (
@@ -846,7 +878,23 @@ function ModelDetail({
 
       <Facts model={model} />
 
-      {model.status === "present" && (
+      {model.status === "present" && model.format === "prepared" && (
+        // The Library does not read an engine's prepared files, and
+        // llama.cpp's arithmetic is wrong for an engine that keeps its
+        // experts in RAM (library-sources-and-engines.md §6.1). LS6.
+        <p
+          data-testid="model-fit"
+          className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--muted)]"
+        >
+          <span className="font-ui font-semibold text-[color:var(--foreground)]">
+            Fit not estimated.
+          </span>{" "}
+          {engineLabel(model.prepared?.engine)} has no memory estimate in Eugene yet. Check that{" "}
+          {where} has the memory its setup asked for before starting it.
+        </p>
+      )}
+
+      {model.status === "present" && model.format !== "prepared" && (
         <FitPanel
           model={model}
           running={running}
@@ -956,9 +1004,11 @@ function ModelDetail({
                     chosen, and why it stopped is the thing worth saying. */}
                 {running
                   ? `${describeRunning(running, where)} Start it again and it is back on Home.`
-                  : usable.length > 0
-                    ? `Starts ${model.name} on ${where} with settings that fit. Once it says ready, it is on Home.`
-                    : `${capable.map((e) => engineName(e.engine)).join(", ")} is not installed on ${where} yet; Run asks before installing it.`}
+                  : usable.length > 0 && model.format === "prepared"
+                    ? `Starts ${model.name} on ${where} with ${engineLabel(model.prepared?.engine)}; its memory needs are not estimated. Once it says ready, it is on Home.`
+                    : usable.length > 0
+                      ? `Starts ${model.name} on ${where} with settings that fit. Once it says ready, it is on Home.`
+                      : `${capable.map((e) => engineName(e.engine)).join(", ")} is not installed on ${where} yet; Run asks before installing it.`}
               </p>
             </>
           )}
@@ -1286,6 +1336,8 @@ function Facts({ model }: { model: LibraryModel }) {
 
       {model.architecture && <Row label="architecture">{model.architecture}</Row>}
 
+      {model.prepared && <PreparedFacts model={model} prepared={model.prepared} />}
+
       {model.gguf?.quantization && (
         <Row label="quantization">
           <span className="font-mono">{model.gguf.quantization}</span>
@@ -1379,6 +1431,50 @@ function Facts({ model }: { model: LibraryModel }) {
         </Row>
       )}
     </dl>
+  );
+}
+
+/** What a prepared model's provenance file says (LS3). */
+function PreparedFacts({ model, prepared }: { model: LibraryModel; prepared: PreparedDetail }) {
+  const source = prepared.source;
+  const repo = source?.repoId ? [source.repoId, source.file].filter(Boolean).join(" · ") : null;
+  return (
+    <>
+      <Row label="prepared for">{engineLabel(prepared.engine)}</Row>
+      <Row label="entry file">
+        <span className="font-mono text-[0.625rem] break-all">
+          {prepared.entryPath ?? prepared.entry}
+        </span>
+        {prepared.entryFound === false && (
+          <span className="ml-2 text-[color:var(--muted)]">
+            not on the Library&rsquo;s machine; the node that runs it checks it when it starts
+          </span>
+        )}
+      </Row>
+      <Row label="made by">
+        {prepared.recipe
+          ? `${prepared.recipe}${prepared.recipeVersion ? ` ${prepared.recipeVersion}` : ""}`
+          : "prepared outside Eugene"}
+      </Row>
+      <Row label="made from">
+        {prepared.sourceModelId ? (
+          <Link
+            href={`/library?model=${encodeURIComponent(prepared.sourceModelId)}`}
+            className="underline"
+          >
+            {source?.path ?? prepared.sourceModelId}
+          </Link>
+        ) : (
+          (repo ?? source?.path ?? "not known")
+        )}
+      </Row>
+      <Row label="provenance">
+        <span className="text-[color:var(--muted)]">
+          {model.name}.eugene-prepared.json; delete it to remove the model from the Library. The
+          engine&rsquo;s files are not touched.
+        </span>
+      </Row>
+    </>
   );
 }
 

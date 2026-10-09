@@ -108,6 +108,8 @@ type Result = { status: number; body?: unknown };
 type Handler = () => Result;
 let handlers: Map<string, Handler>;
 let posted: string[];
+/** The JSON body of each non-GET request, by `METHOD path`. */
+let bodies: Map<string, unknown>;
 /** Every GET, with its query string, in the order it was sent. */
 let gets: string[];
 /** Routes whose answer never arrives, for "still asking" states. */
@@ -140,6 +142,7 @@ function install(): Map<string, Handler> {
 beforeEach(() => {
   handlers = install();
   posted = [];
+  bodies = new Map();
   gets = [];
   hanging = new Set();
   sessionStorage.clear();
@@ -151,8 +154,10 @@ beforeEach(() => {
       const route = String(input).replace(/^[/]api[/]proxy[/]/, "");
       const path = route.split("?")[0] ?? "";
       const method = init?.method ?? "GET";
-      if (method !== "GET") posted.push(`${method} ${path}`);
-      else gets.push(route);
+      if (method !== "GET") {
+        posted.push(`${method} ${path}`);
+        if (typeof init?.body === "string") bodies.set(`${method} ${path}`, JSON.parse(init.body));
+      } else gets.push(route);
       if (hanging.has(`${method} ${path}`)) return new Promise<Response>(() => {});
       const handler = handlers.get(`${method} ${path}`);
       const result = handler ? handler() : { status: 418, body: { detail: `?? ${path}` } };
@@ -694,12 +699,169 @@ describe("which engines can run it: the Library judges (LS1)", () => {
     expect(screen.queryByTestId("model-run")).toBeNull();
   });
 
-  it("falls back to the format alone on a library older than the judge", async () => {
-    handlers.set("POST library/v1/eligibility", () => ({ status: 404, body: {} }));
+  // 404: older than the judge; 422: older than LS3's `prepared`, which this
+  // node's Strata declares.
+  it.each([404, 422])("falls back to the format alone on an older library (%i)", async (status) => {
+    handlers.set("POST library/v1/eligibility", () => ({ status, body: {} }));
+    const folder = {
+      id: "st",
+      path: "Y:\\models\\st",
+      format: "safetensors",
+      name: "st",
+      status: "present",
+    };
+    handlers.set("GET library/v1/models", () => ok({ models: [libraryModel(), folder] }));
     await openTheModel();
     expect(screen.queryByTestId("model-eligibility")).toBeNull();
     // llama.cpp still loads the GGUF by its format: Run is offered.
     expect(await screen.findByTestId("model-run")).toBeInTheDocument();
+    // And the format rule marks what no engine here loads, as before LS1.
+    const row = screen.getByRole("button", { name: /^st/ });
+    await waitFor(() => expect(row).toHaveTextContent("no engine"));
+  });
+});
+
+describe("prepared models are Library models (LS3)", () => {
+  const PREPARED = {
+    id: "qwen",
+    path: "D:\\Models\\qwen-flash.eugene-prepared.json",
+    format: "prepared",
+    name: "qwen-flash",
+    status: "present",
+    fileCount: 1,
+    prepared: {
+      engine: "strata",
+      entry: "E:\\Strata\\strata-qwen.json",
+      entryPath: "E:\\Strata\\strata-qwen.json",
+      entryFound: false,
+    },
+  };
+  let listed: unknown[];
+
+  beforeEach(() => {
+    listed = [libraryModel(), PREPARED];
+    handlers.set("GET library/v1/models", () => ok({ models: listed, lastScanAt: null }));
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
+    handlers.set("GET library/v1/models/qwen/profiles", () => ok({ profiles: [] }));
+    handlers.set("GET library/v1/folders", () => ok({ folders: [{ path: "D:\\Models" }] }));
+    handlers.set("GET agent/v1/engines", () =>
+      ok({
+        engines: [
+          {
+            engine: "llama_cpp",
+            available: true,
+            modelFormats: ["gguf"],
+            accepts: [{ format: "gguf" }],
+          },
+          {
+            engine: "strata",
+            available: true,
+            experimental: true,
+            modelFormats: ["prepared"],
+            accepts: [
+              { format: "prepared", preparedFor: "strata" },
+              { format: "gguf", preparation: { recipe: "strata-prepare" } },
+            ],
+          },
+        ],
+      }),
+    );
+    handlers.set("POST library/v1/eligibility", () =>
+      ok({
+        models: [
+          {
+            modelId: "gemma",
+            level: "works_here",
+            engines: [
+              { engine: "llama_cpp", verdict: "runs", available: true, reason: "runs it" },
+              {
+                engine: "strata",
+                verdict: "after_preparation",
+                available: true,
+                reason: "runs it after preparing it",
+              },
+            ],
+          },
+          {
+            modelId: "qwen",
+            level: "works_here",
+            engines: [
+              {
+                engine: "strata",
+                verdict: "runs",
+                available: true,
+                experimental: true,
+                reason: "runs it as it is",
+              },
+              {
+                engine: "llama_cpp",
+                verdict: "no",
+                available: true,
+                reason: "loads gguf models, and this one is prepared",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+  });
+
+  it("lists one with its engine, offers Run, and never asks llama.cpp's fit", async () => {
+    render(<LibraryPage />);
+    const row = await screen.findByRole("button", { name: /qwen-flash/ });
+    expect(row).toHaveTextContent("for Strata");
+    fireEvent.click(row);
+    const fit = await screen.findByTestId("model-fit");
+    expect(fit).toHaveTextContent("Fit not estimated");
+    expect(await screen.findByTestId("model-run")).toBeInTheDocument();
+    const detail = screen.getByTestId("model-eligibility");
+    expect(detail).toHaveTextContent("Strata (experimental): runs it as it is");
+    expect(screen.getByText("prepared outside Eugene")).toBeInTheDocument();
+    expect(screen.getByText(/not on the Library.s machine/)).toBeInTheDocument();
+    expect(gets.some((g) => g.startsWith("library/v1/models/qwen/fit"))).toBe(false);
+  });
+
+  it("adds one through the Library, then shows it", async () => {
+    handlers.set("POST library/v1/models/prepared", () => {
+      const made = { ...PREPARED, id: "new", name: "strata-qwen" };
+      listed = [...listed, made];
+      return { status: 201, body: made };
+    });
+    render(<LibraryPage />);
+    await screen.findByTestId("model-fit");
+    fireEvent.click(screen.getByRole("button", { name: "add prepared model" }));
+    const form = await screen.findByTestId("add-prepared");
+    fireEvent.change(within(form).getByLabelText(/configuration file/), {
+      target: { value: "E:\\Strata\\strata-qwen.json" },
+    });
+    // Named for its file, as a GGUF is.
+    expect(within(form).getByLabelText(/^Name/)).toHaveValue("strata-qwen");
+    // Only what Strata prepares from is offered as its source.
+    const from = within(form).getByLabelText(/Made from/);
+    expect(
+      within(from)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Not in the Library, or not known", "gemma-3-27b-it-Q6_K_L"]);
+    fireEvent.change(from, { target: { value: "gemma" } });
+    await act(async () => {
+      fireEvent.click(within(form).getByRole("button", { name: "Add model" }));
+    });
+    await waitFor(() => expect(posted).toContain("POST library/v1/models/prepared"));
+    expect(bodies.get("POST library/v1/models/prepared")).toEqual({
+      name: "strata-qwen",
+      root: "D:\\Models",
+      provenance: {
+        engine: "strata",
+        entry: "E:\\Strata\\strata-qwen.json",
+        source: { path: MODEL_PATH },
+      },
+    });
+    // No runtime is posted straight to the node any more.
+    expect(
+      posted.some((p) => p.startsWith("POST agent/v1/runtimes") && !p.endsWith("admission")),
+    ).toBe(false);
+    await waitFor(() => expect(screen.queryByTestId("add-prepared")).toBeNull());
   });
 });
 

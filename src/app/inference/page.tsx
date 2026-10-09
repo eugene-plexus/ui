@@ -568,7 +568,7 @@ function NodeSection({
         onEngines={setEngines}
       />
       {engines?.some((e) => e.engine === "strata" && e.available) && (
-        <ExperimentalModels target={targetFor(name, localName)} node={name} rows={rows} />
+        <ExperimentalModels node={name} rows={rows} />
       )}
       {rows.length === 0 ? (
         <p className="mt-2 text-sm text-[color:var(--muted)]">Nothing serving on this node.</p>

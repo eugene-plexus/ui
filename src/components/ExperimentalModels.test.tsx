@@ -10,30 +10,12 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it("saves a separate stopped runtime with an explicit model alias", async () => {
-  vi.mocked(api.post).mockResolvedValue({});
-  render(<ExperimentalModels target="node:worker" node="worker" rows={[]} />);
-  fireEvent.click(screen.getByRole("button", { name: "Add prepared Strata model" }));
-  fireEvent.change(screen.getByLabelText("Saved name"), { target: { value: "qwen-small" } });
-  fireEvent.change(screen.getByLabelText("Model alias"), { target: { value: "qwen-fast" } });
-  fireEvent.change(screen.getByLabelText("Prepared config path"), {
-    target: { value: "D:\\Models\\qwen.json" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Save model" }));
-  await waitFor(() =>
-    expect(api.post).toHaveBeenCalledWith(
-      "node:worker",
-      "/v1/runtimes",
-      expect.objectContaining({
-        engine: "strata",
-        name: "qwen-small",
-        modelAlias: "qwen-fast",
-        autoStart: false,
-        startOnDemand: false,
-      }),
-    ),
-  );
-  expect(await screen.findByRole("status")).toHaveTextContent("Saved qwen-fast");
+it("sends prepared models to the Library instead of posting a runtime (LS3)", () => {
+  render(<ExperimentalModels node="worker" rows={[]} />);
+  expect(screen.queryByRole("button", { name: "Add prepared Strata model" })).toBeNull();
+  expect(screen.queryByLabelText("Prepared config path")).toBeNull();
+  expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
+  expect(api.post).not.toHaveBeenCalled();
 });
 
 it("asks the gateway to drain and switch on the selected node", async () => {
@@ -42,7 +24,7 @@ it("asks the gateway to drain and switch on the selected node", async () => {
     { engine: "strata", runtime: "old", model: "a", runtimeStatus: "ready" },
     { engine: "strata", runtime: "new", model: "b", runtimeStatus: "stopped" },
   ] as Row[];
-  render(<ExperimentalModels target="node:worker" node="worker" rows={rows} />);
+  render(<ExperimentalModels node="worker" rows={rows} />);
   fireEvent.change(screen.getByLabelText("Model to stop"), { target: { value: "old" } });
   fireEvent.change(screen.getByLabelText("Model to start"), { target: { value: "new" } });
   fireEvent.click(screen.getByRole("button", { name: "Switch model" }));

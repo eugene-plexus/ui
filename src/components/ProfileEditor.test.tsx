@@ -212,6 +212,35 @@ it("launches once, however fast the button is pressed twice", async () => {
   expect(posted).toHaveLength(1);
 });
 
+// LS3: a second prepared Strata model is declared stopped, to switch to,
+// rather than loaded beside the first.
+it("adds a runtime stopped, without starting it", async () => {
+  const profile: ModelProfile = { id: "p", name: "default", engine: "strata", default: true };
+  const bodies: unknown[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if ((init?.method ?? "GET") === "POST" && url.endsWith("/agent/v1/runtimes")) {
+        bodies.push(JSON.parse(String(init?.body)));
+        return Response.json({ name: "qwen-flash", status: "stopped" }, { status: 201 });
+      }
+      return Response.json({ profiles: [profile] });
+    }),
+  );
+  render(
+    <ProfileEditor
+      model={model}
+      engines={[{ engine: "strata", available: true, modelFormats: ["prepared"] }] as never}
+      node={null}
+      onChanged={() => {}}
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "add stopped" }));
+  await waitFor(() => expect(bodies).toHaveLength(1));
+  expect(bodies[0]).toMatchObject({ engine: "strata", autoStart: false });
+  expect(await screen.findByText(/stopped\. Start it, or switch to it/)).toBeInTheDocument();
+});
+
 // Settings never lie (2026-09-30): an unset flag is not its schema default,
 // and a profile's engine is shown even when this machine does not offer it.
 it("shows an unset flag as unset, and a profile's own engine as itself", async () => {

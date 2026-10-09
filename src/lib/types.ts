@@ -244,6 +244,10 @@ export type OidcClientCreated = ControlComponents["schemas"]["OidcClientCreated"
 
 export type LibraryModel = LibraryComponents["schemas"]["LibraryModel"];
 export type LibraryModelList = LibraryComponents["schemas"]["LibraryModelList"];
+export type LibraryFolderList = LibraryComponents["schemas"]["LibraryFolderList"];
+// A model an engine prepared for itself, listed through its provenance file (LS3).
+export type PreparedDetail = LibraryComponents["schemas"]["PreparedDetail"];
+export type PreparedModelRequest = LibraryComponents["schemas"]["PreparedModelRequest"];
 export type ModelStatus = LibraryComponents["schemas"]["ModelStatus"];
 export type ModelFormat = LibraryComponents["schemas"]["ModelFormat"];
 export type ModelCapabilities = LibraryComponents["schemas"]["ModelCapabilities"];
