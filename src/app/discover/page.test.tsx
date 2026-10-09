@@ -689,6 +689,33 @@ describe("which engines can run it (LS2)", () => {
     expect(judged.some((j) => j.candidates?.some((c) => c.id === "catalogue:x:Q4_K_M"))).toBe(true);
   });
 
+  // Troy, 2026-10-09: a ComfyUI repo's VAE was "Suggested", "fits" and
+  // "Can not work on this machine" at once.
+  it("never suggests, or quotes a fit for, a version nothing here can run", async () => {
+    handlers.set("GET library/v1/catalogue/model", (params) => {
+      const body = modelBody(Number(params.get("contextLength")), {
+        recommended: { label: "Q4_K_M", reason: "the largest that fits" } as never,
+      });
+      body.candidates[0] = {
+        ...body.candidates[0]!,
+        facts: { id: "search:org/red:safetensors", format: "safetensors" },
+      } as never;
+      return ok(body);
+    });
+    render(<DiscoverPage />);
+    const row = await screen.findByRole("button", { name: /^Red/ }, { timeout: 5000 });
+    await act(async () => {
+      fireEvent.click(row);
+    });
+    expect(await screen.findByTestId("repo-nothing-runs", {}, { timeout: 5000 })).toHaveTextContent(
+      "Can not work on this host.",
+    );
+    expect(screen.queryByTestId("repo-recommended")).toBeNull();
+    expect(screen.queryByText("recommended")).toBeNull();
+    expect(screen.getByTestId("candidate-fit-none")).toBeInTheDocument();
+    expect(screen.queryByTestId("fit-badge")).toBeNull();
+  });
+
   it("an older Library shows no dots and says why every model is listed", async () => {
     handlers.set("POST library/v1/eligibility", () => ({
       status: 422,

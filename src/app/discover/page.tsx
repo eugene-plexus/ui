@@ -932,8 +932,16 @@ function RepoDetail({
       .flatMap((d) => d.files.map((f) => f.path)),
   );
 
-  const recommendedCandidate =
-    detail.candidates.find((c) => c.label === detail.recommended?.label) ?? null;
+  // The library suggests by memory alone; the judge says whether anything
+  // here runs it. A version no engine here loads is never suggested, and a
+  // fit is not quoted for it (Troy, 2026-10-09: a ComfyUI VAE was
+  // "Suggested", "fits" and "Can not work on this machine" at once).
+  const red = (candidate: CatalogueCandidate) => answerFor(candidate)?.level === "not_here";
+  const suggested = detail.candidates.find((c) => c.label === detail.recommended?.label) ?? null;
+  const recommendedCandidate = suggested && !red(suggested) ? suggested : null;
+  const nothingRuns =
+    detail.candidates.length > 0 &&
+    detail.candidates.every((c) => answerFor(c) !== undefined && red(c));
   const recommendedPreflight = recommendedCandidate
     ? preflights[recommendedCandidate.label]
     : undefined;
@@ -1089,6 +1097,16 @@ function RepoDetail({
         </section>
       )}
 
+      {nothingRuns && (
+        <p
+          data-testid="repo-nothing-runs"
+          className="status-error rounded-[var(--radius)] border px-4 py-3 text-sm"
+        >
+          <span className="font-ui font-semibold">Can not work on {where}.</span> No engine that can
+          run there loads any version of this. Each version&rsquo;s dot below says why.
+        </p>
+      )}
+
       {projectors.length > 0 && (
         <VisionPairing
           projectors={projectors}
@@ -1121,7 +1139,7 @@ function RepoDetail({
         <CandidateTable
           candidates={detail.candidates}
           contextLength={contextLength}
-          recommended={detail.recommended?.label ?? null}
+          recommended={recommendedCandidate?.label ?? null}
           preflights={preflights}
           busy={busy}
           downloadTitle={
@@ -1257,7 +1275,21 @@ function CandidateTable({
                 <td className="font-mono-ui px-3 py-2 text-right text-[color:var(--muted)] tabular-nums">
                   {candidate.bitsPerWeight?.toFixed(2) ?? "—"}
                 </td>
-                <td className="px-3 py-2">{fit ? <FitBadge fit={fit} /> : "—"}</td>
+                <td className="px-3 py-2">
+                  {answer?.level === "not_here" ? (
+                    <span
+                      data-testid="candidate-fit-none"
+                      className="text-[color:var(--muted)]"
+                      title={`No engine that can run on ${where} loads this version, so there is no fit to give.`}
+                    >
+                      —
+                    </span>
+                  ) : fit ? (
+                    <FitBadge fit={fit} />
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                   <button
                     type="button"
