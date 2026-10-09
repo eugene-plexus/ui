@@ -1,0 +1,321 @@
+/**
+ * Friendlier aliases over the auto-generated openapi-typescript types.
+ *
+ * The generated `components["schemas"]["X"]` form is precise but unwieldy
+ * at call sites. Pull the handful we use into named exports here.
+ *
+ * Three generated modules now, one per component the UI talks to. The
+ * config-editor shapes (`ConfigSchema` and friends) live in
+ * `components/common.yaml` and are therefore identical in all three; we
+ * source them from the gateway arbitrarily, because the editor is
+ * deliberately component-agnostic.
+ */
+
+import type { components as DriverComponents } from "@/generated/inference-driver";
+import type { components as GatewayComponents } from "@/generated/gateway";
+import type { components as LibraryComponents } from "@/generated/library";
+import type { components as AgentComponents } from "@/generated/agent";
+import type { components as ControlComponents } from "@/generated/control";
+
+// Job Sites (specs docs/design/job-sites-own-enrollment.md §2.9): a site is
+// its own enrollment, not a node, and the console shows membership only.
+export type Site = ControlComponents["schemas"]["Site"];
+export type SiteList = ControlComponents["schemas"]["SiteList"];
+export type SiteInvitation = ControlComponents["schemas"]["SiteInvitation"];
+export type SiteDevView = ControlComponents["schemas"]["SiteDevView"];
+export type SiteDevFolder = ControlComponents["schemas"]["SiteDevFolder"];
+export type SiteOwnerAccess = ControlComponents["schemas"]["SiteOwnerAccess"];
+
+export type Benchmark = AgentComponents["schemas"]["Benchmark"];
+export type BenchmarkList = AgentComponents["schemas"]["BenchmarkList"];
+export type MeasurementPreflight = AgentComponents["schemas"]["MeasurementPreflight"];
+export type MeasurementRestart = AgentComponents["schemas"]["MeasurementRestart"];
+
+// The settings builder (PB1's job, PB2's page): `docs/design/profile-builder.md`.
+export type ProfileBuild = AgentComponents["schemas"]["ProfileBuild"];
+export type ProfileBuildList = AgentComponents["schemas"]["ProfileBuildList"];
+export type ProfileBuildAccuracy = AgentComponents["schemas"]["ProfileBuildAccuracy"];
+export type BuildCandidate = AgentComponents["schemas"]["BuildCandidate"];
+export type CacheQuality = AgentComponents["schemas"]["CacheQuality"];
+export type CacheType = AgentComponents["schemas"]["CacheType"];
+export type ProfileBuiltBy = LibraryComponents["schemas"]["ProfileBuiltBy"];
+
+// --- Shared -----------------------------------------------------------
+
+// `Role` / `Message` are the house chat shapes, which only the driver's
+// surface still uses — the gateway's own wire format is OpenAI's, and
+// `ChatCompletionMessage` is deliberately a separate schema so a house
+// field can't leak into a payload a client parses.
+export type Role = DriverComponents["schemas"]["Role"];
+export type Message = DriverComponents["schemas"]["Message"];
+export type Problem = GatewayComponents["schemas"]["Problem"];
+export type BackendKind = GatewayComponents["schemas"]["BackendKind"];
+export type ComponentKind = GatewayComponents["schemas"]["ComponentKind"];
+export type RestartResult = GatewayComponents["schemas"]["RestartResult"];
+
+// --- The config trio, rendered generically by ConfigEditor ------------
+
+export type ConfigField = GatewayComponents["schemas"]["ConfigField"];
+export type ConfigSchema = GatewayComponents["schemas"]["ConfigSchema"];
+export type ConfigDocument = GatewayComponents["schemas"]["ConfigDocument"];
+export type ConfigUpdateRequest = GatewayComponents["schemas"]["ConfigUpdateRequest"];
+export type ConfigUpdateResult = GatewayComponents["schemas"]["ConfigUpdateResult"];
+export type ConfigFieldError = GatewayComponents["schemas"]["ConfigFieldError"];
+export type ConfigFieldShowWhen = GatewayComponents["schemas"]["ConfigFieldShowWhen"];
+export type ConfigTestRequest = GatewayComponents["schemas"]["ConfigTestRequest"];
+export type ConfigTestResult = GatewayComponents["schemas"]["ConfigTestResult"];
+export type ConfigValueType = GatewayComponents["schemas"]["ConfigValueType"];
+
+// --- Gateway: the OpenAI-compatible surface ---------------------------
+//
+// snake_case on purpose. This is the one contract in Eugene Plexus we
+// don't own the shape of, and "OpenAI-compatible" is worth nothing if a
+// field name differs. Don't camelCase these on the way through.
+
+export type ModelList = GatewayComponents["schemas"]["ModelList"];
+export type Model = GatewayComponents["schemas"]["Model"];
+export type ModelRoutingInfo = GatewayComponents["schemas"]["ModelRoutingInfo"];
+export type MessageContent = GatewayComponents["schemas"]["MessageContent"];
+export type MessageContentPart = GatewayComponents["schemas"]["MessageContentPart"];
+export type ImageContentPart = GatewayComponents["schemas"]["ImageContentPart"];
+export type ChatCompletionRequest = GatewayComponents["schemas"]["ChatCompletionRequest"];
+export type ChatCompletionResponse = GatewayComponents["schemas"]["ChatCompletionResponse"];
+export type ChatCompletionChunk = GatewayComponents["schemas"]["ChatCompletionChunk"];
+export type ChatCompletionMessage = GatewayComponents["schemas"]["ChatCompletionMessage"];
+export type CompletionUsage = GatewayComponents["schemas"]["CompletionUsage"];
+export type CompletionRoutingInfo = GatewayComponents["schemas"]["CompletionRoutingInfo"];
+/** What the backend is doing while it produces no output, on a progress
+ * chunk (`stream_options.include_progress`). Since specs 807024d. */
+export type StreamProgress = GatewayComponents["schemas"]["StreamProgress"];
+
+// Tool calling and structured output, on the same wire contract. `Tool`
+// is what a harness sends; `ToolCall` is what comes back on an assistant
+// message; `ToolCallDelta` is the streamed fragment a client accumulates
+// by `index`. In the generated module since specs 95dfa8f; consumed by
+// the playground since the diagnostic (install-paths step 8).
+export type Tool = GatewayComponents["schemas"]["Tool"];
+export type ToolCall = GatewayComponents["schemas"]["ToolCall"];
+export type ToolCallDelta = GatewayComponents["schemas"]["ToolCallDelta"];
+export type ToolChoice = NonNullable<ChatCompletionRequest["tool_choice"]>;
+export type ResponseFormat = GatewayComponents["schemas"]["ResponseFormat"];
+
+// The OpenAI error envelope, which the gateway returns instead of RFC
+// 7807 on `/v1/chat/completions` and `/v1/models` — SDKs parse this
+// shape to build their exception types.
+export type OpenAIErrorResponse = GatewayComponents["schemas"]["OpenAIErrorResponse"];
+
+// --- Gateway: admin view over the derived routing table ---------------
+
+export type DriversInfo = GatewayComponents["schemas"]["DriversInfo"];
+export type DriverHealth = GatewayComponents["schemas"]["DriverHealth"];
+// The resolved routing table: every slot, its tiers, and for each
+// backend whether a request could go there right now and why not. What
+// the inference screen reads for eligibility and in-flight counts.
+export type RoutingTableView = GatewayComponents["schemas"]["RoutingTableView"];
+export type ControlRootView = GatewayComponents["schemas"]["ControlRootView"];
+export type RoutingBackendView = GatewayComponents["schemas"]["RoutingBackendView"];
+
+// --- Agent: topology + engine runtimes -----------------------------
+
+export type Component = AgentComponents["schemas"]["Component"];
+export type ComponentEntry = AgentComponents["schemas"]["ComponentEntry"];
+export type ComponentList = AgentComponents["schemas"]["ComponentList"];
+export type ComponentStatus = AgentComponents["schemas"]["ComponentStatus"];
+
+export type Runtime = AgentComponents["schemas"]["Runtime"];
+export type ModelCopyClearResult = AgentComponents["schemas"]["ModelCopyClearResult"];
+export type ModelCopySkipped = AgentComponents["schemas"]["ModelCopySkipped"];
+export type RuntimeSpec = AgentComponents["schemas"]["RuntimeSpec"];
+export type StopReason = AgentComponents["schemas"]["StopReason"];
+export type RuntimeList = AgentComponents["schemas"]["RuntimeList"];
+export type RuntimeStatus = AgentComponents["schemas"]["RuntimeStatus"];
+export type RuntimeCapabilities = AgentComponents["schemas"]["RuntimeCapabilities"];
+export type EngineKind = AgentComponents["schemas"]["EngineKind"];
+export type EngineList = AgentComponents["schemas"]["EngineList"];
+export type EngineDescriptor = AgentComponents["schemas"]["EngineDescriptor"];
+
+// The host itself: which control root it answers to, and what it can
+// compute on. `devices` is the cross-host inventory M3 deferred and M7
+// built; `nodeBudget.ts` turns it into the numbers a fit verdict needs,
+// so guidance is scored against the machine a launch will actually reach.
+export type NodeIdentity = AgentComponents["schemas"]["NodeIdentity"];
+// What a node runs and whether a newer version is out (in-app updates,
+// 2026-09-27; specs docs/design/in-app-updates.md).
+export type NodeInstall = AgentComponents["schemas"]["NodeInstall"];
+export type NodeUpdate = AgentComponents["schemas"]["NodeUpdate"];
+export type UpdateRun = AgentComponents["schemas"]["UpdateRun"];
+export type UpdateStep = AgentComponents["schemas"]["UpdateStep"];
+export type ComputeDevice = AgentComponents["schemas"]["ComputeDevice"];
+
+// Whether anything else on the network can get to this machine (S5).
+// Three separate answers, because three separate things have to be true
+// and all three fail as "connection refused": something is listening off
+// loopback, the node advertises that address, and the host firewall lets
+// the connection in. `reach.ts` turns them into the sentences a card
+// says; `NodeReachResult` is what the switch answers.
+export type NodeReach = AgentComponents["schemas"]["NodeReach"];
+export type BoundAddress = AgentComponents["schemas"]["BoundAddress"];
+export type AgentRestart = AgentComponents["schemas"]["AgentRestart"];
+export type HostFirewall = AgentComponents["schemas"]["HostFirewall"];
+export type FirewallPort = AgentComponents["schemas"]["FirewallPort"];
+export type NodeReachRequest = AgentComponents["schemas"]["NodeReachRequest"];
+export type NodeReachResult = AgentComponents["schemas"]["NodeReachResult"];
+export type ReachStep = AgentComponents["schemas"]["ReachStep"];
+
+// The launch dry run and, since M11, where the model is on the node that
+// would launch it. `ModelLocation` is `modelPath` resolved through that
+// node's `pathMappings`: the library names a model by its path on the
+// library's host, and the node says where the same file is on its own.
+export type Admission = AgentComponents["schemas"]["Admission"];
+export type ModelLocation = AgentComponents["schemas"]["ModelLocation"];
+export type PathMapping = AgentComponents["schemas"]["PathMapping"];
+
+// A long-lived key for an app outside the install (S4, 2026-09-15). The
+// record only -- the token is on the wire once, in `ClientKeyCreated`,
+// and the agent forgets it. `tail` is the last few characters, because
+// every JWT this install mints shares the same prefix.
+export type ClientKeyLimits = AgentComponents["schemas"]["ClientKeyLimits"];
+export type ClientUsageSummary = GatewayComponents["schemas"]["ClientUsageSummary"];
+export type ClientKey = AgentComponents["schemas"]["ClientKey"];
+export type ClientKeyList = AgentComponents["schemas"]["ClientKeyList"];
+export type ClientKeyCreated = AgentComponents["schemas"]["ClientKeyCreated"];
+export type ClientKeyCreateRequest = AgentComponents["schemas"]["ClientKeyCreateRequest"];
+
+// One directory on a component's host, for the picker behind every path
+// field. The same shape on the library and the agent, which is what lets
+// one picker serve both.
+export type DirectoryListing = AgentComponents["schemas"]["DirectoryListing"];
+export type DirectoryEntry = AgentComponents["schemas"]["DirectoryEntry"];
+
+// A Library folder and how each node reaches it (2026-09-14). The
+// folder carries its `mounts` -- where other machines find the same
+// directory, one per OS shape -- and a node inherits the one of its
+// shape; `pathMappings` is that node's overrides. The check endpoint
+// answers per folder what the node would open and which rule said so.
+// From the library document: agent.yaml never references the schema, so the
+// agent's generated types do not carry it.
+export type LibraryFolder = LibraryComponents["schemas"]["LibraryFolder"];
+export type LibraryFolderReach = AgentComponents["schemas"]["LibraryFolderReach"];
+export type LogLine = AgentComponents["schemas"]["LogLine"];
+export type LogPage = AgentComponents["schemas"]["LogPage"];
+export type LibraryFolderStatus = AgentComponents["schemas"]["LibraryFolderStatus"];
+export type FolderReachSource = AgentComponents["schemas"]["FolderReachSource"];
+
+// --- Agent: optional apps, the hub's spokes ---------------------------
+// `specs/docs/design/apps-and-spokes.md`. Per node, like runtimes: each
+// agent installs and supervises its own, and the console reads every
+// node's through `node:<name>`.
+
+export type App = AgentComponents["schemas"]["App"];
+export type AppList = AgentComponents["schemas"]["AppList"];
+export type AppManifest = AgentComponents["schemas"]["AppManifest"];
+export type AppCatalogue = AgentComponents["schemas"]["AppCatalogue"];
+export type AppCatalogueEntry = AgentComponents["schemas"]["AppCatalogueEntry"];
+export type AppInstall = AgentComponents["schemas"]["AppInstall"];
+
+// --- Control: the install-wide views --------------------------------
+//
+// The control root asks every enrolled node's agent and adds the one
+// dimension an agent cannot supply about itself: which node. These are
+// the agent's own shapes plus `node`, relayed rather than reinterpreted.
+
+export type ControlNode = ControlComponents["schemas"]["Node"];
+export type ComponentPlacement = ControlComponents["schemas"]["ComponentPlacement"];
+export type ComponentPlacementList = ControlComponents["schemas"]["ComponentPlacementList"];
+export type RuntimePlacement = ControlComponents["schemas"]["RuntimePlacement"];
+export type RuntimePlacementList = ControlComponents["schemas"]["RuntimePlacementList"];
+
+// C2: the people who sign in to apps, and the apps that sign in with Eugene.
+export type Person = ControlComponents["schemas"]["Person"];
+export type PersonList = ControlComponents["schemas"]["PersonList"];
+export type PersonCreateRequest = ControlComponents["schemas"]["PersonCreateRequest"];
+export type PersonUpdateRequest = ControlComponents["schemas"]["PersonUpdateRequest"];
+export type OidcClient = ControlComponents["schemas"]["OidcClient"];
+export type OidcClientList = ControlComponents["schemas"]["OidcClientList"];
+export type OidcClientCreated = ControlComponents["schemas"]["OidcClientCreated"];
+
+// --- Library: the operator's own model directories (M2) ---------------
+//
+// The library holds what is on disk; the agent holds what is running.
+// `EngineDescriptor.modelFormats` is the join between them — it says
+// which of these formats an engine can actually load, which is how a
+// safetensors model gets a greyed-out launch button naming the missing
+// engine rather than one that fails.
+
+export type LibraryModel = LibraryComponents["schemas"]["LibraryModel"];
+export type LibraryModelList = LibraryComponents["schemas"]["LibraryModelList"];
+export type ModelStatus = LibraryComponents["schemas"]["ModelStatus"];
+export type ModelFormat = LibraryComponents["schemas"]["ModelFormat"];
+export type ModelCapabilities = LibraryComponents["schemas"]["ModelCapabilities"];
+export type ModelFile = LibraryComponents["schemas"]["ModelFile"];
+export type GgufDetail = LibraryComponents["schemas"]["GgufDetail"];
+export type SafetensorsDetail = LibraryComponents["schemas"]["SafetensorsDetail"];
+export type ModelProfile = LibraryComponents["schemas"]["ModelProfile"];
+export type ModelProfileSpec = LibraryComponents["schemas"]["ModelProfileSpec"];
+export type ModelProfileList = LibraryComponents["schemas"]["ModelProfileList"];
+export type Scan = LibraryComponents["schemas"]["Scan"];
+export type ScanState = LibraryComponents["schemas"]["ScanState"];
+export type ScanRoot = LibraryComponents["schemas"]["ScanRoot"];
+export type SkippedPath = LibraryComponents["schemas"]["SkippedPath"];
+export type SkipReason = LibraryComponents["schemas"]["SkipReason"];
+
+// --- Library: the catalogue, downloads and guidance (M3) --------------
+//
+// The library's remote half. Two shapes carry most of the weight:
+//
+// `CatalogueCandidate` is one launchable *choice*, not one file — shards
+// are already summed, and the projectors and calibration files are
+// pulled out into their own lists. One real repo holds 30 `.gguf` files
+// and 25 candidates.
+//
+// `Fit` is the same computation in three places (a candidate, a local
+// model, a preflight), and `Fit.basis` is the field a UI should care
+// about: `estimate` means the KV term came from the file size alone,
+// `metadata` means the model's own declared shape produced it. That is
+// the difference between arithmetic and a guess with a number on it,
+// and it is what the Check button on a candidate exists to change.
+
+export type CatalogueSearchPage = LibraryComponents["schemas"]["CatalogueSearchPage"];
+export type CatalogueSearchResult = LibraryComponents["schemas"]["CatalogueSearchResult"];
+export type CatalogueSort = LibraryComponents["schemas"]["CatalogueSort"];
+export type CatalogueModel = LibraryComponents["schemas"]["CatalogueModel"];
+export type CatalogueCandidate = LibraryComponents["schemas"]["CatalogueCandidate"];
+export type CatalogueFile = LibraryComponents["schemas"]["CatalogueFile"];
+export type CatalogueRecommendation = LibraryComponents["schemas"]["CatalogueRecommendation"];
+export type CatalogueCard = LibraryComponents["schemas"]["CatalogueCard"];
+export type CataloguePreflight = LibraryComponents["schemas"]["CataloguePreflight"];
+export type AlreadyOwned = LibraryComponents["schemas"]["AlreadyOwned"];
+
+// The starter set (S6). One entry per size class, scored against one
+// machine, answered with no upstream call -- so it is the one catalogue
+// shape a screen can render with the hub down. `reviewed` is on the wire
+// because staleness, not error, is this feature's failure mode.
+export type StarterSet = LibraryComponents["schemas"]["StarterSet"];
+export type StarterModel = LibraryComponents["schemas"]["StarterModel"];
+export type StarterRecommendation = LibraryComponents["schemas"]["StarterRecommendation"];
+export type GateKind = LibraryComponents["schemas"]["GateKind"];
+export type ModelFileRole = LibraryComponents["schemas"]["ModelFileRole"];
+
+export type Fit = LibraryComponents["schemas"]["Fit"];
+export type FitVerdict = LibraryComponents["schemas"]["FitVerdict"];
+export type ModelFit = LibraryComponents["schemas"]["ModelFit"];
+export type MemoryBudget = LibraryComponents["schemas"]["MemoryBudget"];
+export type KvCacheType = LibraryComponents["schemas"]["KvCacheType"];
+export type HostHardware = LibraryComponents["schemas"]["HostHardware"];
+export type Gpu = LibraryComponents["schemas"]["Gpu"];
+export type QuantTable = LibraryComponents["schemas"]["QuantTable"];
+export type QuantTier = LibraryComponents["schemas"]["QuantTier"];
+
+export type Download = LibraryComponents["schemas"]["Download"];
+export type DownloadList = LibraryComponents["schemas"]["DownloadList"];
+export type DownloadSpec = LibraryComponents["schemas"]["DownloadSpec"];
+export type DownloadFile = LibraryComponents["schemas"]["DownloadFile"];
+export type DownloadState = LibraryComponents["schemas"]["DownloadState"];
+
+// --- Agent: engine acquisition (M1) --------------------------------
+
+export type ManagedEngine = AgentComponents["schemas"]["ManagedEngine"];
+export type EngineAcquisition = AgentComponents["schemas"]["EngineAcquisition"];
+export type HostAccelerator = AgentComponents["schemas"]["HostAccelerator"];
+export type EngineInstall = AgentComponents["schemas"]["EngineInstall"];
+export type EngineInstallRequest = AgentComponents["schemas"]["EngineInstallRequest"];

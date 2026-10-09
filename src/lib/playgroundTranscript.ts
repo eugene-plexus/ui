@@ -1,0 +1,187 @@
+/**
+ * The one conversation the playground and Home's "Try it" card share.
+ *
+ * The playground has kept its transcript in `sessionStorage` since M0 —
+ * browser-side, per tab, the design's explicit call until a component
+ * for durable history exists. Home's card is the same composer wired to
+ * the same code (hobbyist UX §6.1), so a first reply that lands on Home
+ * must be the conversation the playground opens on "Continue in the
+ * Playground". Two writers of one key is how a shape drifts, so both
+ * read and write through here and the shape is defined once.
+ *
+ * **The shape is `{ model, messages }` under `eugene-playground`**, and
+ * a test asserts those two keys and nothing else — a third field added
+ * on one side would be silently dropped by the other.
+ *
+ * Pure apart from the storage calls, and tolerant on read: a value from
+ * an older build, a private-mode `sessionStorage` that throws, or a hand-
+ * edited entry all come back as an empty conversation rather than an
+ * error on the page that shows it.
+ */
+
+import type { ChatCompletionMessage } from "./types";
+
+/** A data URL that is valid, empty, and eight bytes long. */
+const STRIPPED_IMAGE_URL = "data:,";
+/** Where a recording's or a document's bytes were, once stripped. */
+export const STRIPPED_MEDIA = "";
+
+/**
+ * The same messages with every inline image's bytes removed.
+ *
+ * Written for the storage fallback below: a conversation with 10 MB of
+ * base64 images does not fit in `sessionStorage`, and before images the
+ * failure mode was already "the conversation does not survive a
+ * reload". Losing the whole transcript to one screenshot is worse than
+ * a reload that keeps the words and drops the pixels -- the request
+ * that was SENT is unchanged either way, and the report holds it.
+ */
+export function stripImageBytes(messages: PlaygroundMessage[]): PlaygroundMessage[] {
+  return messages.map((message) => {
+    // A spoken reply's audio goes the same way; its words are the
+    // message's content and stay.
+    const kept: PlaygroundMessage = message.spoken
+      ? { ...message, spoken: { ...message.spoken, data: STRIPPED_MEDIA } }
+      : message;
+    if (!Array.isArray(kept.content)) return kept;
+    return {
+      ...kept,
+      content: kept.content.map((part) =>
+        part.type === "image_url"
+          ? { ...part, image_url: { ...part.image_url, url: STRIPPED_IMAGE_URL } }
+          : part.type === "input_audio"
+            ? { ...part, input_audio: { ...part.input_audio, data: STRIPPED_MEDIA } }
+            : part.type === "file"
+              ? { ...part, file: { ...part.file, file_data: STRIPPED_IMAGE_URL } }
+              : part,
+      ),
+    };
+  });
+}
+
+export const PLAYGROUND_STORAGE_KEY = "eugene-playground";
+
+export type PlaygroundMessage = ChatCompletionMessage & {
+  /** Browser time when the first part of this response arrived; never sent to a model. */
+  generatedAt?: string;
+  /** The model's thinking before this answer, for display; never sent back. It
+   * rides the wire as `reasoning_content`, and a playground that replayed it
+   * would send a model its own earlier thinking where no harness does. */
+  reasoning?: string;
+  /** How long it thought, from its first thought to its first word. */
+  thoughtMs?: number;
+  /** A spoken reply's audio, for the player; never sent back. The
+   * contract refuses an assistant message carrying audio, and says to
+   * send the words as `content` instead, which is what this message's
+   * content already is. */
+  spoken?: { format: string; data: string };
+};
+
+export function requestMessages(messages: PlaygroundMessage[]): ChatCompletionMessage[] {
+  return messages.map((message) => {
+    const wire = { ...message };
+    delete wire.generatedAt;
+    delete wire.reasoning;
+    delete wire.thoughtMs;
+    delete wire.spoken;
+    // The sources a search gave (P8) are for the reader, not the model:
+    // the answer already cites them, and no harness sends them back.
+    delete wire.annotations;
+    return wire;
+  });
+}
+
+export interface PlaygroundTranscript {
+  model: string | null;
+  messages: PlaygroundMessage[];
+}
+
+function empty(): PlaygroundTranscript {
+  return { model: null, messages: [] };
+}
+
+/** Parse whatever is stored, which may be nothing or not ours. */
+export function parseTranscript(raw: string | null | undefined): PlaygroundTranscript {
+  if (!raw) return empty();
+  try {
+    const parsed = JSON.parse(raw) as Partial<PlaygroundTranscript> | null;
+    if (typeof parsed !== "object" || parsed === null) return empty();
+    return {
+      model: typeof parsed.model === "string" ? parsed.model : null,
+      messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+    };
+  } catch {
+    return empty();
+  }
+}
+
+/** The stored form: exactly the two keys, in this order. */
+export function serializeTranscript(transcript: PlaygroundTranscript): string {
+  const payload: PlaygroundTranscript = {
+    model: transcript.model,
+    messages: transcript.messages,
+  };
+  return JSON.stringify(payload);
+}
+
+export function readPlaygroundTranscript(): PlaygroundTranscript {
+  if (typeof window === "undefined") return empty();
+  try {
+    return parseTranscript(sessionStorage.getItem(PLAYGROUND_STORAGE_KEY));
+  } catch {
+    // sessionStorage throws in some private modes; start empty.
+    return empty();
+  }
+}
+
+export function writePlaygroundTranscript(transcript: PlaygroundTranscript): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(PLAYGROUND_STORAGE_KEY, serializeTranscript(transcript));
+  } catch {
+    // Almost always the quota, and almost always because of inline
+    // image bytes. Retry with the pixels stripped so the words survive
+    // a reload; if even that fails (private mode), give up as before.
+    try {
+      sessionStorage.setItem(
+        PLAYGROUND_STORAGE_KEY,
+        serializeTranscript({
+          model: transcript.model,
+          messages: stripImageBytes(transcript.messages),
+        }),
+      );
+    } catch {
+      // The conversation just does not survive a reload.
+    }
+  }
+}
+
+/**
+ * A turn's thinking as it streams: the text, and how long it took.
+ *
+ * One place for both pages that stream a turn (the playground and Home's
+ * card), so "how long did it think" is measured the same way on each:
+ * from the first thought to the first word of the answer, or to the end
+ * of a turn that only thought.
+ */
+export function thinkingOf(now: () => number = Date.now) {
+  let text = "";
+  let startedAt: number | undefined;
+  let ms: number | undefined;
+  const stop = () => {
+    if (startedAt !== undefined && ms === undefined) ms = now() - startedAt;
+  };
+  return {
+    /** A fragment of reasoning arrived. */
+    think(delta: string): void {
+      startedAt ??= now();
+      text += delta;
+    },
+    /** The answer started, or the turn ended: thinking is over. */
+    stop,
+    /** The message with its thinking attached, when there was any. */
+    attach<T extends PlaygroundMessage>(message: T): T {
+      return text ? { ...message, reasoning: text, thoughtMs: ms } : message;
+    },
+  };
+}
