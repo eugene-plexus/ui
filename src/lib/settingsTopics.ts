@@ -509,7 +509,17 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     label: "Add a backend you already run",
     description: "Ollama, LM Studio, an OpenAI-compatible server or a cloud CLI.",
     href: "/backends/add?sel=backends",
-    keywords: ["ollama", "lm studio", "openrouter", "openai", "claude", "codex", "external"],
+    keywords: [
+      "ollama",
+      "lm studio",
+      "openrouter",
+      "openai",
+      "gemini",
+      "google",
+      "claude",
+      "codex",
+      "external",
+    ],
   },
   {
     id: "engines",

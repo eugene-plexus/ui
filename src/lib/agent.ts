@@ -95,6 +95,9 @@ export const WIZARD_PROVIDERS: WizardProvider[] = [
   { key: "openai", label: "OpenAI API", credentials: ["api_key"] },
   { key: "xai", label: "xAI (Grok)", credentials: ["api_key"] },
   { key: "openrouter", label: "OpenRouter", credentials: ["api_key"] },
+  // Google's own Gemini API, with a key from Google AI Studio: chat,
+  // embeddings, images, Veo video, speech and transcription.
+  { key: "gemini", label: "Google Gemini API", credentials: ["api_key"] },
   { key: "minimax", label: "MiniMax", credentials: ["api_key"] },
   {
     key: "ollama_local",

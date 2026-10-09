@@ -124,6 +124,7 @@ const BACKEND_LABEL: Record<string, string> = {
   openai_compat_http: "OpenAI-compatible endpoint",
   claude_code_cli: "Claude Code CLI",
   codex_cli: "Codex CLI",
+  gemini_api: "Google Gemini API",
 };
 
 /**

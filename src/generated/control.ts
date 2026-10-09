@@ -1631,7 +1631,10 @@ export interface paths {
          *     sign-in; the site's own policy decides (J8). A destructive tool runs
          *     only under the site owner's standing pre-approval. Since 2b.3b each
          *     call runs under its workspace's rule (J70): `allow` at once, `ask` only
-         *     with `asked` (J72), which this root carries and does not check. The
+         *     with `asked` (J72), which this root carries and does not check. Since
+         *     J14b, for a person with a key, the site answers `held` (`held` says
+         *     what to sign) until the call comes again with `approval`, signed by
+         *     the person; this root carries it and cannot make one. The
          *     request is at most 40,000 bytes; the answer at most 70,000. A `tools/call` the site
          *     claimed but did not confirm is `uncertain`: it may have acted.
          */
@@ -2211,6 +2214,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/oidc/job-sites/{site}/window/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close the person's open window on a Job Site now
+         * @description The window the person opened with their key (J14b, J81), in which
+         *     their `allow` tools run without a signature each. Closing only takes
+         *     access away, so it needs no signature (J90). Any person linked there.
+         */
+        post: operations["closeMyJobSiteWindow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/job-sites/{site}/commands/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The site's owner takes back the consent to commands on their machine
+         * @description An administrator consented at the machine (J9, J89); the site's owner
+         *     may take it back from here (J30). It only takes access away, so it
+         *     needs no signature. Giving it again is done at the machine: the
+         *     Windows tray, or the one-liner again.
+         */
+        post: operations["withdrawMyJobSiteCommands"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/oidc/job-sites/{site}/leave": {
         parameters: {
             query?: never;
@@ -2272,6 +2324,11 @@ export interface components {
             signing?: components["schemas"]["SiteSigningState"] | null;
             /** @description Changes the site holds until this person approves them with their own key (2b.3b). Absent from an older site. */
             held?: number;
+            /**
+             * Format: date-time
+             * @description When this person's open window ends (J14b, J81); null when none is open. Absent from an older site.
+             */
+            windowUntil?: string | null;
         };
         /**
          * @description Remove a link between a person and an OS account on a site's machine.
@@ -2383,6 +2440,8 @@ export interface components {
              * @default false
              */
             asked: boolean;
+            /** @description For `mcp`, the person's approval of a held call (J14b, `SiteCallApproval`), carried as Workbench sent it. */
+            approval?: components["schemas"]["SiteCallApproval"] | null;
             /** @description For `manage`, the action. */
             action?: string | null;
             /** @description For `manage`, its arguments. */
@@ -2405,6 +2464,13 @@ export interface components {
             result?: Record<string, never> | null;
             /** @description An MCP request's JSON-RPC response, as the site's server answered it after its policy filtered it. */
             response?: components["schemas"]["McpResponse"] | null;
+            /** @description With `held` for an MCP request (J86), what the person signs for it to run. */
+            held?: components["schemas"]["SiteHeldCall"] | null;
+            /**
+             * Format: date-time
+             * @description For an MCP request from a person with a key, when their open window ends; null when none is open (J81).
+             */
+            windowUntil?: string | null;
         };
         /**
          * @description The install's mode (J13, J18). In `dev`, Eugene's owner sees all tool information; in `production`, owners are restricted.
@@ -2500,17 +2566,30 @@ export interface components {
             operationId?: string;
             /**
              * @description The person approved this call in Workbench (J72), which Workbench
-             *     sends for a call whose rule is `ask`; the site refuses such a call
-             *     without it. Carried to the site as is.
+             *     sends for a call whose rule is `ask`; for a person with no key the
+             *     site refuses such a call without it. Carried to the site as is.
              * @default false
              */
             asked: boolean;
+            /**
+             * @description A call the site held for the person's signature, sent again (J14b,
+             *     J86): its id, and the passkey assertion when signed in Workbench.
+             *     Carried to the site as is; the site checks it.
+             */
+            approval?: components["schemas"]["SiteCallApproval"] | null;
         };
         SiteMcpAnswer: {
             status: components["schemas"]["SiteAnswerStatus"];
             message?: string | null;
             response?: components["schemas"]["McpResponse"] | null;
             installMode: components["schemas"]["InstallModeName"];
+            /** @description With `held`, what the person signs for the call to run (J86). */
+            held?: components["schemas"]["SiteHeldCall"] | null;
+            /**
+             * Format: date-time
+             * @description When the person's open window on that site ends; null when none is open (J81). Absent from an older site.
+             */
+            windowUntil?: string | null;
         };
         InstallMode: {
             mode: components["schemas"]["InstallModeName"];
@@ -2559,6 +2638,8 @@ export interface components {
             ownerInDevMode?: boolean | null;
             /** @description Whether the site checks its owner's changes with the owner's own key (J14a). Absent from a site older than J14a. */
             signing?: components["schemas"]["SiteSigning"];
+            /** @description Whether the machine runs commands from Workbench (2b.4, J89). Absent from a site older than 2b.4. */
+            commands?: components["schemas"]["SiteCommands"];
         };
         JobSiteList: {
             sites: components["schemas"]["JobSite"][];
@@ -4764,24 +4845,33 @@ export interface components {
         };
         /**
          * @description What a rule says of a group of tools (J70). `allow`: runs without
-         *     asking. `ask`: Workbench asks the person who made the call, and the site
-         *     runs it only when the call says they approved (`SiteCall.asked`, J72);
-         *     until person-held call signatures (J14b) the site cannot check that they
-         *     did, and its audit log says the approval was claimed. `deny`: never
-         *     offered, and refused.
+         *     asking; for a person with a key, only inside a window they opened with
+         *     it (J14b, J81). `ask`: runs only with the person's signature over the
+         *     call when they have a key (J14b); for a person without one, when the
+         *     call says they approved (`SiteCall.asked`, J72), which the audit log
+         *     records as claimed. `deny`: never offered, and refused.
          * @enum {string}
          */
         SiteDecision: "allow" | "ask" | "deny";
         /**
+         * @description What a rule says of running commands (2b.4, J88): `ask`, each command
+         *     runs only with its person's own signature over it (J47: never `allow`);
+         *     `deny`, never offered.
+         * @enum {string}
+         */
+        SiteCommandDecision: "ask" | "deny";
+        /**
          * @description One person's rules in one workspace, per group of tools (J70). `read`:
          *     `list_directory`, `read_text`, `glob` and `grep`. `change`: `write_text`
-         *     and `edit_text`. The site stores them per tool, so commands (2b.4) add a
-         *     group of their own. `change` cannot be looser than `deny` in a workspace
-         *     registered read-only (`writable: false`).
+         *     and `edit_text`. `command` (2b.4, J88): `run_command`, in a workspace
+         *     the person holds; absent reads `deny`, as it does for a workspace from
+         *     before 2b.4. `change` and `command` cannot be looser than `deny` in a
+         *     workspace registered read-only (`writable: false`).
          */
         SiteRules: {
             read: components["schemas"]["SiteDecision"];
             change: components["schemas"]["SiteDecision"];
+            command?: components["schemas"]["SiteCommandDecision"] | null;
         };
         /**
          * @description Someone the site's owner shares one of their own workspaces with, and
@@ -4827,8 +4917,9 @@ export interface components {
             name: string;
             /**
              * @description 2b.3b (J70, J78): `allow`, the tool runs without asking; `ask`, it
-             *     runs once the person who made the call approved it in Workbench
-             *     (`SiteCall.asked`, J72). Absent: `allow` for a tool the site does not
+             *     runs once the person who made the call approved it: with their
+             *     signature over the call when they have a key (J14b), else on
+             *     Workbench's word (`SiteCall.asked`, J72). Absent: `allow` for a tool the site does not
              *     treat as destructive, or one granted `standing`; `ask` otherwise.
              *     A tool not granted is denied: it is never offered.
              */
@@ -4892,6 +4983,27 @@ export interface components {
             people?: boolean;
         };
         /**
+         * @description Whether this machine runs commands from Workbench (2b.4, J9, J30, J89).
+         *     An administrator consents at the machine; the site's owner may take it
+         *     back from Workbench. Absent from a site older than 2b.4.
+         */
+        SiteCommands: {
+            /** @description Commands may run here now (each still under its person's rules and signature). */
+            allowed: boolean;
+            /**
+             * Format: date-time
+             * @description When an administrator consented at the machine.
+             */
+            consentedAt?: string | null;
+            /**
+             * Format: date-time
+             * @description When the site's owner took the consent back; a later consent at the machine replaces it.
+             */
+            withdrawnAt?: string | null;
+            /** @description Why not, and how to give consent, in the site's words. */
+            reason?: string | null;
+        };
+        /**
          * @description What a job site holds, as the site itself reports it in each poll. The
          *     root keeps it as a cache: it answers Workbench's listings from it, and
          *     the site checks every call against its own copy again (rule 2 of §3.3).
@@ -4928,6 +5040,7 @@ export interface components {
              */
             sharing?: boolean;
             signing?: components["schemas"]["SiteSigning"];
+            commands?: components["schemas"]["SiteCommands"];
         };
         /**
          * @description `mcp`: one MCP request to one of the site's servers. `manage`: one of the site host's management actions (`SiteManageAction`, site-host.yaml).
@@ -4976,6 +5089,21 @@ export interface components {
             writable: boolean;
         };
         /**
+         * @description A held call sent again (J14b). With `held` alone, it runs if it was
+         *     signed at the machine. With a passkey assertion over one of its
+         *     envelopes (as `SitePasskeyApproval` describes), the site checks it and
+         *     runs it.
+         */
+        SiteCallApproval: {
+            held: string;
+            envelope?: string | null;
+            key?: string | null;
+            credentialId?: string | null;
+            authenticatorData?: string | null;
+            clientDataJSON?: string | null;
+            signature?: string | null;
+        };
+        /**
          * @description `done`: the site answered (an MCP error or a tool's own failure is still
          *     `done`, inside `response`). `failed`: the site refused or could not run
          *     it, and `message` says why in the site's words; nothing ran. `uncertain`:
@@ -4983,6 +5111,9 @@ export interface components {
          *     acted. `held` (J14a, J50): a change that gives access, from a person who
          *     has a key pinned at the machine; the site keeps it until they approve it
          *     there with that key, and `message` says where. Nothing changed yet.
+         *     Since J14b (J86), also a tool call from a person with a key that needs
+         *     their signature (an `ask` rule, a command) or an open window (an `allow`
+         *     rule): `held` (`SiteHeldCall`) says what to sign. Nothing ran.
          * @enum {string}
          */
         SiteAnswerStatus: "done" | "failed" | "uncertain" | "held";
@@ -4999,6 +5130,45 @@ export interface components {
             error?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * @description `call`: this one tool call, signed per call (an `ask` rule, or a
+         *     command). `window`: a window of `minutes` in which every `allow` tool of
+         *     the person's runs without a signature each (J81, J90); the call that
+         *     asked for it runs once it is open.
+         * @enum {string}
+         */
+        SiteHeldCallKind: "call" | "window";
+        /**
+         * @description A tool call the site holds for its person's signature (J14b, J86). The
+         *     person signs at the machine, on its page, which lists it with the held
+         *     changes, or from Workbench with a passkey over one of `envelopes`. Either
+         *     way the call runs only when Workbench sends it again with `approval`
+         *     naming this id, before `expiresAt`.
+         */
+        SiteHeldCall: {
+            id: string;
+            kind: components["schemas"]["SiteHeldCallKind"];
+            /** @description For `window`, how long it stays open once signed. */
+            minutes?: number | null;
+            /** @description What is signed, in the site's own words, line by line. */
+            words: string[];
+            /**
+             * Format: date-time
+             * @description When the site drops it unsigned.
+             */
+            expiresAt: string;
+            /**
+             * @description Signed at the machine already; sending the call again with this id runs it.
+             * @default false
+             */
+            approved: boolean;
+            /** @description For each of the person's passkeys here, by key id, the canonical `SiteEditEnvelope` to sign. */
+            envelopes?: {
+                [key: string]: string;
+            };
+            /** @description Where the person signs it at the machine (`SiteSigning.approvePage`). */
+            approvePage?: string | null;
         };
         SiteServerFolder: {
             id: string;
@@ -5123,11 +5293,15 @@ export interface components {
             /** @description For a tool call since 2b.3b, the rule that applied (J72). */
             rule?: components["schemas"]["SiteDecision"] | null;
             /**
-             * @description For a tool call under an `ask` rule, whether the call said the person
-             *     approved it. Claimed, not checked, until person-held call signatures
-             *     (J14b).
+             * @description For a tool call under an `ask` rule from a person with no key,
+             *     whether the call said they approved it: claimed, not checked.
              */
             asked?: boolean | null;
+            /**
+             * @description For a call from a person with a key (J14b, J91): which of their keys
+             *     signed it and where, or the window it ran in.
+             */
+            signed?: string | null;
         };
         /**
          * @description A passkey's COSE algorithm: -8 EdDSA, -7 ES256, -257 RS256.
@@ -5149,6 +5323,7 @@ export interface components {
         };
         SiteHeldEdit: {
             id: string;
+            /** @description The held change's action; `call` or `window.open` for a held call (J14b). */
             action: string;
             /** @description The change in the site host's own words, line by line, as the page shows it. */
             words: string[];
@@ -8876,6 +9051,124 @@ export interface operations {
                 content?: never;
             };
             /** @description The site is offline, or it needs an update to keep each person's workspaces. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    closeMyJobSiteWindow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteRequest"];
+            };
+        };
+        responses: {
+            /** @description Closed, or none was open. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site and is linked to none by that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to check signed calls. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site did not answer in time. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    withdrawMyJobSiteCommands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site: components["schemas"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSiteRequest"];
+            };
+        };
+        responses: {
+            /** @description Withdrawn. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workbench client or person sign-in is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The person owns no such site. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site refused it; `detail` says why in the site's words. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The site is offline, or it needs an update to run commands. */
             503: {
                 headers: {
                     [name: string]: unknown;

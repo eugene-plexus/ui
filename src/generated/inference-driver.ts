@@ -2525,9 +2525,14 @@ export interface components {
          *     nothing OpenAI-shaped about it. The driver translates `POST
          *     /v1/speak` to its text-to-speech route and `POST /v1/transcribe` to
          *     its speech-to-text route.
+         *
+         *     `gemini_api` is Google's own Gemini API (`generateContent`, keyed by
+         *     `x-goog-api-key`; `docs/design/gemini-provider.md`, G1): chat,
+         *     embeddings, images, Veo video, speech and transcription, translated
+         *     both ways, with each model's capabilities from Google's own listing.
          * @enum {string}
          */
-        BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http" | "systemone_http" | "elevenlabs_http";
+        BackendKind: "anthropic_api" | "openai_api" | "claude_code_cli" | "codex_cli" | "openai_compat_http" | "systemone_http" | "elevenlabs_http" | "gemini_api";
         /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
          *     Eugene Plexus component returns this for 4xx / 5xx responses.
