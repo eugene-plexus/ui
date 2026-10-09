@@ -2,20 +2,20 @@
  * Adding a search account (P8): the pure half, tested without a browser.
  *
  * A search account is a tool-driver the agent supervises, one per provider
- * account: a SearXNG instance, or a Brave Search subscription. Web search
+ * account: a SearXNG instance, a Brave Search subscription, or a Gemini key used for Google Search. Web search
  * then runs for any model that calls tools -- Codex's live search, Claude
  * Code's WebSearch, chat's `web_search_options` -- on this account.
  */
 
 import type { Component } from "@/lib/types";
 
-export type SearchProvider = "searxng" | "brave";
+export type SearchProvider = "searxng" | "brave" | "google";
 
 export interface SearchDraft {
   provider: SearchProvider;
   /** SearXNG: the instance's address. Unused for Brave. */
   address: string;
-  /** Brave: the subscription token. Unused for SearXNG. */
+  /** Brave: the subscription token. Google: a Gemini API key. Unused for SearXNG. */
   apiKey: string;
 }
 
@@ -38,18 +38,33 @@ export const SEARCH_PROVIDERS: ReadonlyArray<{
     label: "Brave Search",
     says: "A paid service with its own index. Brave counts every search against your plan.",
   },
+  {
+    id: "google",
+    label: "Google Search (Gemini API key)",
+    says: "Google's own search, reached with a Gemini API key. Google bills each search.",
+  },
 ];
+
+/** What the page tells a person who picks Google, before they add it (GS1, GS3, GS4). */
+export const GOOGLE_BILLING =
+  "On Gemini 3, the first 5,000 searches a month are free, counted across all Gemini 3 models. After that, Google charges $14 per 1,000 searches. These are Google's prices as of 2026-10.";
+export const GOOGLE_TERMS =
+  "Google's terms bind the key's owner: Google's answer and sources are shown unmodified, with Google's Search Suggestions, to the person who asked. Workbench shows them; other apps may not.";
+export const GOOGLE_MODEL =
+  "It searches through the cheapest Gemini model your key can use. You can change that model in the account's settings.";
 
 /** Whether the form holds enough to try. An address must be a web address. */
 export function searchDraftComplete(draft: SearchDraft): boolean {
-  if (draft.provider === "brave") return draft.apiKey.trim().length > 0;
+  if (draft.provider === "brave" || draft.provider === "google") {
+    return draft.apiKey.trim().length > 0;
+  }
   return /^https?:\/\/[^\s/]+/.test(draft.address.trim());
 }
 
 /** The account's settings, as its config trio takes them. */
 export function searchPatch(draft: SearchDraft): Record<string, unknown> {
-  if (draft.provider === "brave") {
-    return { provider: "brave", apiKey: draft.apiKey.trim() };
+  if (draft.provider === "brave" || draft.provider === "google") {
+    return { provider: draft.provider, apiKey: draft.apiKey.trim() };
   }
   return { provider: "searxng", baseUrl: draft.address.trim().replace(/\/+$/, "") };
 }
@@ -93,6 +108,9 @@ export function remedyFor(provider: SearchProvider, error: string): string | nul
   }
   if (provider === "brave" && /API key|401|403/.test(error)) {
     return "Copy the key again from api-dashboard.search.brave.com and press Try again.";
+  }
+  if (provider === "google" && /API key|401|403/.test(error)) {
+    return "Copy the key again from aistudio.google.com/apikey and press Try again.";
   }
   return null;
 }

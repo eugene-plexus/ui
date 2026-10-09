@@ -61,6 +61,8 @@ function install(test: { ok: boolean; summary?: string; error?: string }): Map<s
     ["POST agent/v1/components", () => ({ status: 201, body: {} })],
     ["PATCH searxng-2/v1/config", () => ({ status: 200, body: { applied: ["provider"] } })],
     ["POST searxng-2/v1/config/test", () => ({ status: 200, body: test })],
+    ["PATCH google/v1/config", () => ({ status: 200, body: { applied: ["provider"] } })],
+    ["POST google/v1/config/test", () => ({ status: 200, body: test })],
   ]);
 }
 
@@ -175,6 +177,57 @@ describe("/backends/search", () => {
   });
 });
 
+describe("adding a Google search account", () => {
+  it("offers Google by its name, asks for a Gemini key, and says the price and the terms", async () => {
+    stub(install({ ok: true }));
+    const user = userEvent.setup({ delay: null });
+    render(<AddSearchAccountPage />);
+    await user.click(await screen.findByTestId("search-provider-google"));
+    expect(screen.getByText("Google Search (Gemini API key)")).toBeInTheDocument();
+    expect(screen.queryByTestId("search-address")).toBeNull();
+    expect(screen.getByTestId("search-key")).toHaveAttribute("type", "password");
+    const page = screen.getByTestId("search-add").textContent ?? "";
+    expect(page).toContain("aistudio.google.com/apikey");
+    const notes = screen.getByTestId("search-google-notes").textContent ?? "";
+    expect(notes).toContain("5,000 searches a month are free");
+    expect(notes).toContain("$14 per 1,000");
+    expect(notes).toContain("as of 2026-10");
+    expect(notes).toContain(
+      "Google's terms bind the key's owner: Google's answer and sources are shown unmodified, with Google's Search Suggestions, to the person who asked. Workbench shows them; other apps may not.",
+    );
+    // The notes are Google's alone.
+    await user.click(screen.getByTestId("search-provider-brave"));
+    expect(screen.queryByTestId("search-google-notes")).toBeNull();
+    for (const word of BANNED) expect(page.toLowerCase(), word).not.toContain(word);
+  });
+
+  it("creates a google account with its key and links to the search order", async () => {
+    stub(install({ ok: true, summary: "google answered." }));
+    const user = userEvent.setup({ delay: null });
+    render(<AddSearchAccountPage />);
+    await user.click(await screen.findByTestId("search-provider-google"));
+    expect(screen.getByTestId("search-add-button")).toBeDisabled();
+    await user.type(screen.getByTestId("search-key"), " AIza-test ");
+    await user.click(screen.getByTestId("search-add-button"));
+    await screen.findByTestId("search-added");
+    const created = calls.find((c) => key(c) === "POST agent/v1/components");
+    expect((created?.body as { name: string }).name).toBe("google");
+    const patched = calls.find((c) => key(c) === "PATCH google/v1/config");
+    expect(patched?.body).toEqual({ provider: "google", apiKey: "AIza-test" });
+    expect(screen.getByTestId("search-order-link").querySelector("a")).toHaveAttribute(
+      "href",
+      "/routing?sel=gateway#web-search-order",
+    );
+  });
+
+  it("links to the search order before the account is added too", async () => {
+    stub(install({ ok: true }));
+    render(<AddSearchAccountPage />);
+    const link = (await screen.findByTestId("search-order-link")).querySelector("a");
+    expect(link).toHaveAttribute("href", "/routing?sel=gateway#web-search-order");
+  });
+});
+
 describe("the search account helpers", () => {
   it("names, ports, patches and remedies", () => {
     const existing = [
@@ -193,5 +246,13 @@ describe("the search account helpers", () => {
     expect(remedyFor("searxng", "HTTP 403")).toMatch(/settings\.yml/);
     expect(remedyFor("brave", "refused this account's API key")).toMatch(/Copy the key/);
     expect(remedyFor("searxng", "something else")).toBeNull();
+    expect(searchPatch({ provider: "google", address: "x", apiKey: " g " })).toEqual({
+      provider: "google",
+      apiKey: "g",
+    });
+    expect(searchDraftComplete({ ...blankSearch(), provider: "google" })).toBe(false);
+    expect(searchDraftComplete({ ...blankSearch(), provider: "google", apiKey: "k" })).toBe(true);
+    expect(searchNameFor("google", [])).toBe("google");
+    expect(remedyFor("google", "refused this account's API key")).toContain("aistudio.google.com");
   });
 });

@@ -456,6 +456,25 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     topic: "serving",
   },
   {
+    id: "search-accounts",
+    label: "Web search accounts, and which goes first",
+    description:
+      "Search with SearXNG, Brave or Google (with a Gemini key), and set the order a web search tries them: on the Backends and Routing pages.",
+    href: "/backends/search?sel=backends",
+    keywords: [
+      "google",
+      "gemini",
+      "brave",
+      "searxng",
+      "web search",
+      "search account",
+      "search order",
+      "grounding",
+      "search suggestions",
+    ],
+    topic: "serving",
+  },
+  {
     id: "client-keys",
     label: "Keys for your apps",
     description: "Make, limit and revoke the keys your apps use, on Home.",

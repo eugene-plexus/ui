@@ -62,6 +62,8 @@ import { clockTime } from "@/lib/relativeTime";
 import { useServedContexts } from "@/lib/useServedContexts";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
+import { WebSearchOrder } from "./WebSearchOrder";
+
 const DATALIST_ID = "routing-known-models";
 
 const inputClass =
@@ -278,6 +280,10 @@ export default function RoutingPage() {
             <Link href="/metrics?sel=gateway" className="underline">
               Metrics
             </Link>
+            . Which search account a web search tries first is{" "}
+            <a href="#web-search-order" className="underline">
+              further down
+            </a>
             .
           </p>
 
@@ -502,6 +508,8 @@ export default function RoutingPage() {
                   {saveState.requiresRestart ? " — and reports a restart is required" : ""}.
                 </p>
               )}
+
+              <WebSearchOrder routing={routing} onReload={() => load(dirty)} />
 
               {!parseError && (
                 <details className="mt-8">

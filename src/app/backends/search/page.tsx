@@ -32,6 +32,9 @@ import { withRetry } from "@/app/setup/start";
 import {
   blankSearch,
   freeSearchPort,
+  GOOGLE_BILLING,
+  GOOGLE_MODEL,
+  GOOGLE_TERMS,
   remedyFor,
   SEARCH_PROVIDERS,
   type SearchDraft,
@@ -167,7 +170,7 @@ export default function AddSearchAccountPage() {
                 </label>
               ) : (
                 <label className="mb-4 block text-sm">
-                  Brave Search API key
+                  {draft.provider === "google" ? "Gemini API key" : "Brave Search API key"}
                   <input
                     className={field}
                     type="password"
@@ -178,10 +181,31 @@ export default function AddSearchAccountPage() {
                     data-testid="search-key"
                   />
                   <span className="mt-1 block text-[color:var(--muted)]">
-                    From api-dashboard.search.brave.com. Stored encrypted.
+                    {draft.provider === "google"
+                      ? "From Google AI Studio, at aistudio.google.com/apikey. Stored encrypted."
+                      : "From api-dashboard.search.brave.com. Stored encrypted."}
                   </span>
                 </label>
               )}
+
+              {draft.provider === "google" && (
+                <div
+                  data-testid="search-google-notes"
+                  className="mb-4 space-y-2 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed text-[color:var(--muted)]"
+                >
+                  <p>{GOOGLE_BILLING}</p>
+                  <p>{GOOGLE_TERMS}</p>
+                  <p>{GOOGLE_MODEL}</p>
+                </div>
+              )}
+
+              <p className="mb-4 text-sm text-[color:var(--muted)]" data-testid="search-order-link">
+                With more than one search account, you choose which one goes first on the{" "}
+                <Link href="/routing?sel=gateway#web-search-order" className="underline">
+                  Routing page, under Web search order
+                </Link>
+                .
+              </p>
 
               <div className="mt-2 flex items-center gap-3">
                 <button
@@ -210,6 +234,13 @@ export default function AddSearchAccountPage() {
                 A model searches when an app asks and the model can use tools. In Codex, set{" "}
                 <code>web_search = &quot;live&quot;</code>. Claude Code&rsquo;s WebSearch works as
                 it is. Each app key can be kept from searching under its permissions.
+              </p>
+              <p className="mb-4 text-sm text-[color:var(--muted)]" data-testid="search-order-link">
+                Which search account goes first is set on the{" "}
+                <Link href="/routing?sel=gateway#web-search-order" className="underline">
+                  Routing page, under Web search order
+                </Link>
+                .
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <Link href={`/playground?search=1`} className={primary} data-testid="search-try">

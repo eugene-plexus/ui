@@ -187,7 +187,7 @@ export interface components {
          */
         ToolName: "web_search";
         ToolDriverInfo: {
-            /** @description The provider key, `searxng` or `brave`. */
+            /** @description The provider key, `searxng`, `brave` or `google`. */
             provider: string;
             /** @description The provider's display name. */
             label?: string;
@@ -249,6 +249,15 @@ export interface components {
             latencyMs?: number;
             /** @description Request settings this provider could not honour, by name. */
             ignored?: string[];
+            /**
+             * @description HTML the provider's terms require shown with these results, to
+             *     the person who asked, unmodified: Google's Search Suggestions
+             *     (`searchEntryPoint.renderedContent`), for the `google` provider
+             *     (docs/design/google-search-account.md, GS1, GS4). Null or absent
+             *     for providers with none. The gateway carries it to the caller
+             *     and keeps none of it.
+             */
+            searchSuggestions?: string | null;
         };
         WebSearchResult: {
             url: string;

@@ -3541,6 +3541,15 @@ export interface components {
              */
             web_searches?: number;
             /**
+             * @description For each search this install ran whose provider's terms require
+             *     something shown with its results (Google's Search Suggestions,
+             *     HTML), that HTML, in the order the searches ran. Show it to the
+             *     person who asked, unmodified, beside the answer
+             *     (docs/design/google-search-account.md, GS4). Absent when none
+             *     had any.
+             */
+            search_suggestions?: string[];
+            /**
              * @description Which tier of the slot answered, 1-based. Greater than 1
              *     means every backend in an earlier tier was ineligible or
              *     failed — a cloud target answering for a local model, say.
@@ -3799,6 +3808,39 @@ export interface components {
              */
             outdated_drivers?: components["schemas"]["OutdatedDriver"][];
             control_root?: components["schemas"]["ControlRootView"];
+            /**
+             * @description Every search account that answered, in the order a web search
+             *     tries them: those `webSearchOrder` names first, in its order,
+             *     then the rest by the default rule (free before billed, this
+             *     machine's before another's). Set or not, this is the order in
+             *     effect (docs/design/google-search-account.md, GS7).
+             */
+            search_accounts?: components["schemas"]["SearchAccountView"][];
+        };
+        SearchAccountView: {
+            /** @description The account's name, as its agent declares it. */
+            name: string;
+            /** @description The machine it runs on; null on a standalone install. */
+            node?: string | null;
+            /** @description `searxng`, `brave` or `google`. */
+            provider: string;
+            label?: string | null;
+            /**
+             * @description As the account reports it (`free`: SearXNG; `per_search`: Brave, Google).
+             * @enum {string}
+             */
+            billing?: "free" | "per_search";
+            /**
+             * @description Set up and able to search now. An account that is not is
+             *     listed in its place and skipped.
+             */
+            runs: boolean;
+            /**
+             * @description `order` when `webSearchOrder` names it, `default` when it is
+             *     placed by the default rule after the named ones.
+             * @enum {string}
+             */
+            placed_by: "order" | "default";
         };
         OutdatedDriver: {
             /** @description The driver's name, as its agent declares it. */
@@ -4184,7 +4226,10 @@ export interface components {
          *     an assistant turn, become that turn's history: the query, and
          *     each result's title, address and the excerpt the model read,
          *     which `encrypted_content` carries (readable only here, as a
-         *     thinking block's `signature` is).
+         *     thinking block's `signature` is). A `web_search_tool_result`
+         *     whose provider's terms require something shown with its results
+         *     carries it as `x_eugene_plexus.search_suggestions` (HTML:
+         *     Google's Search Suggestions).
          *
          *     `document` was refused with a 400 until 2026-09-28, and `image`
          *     until 2026-09-23, on one reasoning: a model that never received
@@ -4677,7 +4722,10 @@ export interface components {
          *     "arguments", "namespace"?}` (`namespace` when the call is to a
          *     member of a `namespace` tool), for a search this install ran (P8),
          *     `{"type": "web_search_call", "id", "status", "action": {"type":
-         *     "search", "query", "sources": [{"type": "url", "url"}]}}`, or for
+         *     "search", "query", "sources": [{"type": "url", "url"}]},
+         *     "x_eugene_plexus"?: {"search_suggestions": html}}` (the HTML the
+         *     search provider's terms require shown with its results: Google's
+         *     Search Suggestions), or for
          *     an image it made (P8e), `{"type": "image_generation_call", "id",
          *     "status", "result", "revised_prompt", "size", "quality",
          *     "background", "output_format", "action": "generate"}` -- `result`
@@ -5237,8 +5285,8 @@ export interface components {
             driver?: string | null;
             node?: string | null;
             /**
-             * @description The search account's provider, `searxng` or `brave`; for an
-             *     image, the image model that made it.
+             * @description The search account's provider, `searxng`, `brave` or `google`;
+             *     for an image, the image model that made it.
              */
             provider?: string | null;
             /**

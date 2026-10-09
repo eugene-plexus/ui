@@ -209,6 +209,12 @@ describe("the search", () => {
     // so a search for it has to answer with the Machines page.
     expect(elsewhereMatches(index, "standby").map((e) => e.id)).toEqual(["standby"]);
     expect(elsewhereMatches(index, "replication")[0]?.href).toBe("/nodes?sel=control#standby");
+    // A search for Google finds the search accounts (and the backends page,
+    // which also takes a Gemini key).
+    expect(elsewhereMatches(index, "google").map((e) => e.id)).toContain("search-accounts");
+    expect(elsewhereMatches(index, "web search order")[0]?.href).toBe(
+      "/backends/search?sel=backends",
+    );
     expect(elsewhereMatches(index, "nothing like this")).toEqual([]);
     // A backend's entry opens that backend's own settings page.
     expect(index.at(-1)?.href).toBe("/config?sel=driver%3Aollama-qwen%40Amish_Station");
