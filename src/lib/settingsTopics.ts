@@ -496,6 +496,15 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     topic: "machines",
   },
   {
+    id: "standby",
+    label: "A standby for the control root",
+    description:
+      "Keep a copy of the control root on a second machine, ready if this one stops for good: on the Machines page.",
+    href: "/nodes?sel=control#standby",
+    keywords: ["standby", "backup", "replica", "replication", "failover", "promote", "spare"],
+    topic: "machines",
+  },
+  {
     id: "add-backend",
     label: "Add a backend you already run",
     description: "Ollama, LM Studio, an OpenAI-compatible server or a cloud CLI.",

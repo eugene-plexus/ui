@@ -66,7 +66,7 @@ export function StandbyPanel({
   }
 
   return (
-    <section className="section-panel mb-6" data-testid="standby-panel">
+    <section id="standby" className="section-panel mb-6" data-testid="standby-panel">
       <h2 className="section-heading font-ui text-base font-semibold">Standby</h2>
       <p className="mb-3 text-sm text-[color:var(--muted)]">
         A standby keeps a copy of this install&rsquo;s control root on another machine. If this
