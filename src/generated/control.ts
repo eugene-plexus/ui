@@ -4253,8 +4253,8 @@ export interface components {
          *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
          *     `vllm` drives upstream `vllm serve` and loads safetensors.
          *     `mlx` drives upstream `mlx_lm.server` and loads MLX-format
-         *     safetensors, on Apple silicon only — experimental until a
-         *     physical Mac run is recorded. We never ship an engine — every
+         *     safetensors, on Apple silicon only; not experimental since its
+         *     run on GitHub's macOS runners (A4, 2026-09-30). We never ship an engine — every
          *     one of them is an upstream project we wrap and track.
          *
          *     They differ in far more than argv, and that is why readiness

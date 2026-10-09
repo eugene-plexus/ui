@@ -196,6 +196,12 @@ export interface paths {
          *     marker) against them and answers a verdict per engine, in words,
          *     and a level per model (`EligibilityLevel`).
          *
+         *     Since LS2 it also judges models not downloaded yet
+         *     (`candidates`): Discover's search rows, a repo's versions and the
+         *     starter set, by the facts the catalogue answers already carry.
+         *     The same rules, so a model's dot does not change when it lands
+         *     on the disk unless its files say something the hub did not.
+         *
          *     Pure: it reads what the library already knows of each model and
          *     calls nothing. A model id it does not know is left out of the
          *     answer rather than failing the rest.
@@ -508,6 +514,12 @@ export interface paths {
          *     * **Says what the operator already owns**, by path, so a 16 GB
          *       download of a file already on the disk is visible before it
          *       starts rather than after.
+         *     * **Carries each candidate's facts** for `POST /v1/eligibility`
+         *       (`CatalogueCandidate.facts`, LS2). For a safetensors folder that
+         *       means reading its remote `config.json` (a few kilobytes, one
+         *       ranged read per folder, as preflight reads a GGUF's header), so
+         *       an MLX-quantized folder is told from a plain one, and the
+         *       architecture is known, before anything is downloaded.
          *
          *     The `repo` is a query parameter because it contains a slash and
          *     may be one or two segments (`unsloth/Qwen3.8-27B-GGUF`, but
@@ -1886,6 +1898,14 @@ export interface components {
              *     formats, and only the detail call reads the file list.
              */
             formats?: components["schemas"]["schemas-ModelFormat"][];
+            /**
+             * @description One per format in `formats`, for `POST /v1/eligibility`
+             *     (LS2), always `approximate`: the format and MLX marker from
+             *     tags, the architecture from the hub's repo-level GGUF
+             *     metadata. The row's dot is the best of them; the detail call
+             *     judges each version.
+             */
+            facts?: components["schemas"]["EligibilityCandidate"][];
             gated?: components["schemas"]["GateKind"];
             private?: boolean;
             downloads?: number;
@@ -2074,6 +2094,15 @@ export interface components {
              *     is about to click.
              */
             gated?: boolean;
+            /**
+             * @description This version's facts for `POST /v1/eligibility` (LS2): its
+             *     format; its architecture (the hub's read of the repo's GGUF,
+             *     or the folder's own remote `config.json`); its quantization,
+             *     from its name; and, for a folder, whether `config.json`
+             *     carries MLX's quantization block. A fact that could not be
+             *     read is absent, which the judge says.
+             */
+            facts?: components["schemas"]["EligibilityCandidate"];
         };
         /** @description One file in an upstream repo, with whatever it can be verified against. */
         CatalogueFile: {
@@ -2289,6 +2318,12 @@ export interface components {
              */
             maxContextExpertsInRam?: number | null;
             alreadyOwned?: components["schemas"]["AlreadyOwned"];
+            /**
+             * @description This entry's facts for `POST /v1/eligibility` (LS2), from what
+             *     the review recorded: a GGUF of `architecture`, at `label`.
+             *     No upstream call, like the rest of this answer.
+             */
+            facts?: components["schemas"]["EligibilityCandidate"];
         };
         /**
          * @description Which entry this machine should take, and why -- or, when
@@ -3741,8 +3776,8 @@ export interface components {
          *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
          *     `vllm` drives upstream `vllm serve` and loads safetensors.
          *     `mlx` drives upstream `mlx_lm.server` and loads MLX-format
-         *     safetensors, on Apple silicon only — experimental until a
-         *     physical Mac run is recorded. We never ship an engine — every
+         *     safetensors, on Apple silicon only; not experimental since its
+         *     run on GitHub's macOS runners (A4, 2026-09-30). We never ship an engine — every
          *     one of them is an upstream project we wrap and track.
          *
          *     They differ in far more than argv, and that is why readiness
@@ -4084,6 +4119,49 @@ export interface components {
          */
         "schemas-ModelFormat": "gguf" | "safetensors" | "kev_checkpoint";
         /**
+         * @description A model not in the library yet, judged by its facts
+         *     (library-sources-and-engines.md, LS2): a version in a catalogue
+         *     repo, a starter entry, or a search row. The library's catalogue
+         *     answers carry these ready to send back (`CatalogueCandidate.facts`,
+         *     `StarterModel.facts`, `CatalogueSearchResult.facts`), so a caller
+         *     derives nothing itself.
+         *
+         *     The same terms as a library model's, with one difference: here an
+         *     absent fact is *not known yet*, where on a library model it means
+         *     *unreadable*. A term that constrains a fact nobody knows cannot be
+         *     checked, so a match resting on it is at best `may_run` (an
+         *     `after_preparation` match stays one), its reason names what was
+         *     assumed, and the answer is `approximate`.
+         */
+        EligibilityCandidate: {
+            /**
+             * @description The caller's handle for it, echoed as `ModelEligibility.modelId`.
+             *     Opaque; unique within one request.
+             */
+            id: string;
+            format: components["schemas"]["schemas-ModelFormat"];
+            /**
+             * @description GGUF's `general.architecture`, as the hub read it from the
+             *     repo's GGUF, or a safetensors folder's `architectures[0]`, from
+             *     its remote `config.json`.
+             */
+            architecture?: string;
+            /** @description The GGUF quantization, from the file's name (the scan's own fallback). */
+            quantization?: string;
+            /**
+             * @description Whether the folder's `config.json` carries MLX's quantization
+             *     block (`MlxQuantizationRule`). Absent: not known.
+             */
+            mlxQuantized?: boolean;
+            /**
+             * @description Guessed from a search row's tags and the hub's repo-level
+             *     metadata rather than read from one version's files: a repo can
+             *     hold many versions, and only its detail lists them.
+             * @default false
+             */
+            approximate: boolean;
+        };
+        /**
          * @description Which engine adapter constructs the argv and interprets
          *     readiness. Deliberately a closed enum rather than a free string:
          *     an engine is supported exactly when an adapter exists for it,
@@ -4111,8 +4189,8 @@ export interface components {
          *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
          *     `vllm` drives upstream `vllm serve` and loads safetensors.
          *     `mlx` drives upstream `mlx_lm.server` and loads MLX-format
-         *     safetensors, on Apple silicon only — experimental until a
-         *     physical Mac run is recorded. We never ship an engine — every
+         *     safetensors, on Apple silicon only; not experimental since its
+         *     run on GitHub's macOS runners (A4, 2026-09-30). We never ship an engine — every
          *     one of them is an upstream project we wrap and track.
          *
          *     They differ in far more than argv, and that is why readiness
@@ -4187,7 +4265,8 @@ export interface components {
             /**
              * @description The model's `architecture` must be one of these: GGUF's
              *     `general.architecture`, or a safetensors folder's
-             *     `architectures[0]`. Absent means any.
+             *     `architectures[0]`. Absent means any. Can be long: llama.cpp
+             *     declares every architecture its installed build knows.
              */
             architectures?: string[];
             /** @description The GGUF quantization must be one of these. Absent means any. */
@@ -4230,8 +4309,16 @@ export interface components {
             accepts: components["schemas"]["ModelRequirement"][];
         };
         EligibilityRequest: {
-            /** @description Library model ids to judge. Absent means every model. */
+            /**
+             * @description Library model ids to judge. Absent means every model, unless
+             *     `candidates` are sent: then none.
+             */
             models?: string[];
+            /**
+             * @description Models not in the library yet, judged by their facts (LS2).
+             *     Answered after `models`, in the order sent.
+             */
+            candidates?: components["schemas"]["EligibilityCandidate"][];
             engines: components["schemas"]["EligibilityEngine"][];
         };
         /**
@@ -4252,9 +4339,10 @@ export interface components {
         EligibilityLevel: "works_here" | "other_engine" | "not_here";
         /**
          * @description One model against one engine. `runs`: a requirement with authority
-         *     `eugene` matches. `may_run`: only the engine can tell, at load.
-         *     `after_preparation`: it runs once the engine prepares it. `no`:
-         *     no requirement matches, and `reason` says which term failed.
+         *     `eugene` matches. `may_run`: only the engine can tell, at load, or
+         *     (for an `EligibilityCandidate`) a term rests on a fact not known
+         *     yet. `after_preparation`: it runs once the engine prepares it.
+         *     `no`: no requirement matches, and `reason` says which term failed.
          * @enum {string}
          */
         EngineVerdictKind: "runs" | "may_run" | "after_preparation" | "no";
@@ -4273,8 +4361,15 @@ export interface components {
             preference?: number;
         };
         ModelEligibility: {
+            /** @description A library model's id, or an `EligibilityCandidate`'s `id`. */
             modelId: string;
             level: components["schemas"]["EligibilityLevel"];
+            /**
+             * @description The facts were a guess (`EligibilityCandidate.approximate`), or
+             *     a term could not be checked. Said beside the dot, never hidden.
+             * @default false
+             */
+            approximate: boolean;
             /**
              * @description Every engine sent, best first: available before not, then
              *     `runs`, `may_run`, `after_preparation`, `no`, then

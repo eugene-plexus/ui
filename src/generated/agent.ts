@@ -3960,7 +3960,11 @@ export interface components {
              *     (`POST /v1/eligibility`; library-sources-and-engines.md, LS1).
              *     Finer than `modelFormats`: the MLX marker, architectures, a
              *     preparation step, and whether only the engine can tell. A
-             *     property of the engine, not of this host.
+             *     property of the engine, and for llama.cpp of its build: the
+             *     architectures its installed build knows, read from upstream's
+             *     source at that build's tag once and kept; until then, or for
+             *     a build not installed, the list Eugene ships with *may run*
+             *     for the rest (LS2).
              */
             accepts?: components["schemas"]["ModelRequirement"][];
             /**
@@ -5797,8 +5801,8 @@ export interface components {
          *     `llama_cpp` drives upstream `llama-server` and loads GGUF.
          *     `vllm` drives upstream `vllm serve` and loads safetensors.
          *     `mlx` drives upstream `mlx_lm.server` and loads MLX-format
-         *     safetensors, on Apple silicon only — experimental until a
-         *     physical Mac run is recorded. We never ship an engine — every
+         *     safetensors, on Apple silicon only; not experimental since its
+         *     run on GitHub's macOS runners (A4, 2026-09-30). We never ship an engine — every
          *     one of them is an upstream project we wrap and track.
          *
          *     They differ in far more than argv, and that is why readiness
@@ -5908,7 +5912,8 @@ export interface components {
             /**
              * @description The model's `architecture` must be one of these: GGUF's
              *     `general.architecture`, or a safetensors folder's
-             *     `architectures[0]`. Absent means any.
+             *     `architectures[0]`. Absent means any. Can be long: llama.cpp
+             *     declares every architecture its installed build knows.
              */
             architectures?: string[];
             /** @description The GGUF quantization must be one of these. Absent means any. */
