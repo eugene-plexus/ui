@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { capableEngines, offeredOnThisNode } from "./engineCompat";
+import { capableEngines, installedButNotFor, offeredOnThisNode } from "./engineCompat";
 import type { EngineDescriptor, LibraryModel } from "./types";
 
 function engine(overrides: Partial<EngineDescriptor>): EngineDescriptor {
@@ -129,5 +129,36 @@ describe("offeredOnThisNode", () => {
     } as Partial<EngineDescriptor>);
     expect(offeredOnThisNode(onWindows)).toBe(false);
     expect(offeredOnThisNode(onLinuxCuda)).toBe(true);
+  });
+});
+
+describe("installedButNotFor", () => {
+  const strata = engine({ engine: "strata", modelFormats: [] });
+
+  it("names Strata, installed but not offered for a GGUF model, and says where its models go", () => {
+    const gguf = model({ format: "gguf" });
+    const missing = installedButNotFor(gguf, [llama, strata]);
+    expect(missing.map((m) => m.engine)).toEqual(["strata"]);
+    expect(missing[0]!.why).toMatch(/prepared Strata models/);
+    expect(missing[0]!.why).toMatch(/Backends/);
+  });
+
+  it("says which format an installed engine loads instead", () => {
+    const missing = installedButNotFor(model({ format: "gguf" }), [llama, vllm]);
+    expect(missing).toEqual([
+      { engine: "vllm", why: "loads safetensors models, and this one is gguf." },
+    ]);
+  });
+
+  it("explains an MLX-quantized directory rather than a format mismatch", () => {
+    const marked = model({ safetensors: { mlxQuantization: { bits: 4, groupSize: 64 } } });
+    const missing = installedButNotFor(marked, [vllm, mlx]);
+    expect(missing.map((m) => m.engine)).toEqual(["vllm"]);
+    expect(missing[0]!.why).toMatch(/MLX-quantized/);
+  });
+
+  it("leaves out engines that are not installed, and those already offered", () => {
+    const absent = engine({ engine: "strata", modelFormats: [], available: false });
+    expect(installedButNotFor(model({ format: "gguf" }), [llama, absent])).toEqual([]);
   });
 });

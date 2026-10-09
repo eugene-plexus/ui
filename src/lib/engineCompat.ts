@@ -32,6 +32,33 @@ export function capableEngines(
 }
 
 /**
+ * The engines installed on the node that cannot load this model, each
+ * with why. A profile's engine list holds only `capableEngines`, so an
+ * engine someone has just installed was simply missing from it, with
+ * nothing saying why (Strata on Amish_Station, 2026-10-09).
+ */
+export function installedButNotFor(
+  model: LibraryModel,
+  engines: EngineDescriptor[],
+): { engine: string; why: string }[] {
+  const capable = new Set(capableEngines(model, engines).map((e) => e.engine));
+  return engines
+    .filter((e) => e.available && !capable.has(e.engine))
+    .map((e) => {
+      const formats = e.modelFormats ?? [];
+      const why =
+        formats.length === 0
+          ? e.engine === "strata"
+            ? "runs only prepared Strata models, not Library files. Add one under Backends, in this machine's Strata section."
+            : "runs only models prepared for it, not Library files."
+          : formats.includes(model.format)
+            ? "cannot load MLX-quantized weights; only the mlx engine reads them."
+            : `loads ${formats.join(" or ")} models, and this one is ${model.format}.`;
+      return { engine: e.engine, why };
+    });
+}
+
+/**
  * Whether an engine belongs on a node's engine list at all.
  *
  * An engine Eugene installs itself (llama.cpp) is always listed: there,

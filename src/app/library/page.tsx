@@ -13,7 +13,7 @@ import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
 import { RunButton } from "@/components/RunButton";
 import { ApiError, api, describeError } from "@/lib/api";
-import { capableEngines } from "@/lib/engineCompat";
+import { capableEngines, installedButNotFor } from "@/lib/engineCompat";
 import { type NodeBudget, type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
 import { expertsContextSentence, placementSentence } from "@/lib/fitWords";
@@ -689,6 +689,9 @@ function ModelDetail({
   const enginesKnown = engines !== null;
   const capable = capableEngines(model, engines ?? []);
   const usable = capable.filter((e) => e.available);
+  // Installed here, but not in this model's engine list: said, so the
+  // list never just silently lacks an engine someone has installed.
+  const notForThis = installedButNotFor(model, engines ?? []);
 
   const running = runningModel(model, runtimes);
   // The machine's own name when it has one, even when it is this one:
@@ -870,6 +873,16 @@ function ModelDetail({
             </>
           )}
         </div>
+      )}
+
+      {notForThis.length > 0 && (
+        <ul data-testid="engines-not-for-this" className="text-xs text-[color:var(--muted)]">
+          {notForThis.map((e) => (
+            <li key={e.engine}>
+              {e.engine} is installed on {where} but is not offered for this model: it {e.why}
+            </li>
+          ))}
+        </ul>
       )}
 
       <ProfileEditor

@@ -613,6 +613,29 @@ describe("before the picked node has said which engines it has", () => {
   });
 });
 
+describe("an engine installed on the node that cannot load this model", () => {
+  beforeEach(() => {
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
+  });
+
+  it("is named with why, not just missing from the profile's engine list", async () => {
+    // Troy, 2026-10-09: Strata installed on Amish_Station, and a GGUF
+    // model's profile offered llama.cpp alone with nothing saying why.
+    handlers.set("GET agent/v1/engines", () =>
+      ok({
+        engines: [
+          { engine: "llama_cpp", available: true, modelFormats: ["gguf"] },
+          { engine: "strata", available: true, modelFormats: [] },
+        ],
+      }),
+    );
+    await openTheModel();
+    const note = await screen.findByTestId("engines-not-for-this");
+    expect(note).toHaveTextContent("strata is installed on Amish_Station");
+    expect(note).toHaveTextContent("prepared Strata models");
+  });
+});
+
 describe("sizes", () => {
   it("are decimal, the unit the download and the hub quoted", async () => {
     await openTheModel();
