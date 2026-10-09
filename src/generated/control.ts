@@ -4233,9 +4233,13 @@ export interface components {
          *     it or tell when it is ready.
          *
          *     `strata` is experimental. It launches Strata's Python HTTP
-         *     server and native engine together, using a prepared Strata JSON
-         *     configuration as `RuntimeSpec.modelPath`. It does not accept an
-         *     arbitrary GGUF or prepare model weights automatically.
+         *     server and native engine together, and loads a model Strata
+         *     prepared (`ModelFormat` `prepared`): `RuntimeSpec.modelPath`
+         *     names that model's provenance file (`PreparedProvenance`), whose
+         *     `entry` is Strata's own JSON configuration. A runtime declared
+         *     before LS3 may name the JSON configuration itself; that still
+         *     launches. It does not accept an arbitrary GGUF, and does not yet
+         *     prepare one itself (LS5).
          *
          *     `kev` drives upstream `python -m kev.serve` and loads Kev
          *     decision checkpoints (`kev_checkpoint` format) — a decision

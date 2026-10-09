@@ -458,9 +458,13 @@ export interface components {
          *     it or tell when it is ready.
          *
          *     `strata` is experimental. It launches Strata's Python HTTP
-         *     server and native engine together, using a prepared Strata JSON
-         *     configuration as `RuntimeSpec.modelPath`. It does not accept an
-         *     arbitrary GGUF or prepare model weights automatically.
+         *     server and native engine together, and loads a model Strata
+         *     prepared (`ModelFormat` `prepared`): `RuntimeSpec.modelPath`
+         *     names that model's provenance file (`PreparedProvenance`), whose
+         *     `entry` is Strata's own JSON configuration. A runtime declared
+         *     before LS3 may name the JSON configuration itself; that still
+         *     launches. It does not accept an arbitrary GGUF, and does not yet
+         *     prepare one itself (LS5).
          *
          *     `kev` drives upstream `python -m kev.serve` and loads Kev
          *     decision checkpoints (`kev_checkpoint` format) — a decision
@@ -655,8 +659,8 @@ export interface components {
          * LibraryModel
          * @description One launchable model on this host.
          *
-         *     The format-independent facts are here; exactly one of `gguf` or
-         *     `safetensors` carries the rest. That split is not tidiness — a
+         *     The format-independent facts are here; exactly one of `gguf`,
+         *     `safetensors`, `kev` or `prepared` carries the rest. That split is not tidiness — a
          *     quant tier is a GGUF concept and an exact parameter count is a
          *     safetensors one, and flattening both into one object would
          *     produce a schema half of whose fields are null for any given
@@ -691,8 +695,9 @@ export interface components {
              *     a handle.
              *
              *     A `.gguf` file for GGUF (the **first** shard when split), a
-             *     directory for safetensors. This is what goes on a runtime's
-             *     `modelPath`.
+             *     directory for safetensors, the provenance file
+             *     (`<name>.eugene-prepared.json`) for `prepared`. This is what
+             *     goes on a runtime's `modelPath`.
              *
              *     **A path on the host this library runs on** — inside its
              *     container, if it runs in one. A node that runs the engine
@@ -714,8 +719,9 @@ export interface components {
             format: components["schemas"]["ModelFormat"];
             /**
              * Name
-             * @description The filename with its extension stripped, or the directory
-             *     name for safetensors. **Not derived from metadata**: the
+             * @description The filename with its extension stripped, the directory
+             *     name for safetensors, or the provenance file's name without
+             *     `.eugene-prepared.json` for `prepared`. **Not derived from metadata**: the
              *     file's own name is what the operator downloaded, what they
              *     call it, and what `Runtime.modelAlias` defaults to — so
              *     plainly-named files mean the obvious name is already the
@@ -739,6 +745,10 @@ export interface components {
              *     that answers "will this fit on the drive I am copying it
              *     to", which is why it is a sum rather than the weights file
              *     alone.
+             *
+             *     Absent for `prepared`: the engine's own files are not read,
+             *     so their size is not known, and the provenance file's few
+             *     bytes are not the model's size.
              */
             sizeBytes?: number | null;
             /**
@@ -794,6 +804,7 @@ export interface components {
             gguf?: components["schemas"]["GgufDetail"] | null;
             safetensors?: components["schemas"]["SafetensorsDetail"] | null;
             kev?: components["schemas"]["KevCheckpointDetail"] | null;
+            prepared?: components["schemas"]["PreparedDetail"] | null;
             /**
              * Profilecount
              * @description How many launch profiles are saved against this model. On
@@ -964,6 +975,16 @@ export interface components {
          *       scanner on purpose, and the decision head is what makes this
          *       one a launchable model instead. Decision-only —
          *       `ModelCapabilities.decision`, never `chat`.
+         *     * `prepared` — what one engine made for itself from another
+         *       model, in the engine's own format: Strata's expert pack,
+         *       lookup table and MTP helper, with its JSON configuration
+         *       (library-sources-and-engines.md §4.5, Troy's L6). The library
+         *       does not read the engine's files; a small provenance file
+         *       beside them, `<name>.eugene-prepared.json`
+         *       (`PreparedProvenance`), names the engine, its entry file and
+         *       what it was made from, and is the model's path. Only the
+         *       engine it was prepared for loads it
+         *       (`ModelRequirement.preparedFor`).
          *
          *     Shared because it appears on both sides of a join: a library
          *     entry declares what a model *is*, and an engine's
@@ -972,7 +993,7 @@ export interface components {
          *     (library-sources-and-engines.md).
          * @enum {string}
          */
-        ModelFormat: "gguf" | "safetensors" | "kev_checkpoint";
+        ModelFormat: "gguf" | "safetensors" | "kev_checkpoint" | "prepared";
         /**
          * ModelProfile
          * @description A saved profile, as stored: the spec plus server-owned
@@ -1079,6 +1100,94 @@ export interface components {
         OperationList: {
             /** Operations */
             operations: components["schemas"]["Operation"][];
+        };
+        /**
+         * PreparedDetail
+         * @description A prepared model's provenance, as its file
+         *     (`PreparedProvenance`) says it, and what the library made of it.
+         *     Present iff `format` is `prepared` and the file could be read.
+         *
+         *     The engine's own files are not read (experimental-engines.md:
+         *     prepared files stay usable without the library parsing them), so
+         *     a prepared model has no architecture, context, size or fit here:
+         *     the engine says what it loaded when it is ready
+         *     (`RuntimeCapabilities`), and fit waits for the engine's own fit
+         *     model (LS6). `files` lists the provenance file (`index`) and the
+         *     entry file (`config`) when the library's host can see it.
+         */
+        PreparedDetail: {
+            engine: components["schemas"]["EngineKind"];
+            /**
+             * Entry
+             * @description The entry file as the provenance file writes it.
+             */
+            entry: string;
+            /**
+             * Entrypath
+             * @description `entry` resolved against the folder holding the provenance
+             *     file, on this library's host; the same as `entry` when that
+             *     is absolute.
+             */
+            entryPath?: string | null;
+            /**
+             * Entryfound
+             * @description Whether this library's host sees the entry file. A relative
+             *     entry that is not there makes the model `unreadable`. An
+             *     absolute entry not seen here is not an error: it is a path on
+             *     the node that runs the model (an engine's prepared files
+             *     belong on that node's own fast drive, which only its agent
+             *     sees), and the agent checks it when the model starts, naming
+             *     any missing file.
+             */
+            entryFound?: boolean | null;
+            /**
+             * Recipe
+             * @description As `PreparedProvenance.recipe`; absent means prepared outside Eugene.
+             */
+            recipe?: string | null;
+            /** Recipeversion */
+            recipeVersion?: string | null;
+            source?: components["schemas"]["PreparedSource"] | null;
+            /**
+             * Sourcemodelid
+             * @description The library model it was prepared from, when `source.path`
+             *     names one this library lists. Absent when it does not, or
+             *     names none.
+             */
+            sourceModelId?: string | null;
+            /** Preparedat */
+            preparedAt?: string | null;
+        };
+        /**
+         * PreparedSource
+         * @description What a prepared model was made from, as far as it is known. Every
+         *     field is optional: a model adopted from outside Eugene may say
+         *     nothing, and "not known" is shown as such.
+         */
+        PreparedSource: {
+            /**
+             * Path
+             * @description The source model's `LibraryModel.path`, when it is a library
+             *     model. The library links the two by it (`PreparedDetail.sourceModelId`).
+             */
+            path?: string | null;
+            /**
+             * Repoid
+             * @description The hub repo it came from, e.g. `ISTA-DASLab/Qwen3.8-Flash-Next-GGUF`.
+             */
+            repoId?: string | null;
+            /**
+             * File
+             * @description The repo-relative file, for a GGUF (its first shard when split).
+             */
+            file?: string | null;
+            /**
+             * Revision
+             * @description The repo commit.
+             */
+            revision?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * ProfileBuiltAccuracy

@@ -3926,9 +3926,9 @@ export interface components {
              *     grey out a launch button and name the missing engine instead
              *     of offering one that fails.
              *
-             *     `strata` lists no catalogue model formats: it requires a
-             *     prepared JSON configuration and is offered through the
-             *     experimental prepared-model form, not arbitrary GGUF launch.
+             *     `strata` lists only `prepared`: it loads models it prepared,
+             *     never an arbitrary GGUF, so a console that knows no
+             *     `prepared` model offers it for none.
              *
              *     `vllm` does **not** list `gguf`, though upstream has a path
              *     for it. That path is documented as highly experimental and
@@ -4134,11 +4134,16 @@ export interface components {
              *     rename, or hash-address a model file; a runtime points at
              *     where the user put it.
              *
-             *     For `strata`, this is a prepared Strata JSON configuration
-             *     in a Library folder on the target node. It references the
-             *     existing weights, pack, tokenizer and optional MTP assets.
-             *     It is not copied into the node's model cache. The adapter
-             *     writes a private launch config and preserves this original.
+             *     For `strata`, this is a prepared model's provenance file
+             *     (`<name>.eugene-prepared.json`, `PreparedProvenance`), the
+             *     `path` of a `prepared` library model; at every launch the
+             *     agent reads it and resolves its `entry`, Strata's JSON
+             *     configuration, which references the existing weights, pack,
+             *     tokenizer and optional MTP assets. A declaration from before
+             *     LS3 may name that JSON configuration directly, and still
+             *     launches. Neither is copied into the node's model cache. The
+             *     adapter writes a private launch config and preserves the
+             *     originals.
              *
              *     For a sharded GGUF this is the *first* shard
              *     (`…-00001-of-0000N.gguf`), which is what the engine expects.
@@ -5781,9 +5786,13 @@ export interface components {
          *     it or tell when it is ready.
          *
          *     `strata` is experimental. It launches Strata's Python HTTP
-         *     server and native engine together, using a prepared Strata JSON
-         *     configuration as `RuntimeSpec.modelPath`. It does not accept an
-         *     arbitrary GGUF or prepare model weights automatically.
+         *     server and native engine together, and loads a model Strata
+         *     prepared (`ModelFormat` `prepared`): `RuntimeSpec.modelPath`
+         *     names that model's provenance file (`PreparedProvenance`), whose
+         *     `entry` is Strata's own JSON configuration. A runtime declared
+         *     before LS3 may name the JSON configuration itself; that still
+         *     launches. It does not accept an arbitrary GGUF, and does not yet
+         *     prepare one itself (LS5).
          *
          *     `kev` drives upstream `python -m kev.serve` and loads Kev
          *     decision checkpoints (`kev_checkpoint` format) — a decision
@@ -5858,6 +5867,16 @@ export interface components {
          *       scanner on purpose, and the decision head is what makes this
          *       one a launchable model instead. Decision-only —
          *       `ModelCapabilities.decision`, never `chat`.
+         *     * `prepared` — what one engine made for itself from another
+         *       model, in the engine's own format: Strata's expert pack,
+         *       lookup table and MTP helper, with its JSON configuration
+         *       (library-sources-and-engines.md §4.5, Troy's L6). The library
+         *       does not read the engine's files; a small provenance file
+         *       beside them, `<name>.eugene-prepared.json`
+         *       (`PreparedProvenance`), names the engine, its entry file and
+         *       what it was made from, and is the model's path. Only the
+         *       engine it was prepared for loads it
+         *       (`ModelRequirement.preparedFor`).
          *
          *     Shared because it appears on both sides of a join: a library
          *     entry declares what a model *is*, and an engine's
@@ -5866,7 +5885,7 @@ export interface components {
          *     (library-sources-and-engines.md).
          * @enum {string}
          */
-        ModelFormat: "gguf" | "safetensors" | "kev_checkpoint";
+        ModelFormat: "gguf" | "safetensors" | "kev_checkpoint" | "prepared";
         /**
          * @description The one marker the library reads that decides an engine: a
          *     safetensors folder whose `config.json` carries MLX's
@@ -5919,6 +5938,14 @@ export interface components {
             /** @description The GGUF quantization must be one of these. Absent means any. */
             quantizations?: string[];
             mlxQuantization?: components["schemas"]["MlxQuantizationRule"];
+            /**
+             * @description For `format: prepared` only: the engine a prepared model must
+             *     have been prepared for (`PreparedProvenance.engine`). Absent:
+             *     the engine declaring this requirement. A prepared model never
+             *     meets a requirement of an engine it was not prepared for,
+             *     since its files are in that engine's own format.
+             */
+            preparedFor?: components["schemas"]["EngineKind"];
             preparation?: components["schemas"]["ModelPreparation"];
             authority?: components["schemas"]["ModelRequirementAuthority"];
             /**
