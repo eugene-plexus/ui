@@ -9,7 +9,7 @@
 
 import { offeredOnThisNode } from "./engineCompat";
 import type { components as LibraryComponents } from "@/generated/library";
-import type { EngineDescriptor } from "./types";
+import type { EngineDescriptor, EngineModelList } from "./types";
 
 export type EligibilityEngine = LibraryComponents["schemas"]["EligibilityEngine"];
 export type EngineVerdict = LibraryComponents["schemas"]["EngineVerdict"];
@@ -47,6 +47,30 @@ export function eligibilityEngines(engines: EngineDescriptor[]): EligibilityEngi
     experimental: Boolean(e.experimental),
     accepts: e.accepts ?? (e.modelFormats ?? []).map((format) => ({ format, preference: 100 })),
   }));
+}
+
+/** The lists of models the node's engines publish as supported (LS4), as
+ * the Library's search takes them: sent like `accepts`, so it calls no agent. */
+export function engineLists(engines: EngineDescriptor[]): EngineModelList[] {
+  return engines
+    .filter((e) => (e.supportedModels ?? []).length > 0)
+    .map((e) => ({ engine: e.engine, models: e.supportedModels ?? [] }));
+}
+
+/**
+ * Whether an engine installed on the node runs something from a hub as it is
+ * (Troy, 2026-10-09: then Discover opens on *Works here now*). A `prepared`
+ * requirement does not count, nor one needing preparation: no hub model is
+ * either, so with Strata alone the filter would open on nothing.
+ */
+export function runsHubModelsAsTheyAre(engines: EngineDescriptor[] | null): boolean {
+  return (engines ?? []).some(
+    (e) =>
+      e.available &&
+      eligibilityEngines([e])[0]!.accepts.some(
+        (need) => need.format !== "prepared" && need.preparation == null,
+      ),
+  );
 }
 
 /** Engines that run the model as it is, or may: what a profile can name. */

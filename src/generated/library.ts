@@ -504,10 +504,44 @@ export interface paths {
          *     seconds and search-as-you-type will exceed that inside two
          *     minutes. Responses are cached server-side for a short window;
          *     the client is still expected not to fire on every keystroke.
+         *
+         *     **One source: the first enabled `hf_hub` source** (LS4), so a
+         *     console older than the sources list keeps the answer it had.
+         *     `POST` on this path searches the chosen sources together.
          */
         get: operations["searchCatalogue"];
         put?: never;
-        post?: never;
+        /**
+         * Search the chosen catalogue sources together.
+         * @description Discover's search since LS4 (library-sources-and-engines.md
+         *     §4.4): every enabled source in `catalogueSources`, or the ones
+         *     named, in one answer, each result naming the source it came from
+         *     (`CatalogueSearchResult.source`).
+         *
+         *     * An `hf_hub` source is searched as `GET` searches the hub,
+         *       with the same filters and the same caching. A pasted link is
+         *       looked up on the source whose address has the link's host, or
+         *       else on the first enabled `hf_hub` source.
+         *     * An `engine_list` source lists the models engines publish as
+         *       supported (`SupportedModel`), from the lists the caller sends
+         *       (`engines`): the console sends the picked node's, as it sends
+         *       that node's `accepts` to the judge, so the library calls no
+         *       agent and the list is the one that node's adapter would prepare
+         *       and run. A model is listed when every word of `q` is in its
+         *       title, its engine's words for it, its publisher, its repo or
+         *       its size, and `format` and `author` filter it as they filter a
+         *       hub. Its facts are exact (a named file at a pinned revision), so
+         *       its dot is not approximate.
+         *
+         *     Results: the engines' lists first, in the engines' own order, then
+         *     each hub's in its own order. `sources` says what each source
+         *     answered, and a source that failed names its cause there while
+         *     the others still answer: one hub down is not an empty search.
+         *
+         *     A later page (`cursor`) asks only the hubs that had more; the
+         *     engines' lists are on the first page whole.
+         */
+        post: operations["searchCatalogueSources"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1996,6 +2030,126 @@ export interface components {
              *     popularity numbers should know they are minutes old.
              */
             cachedAt?: string;
+            /**
+             * @description What each source asked answered (`POST` only, LS4), in
+             *     `catalogueSources` order. A source that failed says why here,
+             *     while the others' results stand.
+             */
+            sources?: components["schemas"]["CatalogueSourceStatus"][];
+        };
+        /**
+         * @description Where a catalogue source's models come from (LS4,
+         *     library-sources-and-engines.md §4.4).
+         *
+         *     * `hf_hub`: a Hugging Face-compatible hub — the public one, a
+         *       regional mirror or an enterprise instance — at its own address,
+         *       with its own token.
+         *     * `engine_list`: the models engines publish as supported
+         *       (`SupportedModel`), each pointing at hub files and the
+         *       preparation it needs. The list ships with the engine's adapter
+         *       in the agent; the caller of a search sends the picked node's.
+         *
+         *     The Library folders are a source too in the design's words, and
+         *     stay `modelRoots`: they are scanned, not searched. ModelScope,
+         *     the Ollama registry or a direct address would be further kinds;
+         *     none is in v0.2.
+         * @enum {string}
+         */
+        CatalogueSourceKind: "hf_hub" | "engine_list";
+        /**
+         * @description One entry of the library's `catalogueSources` config (a
+         *     `catalogue_sources` value, LS4). The default list is the public
+         *     hub (`huggingface`) and every engine's list (`engines`).
+         */
+        CatalogueSource: {
+            /**
+             * @description Stable: results, downloads and a later page name their source
+             *     by it, and an entry's stored token is kept under it.
+             */
+            id: string;
+            kind: components["schemas"]["CatalogueSourceKind"];
+            /** @description What the person calls it. Absent: the id. */
+            label?: string;
+            /**
+             * @description Off: not searched, and a call naming it answers 409. Distinct
+             *     from `catalogueEnabled`, which stops every outbound request.
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * @description `hf_hub` only: the hub's address. Absent:
+             *     `https://huggingface.co`.
+             */
+            address?: string;
+            /**
+             * @description `hf_hub` only: a token from the person's account on that hub,
+             *     for gated and private repos and higher rate limits. Sealed at
+             *     rest; `GET` answers `null` and says whether one is stored in
+             *     `hasToken`. A `PATCH` entry without it keeps the token stored
+             *     under the same `id`; `""` clears it.
+             */
+            token?: string | null;
+            /** @description Read-only, in `GET`: whether a token is stored for this entry. */
+            hasToken?: boolean;
+            /**
+             * @description `engine_list` only: whose list. Absent: every engine that
+             *     publishes one, including engines added later.
+             */
+            engine?: components["schemas"]["schemas-EngineKind"];
+        };
+        CatalogueSourceStatus: {
+            id: string;
+            kind: components["schemas"]["CatalogueSourceKind"];
+            label?: string;
+            /** @description Whether it was asked. False for one switched off, or not named. */
+            searched: boolean;
+            /** @description How many results it gave, after filters. */
+            results?: number;
+            /**
+             * @description Why it gave none, in words naming the observed cause: the hub
+             *     refused, could not be reached, or is switched off; no engine
+             *     list came with the search (a node older than LS4).
+             */
+            problem?: string;
+        };
+        /**
+         * @description Hub order, highest first (`desc`) or lowest first.
+         * @default desc
+         * @enum {string}
+         */
+        CatalogueSortDirection: "asc" | "desc";
+        /**
+         * @description `POST /v1/catalogue/search` (LS4). The filters mean what they
+         *     mean on `GET`, for every source.
+         */
+        CatalogueSearchRequest: {
+            /**
+             * @description Free text, or a pasted repo link (looked up, as on `GET`).
+             *     Absent: every source's listing by `sort`.
+             */
+            q?: string;
+            format?: components["schemas"]["schemas-ModelFormat"];
+            author?: string;
+            sort?: components["schemas"]["CatalogueSort"];
+            direction?: components["schemas"]["CatalogueSortDirection"];
+            /**
+             * @description Rows per hub source. An engine's list is never cut short.
+             * @default 25
+             */
+            limit: number;
+            /**
+             * @description A previous answer's `nextCursor`: this library's own token,
+             *     naming each hub's continuation, never a hub's raw cursor.
+             */
+            cursor?: string;
+            /** @description Which sources to search, by id. Absent: every enabled one. */
+            sources?: string[];
+            /**
+             * @description The engines' lists for the `engine_list` sources: the picked
+             *     node's `EngineDescriptor.supportedModels`, as its agent reports
+             *     them. Absent: those sources list nothing, and say so.
+             */
+            engines?: components["schemas"]["EngineModelList"][];
         };
         /**
          * @description One upstream repository. **No sizes and no fit verdict** — see
@@ -2005,6 +2159,26 @@ export interface components {
         CatalogueSearchResult: {
             /** @description Full repo id, e.g. `unsloth/Qwen3.8-27B-GGUF`. */
             repo: string;
+            /**
+             * @description The `CatalogueSource.id` this result came from (`POST`, LS4).
+             *     Absent on `GET`: the first enabled `hf_hub` source.
+             */
+            source?: string;
+            /**
+             * @description The `hf_hub` source to ask about this repo (detail, card,
+             *     preflight, download, as `source`): the result's own source for
+             *     a hub's result; the first enabled `hf_hub` source for an
+             *     engine's list. Absent when no `hf_hub` source is enabled.
+             */
+            hubSource?: string;
+            /** @description An `engine_list` result's engine. */
+            engine?: components["schemas"]["schemas-EngineKind"];
+            /**
+             * @description An `engine_list` result: the engine's entry, naming the one
+             *     version of `repo` it is (`supported.source.file`) at its
+             *     revision. `name` is its title and `facts` its exact facts.
+             */
+            supported?: components["schemas"]["SupportedModel"];
             /**
              * @description The publisher. Prominent on purpose — "which quant publisher
              *     do I trust" is how people navigate this catalogue, and it is
@@ -2575,6 +2749,13 @@ export interface components {
             /** @description Upstream repo id. */
             repo: string;
             /**
+             * @description The `hf_hub` source to fetch from (`CatalogueSource.id`, a
+             *     search result's `hubSource`, LS4). Absent: the first enabled
+             *     `hf_hub` source. Kept on the record, so a resume asks the same
+             *     hub with the same token.
+             */
+            source?: string;
+            /**
              * @description Resolved to a commit at start and pinned for the life of
              *     the download, so a resume days later fetches the same bytes
              *     it began with.
@@ -2639,6 +2820,12 @@ export interface components {
             id: string;
             state: components["schemas"]["DownloadState"];
             repo: string;
+            /**
+             * @description The `hf_hub` source it fetches from (LS4). Absent on a record
+             *     from before LS4, or when none was named: the first enabled
+             *     `hf_hub` source.
+             */
+            source?: string;
             revision?: string;
             /**
              * @description The commit this download is pinned to. A resume that finds
@@ -3108,6 +3295,14 @@ export interface components {
              * @description Upstream repo id.
              */
             repo: string;
+            /**
+             * Source
+             * @description The `hf_hub` source to fetch from (`CatalogueSource.id`, a
+             *     search result's `hubSource`, LS4). Absent: the first enabled
+             *     `hf_hub` source. Kept on the record, so a resume asks the same
+             *     hub with the same token.
+             */
+            source?: string | null;
             /**
              * Revision
              * @description Resolved to a commit at start and pinned for the life of
@@ -3951,6 +4146,13 @@ export interface components {
             state: components["schemas"]["schemas-DownloadState"];
             /** Repo */
             repo: string;
+            /**
+             * Source
+             * @description The `hf_hub` source it fetches from (LS4). Absent on a record
+             *     from before LS4, or when none was named: the first enabled
+             *     `hf_hub` source.
+             */
+            source?: string | null;
             /** Revision */
             revision?: string | null;
             /**
@@ -4472,6 +4674,12 @@ export interface components {
             /** @description The GGUF quantization, from the file's name (the scan's own fallback). */
             quantization?: string;
             /**
+             * @description The file's name without its folder: a GGUF's first shard
+             *     (`ModelRequirement.files`, LS4). Absent: not known yet, as on a
+             *     search row, which names a repo rather than a file.
+             */
+            file?: string;
+            /**
              * @description Whether the folder's `config.json` carries MLX's quantization
              *     block (`MlxQuantizationRule`). Absent: not known.
              */
@@ -4535,6 +4743,16 @@ export interface components {
             architectures?: string[];
             /** @description The GGUF quantization must be one of these. Absent means any. */
             quantizations?: string[];
+            /**
+             * @description The model's file must have one of these names: a GGUF's first
+             *     shard, as the hub and the disk both name it, without its
+             *     folder. Absent means any. For an engine that runs only the files
+             *     it names (LS4): Strata's own setup accepts a GGUF by its name
+             *     and refuses every other one of the same architecture, so its
+             *     adapter fills this from its `supportedModels`, and a Flash-Next
+             *     K-quant from another publisher is `no`, naming the list.
+             */
+            files?: string[];
             mlxQuantization?: components["schemas"]["MlxQuantizationRule"];
             /**
              * @description For `format: prepared` only: the engine a prepared model must
@@ -4785,6 +5003,71 @@ export interface components {
             mounts: string[];
         };
         /**
+         * @description One model an engine's adapter publishes as supported
+         *     (library-sources-and-engines.md §4.4, LS4): which files on a hub,
+         *     and what the engine does with them. Read off the engine's own
+         *     documentation and setup at the version the adapter pins, never
+         *     written from memory. The list ships with the adapter in the agent
+         *     (Troy's L7, `EngineDescriptor.supportedModels`), so a new engine
+         *     brings its own and a node's list is the one its adapter would
+         *     prepare and run. A caller hands it to the library's search
+         *     (`EngineModelList`), which shows it as one source among the others
+         *     (`CatalogueSourceKind` `engine_list`).
+         */
+        SupportedModel: {
+            /**
+             * @description Unique within the engine's list and stable across versions of
+             *     it, e.g. Strata's own name for the choice (`coder-IQ1_M`).
+             */
+            id: string;
+            /** @description What to call it, e.g. `Qwen3.8-Flash-Next IQ2_XS`. */
+            title: string;
+            /** @description The engine's own words for it, from its documentation. */
+            about?: string;
+            /** @description Who made the files, e.g. `Qwen; GSQ-RCO quants by ISTA-DASLab`. */
+            publisher?: string;
+            /**
+             * @description When the files carry a licence of their own the person should
+             *     read before downloading, the engine's words for it.
+             */
+            license?: string;
+            format: components["schemas"]["schemas-ModelFormat"];
+            /** @description As the hub reads the files (`general.architecture` for a GGUF). */
+            architecture?: string;
+            /** @description The engine's name for the size, e.g. `IQ2_XS`. */
+            quantization?: string;
+            /**
+             * @description Where the files are, all three named: `repoId`, `file` (a
+             *     GGUF's first shard, repo-relative) and the `revision` the engine
+             *     pins. What a preparation records as its source (LS5).
+             */
+            source: components["schemas"]["schemas-PreparedSource"];
+            /** @description Every file of it summed, as the hub lists them at `source.revision`. */
+            sizeBytes?: number;
+            /** @description What the engine does to the files before it runs them, if anything. */
+            preparation?: components["schemas"]["ModelPreparation"];
+            /**
+             * @description The engine's own documentation recommends it.
+             * @default false
+             */
+            recommended: boolean;
+            /**
+             * @description The engine's own documentation calls it experimental.
+             * @default false
+             */
+            experimental: boolean;
+        };
+        /**
+         * @description One engine's `supportedModels`, as a caller sends it to the
+         *     library's search (`CatalogueSearchRequest.engines`): the console the
+         *     picked node's, as it sends that node's `accepts` to the judge, so the
+         *     library calls no agent.
+         */
+        EngineModelList: {
+            engine: components["schemas"]["schemas-EngineKind"];
+            models: components["schemas"]["SupportedModel"][];
+        };
+        /**
          * @description Files appear only when a listing asked for `includeFiles`. A
          *     directory picker never does; a `file_path` field's picker would,
          *     which is why the flag exists on the endpoint without a UI yet.
@@ -5008,9 +5291,22 @@ export interface components {
          *     report, and reusing `path_list` or `url_list` would tell every UI
          *     to open a directory picker or an address field. UIs render it as
          *     an add/remove list of text fields.
+         *
+         *     `catalogue_sources` (LS4, 2026-10-09) is an ordered JSON array of
+         *     the library's `CatalogueSource` — `{"id", "kind", "label",
+         *     "enabled", "address", "token", "engine"}`: where Discover finds
+         *     models (library-sources-and-engines.md §4.4). Its one user is the
+         *     library's `catalogueSources`, which replaced the single hub
+         *     address and token. Like `share_credentials`, entries hold a
+         *     secret: an `hf_hub` entry's `token` is redacted in `GET` (as
+         *     `null`, with `hasToken` saying whether one is stored), accepted in
+         *     `PATCH`, and an entry that omits it keeps the token stored under
+         *     the same `id`; `""` clears it. UIs render it as rows of a source,
+         *     with the token a password input, and must not display a redacted
+         *     token as though none were stored.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials" | "string_list";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials" | "string_list" | "catalogue_sources";
         /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
@@ -5394,7 +5690,18 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /**
+         * @description The `hf_hub` source the repo is on (`CatalogueSource.id`, as a
+         *     search result's `source` names it, LS4). Absent: the first
+         *     enabled `hf_hub` source, which is what a console older than the
+         *     sources list meant. An `engine_list` result's files are on that
+         *     default source too: an engine's list names repos on the public
+         *     hub, which a mirror serves under the same names. `404` for an id
+         *     this library does not have; `409` for a source switched off.
+         */
+        CatalogueSourceParam: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -5799,7 +6106,9 @@ export interface operations {
             };
             /**
              * @description No Library folder is configured, `root` is not one, the
-             *     subdirectory leaves the root, or the folder cannot be written.
+             *     subdirectory leaves the root, the folder cannot be written, or
+             *     the entry lies in a Library folder (so on this host) and is
+             *     not there. Nothing is written.
              */
             400: {
                 headers: {
@@ -6310,11 +6619,69 @@ export interface operations {
             503: components["responses"]["Problem"];
         };
     };
+    searchCatalogueSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogueSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description The results of every source searched, and what each answered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogueSearchPage"];
+                };
+            };
+            /**
+             * @description `cursor` is not one this library made, or `sources` names a
+             *     source this library does not have.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `q` was a repo URL and the source it was looked up on cannot
+             *     see that repo (as `GET`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getCatalogueModel: {
         parameters: {
             query: {
                 /** @description Upstream repo id, e.g. `unsloth/Qwen3.8-27B-GGUF`. */
                 repo: string;
+                /**
+                 * @description The `hf_hub` source the repo is on (`CatalogueSource.id`, as a
+                 *     search result's `source` names it, LS4). Absent: the first
+                 *     enabled `hf_hub` source, which is what a console older than the
+                 *     sources list meant. An `engine_list` result's files are on that
+                 *     default source too: an engine's list names repos on the public
+                 *     hub, which a mirror serves under the same names. `404` for an id
+                 *     this library does not have; `409` for a source switched off.
+                 */
+                source?: components["parameters"]["CatalogueSourceParam"];
                 /**
                  * @description Branch, tag or commit. The response reports the
                  *     `resolvedCommit` it landed on, because `main` moves —
@@ -6398,6 +6765,16 @@ export interface operations {
         parameters: {
             query: {
                 repo: string;
+                /**
+                 * @description The `hf_hub` source the repo is on (`CatalogueSource.id`, as a
+                 *     search result's `source` names it, LS4). Absent: the first
+                 *     enabled `hf_hub` source, which is what a console older than the
+                 *     sources list meant. An `engine_list` result's files are on that
+                 *     default source too: an engine's list names repos on the public
+                 *     hub, which a mirror serves under the same names. `404` for an id
+                 *     this library does not have; `409` for a source switched off.
+                 */
+                source?: components["parameters"]["CatalogueSourceParam"];
                 revision?: string;
             };
             header?: never;
@@ -6485,6 +6862,16 @@ export interface operations {
         parameters: {
             query: {
                 repo: string;
+                /**
+                 * @description The `hf_hub` source the repo is on (`CatalogueSource.id`, as a
+                 *     search result's `source` names it, LS4). Absent: the first
+                 *     enabled `hf_hub` source, which is what a console older than the
+                 *     sources list meant. An `engine_list` result's files are on that
+                 *     default source too: an engine's list names repos on the public
+                 *     hub, which a mirror serves under the same names. `404` for an id
+                 *     this library does not have; `409` for a source switched off.
+                 */
+                source?: components["parameters"]["CatalogueSourceParam"];
                 revision?: string;
                 /**
                  * @description Repo-relative path of the file to read — for a split

@@ -230,6 +230,13 @@ export interface components {
             state: components["schemas"]["DownloadState"];
             /** Repo */
             repo: string;
+            /**
+             * Source
+             * @description The `hf_hub` source it fetches from (LS4). Absent on a record
+             *     from before LS4, or when none was named: the first enabled
+             *     `hf_hub` source.
+             */
+            source?: string | null;
             /** Revision */
             revision?: string | null;
             /**
@@ -366,6 +373,14 @@ export interface components {
              * @description Upstream repo id.
              */
             repo: string;
+            /**
+             * Source
+             * @description The `hf_hub` source to fetch from (`CatalogueSource.id`, a
+             *     search result's `hubSource`, LS4). Absent: the first enabled
+             *     `hf_hub` source. Kept on the record, so a resume asks the same
+             *     hub with the same token.
+             */
+            source?: string | null;
             /**
              * Revision
              * @description Resolved to a commit at start and pinned for the life of

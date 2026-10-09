@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 describe("a download of a gated model", () => {
-  it("links to the Library's own settings, where the catalogue token goes", () => {
+  it("links to the Library's own settings, where each hub's token goes", () => {
     render(
       <DownloadsPanel
         downloads={[
@@ -71,9 +71,10 @@ describe("a download of a gated model", () => {
         onChanged={() => {}}
       />,
     );
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+    // LS4: tokens are per hub, in the sources list.
+    expect(screen.getByRole("link", { name: "Where to find models" })).toHaveAttribute(
       "href",
-      "/config?sel=library#hfToken",
+      "/config?sel=library#catalogueSources",
     );
   });
 });

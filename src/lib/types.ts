@@ -281,6 +281,11 @@ export type SkipReason = LibraryComponents["schemas"]["SkipReason"];
 
 export type CatalogueSearchPage = LibraryComponents["schemas"]["CatalogueSearchPage"];
 export type CatalogueSearchResult = LibraryComponents["schemas"]["CatalogueSearchResult"];
+// LS4: sources are a list, and engines publish what they support.
+export type CatalogueSearchRequest = LibraryComponents["schemas"]["CatalogueSearchRequest"];
+export type CatalogueSourceStatus = LibraryComponents["schemas"]["CatalogueSourceStatus"];
+export type SupportedModel = LibraryComponents["schemas"]["SupportedModel"];
+export type EngineModelList = LibraryComponents["schemas"]["EngineModelList"];
 export type CatalogueSort = LibraryComponents["schemas"]["CatalogueSort"];
 export type CatalogueModel = LibraryComponents["schemas"]["CatalogueModel"];
 export type CatalogueCandidate = LibraryComponents["schemas"]["CatalogueCandidate"];

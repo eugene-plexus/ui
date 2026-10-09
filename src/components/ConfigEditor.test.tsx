@@ -16,28 +16,24 @@ let fields: {
 let doc: Record<string, unknown>;
 let reject = false;
 let failPatch = false;
-/** The component refuses `catalogueBaseUrl`, applies the rest, and needs a restart. */
+/** The component refuses `logLevel`, applies the rest, and needs a restart. */
 let partialWithRestart = false;
 /** The restart endpoint itself fails, which leaves the dialog up with Close. */
 let failRestart = false;
 let patches: Record<string, unknown>[];
 beforeEach(() => {
-  fields = [
-    "modelRoots",
-    "scanOnStartup",
-    "catalogueBaseUrl",
-    "starterModelsFile",
-    "futureSetting",
-  ].map((key) => ({
-    key,
-    label: key,
-    category: "library",
-    valueType: "string",
-  }));
+  fields = ["modelRoots", "scanOnStartup", "logLevel", "starterModelsFile", "futureSetting"].map(
+    (key) => ({
+      key,
+      label: key,
+      category: "library",
+      valueType: "string",
+    }),
+  );
   doc = {
     modelRoots: "models",
     scanOnStartup: "scan",
-    catalogueBaseUrl: "hub",
+    logLevel: "hub",
     starterModelsFile: "starters",
     futureSetting: "new",
   };
@@ -62,14 +58,11 @@ beforeEach(() => {
       else if (init?.method === "PATCH" && partialWithRestart) {
         const patch = JSON.parse(String(init.body)) as Record<string, unknown>;
         patches.push(patch);
-        const { catalogueBaseUrl, ...applied } = patch;
+        const { logLevel, ...applied } = patch;
         doc = { ...doc, ...applied };
         body = {
           applied: Object.keys(applied),
-          rejected:
-            catalogueBaseUrl !== undefined
-              ? [{ key: "catalogueBaseUrl", message: "Invalid address" }]
-              : [],
+          rejected: logLevel !== undefined ? [{ key: "logLevel", message: "Invalid address" }] : [],
           requiresRestart: true,
         };
       } else if (init?.method === "PATCH" && failPatch) {
@@ -88,7 +81,7 @@ beforeEach(() => {
         if (!reject) doc = { ...doc, ...patch };
         body = {
           applied: reject ? [] : Object.keys(patch),
-          rejected: reject ? [{ key: "catalogueBaseUrl", message: "Invalid address" }] : [],
+          rejected: reject ? [{ key: "logLevel", message: "Invalid address" }] : [],
           requiresRestart: false,
         };
       } else body = doc;
@@ -193,7 +186,7 @@ it("keeps unknown fields visible and saves edits made behind a collapsed group",
     "false",
   );
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(patches).toEqual([{ catalogueBaseUrl: "another-hub" }]));
+  await waitFor(() => expect(patches).toEqual([{ logLevel: "another-hub" }]));
   await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
 });
 
@@ -219,7 +212,7 @@ it("marks a refused setting at the field, and moves focus there", async () => {
   fireEvent.change(screen.getByDisplayValue("hub"), { target: { value: "bad-address" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await screen.findByText(/Invalid address/, { selector: "li" });
-  const box = screen.getByLabelText("catalogueBaseUrl");
+  const box = screen.getByLabelText("logLevel");
   await waitFor(() => expect(box).toHaveAttribute("aria-invalid", "true"));
   expect(box).toHaveAccessibleDescription(/Invalid address/);
   await waitFor(() => expect(box).toHaveFocus());

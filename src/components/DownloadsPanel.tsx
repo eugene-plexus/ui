@@ -276,12 +276,12 @@ function DownloadRow({
           {download.errorCode === "GatedRepo" && (
             <>
               {" "}
-              Accept the licence on the model&rsquo;s own page, then set a catalogue token on the{" "}
-              {/* The Library's own settings, opened on `hfToken` itself. */}
-              <Link href="/config?sel=library#hfToken" className="underline">
-                Settings
+              Accept the licence on the model&rsquo;s own page, then give this hub a token under{" "}
+              {/* The Library's own settings, opened on the sources field (LS4). */}
+              <Link href="/config?sel=library#catalogueSources" className="underline">
+                Where to find models
               </Link>{" "}
-              page.
+              in Settings.
             </>
           )}
         </p>

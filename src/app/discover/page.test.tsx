@@ -189,6 +189,12 @@ beforeEach(() => {
       "GET library/v1/catalogue/search",
       () => ok({ results: [{ repo: REPO, name: "Qwen3.8 27B", owner: "unsloth" }] }),
     ],
+    // Every source together (LS4): answered here as the one hub answers,
+    // so a test that sets the hub's answer sets this one's too.
+    [
+      "POST library/v1/catalogue/search",
+      (params, body) => handlers.get("GET library/v1/catalogue/search")!(params, body),
+    ],
     [
       "GET library/v1/catalogue/model",
       (params) => ok(modelBody(Number(params.get("contextLength")))),
@@ -209,6 +215,14 @@ beforeEach(() => {
       const [path = "", query = ""] = route.split("?");
       const params = new URLSearchParams(query);
       const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined;
+      // A POST's own fields are its parameters too (LS4's search is a POST):
+      // `lastQuery` reads them the same way whichever way they were sent.
+      if (body && typeof body === "object" && !Array.isArray(body)) {
+        for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+          if (typeof value === "string" || typeof value === "number")
+            params.set(key, String(value));
+        }
+      }
       seen.push({ path, params, body });
       const handler = handlers.get(`${init?.method ?? "GET"} ${path}`);
       const result = handler
@@ -592,7 +606,46 @@ describe("which engines can run it (LS2)", () => {
 
   const rowText = () => screen.getAllByTestId("result-row").map((row) => row.textContent ?? "");
 
-  it("lists everything by default, green then amber then red, each row with its dot", async () => {
+  it("opens on Works here now, since llama.cpp here runs a hub's models as they are", async () => {
+    // Troy, 2026-10-09: with an engine that runs something as it is, the
+    // red safetensors of *most downloaded* are not where Discover opens.
+    render(<DiscoverPage />);
+    await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
+    expect(screen.getByLabelText(/Which models/)).toHaveValue("works_here");
+    await waitFor(() => expect(rowText()).toEqual([expect.stringContaining("Green")]));
+    expect(lastQuery("library/v1/catalogue/search").get("format")).toBe("gguf");
+    // Not remembered as a choice: the person never made one.
+    expect(localStorage.getItem("eugene-discover-prefs") ?? "").not.toContain("chosenLevel");
+  });
+
+  it("with Strata the only engine installed, opens on Everything", async () => {
+    // Strata runs nothing from a hub as it is: opening on Works here now
+    // would open on an empty list.
+    handlers.set("GET agent/v1/engines", () =>
+      ok({
+        engines: ENGINES.map((e) => (e.engine === "llama_cpp" ? { ...e, available: false } : e)),
+      }),
+    );
+    render(<DiscoverPage />);
+    await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
+    expect(screen.getByLabelText(/Which models/)).toHaveValue("");
+  });
+
+  it("a filter the person chose is remembered; the old stored default is not", async () => {
+    localStorage.setItem("eugene-discover-prefs", JSON.stringify({ level: "" }));
+    render(<DiscoverPage />);
+    await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
+    expect(screen.getByLabelText(/Which models/)).toHaveValue("works_here");
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/Which models/), { target: { value: "" } });
+    });
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem("eugene-discover-prefs")!).chosenLevel).toBe(""),
+    );
+  });
+
+  it("lists everything when asked, green then amber then red, each row with its dot", async () => {
+    localStorage.setItem("eugene-discover-prefs", JSON.stringify({ chosenLevel: "" }));
     render(<DiscoverPage />);
     await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
     expect(screen.getByLabelText(/Which models/)).toHaveValue("");
@@ -632,6 +685,7 @@ describe("which engines can run it (LS2)", () => {
   });
 
   it("Works with another engine keeps only the amber rows", async () => {
+    localStorage.setItem("eugene-discover-prefs", JSON.stringify({ chosenLevel: "" }));
     render(<DiscoverPage />);
     await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
     await act(async () => {
@@ -646,11 +700,8 @@ describe("which engines can run it (LS2)", () => {
   it("a filter that leaves nothing names itself and undoes in one click", async () => {
     handlers.set("GET library/v1/catalogue/search", () => ok({ results: [ROWS[0]] }));
     render(<DiscoverPage />);
-    await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText(/Which models/), { target: { value: "works_here" } });
-    });
-    const empty = await screen.findByTestId("no-results");
+    // Works here now is where it opens, here.
+    const empty = await screen.findByTestId("no-results", {}, { timeout: 5000 });
     expect(empty).toHaveTextContent("None of 1 matches works on this host now.");
     await act(async () => {
       within(empty).getByRole("button", { name: "Show everything" }).click();
@@ -702,7 +753,11 @@ describe("which engines can run it (LS2)", () => {
       } as never;
       return ok(body);
     });
+    // Everything, chosen: under Works here now (where it opens, here) the red
+    // row is hidden once judged, and a click would race the verdicts.
+    localStorage.setItem("eugene-discover-prefs", JSON.stringify({ chosenLevel: "" }));
     render(<DiscoverPage />);
+    await screen.findAllByTestId("eligibility-dot", {}, { timeout: 5000 });
     const row = await screen.findByRole("button", { name: /^Red/ }, { timeout: 5000 });
     await act(async () => {
       fireEvent.click(row);
@@ -726,6 +781,155 @@ describe("which engines can run it (LS2)", () => {
     expect(note).toHaveTextContent("This Library is older than the engine check");
     expect(screen.queryByTestId("eligibility-dot")).toBeNull();
     expect(screen.getAllByTestId("result-row")).toHaveLength(3);
+  });
+});
+
+describe("sources are a list (LS4)", () => {
+  const LISTED = {
+    id: "IQ2_XS",
+    title: "Qwen3.8 27B for Strata",
+    about: "the size Strata recommends",
+    publisher: "unsloth",
+    format: "gguf",
+    architecture: "qwen4exp",
+    quantization: "Q4_K_M",
+    source: { repoId: REPO, file: "Qwen3.8-27B-Q4_K_M.gguf", revision: "abc1234def" },
+    sizeBytes: 68_000_000_000,
+    preparation: { recipe: "strata-prepare", note: "an expert pack and an MTP helper" },
+    recommended: true,
+  };
+  const ENGINES = [
+    {
+      engine: "llama_cpp",
+      available: false,
+      modelFormats: ["gguf"],
+      accepts: [{ format: "gguf" }],
+    },
+    {
+      engine: "strata",
+      available: true,
+      experimental: true,
+      modelFormats: ["prepared"],
+      accepts: [{ format: "gguf", preparation: { recipe: "strata-prepare" } }],
+      supportedModels: [LISTED],
+    },
+  ];
+  const ROWS = [
+    {
+      repo: REPO,
+      name: LISTED.title,
+      owner: "unsloth",
+      source: "engines",
+      hubSource: "huggingface",
+      engine: "strata",
+      supported: LISTED,
+      formats: ["gguf"],
+    },
+    {
+      repo: "org/Small",
+      name: "Small",
+      owner: "org",
+      source: "huggingface",
+      hubSource: "huggingface",
+    },
+    { repo: "corp/Inside", name: "Inside", owner: "corp", source: "corp", hubSource: "corp" },
+  ];
+  const SOURCES = [
+    { id: "huggingface", kind: "hf_hub", label: "Hugging Face", searched: true, results: 1 },
+    { id: "corp", kind: "hf_hub", label: "Corp hub", searched: true, results: 1 },
+    { id: "engines", kind: "engine_list", label: "Engines' own lists", searched: true, results: 1 },
+    {
+      id: "mirror",
+      kind: "hf_hub",
+      label: "Mirror",
+      searched: true,
+      results: 0,
+      problem: "Could not reach https://mirror.example to search (no route to host).",
+    },
+  ];
+
+  beforeEach(() => {
+    handlers.set("GET agent/v1/engines", () => ok({ engines: ENGINES }));
+    handlers.set("POST library/v1/catalogue/search", () =>
+      ok({ results: ROWS, sources: SOURCES, interpretedAs: "search" }),
+    );
+    handlers.set("POST library/v1/downloads", () => ({ status: 202, body: { id: "d1" } }));
+  });
+
+  it("asks every source together, sending the node's engines' own lists", async () => {
+    render(<DiscoverPage />);
+    await waitFor(() => expect(screen.getAllByTestId("result-row")).toHaveLength(3), {
+      timeout: 5000,
+    });
+    const sent = [...seen].reverse().find((r) => r.path === "library/v1/catalogue/search")!;
+    expect(sent.body).toMatchObject({ engines: [{ engine: "strata", models: [LISTED] }] });
+    expect(asked("library/v1/catalogue/search")).toBe(1);
+  });
+
+  it("every row says where it came from, and a source that failed says why", async () => {
+    render(<DiscoverPage />);
+    await waitFor(() => expect(screen.getAllByTestId("result-row")).toHaveLength(3), {
+      timeout: 5000,
+    });
+    const from = screen.getAllByTestId("result-source").map((s) => s.textContent);
+    expect(from).toEqual(["Strata’s list · unsloth", " · Hugging Face", " · Corp hub"]);
+    expect(screen.getAllByTestId("result-row")[0]).toHaveTextContent("68.00 GB to download");
+    expect(screen.getByTestId("source-problem")).toHaveTextContent(
+      "Mirror: Could not reach https://mirror.example",
+    );
+  });
+
+  it("an engine's entry opens its repo at the revision it pins, on its list", async () => {
+    render(<DiscoverPage />);
+    const row = await screen.findByRole(
+      "button",
+      { name: /Qwen3\.8 27B for Strata/ },
+      { timeout: 5000 },
+    );
+    await act(async () => {
+      fireEvent.click(row);
+    });
+    await screen.findByTestId("all-versions", {}, { timeout: 5000 });
+    const detail = lastQuery("library/v1/catalogue/model");
+    expect(detail.get("revision")).toBe("abc1234def");
+    expect(detail.get("source")).toBe("huggingface");
+    expect(screen.getByTestId("listed-entry")).toHaveTextContent(
+      "On Strata’s own list: Qwen3.8 27B for Strata · recommended",
+    );
+    expect(screen.getByTestId("candidate-listed")).toHaveTextContent("on Strata’s list");
+    await waitFor(() =>
+      expect(nav.replace).toHaveBeenCalledWith(expect.stringContaining("listed=strata%3AIQ2_XS"), {
+        scroll: false,
+      }),
+    );
+  });
+
+  it("a repo from another hub is opened, and fetched, from that hub", async () => {
+    render(<DiscoverPage />);
+    const row = await screen.findByRole("button", { name: /Inside/ }, { timeout: 5000 });
+    await act(async () => {
+      fireEvent.click(row);
+    });
+    await screen.findByTestId("all-versions", {}, { timeout: 5000 });
+    expect(lastQuery("library/v1/catalogue/model").get("source")).toBe("corp");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "download" }));
+    });
+    await waitFor(() => expect(asked("library/v1/downloads")).toBeGreaterThan(0));
+    const posted = [...seen].reverse().find((r) => r.path === "library/v1/downloads" && r.body)!;
+    expect(posted.body).toMatchObject({ repo: "corp/Inside", source: "corp" });
+  });
+
+  it("a Library older than the sources list is searched as before, and says so", async () => {
+    handlers.set("POST library/v1/catalogue/search", () => ({
+      status: 405,
+      body: { detail: "Method Not Allowed" },
+    }));
+    handlers.set("GET library/v1/catalogue/search", () => ok({ results: [ROWS[1]] }));
+    render(<DiscoverPage />);
+    const note = await screen.findByTestId("filter-note", {}, { timeout: 5000 });
+    expect(note).toHaveTextContent("older than the list of sources");
+    expect(asked("library/v1/catalogue/search")).toBe(2);
   });
 });
 

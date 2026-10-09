@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   bestAnswer,
   eligibilityEngines,
+  engineLists,
   hubFormatFor,
   LEVEL_WORDS,
   runnable,
+  runsHubModelsAsTheyAre,
   verdictLine,
 } from "./eligibility";
 import type { EngineDescriptor } from "./types";
@@ -123,5 +125,49 @@ describe("Discover's helpers (LS2)", () => {
       }),
     ];
     expect(hubFormatFor("other_engine", mac)).toBeNull();
+  });
+});
+
+describe("the sources list's helpers (LS4)", () => {
+  const llama = {
+    engine: "llama_cpp",
+    available: true,
+    modelFormats: ["gguf"],
+    accepts: [{ format: "gguf" }],
+  } as EngineDescriptor;
+  const strata = {
+    engine: "strata",
+    available: true,
+    modelFormats: ["prepared"],
+    accepts: [
+      { format: "prepared", preparedFor: "strata" },
+      {
+        format: "gguf",
+        files: ["a-00001-of-00002.gguf"],
+        preparation: { recipe: "strata-prepare" },
+      },
+    ],
+    supportedModels: [
+      {
+        id: "a",
+        title: "A",
+        format: "gguf",
+        source: { repoId: "o/r", file: "a-00001-of-00002.gguf", revision: "c" },
+      },
+    ],
+  } as EngineDescriptor;
+
+  it("sends only the engines that publish a list", () => {
+    expect(engineLists([llama, strata])).toEqual([
+      { engine: "strata", models: strata.supportedModels },
+    ]);
+  });
+
+  it("Works here now is the default only where a hub's model runs as it is", () => {
+    expect(runsHubModelsAsTheyAre([llama, strata])).toBe(true);
+    // Strata loads only what it prepared, or prepares first: not as it is.
+    expect(runsHubModelsAsTheyAre([strata])).toBe(false);
+    expect(runsHubModelsAsTheyAre([{ ...llama, available: false }])).toBe(false);
+    expect(runsHubModelsAsTheyAre(null)).toBe(false);
   });
 });

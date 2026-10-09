@@ -122,7 +122,12 @@ export function readValue(field: ConfigField, value: unknown): ValueReading {
     return bad > 0 ? { kind: "value", warning: droppedWarning(bad) } : { kind: "value" };
   }
 
-  if (vt === "library_folders" || vt === "path_mappings" || vt === "share_credentials") {
+  if (
+    vt === "library_folders" ||
+    vt === "path_mappings" ||
+    vt === "share_credentials" ||
+    vt === "catalogue_sources"
+  ) {
     if (isUnset(value)) return { kind: "unset" };
     if (!Array.isArray(value)) {
       return { kind: "unrepresentable", raw: rawText(value), reason: "it is not a list" };
@@ -154,6 +159,10 @@ function entryReadable(vt: string, item: unknown): boolean {
   const record = item as Record<string, unknown>;
   if (vt === "path_mappings")
     return typeof record.from === "string" && typeof record.to === "string";
+  if (vt === "catalogue_sources")
+    return (
+      typeof record.id === "string" && (record.kind === "hf_hub" || record.kind === "engine_list")
+    );
   return typeof record.host === "string";
 }
 

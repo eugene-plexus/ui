@@ -24,7 +24,7 @@ import type { CatalogueCard } from "@/lib/types";
  * not — and links open in a new tab with `noreferrer`.
  */
 
-export function ModelCard({ repo }: { repo: string }) {
+export function ModelCard({ repo, source }: { repo: string; source?: string | null }) {
   const [open, setOpen] = useState(false);
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,14 +37,15 @@ export function ModelCard({ repo }: { repo: string }) {
   useEffect(() => {
     setMarkdown(null);
     setError(null);
-  }, [repo]);
+  }, [repo, source]);
 
   useEffect(() => {
     if (!open || markdown !== null) return;
     void (async () => {
       setError(null);
       try {
-        const params = new URLSearchParams({ repo });
+        // The hub it is on (LS4); none named is the Library's default hub.
+        const params = new URLSearchParams({ repo, ...(source ? { source } : {}) });
         const card = await api.get<CatalogueCard>(
           "library",
           `/v1/catalogue/model/card?${params.toString()}`,
@@ -55,7 +56,7 @@ export function ModelCard({ repo }: { repo: string }) {
         setError(describeError(err));
       }
     })();
-  }, [open, markdown, repo, attempt]);
+  }, [open, markdown, repo, source, attempt]);
 
   return (
     <div className="rounded-[var(--radius)] border border-[color:var(--border)] text-sm">

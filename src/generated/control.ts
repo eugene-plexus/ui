@@ -4482,9 +4482,22 @@ export interface components {
          *     report, and reusing `path_list` or `url_list` would tell every UI
          *     to open a directory picker or an address field. UIs render it as
          *     an add/remove list of text fields.
+         *
+         *     `catalogue_sources` (LS4, 2026-10-09) is an ordered JSON array of
+         *     the library's `CatalogueSource` — `{"id", "kind", "label",
+         *     "enabled", "address", "token", "engine"}`: where Discover finds
+         *     models (library-sources-and-engines.md §4.4). Its one user is the
+         *     library's `catalogueSources`, which replaced the single hub
+         *     address and token. Like `share_credentials`, entries hold a
+         *     secret: an `hf_hub` entry's `token` is redacted in `GET` (as
+         *     `null`, with `hasToken` saying whether one is stored), accepted in
+         *     `PATCH`, and an entry that omits it keeps the token stored under
+         *     the same `id`; `""` clears it. UIs render it as rows of a source,
+         *     with the token a password input, and must not display a redacted
+         *     token as though none were stored.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials" | "string_list";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials" | "string_list" | "catalogue_sources";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field

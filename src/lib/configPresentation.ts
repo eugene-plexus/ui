@@ -26,7 +26,7 @@ const MORE: Record<string, readonly string[]> = {
     "controlUrl",
     "logLevel",
   ],
-  library: ["scanOnStartup", "catalogueBaseUrl", "starterModelsFile", "logLevel"],
+  library: ["scanOnStartup", "starterModelsFile", "logLevel"],
   "inference-driver": ["logLevel"],
 };
 

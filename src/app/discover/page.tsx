@@ -17,12 +17,15 @@ import { relativeAge } from "@/lib/relativeTime";
 import { type NodeBudget, fitQuery, useTargetNode } from "@/lib/nodeBudget";
 import {
   bestAnswer,
+  engineLists,
   hubFormatFor,
   LEVEL_RANK,
+  runsHubModelsAsTheyAre,
   type EligibilityCandidate,
   type EligibilityLevel,
   type ModelEligibility,
 } from "@/lib/eligibility";
+import { engineName } from "@/lib/issues";
 import { useCandidateEligibility, useNodeEngines } from "@/lib/useEligibility";
 import type {
   CatalogueCandidate,
@@ -31,9 +34,11 @@ import type {
   CatalogueSearchPage,
   CatalogueSearchResult,
   CatalogueSort,
+  CatalogueSourceStatus,
   CataloguePreflight,
   Download,
   EngineDescriptor,
+  EngineModelList,
   HostHardware,
   StarterModel,
 } from "@/lib/types";
@@ -118,8 +123,61 @@ const CANDIDATE_GUESS =
 
 interface DiscoverPrefs {
   contextLength?: number;
-  level?: LevelFilter;
+  /** The filter the person chose. Not `level`: that one was written on every
+   * visit, so it mostly holds the old default rather than a choice (LS4). */
+  chosenLevel?: LevelFilter;
   sort?: CatalogueSort;
+}
+
+/**
+ * What is open on the right (LS4): a repo, the hub it is on (`null` is the
+ * Library's default hub), and for a row from an engine's list, which entry.
+ */
+interface Selection {
+  repo: string;
+  source: string | null;
+  listed: { engine: string; id: string } | null;
+}
+
+function selectionOf(result: CatalogueSearchResult): Selection {
+  return {
+    repo: result.repo,
+    source: result.hubSource ?? null,
+    listed:
+      result.engine && result.supported ? { engine: result.engine, id: result.supported.id } : null,
+  };
+}
+
+function sameSelection(a: Selection | null, b: Selection | null): boolean {
+  return (
+    a !== null &&
+    b !== null &&
+    a.repo === b.repo &&
+    a.source === b.source &&
+    a.listed?.engine === b.listed?.engine &&
+    a.listed?.id === b.listed?.id
+  );
+}
+
+function selectionKey(s: Selection): string {
+  return [s.source ?? "", s.listed ? `${s.listed.engine}:${s.listed.id}` : "", s.repo].join("|");
+}
+
+function rowKey(result: CatalogueSearchResult): string {
+  return selectionKey({ ...selectionOf(result), source: result.source ?? null });
+}
+
+/** `?repo=` with `&source=` and `&listed=engine:id` when they say more. */
+function selectionFromParams(params: URLSearchParams): Selection | null {
+  const repo = params.get("repo");
+  if (!repo) return null;
+  const listed = params.get("listed");
+  const [engine, id] = listed ? listed.split(":", 2) : [];
+  return {
+    repo,
+    source: params.get("source") || null,
+    listed: engine && id ? { engine, id } : null,
+  };
 }
 
 export default function DiscoverPage() {
@@ -137,17 +195,24 @@ function DiscoverPageInner() {
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [level, setLevel] = useState<LevelFilter>("");
+  // The filter the person chose; until they choose, the default below.
+  const [chosenLevel, setChosenLevel] = useState<LevelFilter | null>(null);
   const [sort, setSort] = useState<CatalogueSort>("downloads");
   const [results, setResults] = useState<CatalogueSearchResult[] | null>(null);
+  // What each source answered (LS4); null from a Library older than that.
+  const [statuses, setStatuses] = useState<CatalogueSourceStatus[] | null>(null);
+  // A Library older than the sources list answers POST 405: search its hub.
+  // A ref decides (flipping it must not search again); the state says so.
+  const [searchOlder, setSearchOlder] = useState(false);
+  const olderLibrary = useRef(false);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
   // `?repo=` seeds the selection, so a reload keeps the repo open and a
   // link from anywhere else lands on the detail — the `?sel=` rule the
   // tree already follows, applied to this screen's own subject.
-  const [selectedRepo, setSelectedRepo] = useState<string | null>(
-    () => searchParams.get("repo") || null,
+  const [selection, setSelection] = useState<Selection | null>(() =>
+    selectionFromParams(new URLSearchParams(searchParams.toString())),
   );
   const [contextLength, setContextLength] = useState(8192);
   // What the library made of the query: `repo` means it parsed as a
@@ -163,11 +228,20 @@ function DiscoverPageInner() {
   // to this one. The library's own reading below is about the host the
   // library runs on, which on a multi-host install is a different
   // machine -- see `nodeBudget.ts`.
-  const { nodes, selected, select, budget } = useTargetNode();
+  const { nodes, selected, select, budget, loaded: nodesLoaded } = useTargetNode();
   // Which engines the verdicts are about: the picked node's, as its own
   // agent reports them (LS2). The Library judges; this page only asks.
   const { engines, error: enginesError } = useNodeEngines(selected?.target ?? null);
   const where = selected?.label ?? "this machine";
+  // Troy, 2026-10-09: open on *Works here now* when an engine here runs a
+  // hub's models as they are; on *Everything* otherwise, so a node with no
+  // engine, or Strata alone, does not open on an empty list.
+  const enginesKnown =
+    nodesLoaded && (selected === null || engines !== null || enginesError !== null);
+  const level: LevelFilter = chosenLevel ?? (runsHubModelsAsTheyAre(engines) ? "works_here" : "");
+  // The node's engines' own lists (LS4), sent with the search as `accepts`
+  // is sent to the judge.
+  const lists = useMemo(() => (engines ? engineLists(engines) : null), [engines]);
   const { downloads, reload: reloadDownloads, active } = useDownloads();
   // Files a transfer is writing right now, by their path in the repo.
   const inFlightFiles = useMemo(
@@ -202,9 +276,11 @@ function DiscoverPageInner() {
           setContextLength(prefs.contextLength);
         }
         // The old `format` preference is not carried over: GGUF was a
-        // default, not a choice, for nearly everyone who has it stored.
-        if (prefs.level === "" || prefs.level === "works_here" || prefs.level === "other_engine") {
-          setLevel(prefs.level);
+        // default, not a choice, for nearly everyone who has it stored. Nor
+        // is the old `level`, written on every visit whether chosen or not.
+        const chosen = prefs.chosenLevel;
+        if (chosen === "" || chosen === "works_here" || chosen === "other_engine") {
+          setChosenLevel(chosen);
         }
         if (typeof prefs.sort === "string" && prefs.sort in SORT_LABEL) setSort(prefs.sort);
       }
@@ -219,12 +295,16 @@ function DiscoverPageInner() {
     try {
       localStorage.setItem(
         PREFS_KEY,
-        JSON.stringify({ contextLength, level, sort } satisfies DiscoverPrefs),
+        JSON.stringify({
+          contextLength,
+          ...(chosenLevel !== null ? { chosenLevel } : {}),
+          sort,
+        } satisfies DiscoverPrefs),
       );
     } catch {
       // The screen just does not remember.
     }
-  }, [prefsLoaded, contextLength, level, sort]);
+  }, [prefsLoaded, contextLength, chosenLevel, sort]);
 
   // The URL mirrors the selection; state drives. `replace` rather than
   // `push` so paging through repos does not bury Back under every
@@ -235,12 +315,18 @@ function DiscoverPageInner() {
   // replace.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if ((params.get("repo") || null) === selectedRepo) return;
-    if (selectedRepo) params.set("repo", selectedRepo);
-    else params.delete("repo");
+    const current = selectionFromParams(params);
+    if (current === null ? selection === null : sameSelection(current, selection)) return;
+    for (const name of ["repo", "source", "listed"]) params.delete(name);
+    if (selection) {
+      params.set("repo", selection.repo);
+      if (selection.source) params.set("source", selection.source);
+      if (selection.listed)
+        params.set("listed", `${selection.listed.engine}:${selection.listed.id}`);
+    }
     const qs = params.toString();
     router.replace(qs ? `/discover?${qs}` : "/discover", { scroll: false });
-  }, [router, selectedRepo]);
+  }, [router, selection]);
 
   useEffect(() => {
     void (async () => {
@@ -269,32 +355,59 @@ function DiscoverPageInner() {
     const current = () => mine === searchSeq.current;
     setSearching(true);
     setSearchError(null);
-    try {
+    // The Library's one hub, as before the sources list (LS4).
+    const oneHub = () => {
       const params = new URLSearchParams({ sort, limit: "30" });
       if (debouncedQuery) params.set("q", debouncedQuery);
       if (hubFormat) params.set("format", hubFormat);
-      const page = await api.get<CatalogueSearchPage>(
-        "library",
-        `/v1/catalogue/search?${params.toString()}`,
-      );
+      return api.get<CatalogueSearchPage>("library", `/v1/catalogue/search?${params.toString()}`);
+    };
+    try {
+      let page: CatalogueSearchPage;
+      if (olderLibrary.current) {
+        page = await oneHub();
+      } else {
+        try {
+          // Every source together; the node's engines' lists go with it.
+          page = await api.post<CatalogueSearchPage>("library", "/v1/catalogue/search", {
+            sort,
+            limit: 30,
+            ...(debouncedQuery ? { q: debouncedQuery } : {}),
+            ...(hubFormat ? { format: hubFormat } : {}),
+            ...(lists ? { engines: lists } : {}),
+          });
+        } catch (err) {
+          if (!(err instanceof ApiError && err.status === 405)) throw err;
+          olderLibrary.current = true;
+          setSearchOlder(true);
+          page = await oneHub();
+        }
+      }
       if (!current()) return;
       setResults(page.results ?? []);
+      setStatuses(page.sources ?? null);
       setInterpreted(page.interpretedAs === "repo" ? "repo" : "search");
       // A pasted link named one repo. Selecting it is the whole point:
       // making someone click the only row is the click this removes.
       if (page.interpretedAs === "repo" && page.interpretedFrom) {
-        setSelectedRepo(page.interpretedFrom);
+        const row = (page.results ?? [])[0];
+        setSelection({
+          repo: page.interpretedFrom,
+          source: row?.hubSource ?? null,
+          listed: null,
+        });
       }
     } catch (err) {
       if (!current()) return;
       if (err instanceof ApiError && err.status === 401) return;
       setResults([]);
+      setStatuses(null);
       setInterpreted("search");
       setSearchError(describeError(err));
     } finally {
       if (current()) setSearching(false);
     }
-  }, [debouncedQuery, hubFormat, sort]);
+  }, [debouncedQuery, hubFormat, sort, lists]);
 
   // Every row's facts, judged in one call; a row is as good as its best format.
   const rowFacts = useMemo(() => (results ?? []).flatMap((r) => r.facts ?? []), [results]);
@@ -328,9 +441,12 @@ function DiscoverPageInner() {
     [reloadDownloads],
   );
 
+  // Not before the node's engines are known: the filter's default and the
+  // lists sent both rest on them, and a first search without them is spent
+  // twice.
   useEffect(() => {
-    void search();
-  }, [search]);
+    if (enginesKnown) void search();
+  }, [search, enginesKnown]);
 
   return (
     <AppShell
@@ -353,7 +469,7 @@ function DiscoverPageInner() {
           />
           <select
             value={level}
-            onChange={(event) => setLevel(event.target.value as LevelFilter)}
+            onChange={(event) => setChosenLevel(event.target.value as LevelFilter)}
             className={selectClass}
             aria-label={`Which models, for ${where}`}
             title={`By which engines can run them on ${where}`}
@@ -381,13 +497,14 @@ function DiscoverPageInner() {
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(260px,340px)_1fr] overflow-hidden">
           <ResultsList
             results={results}
+            statuses={statuses}
             searching={searching}
             error={searchError}
             interpreted={interpreted}
-            selected={selectedRepo}
-            onSelect={setSelectedRepo}
+            selected={selection}
+            onSelect={(result) => setSelection(selectionOf(result))}
             level={level}
-            onEverything={() => setLevel("")}
+            onEverything={() => setChosenLevel("")}
             verdicts={rowVerdicts}
             where={where}
             note={
@@ -395,16 +512,21 @@ function DiscoverPageInner() {
                 ? `Could not ask ${where} which engines it has (${enginesError}), so nothing is filtered.`
                 : libraryOlder
                   ? "This Library is older than the engine check, so every model is listed."
-                  : null
+                  : searchOlder
+                    ? "This Library is older than the list of sources, so only its one hub is searched."
+                    : null
             }
           />
 
           <div className="min-h-0 overflow-y-auto px-5 py-4">
             <ContextControl value={contextLength} onChange={setContextLength} />
-            {selectedRepo ? (
+            {selection ? (
               <RepoDetail
-                key={selectedRepo}
-                repo={selectedRepo}
+                key={selectionKey(selection)}
+                repo={selection.repo}
+                source={selection.source}
+                listed={selection.listed}
+                lists={lists ?? []}
                 contextLength={contextLength}
                 budget={budget}
                 engines={engines}
@@ -426,7 +548,7 @@ function DiscoverPageInner() {
                 inFlight={inFlightFiles}
                 error={starterError}
                 onDownload={downloadStarter}
-                onOpenRepo={setSelectedRepo}
+                onOpenRepo={(repo) => setSelection({ repo, source: null, listed: null })}
               />
             )}
           </div>
@@ -544,6 +666,7 @@ function ContextControl({ value, onChange }: { value: number; onChange: (value: 
 
 function ResultsList({
   results,
+  statuses,
   searching,
   error,
   interpreted,
@@ -556,11 +679,13 @@ function ResultsList({
   note,
 }: {
   results: CatalogueSearchResult[] | null;
+  /** What each source answered (LS4); null from an older Library. */
+  statuses: CatalogueSourceStatus[] | null;
   searching: boolean;
   error: string | null;
   interpreted: "search" | "repo";
-  selected: string | null;
-  onSelect: (repo: string) => void;
+  selected: Selection | null;
+  onSelect: (result: CatalogueSearchResult) => void;
   /** The engine filter in effect; "" is everything. */
   level: LevelFilter;
   onEverything: () => void;
@@ -587,6 +712,10 @@ function ResultsList({
       .sort((a, b) => rank(a.answer) - rank(b.answer) || a.index - b.index);
   }, [results, verdicts, level]);
   const hidden = (results?.length ?? 0) - rows.length;
+  // Every result says which source it came from (§4.4), in the words the
+  // person gave it; a source that failed says why, while the rest stand.
+  const labels = new Map((statuses ?? []).map((s) => [s.id, s.label ?? s.id]));
+  const problems = (statuses ?? []).filter((s) => s.searched && s.problem);
   return (
     <div className="min-h-0 overflow-y-auto border-r border-[color:var(--border)]">
       {interpreted === "repo" && (
@@ -616,6 +745,15 @@ function ResultsList({
           {note}
         </p>
       )}
+      {problems.map((s) => (
+        <p
+          key={s.id}
+          data-testid="source-problem"
+          className="text-status-warn border-b border-[color:var(--border)] px-4 py-2 text-[0.6875rem]"
+        >
+          {s.label ?? s.id}: {s.problem}
+        </p>
+      ))}
       {results !== null && rows.length === 0 && !error && (
         <div className="px-4 py-3 text-sm text-[color:var(--muted)]" data-testid="no-results">
           {/* A filter is often the reason: say which, and undo it in one click. */}
@@ -637,7 +775,7 @@ function ResultsList({
       )}
       <ul className={searching ? "opacity-60 transition-opacity" : undefined}>
         {rows.map(({ result, answer }) => (
-          <li key={result.repo} className="relative" data-testid="result-row">
+          <li key={rowKey(result)} className="relative" data-testid="result-row">
             {answer && (
               <span className="absolute top-2 right-3 z-10">
                 <EligibilityDot answer={answer} where={where} short guessNote={ROW_GUESS} />
@@ -645,10 +783,10 @@ function ResultsList({
             )}
             <button
               type="button"
-              onClick={() => onSelect(result.repo)}
-              aria-current={selected === result.repo ? "true" : undefined}
+              onClick={() => onSelect(result)}
+              aria-current={sameSelection(selectionOf(result), selected) ? "true" : undefined}
               className={`w-full border-b border-[color:var(--border)] px-4 py-2.5 text-left transition-colors hover:bg-[color:var(--panel-hover)] ${
-                selected === result.repo ? "bg-[color:var(--panel-soft)]" : ""
+                sameSelection(selectionOf(result), selected) ? "bg-[color:var(--panel-soft)]" : ""
               }`}
             >
               <p
@@ -658,11 +796,35 @@ function ResultsList({
                 {result.name ?? result.repo}
               </p>
               <p className="truncate text-[0.6875rem] text-[color:var(--muted)]">
-                {result.owner}
+                {result.supported ? (
+                  <span data-testid="result-source">
+                    {engineName(result.engine)}&rsquo;s list · {result.owner}
+                  </span>
+                ) : (
+                  <>
+                    {result.owner}
+                    {result.source && labels.has(result.source) && (
+                      <span data-testid="result-source"> · {labels.get(result.source)}</span>
+                    )}
+                  </>
+                )}
                 {result.gated && result.gated !== "open" && (
                   <span className="text-status-warn"> · gated</span>
                 )}
               </p>
+              {result.supported && (
+                <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[0.6875rem] text-[color:var(--muted)] tabular-nums">
+                  {result.supported.sizeBytes != null && (
+                    <span>{formatBytes(result.supported.sizeBytes)} to download</span>
+                  )}
+                  {result.supported.recommended && (
+                    <span className="text-status-success">recommended</span>
+                  )}
+                  {result.supported.experimental && (
+                    <span className="text-status-warn">experimental</span>
+                  )}
+                </p>
+              )}
               <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[0.6875rem] text-[color:var(--muted)] tabular-nums">
                 {result.downloads != null && (
                   <span>{compactCount(result.downloads)} downloads</span>
@@ -786,6 +948,9 @@ function EmptyDetail({
 
 function RepoDetail({
   repo,
+  source,
+  listed,
+  lists,
   contextLength,
   budget,
   engines,
@@ -794,6 +959,12 @@ function RepoDetail({
   onDownloadStarted,
 }: {
   repo: string;
+  /** The hub it is on; null is the Library's default hub (LS4). */
+  source: string | null;
+  /** Opened from an engine's list: which entry, at its pinned revision. */
+  listed: { engine: string; id: string } | null;
+  /** The node's engines' own lists, to say which versions are on them. */
+  lists: EngineModelList[];
   contextLength: number;
   budget: NodeBudget | null;
   engines: EngineDescriptor[] | null;
@@ -826,6 +997,23 @@ function RepoDetail({
   const { byId: verdicts } = useCandidateEligibility(engines, facts);
   const answerFor = (candidate: CatalogueCandidate) =>
     candidate.facts ? verdicts?.get(candidate.facts.id) : undefined;
+  // The entry this was opened from, if the node still lists it.
+  const entry =
+    listed === null
+      ? undefined
+      : lists.find((l) => l.engine === listed.engine)?.models.find((m) => m.id === listed.id);
+  /** The engines whose own list names this version (the repo's file). */
+  const listedBy = (candidate: CatalogueCandidate): string[] =>
+    lists
+      .filter((l) =>
+        l.models.some(
+          (m) => m.source.repoId === repo && m.source.file === candidate.files[0]?.path,
+        ),
+      )
+      .map((l) => l.engine);
+  // The hub, and for an engine's entry the revision it pins, on every call.
+  const hubParam = { ...(source ? { source } : {}) };
+  const pinned = entry?.source.revision ?? null;
 
   useEffect(() => {
     const id = ++requestId.current;
@@ -845,6 +1033,8 @@ function RepoDetail({
         // memory. Without it every verdict is about the library's host.
         const params = new URLSearchParams({
           repo,
+          ...hubParam,
+          ...(pinned ? { revision: pinned } : {}),
           contextLength: String(contextLength),
           ...fitQuery(budget),
         });
@@ -867,6 +1057,8 @@ function RepoDetail({
         if (id === requestId.current) setLoading(false);
       }
     })();
+    // `hubParam` and `pinned` follow `source` and the entry, which the key fixes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo, contextLength, budget]);
 
   async function preflight(candidate: CatalogueCandidate) {
@@ -877,6 +1069,8 @@ function RepoDetail({
     try {
       const params = new URLSearchParams({
         repo,
+        ...hubParam,
+        ...(pinned ? { revision: pinned } : {}),
         file: weights,
         contextLength: String(contextLength),
         ...fitQuery(budget),
@@ -904,6 +1098,9 @@ function RepoDetail({
       if (withVision && projector) files.push(projector);
       await api.post("library", "/v1/downloads", {
         repo,
+        // Named only when it is not the default hub, so a Library older
+        // than the sources list is never sent a field it refuses.
+        ...hubParam,
         revision: detail?.resolvedCommit ?? detail?.revision ?? "main",
         files,
       });
@@ -1005,6 +1202,31 @@ function RepoDetail({
           )}
         </p>
       </div>
+
+      {entry && listed && (
+        <section
+          data-testid="listed-entry"
+          className="rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-3 text-sm"
+        >
+          <p className="font-ui font-semibold">
+            On {engineName(listed.engine)}&rsquo;s own list: {entry.title}
+            {entry.recommended && <span className="text-status-success"> · recommended</span>}
+            {entry.experimental && <span className="text-status-warn"> · experimental</span>}
+          </p>
+          {entry.about && <p className="mt-1">{entry.about}</p>}
+          <p className="mt-1 text-[color:var(--muted)]">
+            {entry.publisher && <>{entry.publisher} · </>}
+            {entry.sizeBytes != null && <>{formatBytes(entry.sizeBytes)} to download · </>}
+            the version {engineName(listed.engine)} names, at the revision it pins
+            {entry.preparation?.note && (
+              <>
+                ; {engineName(listed.engine)} makes {entry.preparation.note} from it before it runs
+              </>
+            )}
+          </p>
+          {entry.license && <p className="mt-1">Its licence: {entry.license}</p>}
+        </section>
+      )}
 
       {warnings.map((warning) => (
         <p key={warning} className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm">
@@ -1151,6 +1373,8 @@ function RepoDetail({
           onPreflight={preflight}
           onDownload={download}
           answerFor={answerFor}
+          listedBy={listedBy}
+          highlight={entry?.source.file ?? null}
           where={where}
         />
       )}
@@ -1159,7 +1383,7 @@ function RepoDetail({
 
       <QuantReference />
 
-      <ModelCard repo={repo} />
+      <ModelCard repo={repo} source={source} />
     </div>
   );
 }
@@ -1175,10 +1399,16 @@ function CandidateTable({
   onPreflight,
   onDownload,
   answerFor,
+  listedBy,
+  highlight,
   where,
 }: {
   /** The Library's verdict on one version, once it has answered. */
   answerFor: (candidate: CatalogueCandidate) => ModelEligibility | undefined;
+  /** The engines whose own list names this version (LS4). */
+  listedBy: (candidate: CatalogueCandidate) => string[];
+  /** The first file of the version an engine's entry opened, if any. */
+  highlight: string | null;
   where: string;
   candidates: CatalogueCandidate[];
   contextLength: number;
@@ -1225,7 +1455,14 @@ function CandidateTable({
             const downloading = candidate.files.some((f) => activeDestinations.has(f.path));
             const answer = answerFor(candidate);
             return (
-              <tr key={candidate.label} className="border-t border-[color:var(--border)] align-top">
+              <tr
+                key={candidate.label}
+                className={`border-t border-[color:var(--border)] align-top ${
+                  highlight !== null && candidate.files[0]?.path === highlight
+                    ? "bg-[color:var(--panel-soft)]"
+                    : ""
+                }`}
+              >
                 <td className="px-3 py-2">
                   <span className="font-ui font-semibold">{candidate.label}</span>
                   {answer && (
@@ -1243,6 +1480,16 @@ function CandidateTable({
                       recommended
                     </span>
                   )}
+                  {listedBy(candidate).map((engine) => (
+                    <span
+                      key={engine}
+                      data-testid="candidate-listed"
+                      className="ml-2 text-[0.625rem] text-[color:var(--muted)]"
+                      title={`${engineName(engine)} names this version in its own list of the models it supports.`}
+                    >
+                      on {engineName(engine)}&rsquo;s list
+                    </span>
+                  ))}
                   {candidate.files.length > 1 && (
                     <span
                       className="ml-2 text-[0.625rem] text-[color:var(--muted)]"

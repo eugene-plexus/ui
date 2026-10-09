@@ -3968,6 +3968,19 @@ export interface components {
              */
             accepts?: components["schemas"]["ModelRequirement"][];
             /**
+             * @description The models this adapter publishes as supported (LS4,
+             *     library-sources-and-engines.md §4.4): each names its files on a
+             *     hub at a pinned revision, and the preparation they need. A
+             *     property of the adapter, not of this host: listed whether or
+             *     not the engine is installed, so Discover can show what an
+             *     engine would run before it is. Read off the engine's own setup
+             *     at the version the adapter pins (Strata v0.1.39: nine choices).
+             *     Empty for an engine that loads whatever its requirements
+             *     accept. The console sends it to the library's search
+             *     (`POST /v1/catalogue/search`), which lists it as a source.
+             */
+            supportedModels?: components["schemas"]["SupportedModel"][];
+            /**
              * @description Limited integration and support, including niche engines
              *     whose capabilities and upstream interfaces change quickly.
              *     Independent of hardware test status: a successful hardware
@@ -5937,6 +5950,16 @@ export interface components {
             architectures?: string[];
             /** @description The GGUF quantization must be one of these. Absent means any. */
             quantizations?: string[];
+            /**
+             * @description The model's file must have one of these names: a GGUF's first
+             *     shard, as the hub and the disk both name it, without its
+             *     folder. Absent means any. For an engine that runs only the files
+             *     it names (LS4): Strata's own setup accepts a GGUF by its name
+             *     and refuses every other one of the same architecture, so its
+             *     adapter fills this from its `supportedModels`, and a Flash-Next
+             *     K-quant from another publisher is `no`, naming the list.
+             */
+            files?: string[];
             mlxQuantization?: components["schemas"]["MlxQuantizationRule"];
             /**
              * @description For `format: prepared` only: the engine a prepared model must
@@ -5960,6 +5983,81 @@ export interface components {
              *     "vLLM checks the architecture when it loads".
              */
             note?: string;
+        };
+        /**
+         * @description What a prepared model was made from, as far as it is known. Every
+         *     field is optional: a model adopted from outside Eugene may say
+         *     nothing, and "not known" is shown as such.
+         */
+        PreparedSource: {
+            /**
+             * @description The source model's `LibraryModel.path`, when it is a library
+             *     model. The library links the two by it (`PreparedDetail.sourceModelId`).
+             */
+            path?: string;
+            /** @description The hub repo it came from, e.g. `ISTA-DASLab/Qwen3.8-Flash-Next-GGUF`. */
+            repoId?: string;
+            /** @description The repo-relative file, for a GGUF (its first shard when split). */
+            file?: string;
+            /** @description The repo commit. */
+            revision?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description One model an engine's adapter publishes as supported
+         *     (library-sources-and-engines.md §4.4, LS4): which files on a hub,
+         *     and what the engine does with them. Read off the engine's own
+         *     documentation and setup at the version the adapter pins, never
+         *     written from memory. The list ships with the adapter in the agent
+         *     (Troy's L7, `EngineDescriptor.supportedModels`), so a new engine
+         *     brings its own and a node's list is the one its adapter would
+         *     prepare and run. A caller hands it to the library's search
+         *     (`EngineModelList`), which shows it as one source among the others
+         *     (`CatalogueSourceKind` `engine_list`).
+         */
+        SupportedModel: {
+            /**
+             * @description Unique within the engine's list and stable across versions of
+             *     it, e.g. Strata's own name for the choice (`coder-IQ1_M`).
+             */
+            id: string;
+            /** @description What to call it, e.g. `Qwen3.8-Flash-Next IQ2_XS`. */
+            title: string;
+            /** @description The engine's own words for it, from its documentation. */
+            about?: string;
+            /** @description Who made the files, e.g. `Qwen; GSQ-RCO quants by ISTA-DASLab`. */
+            publisher?: string;
+            /**
+             * @description When the files carry a licence of their own the person should
+             *     read before downloading, the engine's words for it.
+             */
+            license?: string;
+            format: components["schemas"]["ModelFormat"];
+            /** @description As the hub reads the files (`general.architecture` for a GGUF). */
+            architecture?: string;
+            /** @description The engine's name for the size, e.g. `IQ2_XS`. */
+            quantization?: string;
+            /**
+             * @description Where the files are, all three named: `repoId`, `file` (a
+             *     GGUF's first shard, repo-relative) and the `revision` the engine
+             *     pins. What a preparation records as its source (LS5).
+             */
+            source: components["schemas"]["PreparedSource"];
+            /** @description Every file of it summed, as the hub lists them at `source.revision`. */
+            sizeBytes?: number;
+            /** @description What the engine does to the files before it runs them, if anything. */
+            preparation?: components["schemas"]["ModelPreparation"];
+            /**
+             * @description The engine's own documentation recommends it.
+             * @default false
+             */
+            recommended: boolean;
+            /**
+             * @description The engine's own documentation calls it experimental.
+             * @default false
+             */
+            experimental: boolean;
         };
         /**
          * @description The kind of value a config field holds. The UI uses this to pick
@@ -6071,9 +6169,22 @@ export interface components {
          *     report, and reusing `path_list` or `url_list` would tell every UI
          *     to open a directory picker or an address field. UIs render it as
          *     an add/remove list of text fields.
+         *
+         *     `catalogue_sources` (LS4, 2026-10-09) is an ordered JSON array of
+         *     the library's `CatalogueSource` — `{"id", "kind", "label",
+         *     "enabled", "address", "token", "engine"}`: where Discover finds
+         *     models (library-sources-and-engines.md §4.4). Its one user is the
+         *     library's `catalogueSources`, which replaced the single hub
+         *     address and token. Like `share_credentials`, entries hold a
+         *     secret: an `hf_hub` entry's `token` is redacted in `GET` (as
+         *     `null`, with `hasToken` saying whether one is stored), accepted in
+         *     `PATCH`, and an entry that omits it keeps the token stored under
+         *     the same `id`; `""` clears it. UIs render it as rows of a source,
+         *     with the token a password input, and must not display a redacted
+         *     token as though none were stored.
          * @enum {string}
          */
-        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials" | "string_list";
+        ConfigValueType: "string" | "integer" | "number" | "boolean" | "enum" | "secret" | "file_path" | "path_list" | "url" | "url_list" | "duration" | "runtime_name" | "node_name" | "model_slots" | "path_mappings" | "library_folders" | "share_credentials" | "string_list" | "catalogue_sources";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
+import { CatalogueSourcesInput } from "@/components/CatalogueSources";
 import { FolderPicker } from "@/components/FolderPicker";
 import { REDACTED, formatValue, readValue, unsetSentence } from "@/lib/configValue";
 import {
@@ -376,6 +377,12 @@ export function ConfigFieldInput({
       return <ShareCredentialsInput value={value} pending={locked} onChange={onChange} />;
     }
 
+    // `catalogue_sources` (LS4): where Discover finds models. Each hub's
+    // token is redacted like a share password and kept the same way.
+    if (field.valueType === "catalogue_sources") {
+      return <CatalogueSourcesInput value={value} pending={locked} onChange={onChange} />;
+    }
+
     // `url_list` is the same widget with different words: an ordered
     // add/remove list of strings. Added at M5 for the control root's
     // standby endpoints, which are inherently plural — "N standbys is a
@@ -702,6 +709,7 @@ const COMPOUND_VALUE_TYPES = new Set<string>([
   "library_folders",
   "path_mappings",
   "share_credentials",
+  "catalogue_sources",
   "model_slots",
 ]);
 
