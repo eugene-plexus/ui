@@ -3949,8 +3949,20 @@ export interface components {
              *     It lives here because engine knowledge lives here. Putting
              *     format support on the library would give the library a copy
              *     of it, and the copy would be the one that went stale.
+             *
+             *     **Kept for consoles older than `accepts`;** it is the formats
+             *     of the requirements in `accepts` that need no preparation, so
+             *     an older console never offers Strata for every GGUF.
              */
             modelFormats: components["schemas"]["ModelFormat"][];
+            /**
+             * @description What this engine loads, as data the library judges
+             *     (`POST /v1/eligibility`; library-sources-and-engines.md, LS1).
+             *     Finer than `modelFormats`: the MLX marker, architectures, a
+             *     preparation step, and whether only the engine can tell. A
+             *     property of the engine, not of this host.
+             */
+            accepts?: components["schemas"]["ModelRequirement"][];
             /**
              * @description Limited integration and support, including niche engines
              *     whose capabilities and upstream interfaces change quickly.
@@ -5844,14 +5856,79 @@ export interface components {
          *       `ModelCapabilities.decision`, never `chat`.
          *
          *     Shared because it appears on both sides of a join: a library
-         *     entry declares what a model *is*, and
-         *     `EngineDescriptor.modelFormats` declares what an engine can
-         *     *load*. Nothing can serve a safetensors model until the vLLM
-         *     adapter lands, and that answer comes from the engine's
-         *     descriptor rather than from anything the library knows.
+         *     entry declares what a model *is*, and an engine's
+         *     `ModelRequirement`s declare what it can *load*. The format is
+         *     the first term of that join, not the whole of it
+         *     (library-sources-and-engines.md).
          * @enum {string}
          */
         ModelFormat: "gguf" | "safetensors" | "kev_checkpoint";
+        /**
+         * @description The one marker the library reads that decides an engine: a
+         *     safetensors folder whose `config.json` carries MLX's
+         *     quantization block packs its weights as integers only MLX reads.
+         *     `required`: only such a folder matches; `forbidden`: never one.
+         * @enum {string}
+         */
+        MlxQuantizationRule: "required" | "forbidden";
+        /**
+         * @description A match that runs only after the engine prepares it (Strata builds
+         *     an expert pack, a lookup table and an MTP helper from a GGUF). The
+         *     verdict is `after_preparation`; the original file is never
+         *     changed.
+         */
+        ModelPreparation: {
+            /** @description The adapter's name for the step, e.g. `strata-prepare`. */
+            recipe: string;
+            /** @description What the step makes, in words. */
+            note?: string;
+        };
+        /**
+         * @description Who can say a match will load. Absent means `eugene`. `eugene`:
+         *     the fields above are the whole rule, so a match is `runs`. `engine`: the engine decides
+         *     when it loads (vLLM's model registry, for one), so a match is
+         *     only `may_run` (Troy's L4).
+         * @enum {string}
+         */
+        ModelRequirementAuthority: "eugene" | "engine";
+        /**
+         * @description One kind of model an engine loads, declared by its adapter
+         *     (`EngineDescriptor.accepts`) and judged by the library
+         *     (`POST /v1/eligibility`). Data, not code (Troy's L3, 2026-10-09):
+         *     a model meets a requirement when every field present matches;
+         *     an absent field matches anything.
+         *
+         *     An engine lists several when it loads several kinds: MLX loads
+         *     an MLX-quantized folder outright, and a plain Hugging Face folder
+         *     only if mlx-lm knows its architecture, which only a load can
+         *     tell (`authority: engine`).
+         */
+        ModelRequirement: {
+            format: components["schemas"]["ModelFormat"];
+            /**
+             * @description The model's `architecture` must be one of these: GGUF's
+             *     `general.architecture`, or a safetensors folder's
+             *     `architectures[0]`. Absent means any.
+             */
+            architectures?: string[];
+            /** @description The GGUF quantization must be one of these. Absent means any. */
+            quantizations?: string[];
+            mlxQuantization?: components["schemas"]["MlxQuantizationRule"];
+            preparation?: components["schemas"]["ModelPreparation"];
+            authority?: components["schemas"]["ModelRequirementAuthority"];
+            /**
+             * @description Among the engines that run a model, lower is offered first and
+             *     is what Run picks, unless the person has chosen a default
+             *     engine for the format (Troy's L10).
+             * @default 100
+             */
+            preference: number;
+            /**
+             * @description Words for the person beside a match, in the engine's own terms:
+             *     "vLLM checks the architecture when it loads".
+             */
+            note?: string;
+        };
         /**
          * @description The kind of value a config field holds. The UI uses this to pick
          *     a renderer (text input, dropdown, password field, etc.).

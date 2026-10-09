@@ -966,11 +966,10 @@ export interface components {
          *       `ModelCapabilities.decision`, never `chat`.
          *
          *     Shared because it appears on both sides of a join: a library
-         *     entry declares what a model *is*, and
-         *     `EngineDescriptor.modelFormats` declares what an engine can
-         *     *load*. Nothing can serve a safetensors model until the vLLM
-         *     adapter lands, and that answer comes from the engine's
-         *     descriptor rather than from anything the library knows.
+         *     entry declares what a model *is*, and an engine's
+         *     `ModelRequirement`s declare what it can *load*. The format is
+         *     the first term of that join, not the whole of it
+         *     (library-sources-and-engines.md).
          * @enum {string}
          */
         ModelFormat: "gguf" | "safetensors" | "kev_checkpoint";

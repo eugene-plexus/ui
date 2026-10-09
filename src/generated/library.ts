@@ -177,6 +177,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Which engines can run each model, and the one dot it carries.
+         * @description The one judge of model against engine (Troy's L2, 2026-10-09):
+         *     the console's Library page and the agent's Run both ask here, so
+         *     no rule is written twice. The caller sends the engines as a node
+         *     reported them, each with its `accepts`; the library matches each
+         *     model's own facts (format, architecture, quantization, the MLX
+         *     marker) against them and answers a verdict per engine, in words,
+         *     and a level per model (`EligibilityLevel`).
+         *
+         *     Pure: it reads what the library already knows of each model and
+         *     calls nothing. A model id it does not know is left out of the
+         *     answer rather than failing the rest.
+         */
+        post: operations["judgeEligibility"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/models/{id}": {
         parameters: {
             query?: never;
@@ -3024,11 +3054,10 @@ export interface components {
          *       `ModelCapabilities.decision`, never `chat`.
          *
          *     Shared because it appears on both sides of a join: a library
-         *     entry declares what a model *is*, and
-         *     `EngineDescriptor.modelFormats` declares what an engine can
-         *     *load*. Nothing can serve a safetensors model until the vLLM
-         *     adapter lands, and that answer comes from the engine's
-         *     descriptor rather than from anything the library knows.
+         *     entry declares what a model *is*, and an engine's
+         *     `ModelRequirement`s declare what it can *load*. The format is
+         *     the first term of that join, not the whole of it
+         *     (library-sources-and-engines.md).
          * @enum {string}
          */
         ModelFormat: "gguf" | "safetensors" | "kev_checkpoint";
@@ -4047,54 +4076,13 @@ export interface components {
          *       `ModelCapabilities.decision`, never `chat`.
          *
          *     Shared because it appears on both sides of a join: a library
-         *     entry declares what a model *is*, and
-         *     `EngineDescriptor.modelFormats` declares what an engine can
-         *     *load*. Nothing can serve a safetensors model until the vLLM
-         *     adapter lands, and that answer comes from the engine's
-         *     descriptor rather than from anything the library knows.
+         *     entry declares what a model *is*, and an engine's
+         *     `ModelRequirement`s declare what it can *load*. The format is
+         *     the first term of that join, not the whole of it
+         *     (library-sources-and-engines.md).
          * @enum {string}
          */
         "schemas-ModelFormat": "gguf" | "safetensors" | "kev_checkpoint";
-        /**
-         * @description Error response shape, modeled on RFC 7807 (problem+json). Every
-         *     Eugene Plexus component returns this for 4xx / 5xx responses.
-         */
-        Problem: {
-            /**
-             * @description A URI reference identifying the problem type, per RFC 7807.
-             *     Modeled as a plain string rather than `format: uri` to keep
-             *     sentinel values like `about:blank` and ergonomic at call sites.
-             * @default about:blank
-             */
-            type: string;
-            /** @description Short human-readable summary. */
-            title: string;
-            /** @description HTTP status code. */
-            status: number;
-            /** @description Human-readable explanation specific to this occurrence. */
-            detail?: string;
-            /**
-             * @description A URI reference identifying the specific occurrence. Modeled
-             *     as a plain string for the same reason as `type`.
-             */
-            instance?: string;
-            /**
-             * @description Eugene Plexus component name that originated the error
-             *     (e.g. `"gateway"`, `"inference-driver:left"`).
-             */
-            component?: string;
-            /**
-             * @description Safe means this attempt did not accept application work and may
-             *     be replayed before any output. Terminal means the request must
-             *     be corrected. Indeterminate means work may have occurred; do not
-             *     replay automatically. Missing classification on a server failure
-             *     is indeterminate, never implicit permission to retry.
-             * @enum {string}
-             */
-            retryDisposition?: "safe" | "terminal" | "indeterminate";
-            /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
-            retryAfterSeconds?: number;
-        };
         /**
          * @description Which engine adapter constructs the argv and interprets
          *     readiness. Deliberately a closed enum rather than a free string:
@@ -4154,6 +4142,190 @@ export interface components {
          * @enum {string}
          */
         "schemas-EngineKind": "llama_cpp" | "vllm" | "mlx" | "kev" | "strata";
+        /**
+         * @description The one marker the library reads that decides an engine: a
+         *     safetensors folder whose `config.json` carries MLX's
+         *     quantization block packs its weights as integers only MLX reads.
+         *     `required`: only such a folder matches; `forbidden`: never one.
+         * @enum {string}
+         */
+        MlxQuantizationRule: "required" | "forbidden";
+        /**
+         * @description A match that runs only after the engine prepares it (Strata builds
+         *     an expert pack, a lookup table and an MTP helper from a GGUF). The
+         *     verdict is `after_preparation`; the original file is never
+         *     changed.
+         */
+        ModelPreparation: {
+            /** @description The adapter's name for the step, e.g. `strata-prepare`. */
+            recipe: string;
+            /** @description What the step makes, in words. */
+            note?: string;
+        };
+        /**
+         * @description Who can say a match will load. Absent means `eugene`. `eugene`:
+         *     the fields above are the whole rule, so a match is `runs`. `engine`: the engine decides
+         *     when it loads (vLLM's model registry, for one), so a match is
+         *     only `may_run` (Troy's L4).
+         * @enum {string}
+         */
+        ModelRequirementAuthority: "eugene" | "engine";
+        /**
+         * @description One kind of model an engine loads, declared by its adapter
+         *     (`EngineDescriptor.accepts`) and judged by the library
+         *     (`POST /v1/eligibility`). Data, not code (Troy's L3, 2026-10-09):
+         *     a model meets a requirement when every field present matches;
+         *     an absent field matches anything.
+         *
+         *     An engine lists several when it loads several kinds: MLX loads
+         *     an MLX-quantized folder outright, and a plain Hugging Face folder
+         *     only if mlx-lm knows its architecture, which only a load can
+         *     tell (`authority: engine`).
+         */
+        ModelRequirement: {
+            format: components["schemas"]["schemas-ModelFormat"];
+            /**
+             * @description The model's `architecture` must be one of these: GGUF's
+             *     `general.architecture`, or a safetensors folder's
+             *     `architectures[0]`. Absent means any.
+             */
+            architectures?: string[];
+            /** @description The GGUF quantization must be one of these. Absent means any. */
+            quantizations?: string[];
+            mlxQuantization?: components["schemas"]["MlxQuantizationRule"];
+            preparation?: components["schemas"]["ModelPreparation"];
+            authority?: components["schemas"]["ModelRequirementAuthority"];
+            /**
+             * @description Among the engines that run a model, lower is offered first and
+             *     is what Run picks, unless the person has chosen a default
+             *     engine for the format (Troy's L10).
+             * @default 100
+             */
+            preference: number;
+            /**
+             * @description Words for the person beside a match, in the engine's own terms:
+             *     "vLLM checks the architecture when it loads".
+             */
+            note?: string;
+        };
+        /**
+         * @description One engine as a node reported it, sent to the library to be judged
+         *     against. The caller sends what it holds (the console the picked
+         *     node's `GET /v1/engines`, the agent its own) so the library needs
+         *     no call to any agent.
+         */
+        EligibilityEngine: {
+            engine: components["schemas"]["schemas-EngineKind"];
+            /** @description Installed and usable on that node now. */
+            available: boolean;
+            /**
+             * @description Not available, but this node could have it: Eugene can install
+             *     it here, or the agent wrote an install command for this
+             *     hardware. False for an engine that cannot run on this hardware.
+             * @default false
+             */
+            installable: boolean;
+            /** @default false */
+            experimental: boolean;
+            accepts: components["schemas"]["ModelRequirement"][];
+        };
+        EligibilityRequest: {
+            /** @description Library model ids to judge. Absent means every model. */
+            models?: string[];
+            engines: components["schemas"]["EligibilityEngine"][];
+        };
+        /**
+         * @description The one dot a model carries (Troy's L5, 2026-10-09), in his words:
+         *
+         *     * `works_here`: *Will work on this machine now*. An available
+         *       engine `runs` or `may_run` it.
+         *     * `other_engine`: *Will work with a different engine*. An engine
+         *       this node could install would run it, or an available engine
+         *       runs it after preparation.
+         *     * `not_here`: *Can not work on this machine*. No engine this
+         *       hardware can have accepts it.
+         *
+         *     Whether it fits in memory is a separate answer (`Fit`), until each
+         *     engine has its own fit (LS6).
+         * @enum {string}
+         */
+        EligibilityLevel: "works_here" | "other_engine" | "not_here";
+        /**
+         * @description One model against one engine. `runs`: a requirement with authority
+         *     `eugene` matches. `may_run`: only the engine can tell, at load.
+         *     `after_preparation`: it runs once the engine prepares it. `no`:
+         *     no requirement matches, and `reason` says which term failed.
+         * @enum {string}
+         */
+        EngineVerdictKind: "runs" | "may_run" | "after_preparation" | "no";
+        EngineVerdict: {
+            engine: components["schemas"]["schemas-EngineKind"];
+            verdict: components["schemas"]["EngineVerdictKind"];
+            available: boolean;
+            /** @default false */
+            installable: boolean;
+            /** @default false */
+            experimental: boolean;
+            /** @description The verdict in words, naming the term that decided it. */
+            reason: string;
+            preparation?: components["schemas"]["ModelPreparation"];
+            /** @description From the requirement that matched; absent on `no`. */
+            preference?: number;
+        };
+        ModelEligibility: {
+            modelId: string;
+            level: components["schemas"]["EligibilityLevel"];
+            /**
+             * @description Every engine sent, best first: available before not, then
+             *     `runs`, `may_run`, `after_preparation`, `no`, then
+             *     `preference`. The first available `runs` or `may_run` is what
+             *     Run would pick when the person has set no default.
+             */
+            engines: components["schemas"]["EngineVerdict"][];
+        };
+        EligibilityList: {
+            models: components["schemas"]["ModelEligibility"][];
+        };
+        /**
+         * @description Error response shape, modeled on RFC 7807 (problem+json). Every
+         *     Eugene Plexus component returns this for 4xx / 5xx responses.
+         */
+        Problem: {
+            /**
+             * @description A URI reference identifying the problem type, per RFC 7807.
+             *     Modeled as a plain string rather than `format: uri` to keep
+             *     sentinel values like `about:blank` and ergonomic at call sites.
+             * @default about:blank
+             */
+            type: string;
+            /** @description Short human-readable summary. */
+            title: string;
+            /** @description HTTP status code. */
+            status: number;
+            /** @description Human-readable explanation specific to this occurrence. */
+            detail?: string;
+            /**
+             * @description A URI reference identifying the specific occurrence. Modeled
+             *     as a plain string for the same reason as `type`.
+             */
+            instance?: string;
+            /**
+             * @description Eugene Plexus component name that originated the error
+             *     (e.g. `"gateway"`, `"inference-driver:left"`).
+             */
+            component?: string;
+            /**
+             * @description Safe means this attempt did not accept application work and may
+             *     be replayed before any output. Terminal means the request must
+             *     be corrected. Indeterminate means work may have occurred; do not
+             *     replay automatically. Missing classification on a server failure
+             *     is indeterminate, never implicit permission to retry.
+             * @enum {string}
+             */
+            retryDisposition?: "safe" | "terminal" | "indeterminate";
+            /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
+            retryAfterSeconds?: number;
+        };
         /**
          * @description One directory the library catalogues, and where other machines
          *     find it (2026-09-14).
@@ -5155,6 +5327,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryModelList"];
+                };
+            };
+        };
+    };
+    judgeEligibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EligibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description A verdict per model and engine. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EligibilityList"];
                 };
             };
         };
