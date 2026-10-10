@@ -112,10 +112,11 @@ export interface paths {
          *       text fragment, `reasoning` for a reasoning fragment,
          *       `toolCalls` for tool-call fragments, exactly one per frame
          *     - `event: progress` — `data` is a JSON `StreamProgress`: what
-         *       the backend is doing between outputs. Only when the request
-         *       set `reportProgress`, and at any point before `done`. **Not
-         *       output**: not a commit point one layer up, not a first token,
-         *       and it never arms the stall clock (`streamStallSeconds`)
+         *       the backend is doing, or how far it has written, between
+         *       outputs. Only when the request set `reportProgress`, and at
+         *       any point before `done`. **Not output**: not a commit point
+         *       one layer up, not a first token, and it never arms the stall
+         *       clock (`streamStallSeconds`)
          *     - `event: done`  — `data` is the final `GenerateResponse` JSON
          *     - `event: error` — `data` is a `Problem` JSON
          *
@@ -903,9 +904,10 @@ export interface components {
              *     `POST /v1/generate`. Not an output setting: it changes what
              *     the stream says about the work, never what the model says.
              *
-             *     llama.cpp's own `return_progress` flag is sent only once the
-             *     backend has answered as `llama-server` (its `/props`), since
-             *     a hosted API refuses a field it does not know.
+             *     llama.cpp's own `return_progress` and `timings_per_token`
+             *     flags are sent only once the backend has answered as
+             *     `llama-server` (its `/props`), since a hosted API refuses a
+             *     field it does not know.
              *
              *     **The 200 commits at the first progress frame**, where it
              *     otherwise commits at the first token, so a backend that
@@ -1410,6 +1412,14 @@ export interface components {
          *       tools. Its thinking is `reasoning` output, not progress.
          *     - **Codex**: `working` at `turn.started`; `tool` when an item
          *       that runs something starts.
+         *     - **llama.cpp, while it writes**: `generating`, from its own
+         *       running count (`timings_per_token: true`, which puts
+         *       `timings.predicted_n` on every frame), at most every half
+         *       second. Measured on b10948: the count on the last frame equals
+         *       the usage's `completion_tokens`. No other backend reports a
+         *       running count today (Strata 0.1.39 says it only at the end),
+         *       so none sends `generating`: nothing here is estimated from the
+         *       text.
          *
          *     **Why it exists (2026-09-27).** Before the first token a stream
          *     said nothing at all: measured on llama.cpp b11215 with a 7,795
@@ -1424,14 +1434,28 @@ export interface components {
              *     `working`: the backend says it is working and not how far.
              *     `tool`: an agent backend is running one of its own tools,
              *     named in `tool`.
+             *     `generating`: writing, thinking included, with the backend's
+             *     own count of the tokens so far in `generatedTokens`. Sent
+             *     between output frames (2026-10-10, Troy: Workbench said
+             *     "Waiting for the model" through minutes of reasoning).
              * @enum {string}
              */
-            stage: "prompt" | "working" | "tool";
+            stage: "prompt" | "working" | "tool" | "generating";
             /**
              * @description On `tool`: the tool's name as the backend gives it (`Read`,
              *     `Bash`, `command`). Its arguments are not carried.
              */
             tool?: string;
+            /**
+             * @description On `generating`: tokens written so far, reasoning included, as
+             *     the backend counted them.
+             */
+            generatedTokens?: number;
+            /**
+             * @description On `generating`: the backend's own writing speed so far, when
+             *     it reports one.
+             */
+            tokensPerSecond?: number;
             /** @description Tokens in the whole prompt, as the backend counted them. */
             promptTokens?: number;
             /**

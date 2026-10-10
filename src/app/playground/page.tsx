@@ -56,6 +56,7 @@ import {
 import { type DoorId, availableDoors, doorFromParam, modelsForDoor } from "@/lib/doors";
 import { contextLookup, contextOf, contextText, withContext } from "@/lib/modelContext";
 import { getSessionToken } from "@/lib/session";
+import { lengthStopWords } from "@/lib/outputCap";
 import { seconds } from "@/lib/turnFormat";
 import { usePolling } from "@/lib/usePolling";
 import type {
@@ -1099,12 +1100,10 @@ function RoutingBar({ info }: { info: TurnInfo }) {
       {info.finishReason === "length" && (
         <span
           className="status-warn px-1"
-          title={
-            "The reply stopped at the token limit, not at a natural end. Raise max_tokens " +
-            "in Request settings, or clear it to use the model's own setting."
-          }
+          data-testid="length-stop"
+          title={lengthStopWords(info.output_cap).title}
         >
-          hit the token limit
+          {lengthStopWords(info.output_cap).badge}
         </span>
       )}
       {info.finishReason === "content_filter" && (

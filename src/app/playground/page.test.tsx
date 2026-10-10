@@ -81,13 +81,14 @@ function sse(
   deltas: string[],
   finish: string,
   usage = { prompt_tokens: 5, completion_tokens: 7 },
+  routing: Record<string, unknown> = {},
 ): Response {
   const frames = [
     ...deltas.map((content) => JSON.stringify({ choices: [{ index: 0, delta: { content } }] })),
     JSON.stringify({
       choices: [{ index: 0, delta: {}, finish_reason: finish }],
       usage,
-      x_eugene_plexus: { driver: "qwen-driver" },
+      x_eugene_plexus: { driver: "qwen-driver", ...routing },
     }),
     "[DONE]",
   ];
@@ -220,7 +221,18 @@ describe("sampling wiring", () => {
     handlers.set("POST gateway/v1/chat/completions", () => sse(["truncated…"], "length"));
     await renderReady();
     send("hello");
-    await waitFor(() => expect(screen.getByText("hit the token limit")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("hit a length limit")).toBeInTheDocument());
+  });
+
+  it("names the cap that stopped a reply, when the gateway says which (2026-10-10)", async () => {
+    handlers.set("POST gateway/v1/chat/completions", () =>
+      sse(["truncated…"], "length", undefined, { output_cap: { tokens: 4096, source: "install" } }),
+    );
+    await renderReady();
+    send("hello");
+    const badge = await screen.findByTestId("length-stop");
+    expect(badge).toHaveTextContent("hit the install's cap (4,096)");
+    expect(badge.getAttribute("title")).toContain("Default max output tokens");
   });
 });
 

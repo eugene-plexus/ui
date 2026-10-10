@@ -92,6 +92,26 @@ describe("everything else a backend says", () => {
     ).toBe("Using a tool: Bash");
   });
 
+  it("says how many tokens it has written, where the backend counts them (2026-10-10)", () => {
+    const count = {
+      stage: "generating" as const,
+      generated_tokens: 1234,
+      tokens_per_second: 83.14,
+    };
+    expect(describeWork({ thinking: true, progress: count })).toEqual({
+      headline: "Thinking",
+      detail: "1,234 tokens · 83.1 tok/s",
+      fraction: null,
+    });
+    expect(describeWork({ progress: { stage: "generating", generated_tokens: 9 } })).toEqual({
+      headline: "Writing",
+      detail: "9 tokens",
+      fraction: null,
+    });
+    // No count, nothing said about one.
+    expect(describeWork({ thinking: true, progress: { stage: "generating" } }).detail).toBeNull();
+  });
+
   it("says a sleeping model is being started, and otherwise only that it is waiting", () => {
     expect(describeWork({ starting: true }).headline).toBe(
       "Starting the model. It was asleep, so it loads first",
@@ -118,6 +138,9 @@ describe("the still-working sentence", () => {
     expect(saysStillWorking({ progress: read(100, 5000) }, late * 10)).toBe(false);
     expect(saysStillWorking({ thinking: true }, late * 10)).toBe(false);
     expect(saysStillWorking({ progress: { stage: "tool", tool: "Read" } }, late * 10)).toBe(false);
+    expect(
+      saysStillWorking({ progress: { stage: "generating", generated_tokens: 5 } }, late * 10),
+    ).toBe(false);
   });
 });
 

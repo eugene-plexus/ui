@@ -12,7 +12,10 @@
  *   say "Reading your message", how much, and roughly how long is left;
  * - a hosted API says it has the request, and keeps saying so;
  * - Claude Code and Codex say which of their own tools they are running;
- * - a reasoning model's thinking arrives as text, and is shown.
+ * - a reasoning model's thinking arrives as text, and is shown;
+ * - llama.cpp counts the tokens it has written, thinking included, so the
+ *   line says how many and how fast (2026-10-10). A backend that counts
+ *   only at the end says nothing of the kind: nothing here is estimated.
  *
  * Nothing here is estimated beyond the one division the time left
  * needs, and that only once there is a rate to divide by.
@@ -92,6 +95,14 @@ export function describeWork(state: WorkingState): WorkingLine {
     };
   }
   if (progress?.stage === "prompt") return reading(progress);
+  if (progress?.stage === "generating" && progress.generated_tokens) {
+    const speed = progress.tokens_per_second;
+    return {
+      headline: state.thinking ? "Thinking" : "Writing",
+      detail: `${count(progress.generated_tokens)} tokens${speed ? ` · ${speed.toFixed(1)} tok/s` : ""}`,
+      fraction: null,
+    };
+  }
   if (state.thinking) return { headline: "Thinking", detail: null, fraction: null };
   if (progress?.stage === "working") {
     return {
@@ -117,7 +128,7 @@ export function describeWork(state: WorkingState): WorkingLine {
 export function saysStillWorking(state: WorkingState, seconds: number): boolean {
   if (seconds < STILL_WORKING_AFTER_SECONDS || state.thinking) return false;
   const stage = state.progress?.stage;
-  return stage !== "prompt" && stage !== "tool";
+  return stage !== "prompt" && stage !== "tool" && stage !== "generating";
 }
 
 /** The model is asleep: listed, nothing ready, and it starts on demand, so
