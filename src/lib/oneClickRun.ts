@@ -361,10 +361,25 @@ async function submit(
   }
 }
 
+/**
+ * A run operation's id. `crypto.randomUUID` exists only in a secure context
+ * (HTTPS, or localhost): a console opened at `http://<LAN address>` has none,
+ * and every Run, Download and Prepare threw inside its click handler, doing
+ * nothing at all. `getRandomValues` exists in every context.
+ */
+export function newRunId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function startRun(model: LibraryModel, node: TargetNode): string {
   const existing = findRun(model.id, node.target);
   if (existing && !isTerminal(existing.step)) return existing.id;
-  const id = crypto.randomUUID();
+  const id = newRunId();
   void submit(id, { node: node.name, modelId: model.id }, node, runModelOf(model));
   return id;
 }
@@ -376,7 +391,7 @@ export interface RunDownloadSpec {
   format?: string;
 }
 export function startDownloadAndRun(spec: RunDownloadSpec, node: TargetNode): string {
-  const id = `dl_${crypto.randomUUID()}`;
+  const id = `dl_${newRunId()}`;
   void submit(id, { node: node.name, download: { repo: spec.repo, files: [spec.file] } }, node, {
     id: "",
     name: spec.label,
@@ -412,7 +427,7 @@ export function startPreparation(
 ): string {
   const existing = findPreparation(model.id, node.target);
   if (existing && !isTerminal(existing.step)) return existing.id;
-  const id = `prep_${crypto.randomUUID()}`;
+  const id = `prep_${newRunId()}`;
   void submit(
     id,
     {
@@ -445,7 +460,7 @@ export function startDownloadAndPrepare(
   node: TargetNode,
   preparation: RunPreparation,
 ): string {
-  const id = `dl_${crypto.randomUUID()}`;
+  const id = `dl_${newRunId()}`;
   void submit(
     id,
     {

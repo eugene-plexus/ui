@@ -103,6 +103,37 @@ describe("PrepareControl", () => {
   });
 });
 
+describe("PrepareControl, when pressing it cannot start anything", () => {
+  it("says why it cannot be pressed with no machine to run on", () => {
+    render(
+      <PrepareControl
+        engine="strata"
+        entry={ENTRY}
+        node={null}
+        where="amish"
+        onStart={vi.fn(() => "x")}
+      />,
+    );
+    expect(screen.getByTestId("prepare-start")).toBeDisabled();
+    expect(screen.getByTestId("prepare-no-node")).toHaveTextContent(
+      "Working out which machine this runs on",
+    );
+  });
+
+  it("shows why nothing started when starting fails, instead of nothing", () => {
+    const start = vi.fn((): string => {
+      throw new TypeError("crypto.randomUUID is not a function");
+    });
+    render(
+      <PrepareControl engine="strata" entry={ENTRY} node={NODE} where="amish" onStart={start} />,
+    );
+    fireEvent.click(screen.getByTestId("prepare-start"));
+    expect(screen.getByTestId("prepare-start-error")).toHaveTextContent(
+      "Nothing was started: crypto.randomUUID is not a function",
+    );
+  });
+});
+
 describe("entryForFile", () => {
   it("finds the entry by the first shard's name, case ignored, in either separator", () => {
     expect(

@@ -46,6 +46,8 @@ export function PrepareControl({
   void runs; // a store change re-renders this control; `runById` reads the same store
   const [context, setContext] = useState<number | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
+  // Why pressing it started nothing, in the browser's own words.
+  const [startError, setStartError] = useState<string | null>(null);
   const task = runById(runId);
   const busy = task !== null && !isTerminal(task.step);
   const name = engineName(engine);
@@ -53,14 +55,29 @@ export function PrepareControl({
   const contexts = preparation?.contexts ?? [];
   const start = () => {
     if (!node) return;
-    setRunId(onStart({ engine, contextSize: context }));
+    setStartError(null);
+    try {
+      const id = onStart({ engine, contextSize: context });
+      if (!id) {
+        setStartError("Nothing was started: this page has not found the model's files yet.");
+        return;
+      }
+      setRunId(id);
+    } catch (err) {
+      setStartError(`Nothing was started: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
   // The node judges its own install (LS7, B30): said before a preparation
   // would fail halfway, with the fix.
   const tooOld = preparation?.engineTooOld
     ? `This needs ${name} ${preparation.minEngineVersion ?? "a newer version"} or newer, and ${where} has ${preparation.engineTooOld}: update ${name} on ${where} from Backends first.`
     : null;
-  const blocked = disabledReason ?? tooOld;
+  // A button that cannot be pressed says why (it once sat greyed out, silent,
+  // while the page had no machine to run on).
+  const blocked =
+    disabledReason ??
+    tooOld ??
+    (node ? null : "Working out which machine this runs on: choose one in the picker above.");
   const disabled = !node || busy || blocked !== null;
 
   return (
@@ -123,6 +140,23 @@ export function PrepareControl({
         </button>
         {disabledReason && (
           <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">{disabledReason}</p>
+        )}
+        {!node && !disabledReason && !tooOld && (
+          <p
+            data-testid="prepare-no-node"
+            className="mt-1 text-[0.6875rem] text-[color:var(--muted)]"
+          >
+            {blocked}
+          </p>
+        )}
+        {startError && (
+          <p
+            data-testid="prepare-start-error"
+            role="alert"
+            className="status-error mt-1 px-1 text-xs"
+          >
+            {startError}
+          </p>
         )}
         {tooOld && (
           <p data-testid="prepare-engine-too-old" className="status-warn mt-1 px-1 text-xs">
