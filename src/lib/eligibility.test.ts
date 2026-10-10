@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   bestAnswer,
+  betterAfterPreparing,
+  betterRouteLine,
+  betterRouteWhy,
   eligibilityEngines,
   engineLists,
   fitLine,
@@ -271,5 +274,72 @@ describe("each engine's own fit", () => {
       judge(post, { engines: [], fit: { contextLength: 1 } }, () => false),
     ).rejects.toThrow("down");
     expect(calls).toBe(1);
+  });
+});
+
+describe("betterAfterPreparing (LS9, Troy's B54 change)", () => {
+  type Fit = "fits" | "tight" | "split" | "no";
+  const fit = (verdict: Fit | null) =>
+    verdict
+      ? { estimated: true, verdict, reason: "its own rule" }
+      : { estimated: false, reason: "not asked" };
+  const llama = (verdict: Fit | null, available = true): EngineVerdict =>
+    ({
+      engine: "llama_cpp",
+      verdict: "runs",
+      available,
+      reason: "runs GGUF",
+      fit: fit(verdict),
+    }) as EngineVerdict;
+  const strata = (verdict: Fit | null, available = true): EngineVerdict =>
+    ({
+      engine: "strata",
+      verdict: "after_preparation",
+      available,
+      reason: "after preparing it",
+      fit: fit(verdict),
+    }) as EngineVerdict;
+  const name = (e: string) => (e === "llama_cpp" ? "llama.cpp" : "Strata");
+
+  it.each([
+    ["split", "fits", true],
+    ["no", "fits", true],
+    ["split", "split", true],
+    ["fits", "fits", false],
+    ["tight", "fits", false],
+    ["split", "tight", false],
+    ["split", "no", false],
+    [null, "fits", false],
+    ["split", null, false],
+  ] as const)("as is %s, after preparing %s: recommended %s", (asIs, prepared, yes) => {
+    const route = betterAfterPreparing([llama(asIs), strata(prepared)]);
+    expect(route !== null).toBe(yes);
+  });
+
+  it("a fit that was not estimated never counts, whatever verdict it carries", () => {
+    const guessed = {
+      ...llama("split"),
+      fit: { estimated: false, verdict: "split", reason: "not asked" },
+    } as EngineVerdict;
+    expect(betterAfterPreparing([guessed, strata("fits")])).toBeNull();
+  });
+
+  it("needs both engines here: an engine not installed recommends nothing", () => {
+    expect(betterAfterPreparing([llama("split"), strata("fits", false)])).toBeNull();
+    expect(betterAfterPreparing([llama("split", false), strata("fits")])).toBeNull();
+    expect(betterAfterPreparing([strata("fits")])).toBeNull();
+    expect(betterAfterPreparing(null)).toBeNull();
+  });
+
+  it("says why in each engine's own terms", () => {
+    const split = betterAfterPreparing([llama("split"), strata("fits")])!;
+    expect(betterRouteLine(split, name)).toBe("Faster here with Strata after preparing");
+    expect(betterRouteWhy(split, name)).toBe(
+      "Strata fits it here after preparing it; llama.cpp would run part of it from system memory, slower.",
+    );
+    const lowRam = betterAfterPreparing([llama("no"), strata("split")])!;
+    expect(betterRouteWhy(lowRam, name)).toBe(
+      "Strata runs it here after preparing it, in its low-RAM mode; llama.cpp cannot fit it.",
+    );
   });
 });

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AddPreparedModel } from "@/components/AddPreparedModel";
+import { BestRoute } from "@/components/BestRoute";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { DeleteModel } from "@/components/DeleteModel";
 import { CopyButton } from "@/components/CopyButton";
@@ -28,6 +29,8 @@ import {
   LEVEL_CLASS,
   LEVEL_SHORT,
   LEVEL_WORDS,
+  betterAfterPreparing,
+  betterRouteLine,
   eligibilityEngines,
   fitLine,
   fitModelOf,
@@ -845,11 +848,33 @@ function ModelDetail({
     verdicts?.find((v) => v.engine === engine)?.fit ?? null;
 
   const running = runningModel(model, runtimes);
+  // LS9: when the preparing engine suits this machine better, Run asks with
+  // preparing chosen (Troy's B54 change). Not for a prepared model itself.
+  const route =
+    model.status === "present" && model.format !== "prepared"
+      ? betterAfterPreparing(verdicts)
+      : null;
   // The machine's own name when it has one, even when it is this one:
   // this page has a node picker in its header, so a sentence about "this
   // machine" is a sentence that does not say which. An unenrolled box has
   // no name and gets the generic phrase, which is all there is to say.
   const where = node?.name ?? "this machine";
+
+  function preparation(v: EngineVerdict) {
+    return (
+      <PrepareControl
+        key={v.engine}
+        engine={v.engine}
+        entry={entryForFile(descriptor(v)?.supportedModels, model.path)}
+        node={node}
+        where={where}
+        disabledReason={
+          v.available || v.installable ? null : `${engineLabel(v.engine)} cannot run on ${where}.`
+        }
+        onStart={(chosen) => (node ? startPreparation(runModelOf(model), node, chosen) : "")}
+      />
+    );
+  }
 
   async function forget() {
     setError(null);
@@ -987,6 +1012,11 @@ function ModelDetail({
             <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-current" />
             {LEVEL_WORDS[level]}
           </p>
+          {route && (
+            <p data-testid="better-route" className="text-status-success font-ui text-sm">
+              {betterRouteLine(route, engineLabel)}
+            </p>
+          )}
           <ul className="mt-1 text-xs text-[color:var(--muted)]">
             {verdicts.map((v) => (
               <li key={v.engine}>
@@ -1044,7 +1074,19 @@ function ModelDetail({
           than disappearing (`easy-default-expert-override`). */}
       {model.status === "present" && enginesKnown && capable.length > 0 && (
         <div data-testid="model-run">
-          {running && !running.stopped ? (
+          {route && !(running && !running.stopped) ? (
+            <BestRoute
+              route={route}
+              prepare={preparation(route.prepare)}
+              runNow={
+                <RunButton
+                  model={model}
+                  node={node}
+                  label={`Run now with ${engineLabel(route.asIs.engine)}`}
+                />
+              }
+            />
+          ) : running && !running.stopped ? (
             <RunningPanel
               model={model}
               node={node}
@@ -1086,28 +1128,13 @@ function ModelDetail({
       )}
 
       {/* LS5: an engine that runs it only after preparing it offers that
-          as its own action, beside Run, never instead of asking (B54). */}
+          as its own action, beside Run, never instead of asking (B54); the
+          one the best route names is inside Run's question instead (LS9). */}
       {model.status === "present" &&
         model.format !== "prepared" &&
         (verdicts ?? [])
-          .filter((v) => v.verdict === "after_preparation")
-          .map((v) => (
-            <PrepareControl
-              key={v.engine}
-              engine={v.engine}
-              entry={entryForFile(descriptor(v)?.supportedModels, model.path)}
-              node={node}
-              where={where}
-              disabledReason={
-                v.available || v.installable
-                  ? null
-                  : `${engineLabel(v.engine)} cannot run on ${where}.`
-              }
-              onStart={(preparation) =>
-                node ? startPreparation(runModelOf(model), node, preparation) : ""
-              }
-            />
-          ))}
+          .filter((v) => v.verdict === "after_preparation" && v.engine !== route?.prepare.engine)
+          .map((v) => preparation(v))}
 
       <ProfileEditor
         model={model}

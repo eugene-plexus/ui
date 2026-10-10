@@ -7,6 +7,8 @@ import {
   LEVEL_CLASS,
   LEVEL_SHORT,
   LEVEL_WORDS,
+  betterAfterPreparing,
+  betterRouteLine,
   fitLine,
   verdictLine,
   type ModelEligibility,
@@ -59,6 +61,8 @@ export function EligibilityDot({
   }, [open]);
 
   const words = short ? LEVEL_SHORT[answer.level] : LEVEL_WORDS[answer.level];
+  // LS9: said beside the dot, not only inside it.
+  const route = betterAfterPreparing(answer.engines);
   return (
     <span ref={box} className="relative inline-block" data-testid="eligibility-dot">
       <button
@@ -84,6 +88,14 @@ export function EligibilityDot({
           </span>
         )}
       </button>
+      {route && (
+        <span
+          data-testid="better-route"
+          className={`text-status-success font-ui ml-1 ${short ? "text-[0.625rem]" : "text-[0.6875rem]"}`}
+        >
+          {betterRouteLine(route, engineName)}
+        </span>
+      )}
       {open && (
         <span
           id={panel}

@@ -243,3 +243,59 @@ export function hubFormatFor(
   }
   return formats.size === 1 ? [...formats][0]! : null;
 }
+
+// --- the best route for this machine (LS9) -----------------------------------
+
+/** What the best route on this machine is when it is to prepare first. */
+export interface BetterRoute {
+  /** The engine Run would use as the model is: it runs part of it from
+   * system memory, or cannot fit it. */
+  asIs: EngineVerdict;
+  /** The engine that runs it after preparing it, and fits it here. */
+  prepare: EngineVerdict;
+}
+
+/**
+ * Troy's rule (B54 changed, LS9): preparing is never silent, but when the
+ * preparing engine suits this machine better it is recommended and is Run's
+ * default. On fit, not on speeds nobody measured: the engine Run would use
+ * has to run part of the model from system memory (`split`) or cannot fit it
+ * (`no`), and the preparing engine's own fit says it fits (or runs in its
+ * low-RAM mode, which it calls `split`). Null otherwise: an as-is engine
+ * that fits on the card, a fit not estimated on either side, no engine that
+ * runs it as it is, or none that prepares it here.
+ */
+export function betterAfterPreparing(verdicts: EngineVerdict[] | null): BetterRoute | null {
+  if (!verdicts) return null;
+  const asIs = verdicts.find(
+    (v) => v.available && (v.verdict === "runs" || v.verdict === "may_run"),
+  );
+  if (!asIs?.fit?.estimated) return null;
+  if (asIs.fit.verdict !== "split" && asIs.fit.verdict !== "no") return null;
+  const prepare = verdicts.find(
+    (v) =>
+      v.available &&
+      v.verdict === "after_preparation" &&
+      v.fit?.estimated === true &&
+      (v.fit.verdict === "fits" || v.fit.verdict === "split"),
+  );
+  return prepare ? { asIs, prepare } : null;
+}
+
+/** The line beside the dot (LS9). */
+export function betterRouteLine(route: BetterRoute, name: (e: string) => string): string {
+  return `Faster here with ${name(route.prepare.engine)} after preparing`;
+}
+
+/** Why, in a sentence: each engine's own fit, never one in the other's place. */
+export function betterRouteWhy(route: BetterRoute, name: (e: string) => string): string {
+  const prepared =
+    route.prepare.fit?.verdict === "fits"
+      ? `${name(route.prepare.engine)} fits it here after preparing it`
+      : `${name(route.prepare.engine)} runs it here after preparing it, in its low-RAM mode`;
+  const asIs =
+    route.asIs.fit?.verdict === "no"
+      ? `${name(route.asIs.engine)} cannot fit it`
+      : `${name(route.asIs.engine)} would run part of it from system memory, slower`;
+  return `${prepared}; ${asIs}.`;
+}

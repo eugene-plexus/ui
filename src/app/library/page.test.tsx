@@ -807,6 +807,86 @@ describe("preparing a GGUF for an engine that runs it only after (LS5)", () => {
     expect(posted.filter((p) => p.startsWith("PUT library/v1/run-operations/"))).toHaveLength(1);
   });
 
+  it("asks with preparing chosen when Strata suits this machine better (LS9)", async () => {
+    const fit = (verdict: string) => ({ estimated: true, verdict, reason: "its own rule" });
+    handlers.set("POST library/v1/eligibility", () =>
+      ok({
+        models: [
+          {
+            modelId: "gemma",
+            level: "works_here",
+            engines: [
+              {
+                engine: "llama_cpp",
+                verdict: "runs",
+                available: true,
+                reason: "llama.cpp says",
+                fit: fit("split"),
+              },
+              {
+                engine: "strata",
+                verdict: "after_preparation",
+                available: true,
+                experimental: true,
+                reason: "runs it after preparing it",
+                fit: fit("fits"),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    await openTheModel();
+    expect(await screen.findByTestId("better-route")).toHaveTextContent(
+      "Faster here with Strata after preparing",
+    );
+    const route = screen.getByTestId("best-route");
+    expect(route).toHaveTextContent("Best on this machine: prepare for Strata, then run");
+    expect(route).toHaveTextContent("llama.cpp would run part of it from system memory, slower");
+    // Preparing is chosen; Strata's own control is inside, once.
+    expect(within(route).getByTestId("best-route-prepare")).toBeInTheDocument();
+    expect(screen.getAllByTestId("prepare-model")).toHaveLength(1);
+    expect(within(route).queryByTestId("run-button")).toBeNull();
+    // The other route is one choice away, and runs it as it is.
+    fireEvent.click(within(route).getByRole("radio", { name: /Run now with llama.cpp/ }));
+    expect(within(route).getByTestId("run-button")).toHaveTextContent("Run now with llama.cpp");
+    expect(screen.queryByTestId("prepare-model")).toBeNull();
+  });
+
+  it("does not nudge when llama.cpp fits it on the card", async () => {
+    handlers.set("POST library/v1/eligibility", () =>
+      ok({
+        models: [
+          {
+            modelId: "gemma",
+            level: "works_here",
+            engines: [
+              {
+                engine: "llama_cpp",
+                verdict: "runs",
+                available: true,
+                reason: "llama.cpp says",
+                fit: { estimated: true, verdict: "fits", reason: "on the card" },
+              },
+              {
+                engine: "strata",
+                verdict: "after_preparation",
+                available: true,
+                reason: "runs it after preparing it",
+                fit: { estimated: true, verdict: "fits", reason: "its table" },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    await openTheModel();
+    await screen.findByTestId("prepare-model");
+    expect(screen.queryByTestId("best-route")).toBeNull();
+    expect(screen.queryByTestId("better-route")).toBeNull();
+    expect(screen.getByTestId("run-button")).toHaveTextContent("Run");
+  });
+
   it("offers Prepare alone when nothing here runs it as it is", async () => {
     handlers.set("POST library/v1/eligibility", () => judged("no"));
     await openTheModel();
