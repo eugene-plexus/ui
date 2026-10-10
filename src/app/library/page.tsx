@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 
 import { AddPreparedModel } from "@/components/AddPreparedModel";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { DeleteModel } from "@/components/DeleteModel";
 import { CopyButton } from "@/components/CopyButton";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBreakdown, formatMemory } from "@/components/FitBadge";
@@ -444,9 +445,15 @@ function LibraryPageInner() {
                 verdicts={eligibility?.get(current.id)?.engines ?? null}
                 level={eligibility?.get(current.id)?.level ?? null}
                 node={picker.selected}
+                nodes={picker.nodes}
                 runtimes={runtimes}
                 onChanged={() => void loadModels()}
                 onRuntimesChanged={() => void loadRuntimes()}
+                onDeleted={() => {
+                  setSelected(null);
+                  void loadModels();
+                  void loadRuntimes();
+                }}
               />
             ) : (
               <EmptyDetail models={models} scan={scan} />
@@ -782,9 +789,11 @@ function ModelDetail({
   verdicts,
   level,
   node,
+  nodes,
   runtimes,
   onChanged,
   onRuntimesChanged,
+  onDeleted,
 }: {
   model: LibraryModel;
   /** Null while the picked node has not said which engines it has. */
@@ -801,6 +810,9 @@ function ModelDetail({
   runtimes: Runtime[];
   onChanged: () => void;
   onRuntimesChanged: () => void;
+  /** Every node, so Delete can ask each whether it runs this model (LS8). */
+  nodes: TargetNode[];
+  onDeleted: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
 
@@ -1103,6 +1115,10 @@ function ModelDetail({
         node={node}
         onChanged={onChanged}
       />
+
+      {model.status === "present" && (
+        <DeleteModel model={model} nodes={nodes} onDeleted={onDeleted} />
+      )}
     </div>
   );
 }

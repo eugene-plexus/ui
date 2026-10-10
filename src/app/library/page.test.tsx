@@ -1020,6 +1020,46 @@ describe("prepared models are Library models (LS3)", () => {
   });
 });
 
+describe("Delete (LS8)", () => {
+  it("refuses while the picked node runs it, then deletes and leaves the model's page", async () => {
+    let listed: unknown[] = [libraryModel()];
+    handlers.set("GET library/v1/models", () => ok({ models: listed, lastScanAt: null }));
+    handlers.set("GET library/v1/models/gemma/deletion", () =>
+      ok({
+        modelId: "gemma",
+        files: [{ path: MODEL_PATH, role: "weights", sizeBytes: 23_800_000_000 }],
+        kept: [],
+        bytesFreed: 23_800_000_000,
+        profiles: 0,
+        preparedFrom: [],
+        token: "tok",
+      }),
+    );
+    handlers.set("POST library/v1/models/gemma/delete", () => {
+      listed = [];
+      return ok({ models: ["gemma"], deleted: [MODEL_PATH], kept: [], bytesFreed: 23_800_000_000 });
+    });
+    handlers.set("DELETE agent/v1/runtimes/gemma-a", () => ({ status: 204 }));
+    await openTheModel();
+    fireEvent.click(screen.getByTestId("delete-model"));
+    expect(await screen.findByTestId("delete-refused")).toHaveTextContent(
+      "It is running (gemma-a on Amish_Station): stop it there first.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [runtime({ status: "stopped" })] }));
+    fireEvent.click(screen.getByTestId("delete-model"));
+    await waitFor(() => expect(screen.getByTestId("delete-confirm")).toBeEnabled());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("delete-confirm"));
+    });
+    await waitFor(() => expect(posted).toContain("POST library/v1/models/gemma/delete"));
+    expect(bodies.get("POST library/v1/models/gemma/delete")).toEqual({ token: "tok" });
+    // The stopped runtime that named it is removed too.
+    await waitFor(() => expect(posted).toContain("DELETE agent/v1/runtimes/gemma-a"));
+    await waitFor(() => expect(screen.queryByTestId("delete-model")).toBeNull());
+  });
+});
+
 describe("sizes", () => {
   it("are decimal, the unit the download and the hub quoted", async () => {
     await openTheModel();

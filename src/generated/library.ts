@@ -304,6 +304,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/models/{id}/deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * What deleting this model would remove, keep and refuse, read now.
+         * @description LS8 (Troy: a Delete for every model, any format). Nothing is
+         *     removed: this is what the confirmation shows. A file the model is
+         *     made of that another listed model also names (a projector several
+         *     quants share, Strata's MTP helper) is kept, naming who uses it:
+         *     one rule for every kind of shared part. Prepared models made from
+         *     it are named, since an engine reads the source while it runs
+         *     them; Delete takes them too only when asked. `token` names this
+         *     answer, so the delete removes what was shown.
+         */
+        get: operations["planModelDeletion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/models/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete a model's files from disk, and the model and its profiles from the Library.
+         * @description LS8. Removes what `planModelDeletion` answered with this `token`,
+         *     all or nothing per model: each file is first moved aside under a
+         *     hidden name, and if one cannot be (a running engine holds it on
+         *     Windows) the others are put back and nothing is deleted. Folders
+         *     left empty are removed, up to the Library folder. The model and
+         *     its saved profiles leave the Library. `alsoDelete` names prepared
+         *     models made from it to delete with it (each by its own plan).
+         *     A node's copy of a deleted model is removed by that node when it
+         *     next tidies its copies. Not for a `missing` model: `DELETE
+         *     /v1/models/{id}` forgets one.
+         */
+        post: operations["deleteModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/models/{id}/profiles": {
         parameters: {
             query?: never;
@@ -1416,6 +1476,74 @@ export interface components {
             path: string;
             role: components["schemas"]["ModelFileRole"];
             sizeBytes?: number;
+        };
+        /** @description What deleting a model would do, read now (LS8). */
+        ModelDeletion: {
+            modelId: string;
+            /** @description Every file Delete removes, with its size. */
+            files: components["schemas"]["ModelFile"][];
+            /**
+             * @description Files the model is made of that another listed model also
+             *     names, kept for it.
+             */
+            kept: components["schemas"]["KeptModelFile"][];
+            /** @description The sizes of `files`, summed. */
+            bytesFreed: number;
+            /** @description How many saved profiles go with it. */
+            profiles: number;
+            /**
+             * @description Prepared models made from this one (their `sourceModelId`).
+             *     An engine reads the source while it runs them, so they stop
+             *     working without it; Delete takes them only when asked
+             *     (`ModelDeleteRequest.alsoDelete`).
+             */
+            preparedFrom: components["schemas"]["PreparedDependent"][];
+            /**
+             * @description Why it cannot be deleted now, in a sentence; absent when it
+             *     can. A download into its files, or a run operation preparing
+             *     or starting it.
+             */
+            refusal?: string;
+            /** @description Names this plan; `deleteModel` refuses another. */
+            token: string;
+        };
+        /** @description A file a model is made of that Delete keeps for another model (LS8). */
+        KeptModelFile: {
+            path: string;
+            sizeBytes?: number;
+            usedBy: components["schemas"]["ModelRef"][];
+        };
+        ModelRef: {
+            id: string;
+            name: string;
+        };
+        /** @description A prepared model made from the one being deleted (LS8). */
+        PreparedDependent: {
+            id: string;
+            name: string;
+            /** @description What deleting it as well would free. */
+            bytesFreed: number;
+            /** @description Why it cannot be deleted now, when it cannot. */
+            refusal?: string;
+        };
+        ModelDeleteRequest: {
+            /** @description The `ModelDeletion.token` the person confirmed. */
+            token: string;
+            /**
+             * @description Prepared models made from it (`ModelDeletion.preparedFrom`)
+             *     to delete with it.
+             */
+            alsoDelete?: string[];
+        };
+        /** @description What a delete removed (LS8). */
+        ModelDeleted: {
+            /** @description The ids of the models removed from the Library. */
+            models: string[];
+            /** @description Every file removed. */
+            deleted: string[];
+            /** @description Files kept for other models. */
+            kept: string[];
+            bytesFreed: number;
         };
         /**
          * @description * `weights` — the file named on the launch line. Exactly one per
@@ -6790,6 +6918,69 @@ export interface operations {
             };
             404: components["responses"]["Problem"];
             /** @description The model is present on disk. Nothing was deleted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    planModelDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDeletion"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    deleteModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDeleted"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            /**
+             * @description Nothing was deleted: the plan changed since it was read (read
+             *     it again), a refusal holds (a download into its files, a run
+             *     preparing or starting it), or a file is in use, named.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;

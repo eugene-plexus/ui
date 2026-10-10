@@ -243,6 +243,8 @@ export type OidcClientCreated = ControlComponents["schemas"]["OidcClientCreated"
 // engine rather than one that fails.
 
 export type LibraryModel = LibraryComponents["schemas"]["LibraryModel"];
+export type ModelDeletion = LibraryComponents["schemas"]["ModelDeletion"];
+export type ModelDeleted = LibraryComponents["schemas"]["ModelDeleted"];
 export type LibraryModelList = LibraryComponents["schemas"]["LibraryModelList"];
 export type LibraryFolderList = LibraryComponents["schemas"]["LibraryFolderList"];
 // A model an engine prepared for itself, listed through its provenance file (LS3).
