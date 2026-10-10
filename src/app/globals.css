@@ -36,9 +36,7 @@
    Eugene's dark theme, designed 2026-09-16 from the product's character
    rather than a genre: calm authority, warm restraint, one nostalgic
    wink placed where only the right people notice it. It replaces
-   `cyberpunk`, retired the same day; a stored `cyberpunk` preference
-   migrates here rather than falling back to a light theme (the
-   bootstrap in layout.tsx and useTheme.ts both do that migration).
+   `cyberpunk`, retired the same day.
 
    Cool graphite ground — blue-black reads sci-fi, and that is the thing
    this replaces. Ice blue is the ONLY action color (primary buttons,

@@ -9,14 +9,13 @@ import {
   getRuns,
   refreshRuns,
   resetRunsForTests,
-  resumeClaimedRuns,
   runTask,
   startDownloadAndRun,
   startRun,
   type RunOperation,
 } from "./oneClickRun";
 import type { TargetNode } from "./nodeBudget";
-import type { Download, LibraryModel } from "./types";
+import type { LibraryModel } from "./types";
 
 vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
@@ -145,22 +144,6 @@ describe("durable run observer", () => {
     expect(api.put).toHaveBeenCalledWith("library", `/v1/run-operations/${id}`, {
       node: "desktop",
       download: { repo: "org/model", files: ["model.gguf"] },
-    });
-    expect(api.post).not.toHaveBeenCalled();
-  });
-  it("migrates legacy intent by persisting the new job before anybody clears it", async () => {
-    const download = {
-      id: "d1",
-      repo: "org/model",
-      state: "done",
-      runWhenReady: true,
-      modelId: "m",
-    } as Download;
-    const ids = await resumeClaimedRuns([download], [], HERE);
-    expect(ids).toEqual(["legacy_d1_desktop"]);
-    expect(api.put).toHaveBeenCalledWith("library", "/v1/run-operations/legacy_d1_desktop", {
-      node: "desktop",
-      downloadId: "d1",
     });
     expect(api.post).not.toHaveBeenCalled();
   });

@@ -2197,11 +2197,6 @@ export interface components {
              *       model chosen yet, or an account whose first catalogue read
              *       failed (`catalogue.error` says why). The gateway routes
              *       nothing here.
-             *     * **Absent** — the key missing from the body — means a driver
-             *       from before this field existed. The gateway names it,
-             *       with its machine, as one to update, and never sends it a
-             *       `model`: an older driver ignores unknown fields and would
-             *       answer with its one model whatever was asked.
              *
              *     Omitted, deliberately, when the caller passed `models=false`.
              */

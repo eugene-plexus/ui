@@ -2039,7 +2039,7 @@ export interface components {
             /**
              * @description How many models this driver serves (`DriverInfo.models`).
              *     One for a single-model driver; hundreds for an aggregator
-             *     account. Absent for an outdated driver.
+             *     account.
              */
             modelCount?: number;
             /**
@@ -2057,13 +2057,6 @@ export interface components {
              *     backend's words. The previous list stays in force.
              */
             catalogueError?: string | null;
-            /**
-             * @description True when the driver answered `/v1/info` without a `models`
-             *     list: a driver from before P1, on a machine that has not
-             *     been updated. It routes nothing until updated, and appears
-             *     in `RoutingTableView.outdated_drivers`.
-             */
-            outdated?: boolean;
             /**
              * @description The supervised engine runtime this driver follows, straight
              *     off its `/v1/info`. Absent for a backend that is not a
@@ -3798,15 +3791,6 @@ export interface components {
             slots: components["schemas"]["RoutingSlotView"][];
             /** @description Drivers in the topology that did not answer `/v1/info`. */
             unreachable_drivers?: string[];
-            /**
-             * @description Drivers that answered `/v1/info` in the shape from before P1
-             *     (a single `modelId`, no `models`). The gateway routes nothing
-             *     to one: it would ignore the `model` a request names and
-             *     answer with its own. Listed so the console can say which
-             *     machine to update, rather than a model silently vanishing
-             *     after its gateway was updated and its worker was not.
-             */
-            outdated_drivers?: components["schemas"]["OutdatedDriver"][];
             control_root?: components["schemas"]["ControlRootView"];
             /**
              * @description Every search account that answered, in the order a web search
@@ -3841,18 +3825,6 @@ export interface components {
              * @enum {string}
              */
             placed_by: "order" | "default";
-        };
-        OutdatedDriver: {
-            /** @description The driver's name, as its agent declares it. */
-            name: string;
-            /** @description The machine it runs on; null on a standalone install. */
-            node?: string | null;
-            /** Format: uri */
-            url?: string;
-            /** @description The driver's own version, as it reported it. */
-            version?: string;
-            /** @description The one model it said it serves, so the console can name what is missing. */
-            modelId?: string;
         };
         /**
          * @description Where the routing table's node list comes from, and whether that

@@ -210,12 +210,8 @@ function DiscoverPageInner() {
   const [chosenLevel, setChosenLevel] = useState<LevelFilter | null>(null);
   const [sort, setSort] = useState<CatalogueSort>("downloads");
   const [results, setResults] = useState<CatalogueSearchResult[] | null>(null);
-  // What each source answered (LS4); null from a Library older than that.
+  // What each source answered (LS4); null when the search failed.
   const [statuses, setStatuses] = useState<CatalogueSourceStatus[] | null>(null);
-  // A Library older than the sources list answers POST 405: search its hub.
-  // A ref decides (flipping it must not search again); the state says so.
-  const [searchOlder, setSearchOlder] = useState(false);
-  const olderLibrary = useRef(false);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
@@ -366,34 +362,15 @@ function DiscoverPageInner() {
     const current = () => mine === searchSeq.current;
     setSearching(true);
     setSearchError(null);
-    // The Library's one hub, as before the sources list (LS4).
-    const oneHub = () => {
-      const params = new URLSearchParams({ sort, limit: "30" });
-      if (debouncedQuery) params.set("q", debouncedQuery);
-      if (hubFormat) params.set("format", hubFormat);
-      return api.get<CatalogueSearchPage>("library", `/v1/catalogue/search?${params.toString()}`);
-    };
     try {
-      let page: CatalogueSearchPage;
-      if (olderLibrary.current) {
-        page = await oneHub();
-      } else {
-        try {
-          // Every source together; the node's engines' lists go with it.
-          page = await api.post<CatalogueSearchPage>("library", "/v1/catalogue/search", {
-            sort,
-            limit: 30,
-            ...(debouncedQuery ? { q: debouncedQuery } : {}),
-            ...(hubFormat ? { format: hubFormat } : {}),
-            ...(lists ? { engines: lists } : {}),
-          });
-        } catch (err) {
-          if (!(err instanceof ApiError && err.status === 405)) throw err;
-          olderLibrary.current = true;
-          setSearchOlder(true);
-          page = await oneHub();
-        }
-      }
+      // Every source together; the node's engines' lists go with it.
+      const page = await api.post<CatalogueSearchPage>("library", "/v1/catalogue/search", {
+        sort,
+        limit: 30,
+        ...(debouncedQuery ? { q: debouncedQuery } : {}),
+        ...(hubFormat ? { format: hubFormat } : {}),
+        ...(lists ? { engines: lists } : {}),
+      });
       if (!current()) return;
       setResults(page.results ?? []);
       setStatuses(page.sources ?? null);
@@ -422,7 +399,7 @@ function DiscoverPageInner() {
 
   // Every row's facts, judged in one call; a row is as good as its best format.
   const rowFacts = useMemo(() => (results ?? []).flatMap((r) => r.facts ?? []), [results]);
-  const { byId: rowVerdicts, older: libraryOlder } = useCandidateEligibility(engines, rowFacts);
+  const { byId: rowVerdicts, error: eligibilityError } = useCandidateEligibility(engines, rowFacts);
 
   /** Fetch a starter entry's one recommended file. Same endpoint the
    * candidate table posts to; the starter set just already knows which
@@ -521,11 +498,9 @@ function DiscoverPageInner() {
             note={
               enginesError
                 ? `Could not ask ${where} which engines it has (${enginesError}), so nothing is filtered.`
-                : libraryOlder
-                  ? "This Library is older than the engine check, so every model is listed."
-                  : searchOlder
-                    ? "This Library is older than the list of sources, so only its one hub is searched."
-                    : null
+                : eligibilityError
+                  ? `Could not ask the Library which of these run on ${where} (${eligibilityError}), so no dots are shown.`
+                  : null
             }
           />
 
@@ -691,7 +666,7 @@ function ResultsList({
   note,
 }: {
   results: CatalogueSearchResult[] | null;
-  /** What each source answered (LS4); null from an older Library. */
+  /** What each source answered (LS4); null when the search failed. */
   statuses: CatalogueSourceStatus[] | null;
   searching: boolean;
   error: string | null;
@@ -1119,8 +1094,7 @@ function RepoDetail({
       if (withVision && projector) files.push(projector);
       await api.post("library", "/v1/downloads", {
         repo,
-        // Named only when it is not the default hub, so a Library older
-        // than the sources list is never sent a field it refuses.
+        // Named only when it is not the default hub.
         ...hubParam,
         revision: detail?.resolvedCommit ?? detail?.revision ?? "main",
         files,

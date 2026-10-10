@@ -15,15 +15,6 @@ const DEFAULT_THEME: Theme = DEFAULT_RESOLVED_THEME;
 // operator pick, not an OS-level concept.
 const VALID_THEMES: ReadonlySet<Theme> = new Set(["plexus", "modern", "editorial", "system"]);
 /**
- * Themes that no longer exist, and what they became. Dropping a retired
- * value instead would send everyone who had chosen the dark theme to a
- * light one, which reads as the preference being ignored rather than
- * as the theme being renamed. The pre-hydration script in `layout.tsx`
- * carries the same map inline, so the two agree on the first frame.
- */
-const RETIRED_THEMES: Readonly<Record<string, Theme>> = { cyberpunk: "plexus" };
-
-/**
  * Resolve `system` to a concrete theme via `prefers-color-scheme`.
  * Plexus is the dark theme, modern is the light theme, so the OS
  * preference maps cleanly. Falls back to `DEFAULT_THEME` during SSR /
@@ -90,8 +81,6 @@ export function useTheme(): readonly [Theme, (next: Theme) => void] {
 function readStoredTheme(): Theme {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const renamed = raw ? RETIRED_THEMES[raw] : undefined;
-    if (renamed) return renamed;
     if (raw && VALID_THEMES.has(raw as Theme)) return raw as Theme;
   } catch {
     // ignore

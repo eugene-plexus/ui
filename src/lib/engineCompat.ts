@@ -1,38 +1,4 @@
-/**
- * Which engines can load a model, by format: **only for a library older than
- * `POST /v1/eligibility`**, which judges since LS1 (lib/eligibility.ts).
- *
- * Was the join, in one place.
- *
- * The format match (`EngineDescriptor.modelFormats` × `model.format`)
- * has always been a first filter and not a promise. Since the MLX slice
- * it is also not the whole filter: an MLX-quantized safetensors
- * directory packs its weights as integer tensors that only the MLX
- * loader reads, and the library marks exactly that case with
- * `safetensors.mlxQuantization` (written by `mlx_lm.convert`; vanilla
- * HF exports spell theirs `quantization_config`, a different key).
- * Offering vLLM for such a directory is a launch button that fails at
- * spawn — the thing the join exists to prevent.
- *
- * Absence of the marker means unknown, not incompatible, so a plain
- * safetensors directory keeps its full format-matched set, MLX
- * included: a vanilla HF model does load under MLX (A4, on GitHub's
- * macOS runners), and the engine's own failure is the second filter, as
- * ever.
- */
-
-import type { EngineDescriptor, LibraryModel } from "./types";
-
-export function capableEngines(
-  model: LibraryModel,
-  engines: EngineDescriptor[],
-): EngineDescriptor[] {
-  const formatMatched = engines.filter((e) => (e.modelFormats ?? []).includes(model.format));
-  if (model.safetensors?.mlxQuantization != null) {
-    return formatMatched.filter((e) => e.engine === "mlx");
-  }
-  return formatMatched;
-}
+import type { EngineDescriptor } from "./types";
 
 /**
  * Whether an engine belongs on a node's engine list at all.

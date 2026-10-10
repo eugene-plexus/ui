@@ -123,35 +123,6 @@
       },
       "value": "edge"
     },
-    "updateChannel_pending": {
-      "field": {
-        "category": "updates",
-        "componentKindHint": null,
-        "default": "releases",
-        "defaultSource": null,
-        "description": "Where updates come from. Releases is the newest published release. Edge is the newest version that has passed every check, the same one the edge container image is built from. Only a newer version is ever offered: a machine that already runs something newer than its channel's newest is told so, and nothing is installed.",
-        "enumLabels": ["Edge", "Releases"],
-        "enumValues": ["edge", "releases"],
-        "inEffect": null,
-        "key": "updateChannel",
-        "label": "Update channel",
-        "managedBy": null,
-        "maximum": null,
-        "minimum": null,
-        "pattern": null,
-        "pendingRestart": false,
-        "required": false,
-        "requiresRestart": false,
-        "sensitive": false,
-        "showWhen": null,
-        "status": null,
-        "suggestions": null,
-        "unsetMeans": "Not decided yet. This machine was installed before the channel had a default, so at its first update check it saves the channel it was installed from -- Releases for a release, Edge for anything else -- and nothing is offered until then.",
-        "unsetResolvesTo": null,
-        "valueType": "enum"
-      },
-      "value": null
-    },
     "vllmBinary_on_path": {
       "field": {
         "category": "engines",

@@ -69,7 +69,6 @@ export type IssueKind =
   | "update-available"
   | "update-failed"
   | "versions-differ"
-  | "backend-outdated"
   | "account-list-failed"
   | "routing-target-unserved";
 
@@ -169,11 +168,10 @@ export interface IssueSources {
   /** One entry per node the console can reach. */
   perNode: NodeFacts[];
   /**
-   * The gateway's routing table, for what only it knows (P1): a driver
-   * too old to be routed to, and a routing choice nothing serves.
-   * Optional so every caller from before P1 needs no change.
+   * The gateway's routing table, for what only it knows: a routing
+   * choice nothing serves.
    */
-  routing?: Pick<RoutingTableView, "slots" | "outdated_drivers"> | null;
+  routing?: Pick<RoutingTableView, "slots"> | null;
   /** The gateway's view of each driver, for an account's list status. */
   drivers?: DriverHealth[] | null;
 }
@@ -209,7 +207,6 @@ export function issuesFrom(sources: IssueSources): Issue[] {
     ...sealedRootIssue(sources),
     ...nodeDownIssues(sources.nodes),
     ...clockSkewIssues(sources.perNode),
-    ...outdatedDriverIssues(sources.routing),
     ...accountListIssues(sources.drivers),
     ...unservedTargetIssues(sources.routing),
   ];
@@ -420,30 +417,6 @@ function clockSkewIssues(perNode: NodeFacts[]): Issue[] {
  * the steps for a container -- is on Nodes.
  */
 /**
- * A connection from before P1, which the gateway routes nothing to.
- *
- * It reports a single model and would ignore the model a request names,
- * so the gateway leaves it out rather than let it answer for another --
- * and says so here, with the machine to update, because otherwise a model
- * simply vanishes the day the gateway is updated ahead of its worker.
- */
-export function outdatedDriverIssues(routing: IssueSources["routing"]): Issue[] {
-  return (routing?.outdated_drivers ?? []).map((driver) => {
-    const where = driver.node ?? "this machine";
-    const missing = driver.modelId ? `, so ${driver.modelId} is not available until then` : "";
-    return {
-      id: `backend-outdated:${driver.node ?? ""}/${driver.name}`,
-      kind: "backend-outdated" as const,
-      severity: "warning" as const,
-      title: `${driver.name} on ${where} is from an older version`,
-      detail: `It answers nothing until ${where} is updated${missing}. Update it from Nodes, under Versions.`,
-      href: "/nodes",
-      node: driver.node ?? null,
-    };
-  });
-}
-
-/**
  * A provider account whose model list could not be read. It keeps serving
  * the last list it read, which is why this is a warning: the models are
  * there, and new ones -- or a key that stopped working -- are not seen.
@@ -521,11 +494,7 @@ function updateIssues(node: NodeFacts): Issue[] {
   }
   if (!update.available || !update.newest) return [];
   const label = update.newest.release ?? `edge ${update.newest.ref.slice(0, 7)}`;
-  // "Newer" only from an agent that can say so (`ahead`, 2026-09-30); an
-  // older one's `available` means only that the version differs.
-  const title = Array.isArray(update.ahead)
-    ? `A newer version of Eugene is ready for ${node.label}: ${label}`
-    : `A different version of Eugene is on ${node.label}'s channel: ${label}`;
+  const title = `A newer version of Eugene is ready for ${node.label}: ${label}`;
   return [
     {
       id: `update-available:${node.name ?? node.label}`,

@@ -42,17 +42,10 @@ export interface Row {
    * lists, each published as `<driver>/<model>`. `count` is how many.
    */
   account?: { count: number } | null;
-  /** A driver from before P1, which serves nothing until its machine is updated. */
-  outdated?: boolean;
 }
 
 /** The agent's companion driver for runtime `x` is the component `x-driver`. */
 const COMPANION_SUFFIX = "-driver";
-
-/** What an outdated driver's row says, in words a person can act on. */
-export const OUTDATED_DRIVER_TEXT =
-  "This connection is from an older version and serves nothing until its machine is " +
-  "updated (Nodes, Versions).";
 
 export type Sources = {
   drivers: DriversInfo | null;
@@ -178,7 +171,6 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
       driver: d.name,
       model: d.account ? null : (d.modelId ?? runtime?.model ?? null),
       account: d.account ? { count: d.modelCount ?? 0 } : null,
-      outdated: d.outdated === true,
       backend: d.backend ?? null,
       url: d.url ?? null,
       runtime: runtimeName,
@@ -192,7 +184,7 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
       idleSeconds: routing?.idle_seconds ?? null,
       // An account whose list could not be read keeps serving the last
       // good one; the reason still belongs on its row.
-      error: d.outdated ? OUTDATED_DRIVER_TEXT : (d.error ?? d.catalogueError ?? null),
+      error: d.error ?? d.catalogueError ?? null,
     });
   }
 

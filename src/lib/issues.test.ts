@@ -1451,26 +1451,7 @@ describe("a second vendor's card the installed build cannot reach", () => {
   });
 });
 
-// --- P1: accounts, older drivers and routing choices --------------------
-
-describe("a driver from before P1", () => {
-  it("is named with its machine, as one to update", () => {
-    const issues = issuesFrom({
-      ...NOTHING,
-      routing: {
-        slots: [],
-        outdated_drivers: [
-          { name: "old-driver", node: "Amish_Station", url: "http://x:8081/", modelId: "llama3" },
-        ],
-      },
-    });
-    expect(kinds(issues)).toEqual(["backend-outdated"]);
-    expect(issues[0]!.node).toBe("Amish_Station");
-    expect(issues[0]!.title).toContain("old-driver on Amish_Station");
-    expect(issues[0]!.detail).toContain("llama3");
-    expect(issues[0]!.href).toBe("/nodes");
-  });
-});
+// --- P1: accounts and routing choices --------------------
 
 describe("a provider account whose model list could not be read", () => {
   it("says what the provider said, and nothing for one that read fine", () => {
@@ -1513,7 +1494,6 @@ describe("a routing choice nothing serves", () => {
           // Not configured: the implicit one-tier slot every model gets.
           { model: "x", configured: false, tiers: [{ target: "x", backends: [] }] },
         ],
-        outdated_drivers: [],
       },
     });
     expect(kinds(issues)).toEqual(["routing-target-unserved"]);

@@ -414,29 +414,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/auth/client-keys/revoked": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The ids of client keys that must no longer be accepted.
-         * @description Compatibility endpoint for older gateways. Enrolled agents return the
-         *     active control root's revoked identifiers. New gateways use /policy,
-         *     which also registers permitted identifiers and bounds cache age.
-         *     An operator session, or a `gateway` service token. No empty fallback on authority failure.
-         */
-        get: operations["listRevokedClientKeys"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/auth/client-keys/{id}": {
         parameters: {
             query?: never;
@@ -2838,12 +2815,8 @@ export interface components {
          */
         NodeUpdate: {
             enabled: boolean;
-            /**
-             * @description The channel this machine follows. Absent only while
-             *     `channelSource` is `pending`: which one it follows has not been
-             *     decided yet, and a value here would be a guess.
-             */
-            channel?: components["schemas"]["UpdateChannel"];
+            /** @description The channel this machine follows. */
+            channel: components["schemas"]["UpdateChannel"];
             channelSource: components["schemas"]["UpdateChannelSource"];
             /** Format: date-time */
             checkedAt?: string;
@@ -2936,20 +2909,9 @@ export interface components {
          *     `default`: not saved, so the default: `releases`, or what this
          *     install's environment names (`EUGENE_PLEXUS_AGENT_DEFAULT_UPDATE_CHANNEL`,
          *     which the `:edge` container image sets to `edge`).
-         *
-         *     `pending`: an install from before 2026-09-30 that never saved a
-         *     channel, whose first update check since has not yet read the
-         *     release list. That check saves the channel the machine followed
-         *     until then -- `releases` when its commits are exactly one of the
-         *     recent releases, `edge` otherwise -- so updating the agent never
-         *     moves a machine to another channel. `channel` is absent meanwhile.
-         *
-         *     `inferred`: sent only by agents before 2026-09-30, which worked an
-         *     unset channel out afresh at every check. Kept so a console can
-         *     still read one.
          * @enum {string}
          */
-        UpdateChannelSource: "setting" | "default" | "pending" | "inferred";
+        UpdateChannelSource: "setting" | "default";
         /** @enum {string} */
         UpdateOutcome: "running" | "succeeded" | "failed";
         LogLine: {
@@ -3534,23 +3496,6 @@ export interface components {
             generatedAt: number;
             keys: components["schemas"]["ClientKeyPolicyEntry"][];
         };
-        /**
-         * @description What the gateway polls. Ids only, and the revision at which the
-         *     set last changed.
-         */
-        ClientKeyRevocations: {
-            /**
-             * @description `jti`s to refuse. Excludes keys whose `expiresAt` has passed:
-             *     those are refused by expiry, and keeping them here would
-             *     make this list grow forever.
-             */
-            ids: string[];
-            /**
-             * @description Increments whenever the set changes. A reader logs on a
-             *     change rather than on every poll.
-             */
-            revision: number;
-        };
         AuthInitializeRequest: {
             /**
              * Format: password
@@ -3980,9 +3925,10 @@ export interface components {
              *     format support on the library would give the library a copy
              *     of it, and the copy would be the one that went stale.
              *
-             *     **Kept for consoles older than `accepts`;** it is the formats
-             *     of the requirements in `accepts` that need no preparation, so
-             *     an older console never offers Strata for every GGUF.
+             *     It is the formats of the requirements in `accepts` that need
+             *     no preparation, a summary for a page that only says which
+             *     formats run here (Home); what a model needs is judged from
+             *     `accepts` (LS1).
              */
             modelFormats: components["schemas"]["ModelFormat"][];
             /**
@@ -7529,27 +7475,6 @@ export interface operations {
                 };
             };
             503: components["responses"]["Problem"];
-        };
-    };
-    listRevokedClientKeys: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The revoked ids. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClientKeyRevocations"];
-                };
-            };
-            401: components["responses"]["Problem"];
         };
     };
     revokeClientKey: {

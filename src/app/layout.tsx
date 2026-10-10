@@ -71,9 +71,6 @@ const preferencesBootstrap = `
   var root = document.documentElement;
   try {
     var t = localStorage.getItem('eugene-theme');
-    // Retired 2026-09-16; both are THE dark theme, so a stored
-    // 'cyberpunk' migrates rather than falling through to a light one.
-    if (t === 'cyberpunk') t = 'plexus';
     if (t !== 'plexus' && t !== 'modern' && t !== 'editorial' && t !== 'system') t = 'plexus';
     var resolved = t;
     if (t === 'system') {

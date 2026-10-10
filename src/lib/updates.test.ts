@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { issuesFrom, type NodeFacts } from "./issues";
 import type { NodeIdentity } from "./types";
-import { ago, describeUpdate, installerCommand, versionDifference, versionLabel } from "./updates";
+import { ago, describeUpdate, versionDifference, versionLabel } from "./updates";
 
 const NOW = Date.parse("2026-09-27T18:00:00Z");
 const EDGE = "b8b30bd18a790a4af55e9b44786b61be4783adaa";
@@ -121,14 +121,14 @@ describe("describeUpdate", () => {
     expect(view.detail).toBe("Checked 5 minutes ago.");
   });
 
-  it("says when a channel was not chosen but followed from the install", () => {
-    // Troy's worker, 2026-09-29: installed from alpha.5, channel never set,
-    // so it followed releases and read "up to date" while edge had moved.
-    const view = describeUpdate(identity({ channel: "releases", channelSource: "inferred" }), NOW);
+  it("says when a channel was not chosen but is the default", () => {
+    // Troy's worker, 2026-09-29: channel never set, so it followed releases
+    // and read "up to date" while edge had moved.
+    const view = describeUpdate(identity({ channel: "releases", channelSource: "default" }), NOW);
     expect(view.headline).toBe("Up to date on releases");
     expect(view.detail).toBe(
-      "Checked 5 minutes ago. It follows releases because it was installed from a release. " +
-        "To choose, set Update channel under Settings › Updates.",
+      "Checked 5 minutes ago. It follows releases, the default. To follow edge, set Update " +
+        "channel under Settings › Updates.",
     );
   });
 
@@ -185,13 +185,6 @@ describe("describeUpdate", () => {
     expect(view.canUpdate).toBe(true);
   });
 
-  it("tells a machine from before updates existed how to get them", () => {
-    const view = describeUpdate(identity(null), NOW);
-    expect(view.state).toBe("too-old");
-    expect(view.steps[0]?.command).toBe(installerCommand("windows"));
-    expect(installerCommand("linux")).toMatch(/^curl -fsSL .*install\.sh \| sh$/);
-  });
-
   it("never offers a development checkout anything", () => {
     const dev = identity(
       { available: true, newest: NEWEST },
@@ -212,6 +205,13 @@ describe("describeUpdate", () => {
   it("says nothing it does not know about a machine that did not answer", () => {
     expect(describeUpdate(null, NOW).state).toBe("unknown");
   });
+
+  it("is unknown, with its own words, for a machine that answered without update status", () => {
+    const view = describeUpdate(identity(null), NOW);
+    expect(view.state).toBe("unknown");
+    expect(view.detail).toBe("This machine did not report its update status.");
+    expect(view.canUpdate).toBe(false);
+  });
 });
 
 describe("only a newer version is called newer (settings never lie, 2026-09-30)", () => {
@@ -222,14 +222,13 @@ describe("only a newer version is called newer (settings never lie, 2026-09-30)"
     components: {},
   };
 
-  it("an older agent's 'available' is called different, never newer", () => {
+  it("an available update is called newer, and offered", () => {
     const view = describeUpdate(
-      identity({ available: true, behind: ["agent"], newest: NEWEST, ahead: undefined }),
+      identity({ available: true, behind: ["agent"], newest: NEWEST, ahead: [] }),
       NOW,
     );
-    expect(view.headline).toBe("edge has a different version: edge b8b30bd");
-    expect(view.headline).not.toMatch(/newer/);
-    expect(view.detail).toMatch(/cannot tell whether it is newer or older/);
+    expect(view.headline).toBe(`A newer version is ready: edge ${EDGE.slice(0, 7)}`);
+    expect(view.canUpdate).toBe(true);
   });
 
   it("a machine newer than its channel's newest is told so, and offered nothing", () => {
@@ -264,16 +263,6 @@ describe("only a newer version is called newer (settings never lie, 2026-09-30)"
     expect(view.state).toBe("mixed");
     expect(view.canUpdate).toBe(false);
     expect(view.detail).toContain("would move the newer ones back");
-  });
-
-  it("an undecided channel is not shown as one", () => {
-    const view = describeUpdate(
-      identity({ channel: undefined, channelSource: "pending", checkedAt: undefined }),
-      NOW,
-    );
-    expect(view.state).toBe("undecided");
-    expect(view.headline).toBe("Update channel not decided yet");
-    expect(view.headline).not.toContain("undefined");
   });
 });
 

@@ -481,22 +481,4 @@ describe("a provider account (P1)", () => {
     expect(row.model).toBeNull();
     expect(row.node).toBe("nas");
   });
-
-  it("an outdated driver says to update its machine", () => {
-    const rows = buildRows(
-      {
-        ...LIVE,
-        drivers: {
-          drivers: [{ name: "old", reachable: true, node: "amish", outdated: true, modelId: "x" }],
-        },
-        routing: null,
-        placement: null,
-        runtimes: null,
-      },
-      "nas",
-    );
-    const row = first(rows.filter((r) => r.driver === "old"));
-    expect(row.outdated).toBe(true);
-    expect(row.error).toContain("updated");
-  });
 });

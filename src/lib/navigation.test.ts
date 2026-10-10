@@ -259,8 +259,8 @@ describe("every route under src/app is accounted for", () => {
     expect(missing, `object sub-routes with no page: ${missing.join(", ")}`).toEqual([]);
   });
 
-  it("excludes exactly login, setup and the runtimes redirect", () => {
-    expect([...ROUTES_WITHOUT_NAV].sort()).toEqual(["/login", "/runtimes", "/setup"]);
+  it("excludes exactly login and setup", () => {
+    expect([...ROUTES_WITHOUT_NAV].sort()).toEqual(["/login", "/setup"]);
   });
 
   it("names every shell page that neither a screen nor a page menu can name", () => {

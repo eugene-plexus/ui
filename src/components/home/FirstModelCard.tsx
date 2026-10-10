@@ -168,12 +168,11 @@ export function FirstModelCard({
  * with. Choosing differently is one click away and stays a link, not a
  * second button (P3).
  *
- * **The chain survives this tab** (§6.3): the download carries
- * `runWhenReady`, so a person who closes the laptop across a 16 GB
- * transfer comes back to a console that claims the record and carries
- * on. Which is why there is no local error state here — the run store
- * owns the whole thing from the click, and the tray row is where it
- * says what happened.
+ * **The chain survives this tab** (§6.3): the Library holds the download
+ * and the run as one durable operation, so a person who closes the laptop
+ * across a 16 GB transfer comes back to a run that carried on. Which is
+ * why there is no local error state here — the run store owns the whole
+ * thing from the click, and the tray row is where it says what happened.
  */
 function SuggestedModelCard({
   model,

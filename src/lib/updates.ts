@@ -20,8 +20,6 @@ import type { NodeIdentity, UpdateRun, UpdateStep } from "./types";
 export type UpdateState =
   /** The machine did not answer. */
   | "unknown"
-  /** It answered with no `update` at all: installed before it could update itself. */
-  | "too-old"
   | "development"
   | "off"
   | "unchecked"
@@ -33,9 +31,6 @@ export type UpdateState =
   | "ahead"
   /** Some parts newer, some older: updating would move some back. */
   | "mixed"
-  /** An install from before the channel had a default, whose first check
-   * has not yet said which channel it follows. */
-  | "undecided"
   /** Behind, and cannot update itself: a person does it (a container). */
   | "manual"
   | "running"
@@ -107,12 +102,6 @@ export function ago(iso: string | null | undefined, now: number): string | null 
   return `${Math.round(hours / 24)} days ago`;
 }
 
-/** The one-line install for a machine that cannot update itself yet. */
-export function installerCommand(os: NodeIdentity["os"] | null | undefined): string {
-  const base = "https://raw.githubusercontent.com/eugene-plexus/specs/main/scripts";
-  return os === "windows" ? `irm ${base}/install.ps1 | iex` : `curl -fsSL ${base}/install.sh | sh`;
-}
-
 const RESTART =
   "Updating restarts Eugene on this machine, and the models running on it stop until it is back, usually a minute or two.";
 
@@ -128,23 +117,15 @@ export function describeUpdate(
     steps: [] as UpdateStep[],
     last: null as UpdateRun | null,
   };
-  if (!identity) {
+  const update = identity?.update;
+  if (!identity || !update) {
     return {
       ...base,
       state: "unknown",
       headline: "Version unknown",
-      detail: "This machine did not answer.",
-    };
-  }
-  const update = identity.update;
-  if (!update) {
-    return {
-      ...base,
-      state: "too-old",
-      headline: "This machine cannot update itself yet",
-      detail:
-        "It runs a version from before Eugene could update itself. Run the installer on it once, and it can from then on.",
-      steps: [{ text: "On that machine, run:", command: installerCommand(identity.os) }],
+      detail: identity
+        ? "This machine did not report its update status."
+        : "This machine did not answer.",
     };
   }
   const recent = update.last?.finishedAt
@@ -180,18 +161,11 @@ export function describeUpdate(
     };
   }
   const failed = last?.outcome === "failed" ? last : null;
-  // **Only a newer version is called newer** (2026-09-30). An agent from
-  // before then sends no `ahead`, and its `available` means only "differs"
-  // -- so for it the page says different, never newer.
-  const knowsOrder = Array.isArray(update.ahead);
+  // **Only a newer version is called newer** (2026-09-30): `available` means
+  // `newest` is newer, and what is ahead of it is never offered.
   const ahead = update.ahead ?? [];
   const parts = identity.install?.components.length || 7;
-  const offer = knowsOrder
-    ? `A newer version is ready: ${label}`
-    : `${update.channel ?? "Its channel"} has a different version: ${label}`;
-  const unordered = knowsOrder
-    ? null
-    : "This machine's version of Eugene cannot tell whether it is newer or older; updating installs it.";
+  const offer = `A newer version is ready: ${label}`;
   if (update.available && label) {
     if (!update.apply.possible) {
       return {
@@ -199,7 +173,7 @@ export function describeUpdate(
         last,
         state: failed ? "failed" : "manual",
         headline: failed ? "The last update did not finish" : offer,
-        detail: failed?.detail ?? joined(unordered, update.apply.reason ?? null),
+        detail: failed?.detail ?? update.apply.reason ?? null,
         steps: update.apply.steps ?? [],
       };
     }
@@ -208,9 +182,7 @@ export function describeUpdate(
       last,
       state: failed ? "failed" : "available",
       headline: failed ? "The last update did not finish" : offer,
-      detail:
-        failed?.detail ??
-        joined(unordered, `${partsBehind(update.behind.length, parts)} ${RESTART}`),
+      detail: failed?.detail ?? `${partsBehind(update.behind.length, parts)} ${RESTART}`,
       canUpdate: true,
       target: update.newest?.ref ?? null,
     };
@@ -249,20 +221,6 @@ export function describeUpdate(
       state: "off",
       headline: "Update checks are off",
       detail: "Turn them on under Settings › Updates.",
-    };
-  }
-  if (update.channelSource === "pending" || !update.channel) {
-    return {
-      ...base,
-      last,
-      state: "undecided",
-      headline: "Update channel not decided yet",
-      detail: joined(
-        "This machine was installed before the channel had a default. At its first update " +
-          "check it saves the channel it was installed from -- Releases for a release, Edge " +
-          "for anything else -- and nothing is offered until then.",
-        update.error ? `The last check could not finish: ${update.error}` : null,
-      ),
     };
   }
   if (!update.checkedAt) {
@@ -341,11 +299,8 @@ export function versionDifference(
 }
 
 /**
- * Why this channel, when nobody chose it. An unset channel follows how the
- * machine was installed, so a release install reads "up to date on
- * releases" while edge moves on -- and until 2026-09-29 nothing on the page
- * said the channel was a guess (found on Troy's worker, installed from
- * alpha.5, whose Settings dropdown showed Edge for an unset value).
+ * Why this channel, when nobody chose it: an unset channel follows the
+ * default, and the page says so rather than let it pass for a choice.
  */
 function sourceNote(update: NonNullable<NodeIdentity["update"]>): string | null {
   if (update.channelSource === "default") {
@@ -355,17 +310,7 @@ function sourceNote(update: NonNullable<NodeIdentity["update"]>): string | null 
       "under Settings › Updates."
     );
   }
-  // Sent only by agents from before 2026-09-30, which worked the channel out
-  // at every check.
-  if (update.channelSource !== "inferred") return null;
-  const from =
-    update.channel === "releases"
-      ? "it was installed from a release"
-      : "it was not installed from a release";
-  return (
-    `It follows ${update.channel} because ${from}. ` +
-    "To choose, set Update channel under Settings › Updates."
-  );
+  return null;
 }
 
 function joined(...parts: (string | null)[]): string | null {

@@ -41,13 +41,6 @@ function show(component: string, name: string, overrides: { value?: unknown } = 
 }
 
 describe("an unset value says what it does", () => {
-  it("an old install's channel is undecided, never shown as the default", () => {
-    show("agent", "updateChannel_pending");
-    const select = screen.getByRole("combobox") as HTMLSelectElement;
-    expect(select.selectedOptions[0]?.textContent).toBe("Not set");
-    expect(screen.getByTestId("unset-updateChannel")).toHaveTextContent("first update check");
-  });
-
   it("a container's default says where it comes from", () => {
     show("agent", "updateChannel_container");
     const select = screen.getByRole("combobox") as HTMLSelectElement;

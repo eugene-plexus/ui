@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { capableEngines, offeredOnThisNode } from "./engineCompat";
-import type { EngineDescriptor, LibraryModel } from "./types";
+import { offeredOnThisNode } from "./engineCompat";
+import type { EngineDescriptor } from "./types";
 
 function engine(overrides: Partial<EngineDescriptor>): EngineDescriptor {
   return {
@@ -11,48 +11,6 @@ function engine(overrides: Partial<EngineDescriptor>): EngineDescriptor {
     ...overrides,
   } as EngineDescriptor;
 }
-
-const llama = engine({ engine: "llama_cpp", modelFormats: ["gguf"] });
-const vllm = engine({ engine: "vllm", modelFormats: ["safetensors"] });
-const mlx = engine({ engine: "mlx", modelFormats: ["safetensors"], experimental: false });
-
-function model(overrides: Partial<LibraryModel>): LibraryModel {
-  return {
-    id: "m",
-    path: "/models/m",
-    root: "/models",
-    format: "safetensors",
-    name: "m",
-    status: "present",
-    ...overrides,
-  } as LibraryModel;
-}
-
-describe("capableEngines", () => {
-  it("keeps the plain format join for an unmarked safetensors directory", () => {
-    // Absence of the MLX marker means unknown, not incompatible: both
-    // safetensors engines stay offered, and the engine's own failure
-    // remains the second filter.
-    const capable = capableEngines(model({}), [llama, vllm, mlx]);
-    expect(capable.map((e) => e.engine)).toEqual(["vllm", "mlx"]);
-  });
-
-  it("offers only the MLX engine for an MLX-quantized directory", () => {
-    // The marker is the library reading config.json's top-level MLX
-    // quantization block — integer-packed weights vLLM cannot load.
-    // Offering vLLM here is a launch button that fails at spawn.
-    const marked = model({
-      safetensors: { mlxQuantization: { bits: 4, groupSize: 64 } },
-    });
-    const capable = capableEngines(marked, [llama, vllm, mlx]);
-    expect(capable.map((e) => e.engine)).toEqual(["mlx"]);
-  });
-
-  it("a GGUF model is untouched by the marker rule", () => {
-    const gguf = model({ format: "gguf" });
-    expect(capableEngines(gguf, [llama, vllm, mlx]).map((e) => e.engine)).toEqual(["llama_cpp"]);
-  });
-});
 
 describe("offeredOnThisNode", () => {
   it("an engine Eugene installs itself is listed even when it cannot be installed now", () => {

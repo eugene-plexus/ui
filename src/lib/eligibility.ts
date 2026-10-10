@@ -41,16 +41,15 @@ export const LEVEL_CLASS: Record<EligibilityLevel, string> = {
   not_here: "status-error",
 };
 
-/** A node's engines as `POST /v1/eligibility` takes them. An agent older
- * than `accepts` reported only formats, which are whole rules of their own. */
+/** A node's engines as `POST /v1/eligibility` takes them. */
 export function eligibilityEngines(engines: EngineDescriptor[]): EligibilityEngine[] {
   return engines.map((e) => ({
     engine: e.engine,
     available: e.available,
     installable: !e.available && offeredOnThisNode(e),
     experimental: Boolean(e.experimental),
-    accepts: e.accepts ?? (e.modelFormats ?? []).map((format) => ({ format, preference: 100 })),
-    // How it uses memory (LS6); absent from an agent older than that.
+    accepts: e.accepts ?? [],
+    // How it uses memory (LS6), when the engine declares it.
     ...(e.fit ? { fit: e.fit } : {}),
   }));
 }
@@ -64,39 +63,20 @@ export interface JudgeRequest {
   fit?: FitQuestion | null;
 }
 
-/**
- * Asks the judge. With a fit question every engine answers its own fit
- * (LS6); a Library older than that refuses the fields (422), and is asked
- * again without them, so its dots stay what they were rather than vanish.
- */
+/** Asks the judge. With a fit question every engine answers its own fit
+ * (LS6); without one the field is left out, as the contract has it absent. */
 export async function judge(
   post: (body: unknown) => Promise<EligibilityList>,
   request: JudgeRequest,
-  isRefusal: (err: unknown) => boolean,
 ): Promise<EligibilityList> {
   const { fit, ...rest } = request;
-  if (!fit) return post(rest);
-  try {
-    return await post({ ...rest, fit });
-  } catch (err) {
-    if (!isRefusal(err)) throw err;
-    return post({
-      ...rest,
-      engines: rest.engines.map((engine) => {
-        const older = { ...engine };
-        delete older.fit;
-        return older;
-      }),
-    });
-  }
+  return post(fit ? { ...rest, fit } : rest);
 }
 
-/** A node's fit model for an engine (LS6): as it declared, or llama.cpp's
- * `spill` from an agent older than that, which is what it always was. */
+/** A node's fit model for an engine (LS6), as it declared; null when it
+ * declared none. */
 export function fitModelOf(engine: EngineDescriptor | undefined): EngineFitModel | null {
-  if (!engine) return null;
-  if (engine.fit) return engine.fit;
-  return engine.engine === "llama_cpp" ? { kind: "spill" } : null;
+  return engine?.fit ?? null;
 }
 
 /** An engine whose own fit is a measured `no`: it counts as one that cannot

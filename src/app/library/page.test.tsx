@@ -129,7 +129,41 @@ function install(): Map<string, Handler> {
     ["GET library/v1/models/gemma/fit", () => ok(fitBody())],
     [
       "GET agent/v1/engines",
-      () => ok({ engines: [{ engine: "llama_cpp", available: true, modelFormats: ["gguf"] }] }),
+      () =>
+        ok({
+          engines: [
+            {
+              engine: "llama_cpp",
+              available: true,
+              modelFormats: ["gguf"],
+              fit: { kind: "spill" },
+            },
+          ],
+        }),
+    ],
+    // The Library's verdict: llama.cpp runs the model here. Tests that are
+    // about the judge set their own.
+    [
+      "POST library/v1/eligibility",
+      () =>
+        ok({
+          models: [
+            {
+              modelId: "gemma",
+              level: "works_here",
+              engines: [
+                {
+                  engine: "llama_cpp",
+                  verdict: "runs",
+                  available: true,
+                  installable: false,
+                  experimental: false,
+                  reason: "llama.cpp loads GGUF",
+                },
+              ],
+            },
+          ],
+        }),
     ],
     ["GET agent/v1/runtimes", () => ok({ runtimes: [runtime()] })],
     ["POST agent/v1/runtimes/gemma-a/stop", () => ok({})],
@@ -552,7 +586,11 @@ describe("the fit panel and the header's node picker", () => {
       }),
     );
     handlers.set("GET node:gpu-b/v1/engines", () =>
-      ok({ engines: [{ engine: "llama_cpp", available: true, modelFormats: ["gguf"] }] }),
+      ok({
+        engines: [
+          { engine: "llama_cpp", available: true, modelFormats: ["gguf"], fit: { kind: "spill" } },
+        ],
+      }),
     );
     handlers.set("GET node:gpu-b/v1/runtimes", () => ok({ runtimes: [] }));
   });
@@ -702,25 +740,14 @@ describe("which engines can run it: the Library judges (LS1)", () => {
     expect(screen.queryByTestId("model-run")).toBeNull();
   });
 
-  // 404: older than the judge; 422: older than LS3's `prepared`, which this
-  // node's Strata declares.
-  it.each([404, 422])("falls back to the format alone on an older library (%i)", async (status) => {
-    handlers.set("POST library/v1/eligibility", () => ({ status, body: {} }));
-    const folder = {
-      id: "st",
-      path: "Y:\\models\\st",
-      format: "safetensors",
-      name: "st",
-      status: "present",
-    };
-    handlers.set("GET library/v1/models", () => ok({ models: [libraryModel(), folder] }));
-    await openTheModel();
+  it("says so when the Library refuses the question, and offers no Run on a guess", async () => {
+    handlers.set("POST library/v1/eligibility", () => ({ status: 422, body: {} }));
+    render(<LibraryPage />);
+    const note = await screen.findByRole("alert", {}, { timeout: 5000 });
+    expect(note).toHaveAttribute("data-testid", "eligibility-unknown");
+    expect(note).toHaveTextContent("Could not ask the Library which engines can run this");
     expect(screen.queryByTestId("model-eligibility")).toBeNull();
-    // llama.cpp still loads the GGUF by its format: Run is offered.
-    expect(await screen.findByTestId("model-run")).toBeInTheDocument();
-    // And the format rule marks what no engine here loads, as before LS1.
-    const row = screen.getByRole("button", { name: /^st/ });
-    await waitFor(() => expect(row).toHaveTextContent("no engine"));
+    expect(screen.queryByTestId("model-run")).toBeNull();
   });
 });
 
@@ -764,7 +791,13 @@ describe("preparing a GGUF for an engine that runs it only after (LS5)", () => {
     handlers.set("GET agent/v1/engines", () =>
       ok({
         engines: [
-          { engine: "llama_cpp", available: true, modelFormats: ["gguf"], accepts: [] },
+          {
+            engine: "llama_cpp",
+            available: true,
+            modelFormats: ["gguf"],
+            accepts: [],
+            fit: { kind: "spill" },
+          },
           {
             engine: "strata",
             available: true,

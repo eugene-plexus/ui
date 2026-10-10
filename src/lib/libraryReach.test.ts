@@ -34,9 +34,8 @@ describe("the shape of a path says which nodes it is for", () => {
 });
 
 describe("folders, whatever shape they arrive in", () => {
-  it("reads a bare string as a folder with no mounts and keeps objects' mounts", () => {
+  it("keeps objects' mounts and drops what is not a folder", () => {
     expect(parseFolders(["/a", { path: "/b", mounts: ["/m", 3, ""] }, 7, { mounts: [] }])).toEqual([
-      { path: "/a", mounts: [] },
       { path: "/b", mounts: ["/m"] },
     ]);
     expect(parseFolders("/a")).toEqual([]);

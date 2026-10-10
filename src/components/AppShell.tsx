@@ -83,7 +83,7 @@ function AppShellInner({
   const searchParams = useSearchParams();
   // An explicit `sel` wins; otherwise the route says which object it is
   // about, so every URL that worked before the tree still works — a
-  // bookmark, the launch panel's `?tab=` link, the `/runtimes` redirect.
+  // bookmark, the launch panel's `?tab=` link.
   // A page under an object that is not in its menu is answered last, by
   // the registry, so it lights that object's row rather than nothing.
   const requested =

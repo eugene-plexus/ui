@@ -25,14 +25,10 @@ const engine = (over: Partial<EngineDescriptor>) =>
   ({ engine: "llama_cpp", available: true, modelFormats: ["gguf"], ...over }) as EngineDescriptor;
 
 describe("eligibilityEngines", () => {
-  it("sends what each engine accepts, and an older agent's formats as whole rules", () => {
+  it("sends what each engine accepts", () => {
     const accepts = [{ format: "gguf" as const, preference: 10 }];
-    const [withAccepts, older] = eligibilityEngines([
-      engine({ accepts }),
-      engine({ engine: "vllm", modelFormats: ["safetensors"] }),
-    ]);
+    const [withAccepts] = eligibilityEngines([engine({ accepts })]);
     expect(withAccepts!.accepts).toBe(accepts);
-    expect(older!.accepts).toEqual([{ format: "safetensors", preference: 100 }]);
   });
 
   it("calls an engine installable only when it is not installed and could be here", () => {
@@ -194,21 +190,22 @@ describe("each engine's own fit", () => {
     ...over,
   });
 
-  it("passes an engine's fit model to the judge, and none from an older agent", () => {
-    const [declared, older] = eligibilityEngines([
+  it("passes an engine's fit model to the judge, and none when it declares none", () => {
+    const [declared, none] = eligibilityEngines([
       engine({ fit: { kind: "spill" } }),
       engine({ engine: "vllm" }),
     ]);
     expect(declared!.fit).toEqual({ kind: "spill" });
-    expect("fit" in older!).toBe(false);
+    expect("fit" in none!).toBe(false);
   });
 
-  it("an older agent's llama.cpp is llama.cpp's arithmetic; any other engine has none", () => {
-    expect(fitModelOf(engine({}))).toEqual({ kind: "spill" });
-    expect(fitModelOf(engine({ engine: "mlx" }))).toBeNull();
+  it("an engine's fit model is the one it declared, and none otherwise", () => {
+    expect(fitModelOf(engine({ fit: { kind: "spill" } }))).toEqual({ kind: "spill" });
+    expect(fitModelOf(engine({}))).toBeNull();
     expect(fitModelOf(engine({ engine: "vllm", fit: { kind: "reserved_share" } }))).toEqual({
       kind: "reserved_share",
     });
+    expect(fitModelOf(undefined)).toBeNull();
   });
 
   it("says each engine's fit in its own words, and not estimated as such", () => {
@@ -249,30 +246,26 @@ describe("each engine's own fit", () => {
     expect(levelEngine([unmeasured, strata])?.engine).toBe("llama_cpp");
   });
 
-  it("asks again without the fit fields when an older Library refuses them", async () => {
+  it("asks the judge with the fit question, and leaves the field out when none is asked", async () => {
     const asked: unknown[] = [];
-    const refused = new Error("422");
     const post = async (body: unknown): Promise<EligibilityList> => {
       asked.push(body);
-      if ((body as { fit?: unknown }).fit) throw refused;
       return { models: [] };
     };
     const engines = eligibilityEngines([engine({ fit: { kind: "spill" } })]);
-    await judge(post, { engines, fit: { contextLength: 8192 } }, (err) => err === refused);
-    expect(asked).toHaveLength(2);
-    expect(asked[1]).toEqual({ engines: [{ ...engines[0], fit: undefined }] });
-    expect("fit" in (asked[1] as { engines: object[] }).engines[0]!).toBe(false);
+    await judge(post, { engines, fit: { contextLength: 8192 } });
+    await judge(post, { engines, fit: null });
+    expect(asked[0]).toEqual({ engines, fit: { contextLength: 8192 } });
+    expect("fit" in (asked[1] as object)).toBe(false);
   });
 
-  it("a failure that is not a refusal is not retried", async () => {
+  it("a failure from the Library reaches the caller, not a second ask", async () => {
     let calls = 0;
     const post = async (): Promise<EligibilityList> => {
       calls += 1;
       throw new Error("down");
     };
-    await expect(
-      judge(post, { engines: [], fit: { contextLength: 1 } }, () => false),
-    ).rejects.toThrow("down");
+    await expect(judge(post, { engines: [], fit: { contextLength: 1 } })).rejects.toThrow("down");
     expect(calls).toBe(1);
   });
 });

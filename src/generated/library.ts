@@ -574,30 +574,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Search the upstream model catalogue.
-         * @description The answer to "let me just go to the dumpster fire UI that is
-         *     HuggingFace… no search page with summaries, just an autocomplete
-         *     list."
-         *
-         *     **Repos, not candidates.** A result is one repository with its
-         *     publisher, popularity and tags — no file sizes and no fit
-         *     verdicts, because the upstream search response does not carry
-         *     sizes and getting them costs one extra call *per repo*. Sizes,
-         *     quant options and guidance all live on
-         *     `GET /v1/catalogue/model`, which is the screen where the
-         *     operator has picked something and a per-repo call is warranted.
-         *
-         *     **Debounce this.** Upstream allows 500 API requests per 300
-         *     seconds and search-as-you-type will exceed that inside two
-         *     minutes. Responses are cached server-side for a short window;
-         *     the client is still expected not to fire on every keystroke.
-         *
-         *     **One source: the first enabled `hf_hub` source** (LS4), so a
-         *     console older than the sources list keeps the answer it had.
-         *     `POST` on this path searches the chosen sources together.
-         */
-        get: operations["searchCatalogue"];
+        get?: never;
         put?: never;
         /**
          * Search the chosen catalogue sources together.
@@ -606,10 +583,14 @@ export interface paths {
          *     named, in one answer, each result naming the source it came from
          *     (`CatalogueSearchResult.source`).
          *
-         *     * An `hf_hub` source is searched as `GET` searches the hub,
-         *       with the same filters and the same caching. A pasted link is
-         *       looked up on the source whose address has the link's host, or
-         *       else on the first enabled `hf_hub` source.
+         *     * An `hf_hub` source is searched with the hub's own search:
+         *       repositories, not candidates (a result is one repo with its
+         *       publisher, popularity and tags, no file sizes and no fit, which
+         *       the hub's search does not carry; `GET /v1/catalogue/model`
+         *       reads them), most downloaded first unless `sort` says
+         *       otherwise, cached briefly. A pasted link is looked up on the
+         *       source whose address has the link's host, or else on the first
+         *       enabled `hf_hub` source.
          *     * An `engine_list` source lists the models engines publish as
          *       supported (`SupportedModel`), from the lists the caller sends
          *       (`engines`): the console sends the picked node's, as it sends
@@ -621,8 +602,10 @@ export interface paths {
          *       hub. Its facts are exact (a named file at a pinned revision), so
          *       its dot is not approximate.
          *
-         *     Results: the engines' lists first, in the engines' own order, then
-         *     each hub's in its own order. `sources` says what each source
+         *     Results come in the order of `catalogueSources` (LS7: the
+         *     person's order, whatever a source's kind; the default list puts
+         *     the engines' lists first), each source's in its own order.
+         *     `sources` says what each source
          *     answered, and a source that failed names its cause there while
          *     the others still answer: one hub down is not an empty search.
          *
@@ -878,44 +861,6 @@ export interface paths {
          *     To keep the partial bytes for later, `pause` instead.
          */
         delete: operations["cancelDownload"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/downloads/{id}/claim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Take responsibility for what a finished download was started for.
-         * @description Atomically clears `runWhenReady` and reports whether this caller
-         *     was the one who cleared it.
-         *
-         *     **It exists because two browsers are two browsers.** A person
-         *     starts a download in order to run a model, closes the tab, and
-         *     opens the UI again — possibly on another machine, possibly
-         *     twice. Every console can see the finished download and its
-         *     intent; without this, every console would create a profile and
-         *     launch a runtime for the same model. First caller wins, the
-         *     rest get `claimed: false` and do nothing.
-         *
-         *     **It is also what stops a deliberate stop from being undone.**
-         *     Without the clear, a console opening a week after the operator
-         *     stopped that runtime on purpose would see the same finished
-         *     download with the same intent and start it again.
-         *
-         *     Idempotent: claiming a download that has no intent, or has
-         *     already been claimed, is a `200` with `claimed: false` rather
-         *     than an error. Nothing about the transfer changes.
-         */
-        post: operations["claimDownload"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2345,9 +2290,9 @@ export interface components {
             engines?: components["schemas"]["EngineModelList"][];
         };
         /**
-         * @description One upstream repository. **No sizes and no fit verdict** — see
-         *     `searchCatalogue`: upstream's search response carries neither
-         *     and synthesizing them would cost a call per row.
+         * @description One upstream repository. **No sizes and no fit verdict** from a
+         *     hub (see `searchCatalogueSources`): upstream's search response
+         *     carries neither and synthesizing them would cost a call per row.
          */
         CatalogueSearchResult: {
             /** @description Full repo id, e.g. `unsloth/Qwen3.8-27B-GGUF`. */
@@ -2977,25 +2922,6 @@ export interface components {
              */
             subdirectory?: string;
             /**
-             * @description The operator asked for this model to be **run** when it
-             *     lands, not merely fetched.
-             *
-             *     **This component records it and never acts on it.** The
-             *     library does not launch anything — a launch is a profile, an
-             *     engine and a runtime on some node's agent, and which node is
-             *     a question the library has no business answering. What this
-             *     field buys is that the *intent* outlives the browser tab
-             *     that expressed it: a 16 GB download takes long enough that
-             *     the person will close the laptop lid, and a console opening
-             *     later can see that a download was started in order to run
-             *     something and carry on from there.
-             *
-             *     Exactly one console should carry on, which is what
-             *     `POST /v1/downloads/{id}/claim` is for.
-             * @default false
-             */
-            runWhenReady: boolean;
-            /**
              * @description Override the written name of the **single-file** case. Rarely
              *     wanted: the upstream name is what the operator recognises,
              *     what the library will call it, and what
@@ -3039,13 +2965,6 @@ export interface components {
             /** @description Recent rate, not an average over the whole job. */
             bytesPerSecond?: number;
             etaSeconds?: number;
-            /**
-             * @description The operator asked for this model to be run when it lands.
-             *     Recorded, never acted on here — see `DownloadSpec`. Cleared
-             *     by `POST /v1/downloads/{id}/claim`, so a finished download
-             *     whose flag is still set is one nobody has picked up yet.
-             */
-            runWhenReady?: boolean;
             /**
              * @description How many times the transfer has been (re)started, including
              *     automatic retries. Visible because a 40 GB fetch over a
@@ -3108,20 +3027,6 @@ export interface components {
             verified?: boolean;
             role?: components["schemas"]["ModelFileRole"];
             error?: string;
-        };
-        /**
-         * @description The answer to "am I the one who continues this?". `claimed` is
-         *     true for exactly one caller per download.
-         */
-        DownloadClaim: {
-            claimed: boolean;
-            /**
-             * @description The local model the download produced, when the scan that
-             *     follows a completed transfer has named it. Absent while the
-             *     scan is still running, which is a reason to wait rather than
-             *     a reason to give up — the claim is already yours.
-             */
-            modelId?: string;
         };
         /**
          * @description Named phases rather than a percentage, following M1's engine
@@ -3500,26 +3405,6 @@ export interface components {
              */
             subdirectory?: string | null;
             /**
-             * Runwhenready
-             * @description The operator asked for this model to be **run** when it
-             *     lands, not merely fetched.
-             *
-             *     **This component records it and never acts on it.** The
-             *     library does not launch anything — a launch is a profile, an
-             *     engine and a runtime on some node's agent, and which node is
-             *     a question the library has no business answering. What this
-             *     field buys is that the *intent* outlives the browser tab
-             *     that expressed it: a 16 GB download takes long enough that
-             *     the person will close the laptop lid, and a console opening
-             *     later can see that a download was started in order to run
-             *     something and carry on from there.
-             *
-             *     Exactly one console should carry on, which is what
-             *     `POST /v1/downloads/{id}/claim` is for.
-             * @default false
-             */
-            runWhenReady: boolean | null;
-            /**
              * Filename
              * @description Override the written name of the **single-file** case. Rarely
              *     wanted: the upstream name is what the operator recognises,
@@ -3614,8 +3499,6 @@ export interface components {
             /** Modelid */
             modelId?: string | null;
             download?: components["schemas"]["schemas-DownloadSpec"] | null;
-            /** Downloadid */
-            downloadId?: string | null;
             preparation?: components["schemas"]["PreparationIntent"] | null;
         };
         /**
@@ -4435,14 +4318,6 @@ export interface components {
             bytesPerSecond?: number | null;
             /** Etaseconds */
             etaSeconds?: number | null;
-            /**
-             * Runwhenready
-             * @description The operator asked for this model to be run when it lands.
-             *     Recorded, never acted on here — see `DownloadSpec`. Cleared
-             *     by `POST /v1/downloads/{id}/claim`, so a finished download
-             *     whose flag is still set is one nobody has picked up yet.
-             */
-            runWhenReady?: boolean | null;
             /**
              * Attempts
              * @description How many times the transfer has been (re)started, including
@@ -7345,92 +7220,6 @@ export interface operations {
             };
         };
     };
-    searchCatalogue: {
-        parameters: {
-            query?: {
-                /**
-                 * @description Free-text query, passed to upstream's own search. Omit to
-                 *     browse by `sort` alone, which is how the "what is popular
-                 *     right now" landing view works.
-                 *
-                 *     **A pasted repo reference is looked up, not searched.** A
-                 *     hub URL (`https://huggingface.co/owner/name`, with or
-                 *     without a `/tree/<rev>` or `/blob/<rev>/<file>` tail) or a
-                 *     bare `owner/name` is resolved with one repo lookup and
-                 *     comes back as a single result with `interpretedAs: repo`.
-                 *     This is the answer to the commonest way a person arrives
-                 *     with a model in mind: someone linked them one. A URL that
-                 *     does not resolve is a `404`, naming the repo; a bare
-                 *     `owner/name` that does not resolve falls through to an
-                 *     ordinary search, because it may simply be what they meant
-                 *     to type.
-                 */
-                q?: string;
-                /**
-                 * @description Restrict to repos serving this format. `gguf` maps to
-                 *     upstream's `gguf` filter; `safetensors` is inferred from
-                 *     library and tag metadata and is therefore approximate — a
-                 *     repo can hold both.
-                 */
-                format?: components["schemas"]["schemas-ModelFormat"];
-                /**
-                 * @description Publisher, e.g. `unsloth`. Worth a first-class parameter
-                 *     because "the quant publisher I trust" is how people
-                 *     actually navigate this catalogue.
-                 */
-                author?: string;
-                sort?: components["schemas"]["CatalogueSort"];
-                direction?: "asc" | "desc";
-                limit?: number;
-                /**
-                 * @description Opaque continuation token from a previous response's
-                 *     `nextCursor`. Cursor-based rather than offset because
-                 *     upstream paginates with an opaque cursor in a `Link` header
-                 *     and there is no page number to pass through.
-                 */
-                cursor?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description A page of results. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CatalogueSearchPage"];
-                };
-            };
-            /**
-             * @description `q` was a repo URL and this install cannot see that repo.
-             *     Only a URL produces it: a URL names one repo and nothing
-             *     else, so an empty result list would be the silent failure.
-             *
-             *     **Upstream does not answer 404 for a missing repo** --
-             *     measured, it answers `401 Invalid username or password`,
-             *     because to an unauthenticated caller "gone" and "private"
-             *     are deliberately the same answer. So this covers all three
-             *     causes and the detail names all three rather than asserting
-             *     the one that cannot be told from the others. A repo that is
-             *     merely *gated* keeps its own `403`, since accepting a
-             *     licence is something the operator can go and do.
-             */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            502: components["responses"]["Problem"];
-            503: components["responses"]["Problem"];
-        };
-    };
     searchCatalogueSources: {
         parameters: {
             query?: never;
@@ -7467,7 +7256,9 @@ export interface operations {
             };
             /**
              * @description `q` was a repo URL and the source it was looked up on cannot
-             *     see that repo (as `GET`).
+             *     see that repo. Upstream answers *401* for a repo that is
+             *     missing or private alike, so the detail names both; a gated
+             *     repo keeps its own 403.
              */
             404: {
                 headers: {
@@ -7837,37 +7628,6 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Problem"];
-        };
-    };
-    claimDownload: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Whether this caller took it. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DownloadClaim"];
-                };
-            };
-            /** @description No such download. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
         };
     };
     pauseDownload: {

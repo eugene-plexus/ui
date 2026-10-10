@@ -219,8 +219,7 @@ export function ConfigEditor({
         if (schemaResp.fields.some((f) => f.valueType === "path_mappings")) {
           try {
             const library = await api.get<Record<string, unknown>>("library", "/v1/config");
-            // `modelRoots` is a `library_folders` list since 2026-09-14 (a
-            // `path_list` before); `parseFolders` reads either shape.
+            // `modelRoots` is a `library_folders` list; `parseFolders` reads it.
             if (!cancelled) setLibraryRoots(parseFolders(library.modelRoots).map((f) => f.path));
           } catch {
             // No library reachable: the `from` box stays a plain input.

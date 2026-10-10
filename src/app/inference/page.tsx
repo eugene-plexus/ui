@@ -703,9 +703,7 @@ function RowView({
         ) : row.model ? (
           <ModelName name={row.model} context={contexts(row.model)} />
         ) : (
-          <span className="text-[color:var(--muted)]">
-            {row.outdated ? "an older version" : "no model reported"}
-          </span>
+          <span className="text-[color:var(--muted)]">no model reported</span>
         )}
       </td>
       <td className="py-1.5 pr-4">

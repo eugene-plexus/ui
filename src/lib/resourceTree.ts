@@ -1011,8 +1011,7 @@ export function configTabFor(selection: Selection, localNode: string | null): st
  * Which object a bare route is about, when no `sel` is present.
  *
  * Every URL that worked before the tree still has to work: a bookmark,
- * a link in a design document, the launch panel's "map it", and the
- * redirect from `/runtimes`. Rather than teach each page a default, one
+ * a link in a design document, and the launch panel's "map it". Rather than teach each page a default, one
  * pure function says which object owns which route, so an old link
  * arrives with the tree already pointing at the right row.
  *

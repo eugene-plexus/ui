@@ -293,14 +293,6 @@ export interface components {
             /** Etaseconds */
             etaSeconds?: number | null;
             /**
-             * Runwhenready
-             * @description The operator asked for this model to be run when it lands.
-             *     Recorded, never acted on here — see `DownloadSpec`. Cleared
-             *     by `POST /v1/downloads/{id}/claim`, so a finished download
-             *     whose flag is still set is one nobody has picked up yet.
-             */
-            runWhenReady?: boolean | null;
-            /**
              * Attempts
              * @description How many times the transfer has been (re)started, including
              *     automatic retries. Visible because a 40 GB fetch over a
@@ -437,26 +429,6 @@ export interface components {
              *     inside the root.
              */
             subdirectory?: string | null;
-            /**
-             * Runwhenready
-             * @description The operator asked for this model to be **run** when it
-             *     lands, not merely fetched.
-             *
-             *     **This component records it and never acts on it.** The
-             *     library does not launch anything — a launch is a profile, an
-             *     engine and a runtime on some node's agent, and which node is
-             *     a question the library has no business answering. What this
-             *     field buys is that the *intent* outlives the browser tab
-             *     that expressed it: a 16 GB download takes long enough that
-             *     the person will close the laptop lid, and a console opening
-             *     later can see that a download was started in order to run
-             *     something and carry on from there.
-             *
-             *     Exactly one console should carry on, which is what
-             *     `POST /v1/downloads/{id}/claim` is for.
-             * @default false
-             */
-            runWhenReady: boolean | null;
             /**
              * Filename
              * @description Override the written name of the **single-file** case. Rarely
@@ -659,8 +631,6 @@ export interface components {
             /** Modelid */
             modelId?: string | null;
             download?: components["schemas"]["DownloadSpec"] | null;
-            /** Downloadid */
-            downloadId?: string | null;
             preparation?: components["schemas"]["PreparationIntent"] | null;
         };
         /**

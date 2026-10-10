@@ -18,11 +18,10 @@ import { guessGatewayBaseUrl } from "@/lib/diagnostic";
 import { chatModels, firstModelState, machineStrip } from "@/lib/home";
 import { type Sources, buildRows } from "@/lib/inferenceRows";
 import { budgetFromNode, fitQuery, localTargetNode } from "@/lib/nodeBudget";
-import { getRuns, isDownloadAndRun, resumeClaimedRuns } from "@/lib/oneClickRun";
+import { isDownloadAndRun } from "@/lib/oneClickRun";
 import type {
   ComponentList,
   ComponentPlacementList,
-  DownloadList,
   DriversInfo,
   EngineList,
   LibraryModelList,
@@ -162,17 +161,6 @@ export default function HomePage() {
         .catch(() => null),
     );
     if (componentsResult !== null) setComponents(componentsResult);
-
-    // **Carry on what a previous console started (§6.3).** A download
-    // that carried `runWhenReady`, finished, and that nobody is running
-    // is picked up here: claim it -- exactly one console wins -- and
-    // continue into the ordinary run. This is the half of "Download and
-    // run" that survives a closed laptop, and Home is where it happens
-    // because Home is where the browser lands.
-    const list = await api.get<DownloadList>("library", "/v1/downloads").catch(() => null);
-    if (list) {
-      await resumeClaimedRuns(list.downloads ?? [], getRuns(), localTargetNode(known));
-    }
     // The last good answer is kept and the failure is flagged beside it,
     // so the card can say "did not answer" without the count flickering
     // to zero on one missed poll.

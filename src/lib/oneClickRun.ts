@@ -109,7 +109,6 @@ export interface RunOperation extends Pick<
       revision?: string | null;
       source?: string | null;
     } | null;
-    downloadId?: string | null;
     preparation?: { engine: string; contextSize?: number | null } | null;
   };
   model: RunModel | null;
@@ -476,46 +475,6 @@ export function downloadLabel(download: Download): string {
     (first?.destinationPath || first?.path || download.repo).split(/[\\/]/).pop() || download.repo
   );
 }
-export function pendingChainedRuns(
-  downloads: readonly Download[],
-  runs: readonly RunTask[],
-  target: string,
-): Download[] {
-  return downloads.filter(
-    (d) =>
-      d.state === "done" &&
-      d.runWhenReady &&
-      d.modelId &&
-      !runs.some(
-        (r) => r.node.target === target && r.model.id === d.modelId && !isTerminal(r.step),
-      ),
-  );
-}
-export function resumeRun(download: Download, node: TargetNode): string | null {
-  if (!download.modelId) return null;
-  const id = `legacy_${download.id}_${node.name ?? "local"}`
-    .replace(/[^a-zA-Z0-9_-]/g, "_")
-    .slice(0, 100);
-  void submit(id, { node: node.name, downloadId: download.id }, node, {
-    id: download.modelId,
-    name: downloadLabel(download),
-    path: "",
-    format: "gguf",
-    contextLength: null,
-  });
-  return id;
-}
-/** Migration only: legacy download intent is cleared by Library AFTER persisting a run. */
-export async function resumeClaimedRuns(
-  downloads: readonly Download[],
-  runs: readonly RunTask[],
-  node: TargetNode,
-): Promise<string[]> {
-  return pendingChainedRuns(downloads, runs, node.target)
-    .map((d) => resumeRun(d, node))
-    .filter((id): id is string => id !== null);
-}
-
 async function action(id: string, verb: "answer" | "cancel", body: unknown): Promise<void> {
   const currentEpoch = epoch;
   try {

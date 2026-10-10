@@ -65,13 +65,10 @@ export function isAbsolutePath(path: string): boolean {
   return isWindowsShaped(path) || path.startsWith("/") || path.startsWith("~");
 }
 
-/** The object form, whatever the wire or a draft holds. A bare string is
- * a folder with no mounts — the shape every config written for
- * `path_list` still has. */
+/** The object form of the wire's folders: a path and its mounts. */
 export function parseFolders(value: unknown): LibraryFolder[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item): LibraryFolder[] => {
-    if (typeof item === "string") return item.trim() ? [{ path: item.trim(), mounts: [] }] : [];
     if (typeof item !== "object" || item === null) return [];
     const record = item as Record<string, unknown>;
     if (typeof record.path !== "string" || !record.path.trim()) return [];

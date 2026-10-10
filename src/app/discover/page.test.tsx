@@ -185,15 +185,10 @@ beforeEach(() => {
     ["GET library/v1/downloads", () => ok({ downloads: [] })],
     ["GET library/v1/quants", () => ok({ quants: [] })],
     ["GET library/v1/catalogue/card", () => ({ status: 404, body: { detail: "none" } })],
-    [
-      "GET library/v1/catalogue/search",
-      () => ok({ results: [{ repo: REPO, name: "Qwen3.8 27B", owner: "unsloth" }] }),
-    ],
-    // Every source together (LS4): answered here as the one hub answers,
-    // so a test that sets the hub's answer sets this one's too.
+    // Every source together (LS4).
     [
       "POST library/v1/catalogue/search",
-      (params, body) => handlers.get("GET library/v1/catalogue/search")!(params, body),
+      () => ok({ results: [{ repo: REPO, name: "Qwen3.8 27B", owner: "unsloth" }] }),
     ],
     [
       "GET library/v1/catalogue/model",
@@ -470,7 +465,7 @@ describe("two searches in flight", () => {
     const oldHeld = new Promise<void>((resolve) => {
       releaseOld = resolve;
     });
-    handlers.set("GET library/v1/catalogue/search", async (params) => {
+    handlers.set("POST library/v1/catalogue/search", async (params) => {
       if (params.get("sort") === "likes") {
         await oldHeld;
         return ok({ results: [{ repo: "old/Stale-GGUF", name: "Stale answer", owner: "old" }] });
@@ -498,7 +493,7 @@ describe("two searches in flight", () => {
 describe("the results list", () => {
   it("rows carry recency and format, so 'recently updated' has dates on it", async () => {
     const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000).toISOString();
-    handlers.set("GET library/v1/catalogue/search", () =>
+    handlers.set("POST library/v1/catalogue/search", () =>
       ok({
         results: [
           {
@@ -592,7 +587,7 @@ describe("which engines can run it (LS2)", () => {
   beforeEach(() => {
     judged = [];
     handlers.set("GET agent/v1/engines", () => ok({ engines: ENGINES }));
-    handlers.set("GET library/v1/catalogue/search", () => ok({ results: ROWS }));
+    handlers.set("POST library/v1/catalogue/search", () => ok({ results: ROWS }));
     handlers.set("POST library/v1/eligibility", (_params, body) => {
       const asked = body as { candidates?: { id: string }[]; engines?: unknown[] };
       judged.push(asked);
@@ -698,7 +693,7 @@ describe("which engines can run it (LS2)", () => {
   });
 
   it("a filter that leaves nothing names itself and undoes in one click", async () => {
-    handlers.set("GET library/v1/catalogue/search", () => ok({ results: [ROWS[0]] }));
+    handlers.set("POST library/v1/catalogue/search", () => ok({ results: [ROWS[0]] }));
     render(<DiscoverPage />);
     // Works here now is where it opens, here.
     const empty = await screen.findByTestId("no-results", {}, { timeout: 5000 });
@@ -835,14 +830,15 @@ describe("which engines can run it (LS2)", () => {
     ]);
   });
 
-  it("an older Library shows no dots and says why every model is listed", async () => {
+  it("a refused engine check shows no dots and says why every model is listed", async () => {
     handlers.set("POST library/v1/eligibility", () => ({
       status: 422,
-      body: { detail: [{ type: "extra_forbidden", loc: ["body", "candidates"] }] },
+      body: { detail: "The engine check refused this question." },
     }));
     render(<DiscoverPage />);
     const note = await screen.findByTestId("filter-note", {}, { timeout: 5000 });
-    expect(note).toHaveTextContent("This Library is older than the engine check");
+    expect(note).toHaveTextContent("Could not ask the Library which of these run on");
+    expect(note).toHaveTextContent("The engine check refused this question.");
     expect(screen.queryByTestId("eligibility-dot")).toBeNull();
     expect(screen.getAllByTestId("result-row")).toHaveLength(3);
   });
@@ -1016,25 +1012,13 @@ describe("sources are a list (LS4)", () => {
     const posted = [...seen].reverse().find((r) => r.path === "library/v1/downloads" && r.body)!;
     expect(posted.body).toMatchObject({ repo: "corp/Inside", source: "corp" });
   });
-
-  it("a Library older than the sources list is searched as before, and says so", async () => {
-    handlers.set("POST library/v1/catalogue/search", () => ({
-      status: 405,
-      body: { detail: "Method Not Allowed" },
-    }));
-    handlers.set("GET library/v1/catalogue/search", () => ok({ results: [ROWS[1]] }));
-    render(<DiscoverPage />);
-    const note = await screen.findByTestId("filter-note", {}, { timeout: 5000 });
-    expect(note).toHaveTextContent("older than the list of sources");
-    expect(asked("library/v1/catalogue/search")).toBe(2);
-  });
 });
 
 describe("a search the library refused", () => {
   it("shows the library's plain-string sentence, not the status line", async () => {
     // FastAPI's `HTTPException(detail="...")` puts a bare string in
     // `detail`, and this page's own helper read only the nested shape.
-    handlers.set("GET library/v1/catalogue/search", () => ({
+    handlers.set("POST library/v1/catalogue/search", () => ({
       status: 409,
       body: { detail: "Catalogue search is turned off in the Library's settings." },
     }));
