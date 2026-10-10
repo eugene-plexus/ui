@@ -172,6 +172,8 @@ describe("job sites, in production (membership only)", () => {
       "/nodes?sel=agent%3AAmish_Station",
     );
 
+    // The heading counts what the list shows.
+    expect(screen.getByRole("heading", { name: "Job sites (2)" })).toBeInTheDocument();
     const offline = screen.getByTestId(`site-${OFFLINE.id}`);
     expect(within(offline).getByTestId(`site-state-${OFFLINE.id}`)).toHaveTextContent(
       /Offline, last contact 3 h/,
@@ -254,6 +256,9 @@ describe("inviting a job site", () => {
     expect(box).toHaveTextContent("without installing Eugene again");
     expect(box).toHaveTextContent("ada confirms on that machine");
     expect(box).toHaveTextContent("Workbench (Job sites)");
+    // Each copy button names the command it copies.
+    expect(screen.getByRole("button", { name: "Copy Windows command" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Linux or macOS command" })).toBeInTheDocument();
   });
 
   it("leaves the machine name off when none is given", async () => {

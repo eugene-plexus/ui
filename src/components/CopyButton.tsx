@@ -49,7 +49,7 @@ export function CopyButton({
       onClick={() => void handleClick()}
       title={
         state === "failed"
-          ? "Your browser refused the clipboard"
+          ? "Couldn't copy. Select the text and copy it yourself."
           : state === "copied"
             ? "Copied"
             : (title ?? "Copy")
@@ -70,6 +70,9 @@ export function CopyButton({
       <span className={iconOnly ? "sr-only" : undefined}>
         {state === "copied" ? "Copied" : state === "failed" ? "Couldn't copy" : label}
       </span>
+      {state === "failed" && (
+        <span className="sr-only"> Select the text and copy it yourself.</span>
+      )}
     </button>
   );
 }

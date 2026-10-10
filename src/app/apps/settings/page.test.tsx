@@ -27,6 +27,7 @@ vi.mock("@/components/AppShell", () => ({
 
 let calls: string[];
 let configTrio: boolean;
+let failApp = false;
 
 const APP = {
   id: "chat",
@@ -44,6 +45,7 @@ const APP = {
 beforeEach(() => {
   calls = [];
   configTrio = true;
+  failApp = false;
   sessionStorage.clear();
   sessionStorage.setItem("eugene-session-token", "test-token");
   vi.stubGlobal(
@@ -58,6 +60,10 @@ beforeEach(() => {
           headers: { "content-type": "application/json" },
         });
       if (key === "GET agent/v1/node") return json({ name: "box", enrolled: true });
+      if (key === "GET node:gpu/v1/apps/chat" && failApp)
+        return new Response(JSON.stringify({ detail: { title: "Agent said no" } }), {
+          status: 500,
+        });
       if (key === "GET node:gpu/v1/apps/chat") return json({ ...APP, configTrio });
       if (key === "GET node:gpu/v1/apps/chat/config/schema")
         return json({
@@ -107,4 +113,10 @@ it("says so plainly when an app publishes no settings", async () => {
     "does not publish settings",
   );
   expect(calls.some((c) => c.includes("/config"))).toBe(false);
+});
+
+it("announces a failure to read the app", async () => {
+  failApp = true;
+  render(<AppSettingsPage />);
+  expect(await screen.findByRole("alert", {}, { timeout: 5000 })).toBeInTheDocument();
 });

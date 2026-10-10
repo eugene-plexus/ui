@@ -224,6 +224,16 @@ describe("a model that is running on the picked node", () => {
     expect(within(screen.getByTestId("model-run")).queryByText("Run")).toBeNull();
   });
 
+  it("points at Backends, the name the nav uses", async () => {
+    await openTheModel();
+    const panel = await screen.findByTestId("model-running");
+    expect(within(panel).getByRole("link", { name: "Backends" })).toHaveAttribute(
+      "href",
+      "/inference",
+    );
+    expect(within(panel).queryByRole("link", { name: "Inference" })).toBeNull();
+  });
+
   it("does not tell the operator it will not fit on the machine that is running it", async () => {
     await openTheModel();
     const fit = screen.getByTestId("model-fit");
@@ -509,6 +519,14 @@ describe("the model list", () => {
     // where a model came from.
     fireEvent.change(filter, { target: { value: "archive" } });
     expect(listedNames()).toEqual(["big-model"]);
+  });
+
+  it("always says how many models there are, and filtering says N of M", async () => {
+    await openTheModel();
+    const count = screen.getByTestId("model-filter-count");
+    expect(count).toHaveTextContent(/^7 models$/);
+    fireEvent.change(screen.getByLabelText("Filter models"), { target: { value: "qwen" } });
+    expect(count).toHaveTextContent(/^2 of 7 models$/);
   });
 
   it("says nothing matched, and clearing brings every model back", async () => {

@@ -684,6 +684,9 @@ function RowView({
     recallLoadSeconds(loadKey(row.node, row.model)),
   );
   const prefix = `${row.node ?? ""}/${row.runtime ?? ""}:`;
+  // What a row's buttons say they act on, for a screen reader that hears
+  // the buttons without the row around them.
+  const actionName = row.model ?? row.driver ?? row.runtime ?? "this backend";
   const missingEngine = stoppedForWantOfEngine(row, engines);
   const failure = runtimeFailure(row.runtimeStatus, own?.lastError);
   return (
@@ -882,33 +885,37 @@ function RowView({
                 <button
                   type="button"
                   onClick={() => onAct(row.node, row.runtime as string, "start")}
+                  aria-label={`${busy === `${prefix}start` ? "Starting" : "Start"} ${actionName}`}
                   disabled={busy !== null || status === "ready" || status === "loading"}
                   className={smallButton}
                 >
-                  {busy === `${prefix}start` ? "…" : "start"}
+                  {busy === `${prefix}start` ? "Starting…" : "Start"}
                 </button>
                 <button
                   type="button"
                   onClick={() => onAct(row.node, row.runtime as string, "stop")}
+                  aria-label={`${busy === `${prefix}stop` ? "Stopping" : "Stop"} ${actionName}`}
                   disabled={busy !== null || status === "stopped"}
                   className={`${smallButton} ml-1`}
                 >
-                  {busy === `${prefix}stop` ? "…" : "stop"}
+                  {busy === `${prefix}stop` ? "Stopping…" : "Stop"}
                 </button>
                 <button
                   type="button"
                   onClick={() => onAct(row.node, row.runtime as string, "restart")}
+                  aria-label={`${busy === `${prefix}restart` ? "Restarting" : "Restart"} ${actionName}`}
                   disabled={busy !== null}
                   className={`${smallButton} ml-1`}
                 >
-                  {busy === `${prefix}restart` ? "…" : "restart"}
+                  {busy === `${prefix}restart` ? "Restarting…" : "Restart"}
                 </button>
               </>
             )}
             <span className="ml-1 inline-block">
               <ConfirmButton
-                label={busy === `${prefix}remove` ? "…" : "remove"}
+                label={busy === `${prefix}remove` ? "Removing…" : "Remove"}
                 prompt="The engine stops; the model files stay."
+                ariaLabel={`Remove ${actionName}`}
                 onConfirm={() => onRemove(row)}
                 disabled={busy !== null}
                 className={dangerButton}
@@ -931,14 +938,16 @@ function RowView({
                   formatSelection({ type: "driver", node: row.node, name: row.driver }),
                 )}`}
                 className={smallButton}
+                aria-label={`Settings for ${actionName}`}
                 title="An external backend is not ours to start or stop. Its driver's settings — the URL, the model id, the API key — are on its Settings page."
               >
-                config
+                Settings
               </Link>
               <span className="ml-1 inline-block">
                 <ConfirmButton
-                  label={busy === `${row.node ?? ""}/${row.driver}:remove` ? "…" : "remove"}
+                  label={busy === `${row.node ?? ""}/${row.driver}:remove` ? "Removing…" : "Remove"}
                   prompt="The app it fronts is untouched."
+                  ariaLabel={`Remove ${actionName}`}
                   onConfirm={() => onRemove(row)}
                   disabled={busy !== null}
                   className={dangerButton}
@@ -1129,7 +1138,11 @@ function EnginesLine({
             ) : e.acquisition?.installable ? (
               <>
                 {failed && (
-                  <span data-testid="engine-install-failed" className="text-status-error">
+                  <span
+                    data-testid="engine-install-failed"
+                    role="alert"
+                    className="text-status-error"
+                  >
                     install failed{state.error ? `: ${state.error}` : ""}
                   </span>
                 )}
@@ -1165,15 +1178,24 @@ function EnginesLine({
                   type="button"
                   onClick={() => void install(e.engine)}
                   disabled={posting !== null}
+                  aria-label={`${
+                    posting === e.engine
+                      ? "Starting"
+                      : failed
+                        ? "Try again"
+                        : e.managed && !builds[e.engine]
+                          ? "Update"
+                          : "Install"
+                  } ${engineWord(e.engine)}`}
                   className={tinyButton}
                 >
                   {posting === e.engine
-                    ? "starting…"
+                    ? "Starting…"
                     : failed
-                      ? "try again"
+                      ? "Try again"
                       : e.managed && !builds[e.engine]
-                        ? "update"
-                        : "install"}
+                        ? "Update"
+                        : "Install"}
                 </button>
               </>
             ) : !e.available && reason ? (
@@ -1186,7 +1208,8 @@ function EnginesLine({
             )}
             {e.managed && !busyInstall && (
               <ConfirmButton
-                label="uninstall"
+                label="Uninstall"
+                ariaLabel={`Uninstall ${engineWord(e.engine)}`}
                 confirmLabel="Uninstall engine"
                 cancelLabel="Keep engine"
                 prompt={`Remove Eugene-managed ${e.engine} builds? Models and saved runtimes stay. Stop its runtimes first.`}

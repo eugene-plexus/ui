@@ -401,7 +401,7 @@ describe("New", () => {
     send("hello");
     await waitFor(() => expect(screen.getByText("Hi there")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     // Nothing is gone yet.
     expect(screen.getByText("Hi there")).toBeInTheDocument();
     expect(storedMessages()).toHaveLength(2);
@@ -417,7 +417,7 @@ describe("New", () => {
     send("hello");
     await waitFor(() => expect(screen.getByText("Hi there")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     fireEvent.click(screen.getByTestId("new-conversation-confirm"));
     await waitFor(() => expect(screen.queryByText("Hi there")).toBeNull());
     await waitFor(() => expect(storedMessages()).toHaveLength(0));
@@ -426,7 +426,19 @@ describe("New", () => {
   it("has nothing to ask about when there is no conversation", async () => {
     await renderReady();
     // Nothing to lose, so no question: the plain button, not a confirm.
-    expect(screen.getByRole("button", { name: "New" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeDisabled();
+  });
+});
+
+describe("gateway failure", () => {
+  it("shows the whole cause, wrapped rather than cut off", async () => {
+    const cause = "connection refused by the gateway on port 8080 after three attempts";
+    handlers.set("GET gateway/v1/models", () => json(502, { detail: { title: cause } }));
+    render(<PlaygroundPage />);
+    const note = await screen.findByText(/Gateway unreachable/);
+    expect(note.textContent).toContain(cause);
+    expect(note.className).not.toContain("truncate");
+    expect(note.className).toContain("break-words");
   });
 });
 

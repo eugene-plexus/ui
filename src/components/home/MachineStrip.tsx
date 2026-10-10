@@ -22,7 +22,7 @@ export function MachineStrip({
   return (
     <section data-testid="home-machine" className="section-panel">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="font-ui text-sm font-semibold">{strip.name}</h2>
+        <h2 className="font-ui text-base font-semibold">{strip.name}</h2>
         <p className="font-ui flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-[color:var(--muted)]">
           {/* Keyed by position as well as text: two identical cards in one
             box print two identical lines, and a key on the text alone

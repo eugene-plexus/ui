@@ -126,7 +126,7 @@ export default function AppsPage() {
               id="installed-heading"
               className="section-heading font-ui mb-0 text-base font-semibold"
             >
-              Installed
+              {installed === null ? "Installed" : `Installed (${installed.length})`}
             </h2>
             {installed === null ? (
               <p className="font-ui text-sm text-[color:var(--muted)]">Loading…</p>
@@ -210,7 +210,8 @@ function InstalledApp({
           className={`${buttonClass} ml-auto`}
           title={open.note ?? "Opens in a new tab, on the app's own address."}
         >
-          Open ↗
+          Open <span aria-hidden="true">↗</span>
+          <span className="sr-only"> (opens in a new tab)</span>
         </a>
       )}
     </li>
@@ -335,7 +336,7 @@ function Catalogue({
       </div>
 
       {loadError && (
-        <p className="status-error text-sm" data-testid="apps-catalogue-error">
+        <p className="status-error text-sm" role="alert" data-testid="apps-catalogue-error">
           {loadError}
         </p>
       )}
@@ -348,7 +349,7 @@ function Catalogue({
         </p>
       )}
       {actionError && (
-        <p className="status-error text-sm" data-testid="apps-action-error">
+        <p className="status-error text-sm" role="alert" data-testid="apps-action-error">
           {actionError}
         </p>
       )}
@@ -619,7 +620,7 @@ function AddCustom({
           It publishes settings this console can edit
         </label>
         {error && (
-          <p className="status-error text-sm" data-testid="apps-add-custom-error">
+          <p className="status-error text-sm" role="alert" data-testid="apps-add-custom-error">
             {error}
           </p>
         )}

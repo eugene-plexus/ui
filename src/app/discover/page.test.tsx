@@ -259,6 +259,22 @@ async function verdict() {
   return badges[badges.length - 1];
 }
 
+describe("the version table", () => {
+  it("has sentence-case column headings, each scoped to its column", async () => {
+    await openTheRepo();
+    const table = screen.getByRole("table");
+    const heads = within(table).getAllByRole("columnheader");
+    expect(heads.map((h) => h.textContent)).toEqual([
+      "Version",
+      "Size",
+      "Bits per weight",
+      expect.stringMatching(/^Fits at /),
+      "Download",
+    ]);
+    for (const h of heads) expect(h).toHaveAttribute("scope", "col");
+  });
+});
+
 describe("the context control", () => {
   it("re-asks the library, and the verdict follows it", async () => {
     await openTheRepo();
@@ -653,6 +669,10 @@ describe("which engines can run it (LS2)", () => {
     );
     const dots = screen.getAllByTestId("eligibility-dot").map((d) => d.textContent);
     expect(dots).toEqual(["works here(approx.)", "other engine(approx.)", "not here(approx.)"]);
+    expect(screen.getByTestId("result-count")).toHaveTextContent(/^3 results$/);
+    expect(
+      screen.getByPlaceholderText("Search models, or paste a link to one"),
+    ).toBeInTheDocument();
     // The Library judged the rows' own facts, against this node's engines.
     const asked = judged.at(-1)!;
     expect(asked.candidates!.map((c) => c.id)).toEqual(ROWS.map((r) => r.facts[0]!.id));
@@ -669,6 +689,7 @@ describe("which engines can run it (LS2)", () => {
     });
     await waitFor(() => expect(screen.getAllByTestId("result-row")).toHaveLength(1));
     expect(screen.getByTestId("result-row")).toHaveTextContent("Green");
+    expect(screen.getByTestId("result-count")).toHaveTextContent(/^1 result$/);
     // llama.cpp is the only engine here running anything as it is: GGUF.
     expect(lastQuery("library/v1/catalogue/search").get("format")).toBe("gguf");
     const hidden = screen.getByTestId("filter-hidden");

@@ -137,7 +137,7 @@ function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () =>
   return (
     <section aria-labelledby="people-heading" className="section-panel flex flex-col gap-3">
       <h2 id="people-heading" className="section-heading font-ui mb-0 text-base font-semibold">
-        People
+        People{people.length > 0 ? ` (${people.length})` : ""}
       </h2>
       <p className="text-sm text-[color:var(--muted)]">
         You sign in to apps as <span className="font-mono">{operatorName}</span>, with
@@ -223,11 +223,13 @@ function PersonRow({
               void change(() => api.patch("control", path, { disabled: !person.disabled }))
             }
             data-testid={`person-toggle-${person.name}`}
+            aria-label={`${person.disabled ? "Turn signing in on" : "Turn signing in off"} for ${person.name}`}
           >
             {person.disabled ? "Turn signing in on" : "Turn signing in off"}
           </button>
           <ConfirmButton
             label="Delete"
+            ariaLabel={`Delete ${person.name}`}
             confirmLabel={`Delete ${person.name}`}
             prompt="Their apps sign them out within ten minutes."
             onConfirm={() => change(() => api.delete("control", path))}
@@ -859,14 +861,14 @@ function AddSignInApp({ onAdded }: { onAdded: () => Promise<void> }) {
             <div className="flex flex-wrap items-center gap-2">
               <span>Client ID:</span>
               <code className="font-mono">{made.client.clientId}</code>
-              <CopyButton text={made.client.clientId} />
+              <CopyButton text={made.client.clientId} label="Copy client ID" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span>Client secret:</span>
               <code className="font-mono break-all" data-testid="sign-in-app-secret">
                 {made.clientSecret}
               </code>
-              <CopyButton text={made.clientSecret} />
+              <CopyButton text={made.clientSecret} label="Copy client secret" />
             </div>
             <div>
               <button type="button" className={buttonClass} onClick={() => setMade(null)}>

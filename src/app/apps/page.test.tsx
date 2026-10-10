@@ -215,10 +215,52 @@ describe("custom apps", () => {
     const values = ["mine", "Mine", "mine-app", "mine_app", "/home/me/mine", "dev"];
     for (const [i, value] of values.entries()) await userEvent.type(inputs[i]!, value);
     await userEvent.click(within(panel).getByRole("button", { name: "Add to the list" }));
-    expect(await within(panel).findByTestId("apps-add-custom-error")).toHaveTextContent(
-      "Allow apps not in the catalogue",
-    );
+    const refusal = await within(panel).findByTestId("apps-add-custom-error");
+    expect(refusal).toHaveTextContent("Allow apps not in the catalogue");
+    expect(refusal).toHaveAttribute("role", "alert");
     const link = within(panel).getByRole("link", { name: /agent settings/ });
     expect(link.getAttribute("href")).toContain("tab=agent");
+  });
+});
+
+describe("installed apps", () => {
+  it("counts them in the heading, and Open says it opens a new tab", async () => {
+    handlers.set("GET agent/v1/apps", () => ({
+      status: 200,
+      body: {
+        apps: [
+          {
+            id: "chat",
+            name: "Chat",
+            version: "abc",
+            origin: "catalogue",
+            enabled: true,
+            status: "running",
+            port: 8190,
+            ui: true,
+            uiUrl: "http://box.lan:8190",
+            node: "box",
+          },
+        ],
+      },
+    }));
+    render(<AppsPage />);
+    expect(
+      await screen.findByRole("heading", { name: "Installed (1)" }, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    const open = screen.getByRole("link", { name: /^Open[ ]+\(opens in a new tab\)$/ });
+    expect(open).toHaveAttribute("href", "http://box.lan:8190");
+    expect(open.querySelector("[aria-hidden='true']")).toHaveTextContent("↗");
+  });
+
+  it("announces a catalogue that could not be read", async () => {
+    handlers.set("GET agent/v1/app-catalogue", () => ({
+      status: 500,
+      body: { detail: { title: "Catalogue unreadable" } },
+    }));
+    render(<AppsPage />);
+    expect(
+      await screen.findByTestId("apps-catalogue-error", {}, { timeout: 5000 }),
+    ).toHaveAttribute("role", "alert");
   });
 });

@@ -323,6 +323,10 @@ describe("the Settings page", () => {
     );
     fireEvent.change(screen.getByTestId("settings-search"), { target: { value: "zzqx" } });
     expect(await screen.findByTestId("settings-nothing")).toHaveTextContent("zzqx");
+    // Clear empties the search and brings the cards back.
+    fireEvent.click(screen.getByTestId("settings-nothing-clear"));
+    expect(screen.getByTestId("settings-search")).toHaveValue("");
+    await waitFor(() => expect(screen.queryByTestId("settings-nothing")).toBeNull());
   });
 
   it("lands a deep link on its field and marks it", async () => {
@@ -352,6 +356,9 @@ describe("the Settings page", () => {
     fireEvent.change(modes[1]!, { target: { value: "prompt_on_startup" } });
     const bar = await screen.findByTestId("save-all-bar");
     expect(bar).toHaveTextContent("3 unsaved changes in 2 sections");
+    // Discard all says how many changes it would lose.
+    fireEvent.click(screen.getByTestId("discard-all"));
+    expect(await screen.findByText(/You will lose 3 unsaved changes\./)).toBeInTheDocument();
     // Each dirty section shows its own buttons; a clean one shows none.
     expect(screen.getAllByTestId("section-actions")).toHaveLength(2);
     fireEvent.click(screen.getByTestId("save-all"));

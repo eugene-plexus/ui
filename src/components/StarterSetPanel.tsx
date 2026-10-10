@@ -112,7 +112,7 @@ export function StarterSetPanel({
 
   if (error) {
     return (
-      <p className="text-sm text-[color:var(--muted)]">
+      <p role="alert" className="text-sm text-[color:var(--muted)]">
         The suggested models could not be loaded ({error}). Search above for one by name.
         <button
           type="button"
@@ -127,7 +127,7 @@ export function StarterSetPanel({
       </p>
     );
   }
-  if (!set) return <p className="text-sm text-[color:var(--muted)]">loading suggestions…</p>;
+  if (!set) return <p className="text-sm text-[color:var(--muted)]">Loading suggestions…</p>;
 
   const models = orderedModels(set);
   if (models.length === 0) {
@@ -167,7 +167,7 @@ export function StarterSetPanel({
               {pick.alreadyOwned
                 ? "Already on disk"
                 : busy === pick.repo
-                  ? "starting…"
+                  ? "Starting…"
                   : inFlight.has(pick.file)
                     ? "Downloading…"
                     : `Download ${downloadSize(pick.sizeBytes)}`}

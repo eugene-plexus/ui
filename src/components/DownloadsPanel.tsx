@@ -3,12 +3,22 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { CopyButton } from "@/components/CopyButton";
 import { formatBytes } from "@/components/FitBadge";
 import { RunButton } from "@/components/RunButton";
 import { ApiError, api, describeError } from "@/lib/api";
-import type { TargetNode } from "@/lib/nodeBudget";
+import {
+  betterAfterPreparing,
+  eligibilityEngines,
+  judge,
+  type EngineVerdict,
+  type FitQuestion,
+} from "@/lib/eligibility";
+import { engineName } from "@/lib/issues";
+import { fitQuestion, type TargetNode } from "@/lib/nodeBudget";
 import { formatBytesShort, formatDuration } from "@/lib/tasks";
 import type { Download, DownloadList, DownloadState, LibraryModel } from "@/lib/types";
+import { postEligibility, useNodeEngines } from "@/lib/useEligibility";
 
 /**
  * Downloads in flight, and the ones that finished.
@@ -163,24 +173,47 @@ function DownloadRow({
           <p className="font-ui truncate text-sm font-semibold" title={download.repo}>
             {download.repo}
           </p>
-          <p
-            className="font-mono-ui truncate text-[0.6875rem] text-[color:var(--muted)]"
-            title={download.destinationDirectory ?? undefined}
-          >
-            {download.files.length === 1
-              ? (download.files[0]?.destinationPath ?? "")
-              : `${download.files.length} files → ${download.destinationDirectory ?? ""}`}
-          </p>
+          <div className="flex items-center gap-1">
+            <p
+              className="font-mono-ui min-w-0 truncate text-[0.6875rem] text-[color:var(--muted)]"
+              title={download.destinationDirectory ?? undefined}
+            >
+              {download.files.length === 1
+                ? (download.files[0]?.destinationPath ?? "")
+                : `${download.files.length} files → ${download.destinationDirectory ?? ""}`}
+            </p>
+            {download.destinationDirectory && (
+              <CopyButton
+                text={download.destinationDirectory}
+                label={`Copy folder of ${download.repo}`}
+                title="Copy the folder path"
+                iconOnly
+                className="shrink-0 !px-1 !py-0"
+              />
+            )}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {active && (
-            <button type="button" onClick={onPause} disabled={busy} className={smallButton}>
-              pause
+            <button
+              type="button"
+              onClick={onPause}
+              disabled={busy}
+              aria-label={`Pause ${download.repo}`}
+              className={smallButton}
+            >
+              Pause
             </button>
           )}
           {resumable && (
-            <button type="button" onClick={onResume} disabled={busy} className={smallButton}>
-              resume
+            <button
+              type="button"
+              onClick={onResume}
+              disabled={busy}
+              aria-label={`Resume ${download.repo}`}
+              className={smallButton}
+            >
+              Resume
             </button>
           )}
           {confirming ? (
@@ -189,18 +222,30 @@ function DownloadRow({
                 type="button"
                 onClick={onCancel}
                 disabled={busy}
+                aria-label={`${download.state === "done" ? "Forget" : "Delete partial of"} ${download.repo}`}
                 className={`${smallButton} text-status-error`}
                 title="Stops the transfer and deletes the partial file. Anything already finished stays."
               >
-                {download.state === "done" ? "forget" : "delete partial"}
+                {download.state === "done" ? "Forget" : "Delete partial"}
               </button>
-              <button type="button" onClick={onAbandonCancel} className={smallButton}>
-                keep
+              <button
+                type="button"
+                onClick={onAbandonCancel}
+                aria-label={`Keep ${download.repo}`}
+                className={smallButton}
+              >
+                Keep
               </button>
             </>
           ) : (
-            <button type="button" onClick={onAskCancel} disabled={busy} className={smallButton}>
-              {download.state === "done" ? "forget" : "cancel"}
+            <button
+              type="button"
+              onClick={onAskCancel}
+              disabled={busy}
+              aria-label={`${download.state === "done" ? "Forget" : "Cancel"} ${download.repo}`}
+              className={smallButton}
+            >
+              {download.state === "done" ? "Forget" : "Cancel"}
             </button>
           )}
         </div>
@@ -271,7 +316,7 @@ function DownloadRow({
       )}
 
       {download.error && (
-        <p className="text-status-error text-[0.6875rem]">
+        <p className="text-status-error text-[0.6875rem]" role="alert">
           {download.error}
           {download.errorCode === "GatedRepo" && (
             <>
@@ -301,7 +346,7 @@ function DownloadRow({
                 className="self-center underline"
                 data-testid="download-open-library"
               >
-                open in the library
+                Open in the Library
               </Link>
             </>
           ) : (
@@ -322,6 +367,9 @@ function DownloadRow({
  */
 function FinishedRun({ modelId, node }: { modelId: string; node: TargetNode }) {
   const [model, setModel] = useState<LibraryModel | null>(null);
+  const { engines, error: enginesError } = useNodeEngines(node.target);
+  const [verdicts, setVerdicts] = useState<EngineVerdict[] | null>(null);
+  const [asked, setAsked] = useState(false);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -339,7 +387,52 @@ function FinishedRun({ modelId, node }: { modelId: string; node: TargetNode }) {
       cancelled = true;
     };
   }, [modelId]);
-  if (!model) return null;
+
+  // The Library's own question, as its page asks it (LS9): which engine
+  // suits this machine, and does preparing first beat running as it is.
+  // When the judge cannot be asked, Run stays as it was and nothing is said.
+  const fitKey = JSON.stringify(fitQuestion(node.budget));
+  useEffect(() => {
+    setVerdicts(null);
+    setAsked(false);
+    if (engines === null) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const judged = await judge(postEligibility, {
+          models: [modelId],
+          engines: eligibilityEngines(engines),
+          fit: JSON.parse(fitKey) as FitQuestion,
+        });
+        const answer = judged.models.find((m) => m.modelId === modelId);
+        if (!cancelled && answer) setVerdicts(answer.engines);
+      } catch {
+        // Not asked is not answered: keep Run.
+      } finally {
+        if (!cancelled) setAsked(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [engines, modelId, fitKey]);
+
+  // Run waits for the answer, so it never turns into a link under the
+  // pointer; an engine list or judge that fails leaves Run as it was.
+  if (!model || (engines !== null && !asked) || (engines === null && !enginesError)) return null;
+  const route = betterAfterPreparing(verdicts);
+  if (route) {
+    return (
+      <Link
+        href={`/library?model=${encodeURIComponent(modelId)}`}
+        className="min-w-0 flex-1 self-center underline"
+        data-testid="download-run-from-page"
+      >
+        Run from its page: {engineName(route.prepare.engine)} suits this machine better after
+        preparing
+      </Link>
+    );
+  }
   return <RunButton model={model} node={node} size="small" className="min-w-0 flex-1" />;
 }
 

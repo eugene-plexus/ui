@@ -569,7 +569,7 @@ export function ConfigEditor({
   }
   if (loadError) {
     return (
-      <div className="text-status-error p-4 text-sm">
+      <div role="alert" className="text-status-error p-4 text-sm">
         Failed to load <span className="font-mono">{label}</span>: {loadError}
       </div>
     );
@@ -756,7 +756,9 @@ export function ConfigEditor({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-[color:var(--muted)]">
-            {dirtyKeys.size === 0 ? "no changes" : `${dirtyKeys.size} change(s)`}
+            {dirtyKeys.size === 0
+              ? "no changes"
+              : `${dirtyKeys.size} ${dirtyKeys.size === 1 ? "change" : "changes"}`}
           </span>
           {dirtyKeys.size > 0 && discardButton}
           {testButton}
@@ -1123,7 +1125,11 @@ function ClearModelCopies({ target }: { target: ProxyTarget }) {
           want the space to stay free.
         </p>
       </div>
-      {error && <p className="text-status-error text-sm">{error}</p>}
+      {error && (
+        <p role="alert" className="text-status-error text-sm">
+          {error}
+        </p>
+      )}
       {result && (
         <div className="text-sm text-[color:var(--muted)]" data-testid="clear-model-copies-result">
           <p>

@@ -725,7 +725,7 @@ function PlaygroundPageInner() {
               stays the plain, disabled one it always was. */}
           {chat && messages.length > 0 ? (
             <ConfirmButton
-              label="New"
+              label="New chat"
               confirmLabel="Clear it"
               prompt="This clears the conversation."
               onConfirm={newConversation}
@@ -739,7 +739,7 @@ function PlaygroundPageInner() {
               disabled
               className={NEW_BUTTON_CLASS}
             >
-              New
+              New chat
             </button>
           ) : null}
           {chat && messages.length > 0 && (
@@ -974,7 +974,7 @@ function ModelPicker({
   const [filter, setFilter] = useState("");
   if (error) {
     return (
-      <p className="font-ui truncate text-sm text-[color:var(--muted)]" title={error}>
+      <p className="font-ui text-sm break-words text-[color:var(--muted)]" title={error}>
         Gateway unreachable{mode === "direct" ? " (direct)" : ""} — {error}
       </p>
     );

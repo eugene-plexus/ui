@@ -68,7 +68,7 @@ let tokenRows: { id: string; expiresAt: string; nodeName?: string | null; used: 
 /** What minting a join token answers. */
 let mintBody: { id: string; token: string; expiresAt: string; nodeName?: string | null };
 /** A node list to use instead of `NODES`, when set. */
-let nodesBody: typeof NODES | null;
+let nodesBody: { nodes: Record<string, unknown>[] } | null;
 let nodeIdentityBody: Record<string, unknown> | null;
 /** What `GET /v1/sites` answers: job sites are their own enrollment (J19). */
 let sitesBody: { sites: Record<string, unknown>[] };
@@ -462,6 +462,64 @@ describe("the join command", () => {
     expect(await screen.findByTestId("join-command-windows")).toHaveTextContent(
       "-Join https://nodes.home.arpa:8443",
     );
+  });
+
+  it("copies the join address and names each command's copy button", async () => {
+    nodeIdentityBody = {
+      name: "unraid",
+      enrolled: true,
+      entrypoint: {
+        consoleUrl: "https://eugene.home.arpa:8443",
+        workbenchUrl: "https://workbench.home.arpa:8443",
+        nodesUrl: "https://nodes.home.arpa:8443",
+      },
+    };
+    render(<NodesPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Control root URL/)).toHaveValue("https://nodes.home.arpa:8443"),
+    );
+    expect(screen.getByRole("button", { name: "Copy address" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Make a join token" }));
+    await screen.findByTestId("join-command-windows");
+    expect(screen.getByRole("button", { name: "Copy Windows command" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Linux or macOS command" })).toBeInTheDocument();
+  });
+
+  it("says Status and System in the table, counts devices with a real plural", async () => {
+    nodesBody = {
+      nodes: [
+        {
+          name: "one",
+          role: "worker",
+          reachable: true,
+          url: "http://10.0.0.1:8079",
+          os: "linux",
+          arch: "x86_64",
+          devices: [{ kind: "cuda", name: "A" }],
+        },
+        {
+          name: "two",
+          role: "worker",
+          reachable: true,
+          url: "http://10.0.0.2:8079",
+          os: "linux",
+          arch: "x86_64",
+          devices: [
+            { kind: "cuda", name: "A" },
+            { kind: "cuda", name: "B" },
+          ],
+        },
+      ],
+    };
+    render(<NodesPage />);
+    expect(await screen.findByRole("columnheader", { name: "Status" })).toHaveAttribute(
+      "scope",
+      "col",
+    );
+    expect(screen.getByRole("columnheader", { name: "System" })).toBeInTheDocument();
+    expect(screen.getByText(/linux\/x86_64 · 1 device$/)).toBeInTheDocument();
+    expect(screen.getByText(/linux\/x86_64 · 2 devices$/)).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Backends →" })).toHaveLength(2);
   });
 
   it("does not offer a command to a closed node endpoint", async () => {

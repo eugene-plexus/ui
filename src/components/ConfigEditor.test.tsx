@@ -109,6 +109,24 @@ it("keeps the form and the typed value when a save fails", async () => {
   expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
 });
 
+it("counts edits with a real plural", async () => {
+  render(<ConfigEditor target="library" label="Library" />);
+  fireEvent.change(await screen.findByDisplayValue("new"), { target: { value: "a" } });
+  expect(await screen.findByText("1 change")).toBeVisible();
+  fireEvent.change(screen.getByDisplayValue("hub"), { target: { value: "b" } });
+  expect(await screen.findByText("2 changes")).toBeVisible();
+  expect(screen.queryByText(/change\(s\)/)).toBeNull();
+});
+
+it("announces a settings load that failed", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("nope", { status: 503 })),
+  );
+  render(<ConfigEditor target="library" label="Library" />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/Failed to load/);
+});
+
 it("names saved fields by their label, not their key", async () => {
   fields[4]!.label = "A setting from the future";
   render(<ConfigEditor target="library" label="Library" />);

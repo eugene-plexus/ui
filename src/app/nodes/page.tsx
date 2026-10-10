@@ -417,12 +417,14 @@ export default function NodesPage() {
     ? [
         {
           id: "windows",
+          copyLabel: "Copy Windows command",
           label: "Windows, in PowerShell",
           note: "It asks for administrator rights.",
           command: windowsJoinCommand(joinDetails),
         },
         {
           id: "posix",
+          copyLabel: "Copy Linux or macOS command",
           label: "Linux or macOS, in a terminal",
           note: "It may ask for your password.",
           command: posixJoinCommand(joinDetails),
@@ -448,7 +450,10 @@ export default function NodesPage() {
       <main data-testid="nodes-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-6 py-8">
           {error && (
-            <div className="status-error mb-6 rounded-[var(--radius)] border px-3 py-2 text-sm">
+            <div
+              role="alert"
+              className="status-error mb-6 rounded-[var(--radius)] border px-3 py-2 text-sm"
+            >
               {error}
             </div>
           )}
@@ -488,7 +493,10 @@ export default function NodesPage() {
                 </button>
               </form>
               {unlockError && (
-                <div className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm">
+                <div
+                  role="alert"
+                  className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
+                >
                   {unlockError}
                 </div>
               )}
@@ -529,12 +537,24 @@ export default function NodesPage() {
                 <table className="w-full text-left text-sm">
                   <thead className="font-ui text-sm text-[color:var(--muted)]">
                     <tr>
-                      <th className="py-2 pr-4">Name</th>
-                      <th className="py-2 pr-4">Role</th>
-                      <th className="py-2 pr-4">Address</th>
-                      <th className="py-2 pr-4">Seen</th>
-                      <th className="py-2 pr-4">Host</th>
-                      <th className="py-2 pr-4">Serves</th>
+                      <th scope="col" className="py-2 pr-4">
+                        Name
+                      </th>
+                      <th scope="col" className="py-2 pr-4">
+                        Role
+                      </th>
+                      <th scope="col" className="py-2 pr-4">
+                        Address
+                      </th>
+                      <th scope="col" className="py-2 pr-4">
+                        Status
+                      </th>
+                      <th scope="col" className="py-2 pr-4">
+                        System
+                      </th>
+                      <th scope="col" className="py-2 pr-4">
+                        Serves
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -624,7 +644,9 @@ export default function NodesPage() {
                         </td>
                         <td className="py-2 pr-4 text-sm text-[color:var(--muted)]">
                           {[n.os, n.arch].filter(Boolean).join("/") || "—"}
-                          {n.devices?.length ? ` · ${n.devices.length} device(s)` : ""}
+                          {n.devices?.length
+                            ? ` · ${n.devices.length} ${n.devices.length === 1 ? "device" : "devices"}`
+                            : ""}
                         </td>
                         <td className="py-2 pr-4 text-sm">
                           {/* The question this table could not answer: a node was
@@ -652,7 +674,7 @@ export default function NodesPage() {
                             </ul>
                           )}
                           <Link href="/inference" className="mt-1 block text-[0.6875rem] underline">
-                            Inference →
+                            Backends →
                           </Link>
                         </td>
                       </tr>
@@ -773,7 +795,9 @@ export default function NodesPage() {
                   {entrypoint.nodesUrl ? (
                     <>
                       {" "}
-                      New machines join at <span className="font-mono">{entrypoint.nodesUrl}</span>.
+                      New machines join at <span className="font-mono">
+                        {entrypoint.nodesUrl}
+                      </span>. <CopyButton text={entrypoint.nodesUrl} label="Copy address" />
                     </>
                   ) : (
                     <>
@@ -833,7 +857,10 @@ export default function NodesPage() {
             )}
 
             {mintError && (
-              <div className="status-error mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm">
+              <div
+                role="alert"
+                className="status-error mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm"
+              >
                 {mintError}
               </div>
             )}
@@ -935,7 +962,7 @@ export default function NodesPage() {
                         {c.label}
                         <span className="text-[color:var(--muted)]"> &middot; {c.note}</span>
                       </span>
-                      <CopyButton text={c.command} label="Copy" />
+                      <CopyButton text={c.command} label={c.copyLabel} />
                     </div>
                     <pre
                       data-testid={`join-command-${c.id}`}

@@ -160,7 +160,7 @@ describe("opened from the tree on one backend", () => {
       "/inference?sel=backends",
     );
     // The actions are on the marked row, which is the point.
-    expect(within(row).getByRole("button", { name: "stop" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Stop gemma-3-27b" })).toBeInTheDocument();
   });
 
   it("marks nothing and says nothing about scope when the whole branch is selected", async () => {
@@ -241,7 +241,7 @@ describe("an external backend's config link", () => {
     }));
     const row = await rowFor("qwen3-coder:30b");
     // A bare `/config` carries no `?sel=` and renders "Nothing selected".
-    expect(within(row).getByRole("link", { name: "config" })).toHaveAttribute(
+    expect(within(row).getByRole("link", { name: /^Settings for / })).toHaveAttribute(
       "href",
       "/config?sel=driver%3Aollama-local%40Amish_Station",
     );
@@ -252,7 +252,7 @@ describe("an external backend's config link", () => {
     // a bare `driver:<name>` to the first leaf of that name.
     withOllama();
     const row = await rowFor("qwen3-coder:30b");
-    expect(within(row).getByRole("link", { name: "config" })).toHaveAttribute(
+    expect(within(row).getByRole("link", { name: /^Settings for / })).toHaveAttribute(
       "href",
       "/config?sel=driver%3Aollama-local",
     );
@@ -286,15 +286,17 @@ describe("removing a runtime asks without widening its row (ui#14)", () => {
   it("steps start, stop and restart aside while asking, and brings them back", async () => {
     const row = await rowFor("gemma-3-27b");
     await within(row).findByText("ready");
-    expect(within(row).getByRole("button", { name: "restart" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Restart gemma-3-27b" })).toBeInTheDocument();
     fireEvent.click(within(row).getByTestId("remove-row"));
     expect(within(row).getByText("The engine stops; the model files stay.")).toBeInTheDocument();
-    for (const name of ["start", "stop", "restart"]) {
-      expect(within(row).queryByRole("button", { name })).toBeNull();
+    for (const name of ["Start", "Stop", "Restart"]) {
+      expect(within(row).queryByRole("button", { name: new RegExp(`^${name} `) })).toBeNull();
     }
     fireEvent.click(within(row).getByTestId("remove-row-cancel"));
-    for (const name of ["start", "stop", "restart"]) {
-      expect(within(row).getByRole("button", { name })).toBeInTheDocument();
+    for (const name of ["Start", "Stop", "Restart"]) {
+      expect(
+        within(row).getByRole("button", { name: new RegExp(`^${name} `) }),
+      ).toBeInTheDocument();
     }
   });
 });
@@ -681,6 +683,31 @@ describe("an install with nothing serving", () => {
   });
 });
 
+describe("a row's buttons say what they act on and what is happening", () => {
+  it("names the model in each button and says Restarting… while it works", async () => {
+    const row = await rowFor("gemma-3-27b");
+    await within(row).findByText("ready");
+    for (const name of ["Start gemma-3-27b", "Stop gemma-3-27b", "Restart gemma-3-27b"]) {
+      expect(within(row).getByRole("button", { name })).toBeInTheDocument();
+    }
+    const real = fetch as unknown as typeof fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+        String(input).endsWith("/runtimes/gemma-a/restart")
+          ? new Promise<Response>(() => {})
+          : real(input, init),
+      ),
+    );
+    await act(async () => {
+      within(row).getByRole("button", { name: "Restart gemma-3-27b" }).click();
+    });
+    expect(within(row).getByRole("button", { name: "Restarting gemma-3-27b" })).toHaveTextContent(
+      "Restarting…",
+    );
+  });
+});
+
 describe("an action that fails", () => {
   it("names the action, the model and the machine, and can be dismissed", async () => {
     handlers.set("POST agent/v1/runtimes/gemma-a/restart", () => ({
@@ -689,7 +716,7 @@ describe("an action that fails", () => {
     }));
     const row = await rowFor("gemma-3-27b");
     await act(async () => {
-      within(row).getByRole("button", { name: "restart" }).click();
+      within(row).getByRole("button", { name: "Restart gemma-3-27b" }).click();
     });
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
@@ -761,7 +788,10 @@ describe("an engine install", () => {
     expect(
       await screen.findByTestId("engine-install-failed", {}, { timeout: 5000 }),
     ).toHaveTextContent("install failed: checksum mismatch");
-    expect(screen.getByRole("button", { name: "try again" })).toBeInTheDocument();
+    expect(screen.getByTestId("engine-install-failed")).toHaveAttribute("role", "alert");
+    expect(screen.getByRole("button", { name: "Try again llama.cpp" })).toHaveTextContent(
+      "Try again",
+    );
   });
 
   it("started somewhere else shows here, with how far it has got", async () => {
@@ -873,7 +903,7 @@ describe("another build of an engine", () => {
       fireEvent.change(choice, { target: { value: "win-sycl-x64" } });
     });
     await act(async () => {
-      screen.getByRole("button", { name: "install" }).click();
+      screen.getByRole("button", { name: "Install llama.cpp" }).click();
     });
     await waitFor(() => expect(installBodies()).toEqual([{ variant: "win-sycl-x64" }]));
   });
@@ -882,7 +912,7 @@ describe("another build of an engine", () => {
     render(<InferencePage />);
     await screen.findByTestId("engine-build-choice", {}, { timeout: 5000 });
     await act(async () => {
-      screen.getByRole("button", { name: "update" }).click();
+      screen.getByRole("button", { name: "Update llama.cpp" }).click();
     });
     await waitFor(() => expect(installBodies()).toEqual([{}]));
   });
@@ -904,7 +934,7 @@ describe("another build of an engine", () => {
       fireEvent.change(choice, { target: { value: "win-sycl-x64" } });
     });
     await act(async () => {
-      screen.getByRole("button", { name: "install" }).click();
+      screen.getByRole("button", { name: "Install llama.cpp" }).click();
     });
     expect(await screen.findByRole("alert")).toHaveTextContent("is not a build release b11211");
   });

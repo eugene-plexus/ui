@@ -249,4 +249,40 @@ describe("Logs", () => {
       expect(written).toBe("2026-09-27T19:00:01.000Z [gateway] for the bug report\n"),
     );
   });
+
+  it("is a keyboard-reachable log region with a line count", async () => {
+    const world: World = {
+      history: {
+        agent: page([
+          ["2026-09-27T19:00:01.000Z", "gateway", "one"],
+          ["2026-09-27T19:00:02.000Z", "gateway", "two"],
+        ]),
+      },
+      calls: [],
+      push: {},
+    };
+    stub(world);
+    render(<LogsView machines={[NAS]} loaded everyMachine={false} initialSource={null} />);
+    await screen.findByText(/one/);
+
+    const region = screen.getByRole("log");
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(region).toHaveAccessibleName(/Logs on NAS/);
+    expect(screen.getByTestId("logs-count")).toHaveTextContent("2 lines");
+  });
+
+  it("says no lines yet without a filter, and names the filter when nothing contains it", async () => {
+    const world: World = { history: { agent: page([]) }, calls: [], push: {} };
+    stub(world);
+    render(<LogsView machines={[NAS]} loaded everyMachine={false} initialSource={null} />);
+    expect(await screen.findByText("No lines yet.")).toBeInTheDocument();
+    expect(screen.queryByTestId("logs-clear-filter")).toBeNull();
+
+    await userEvent.type(screen.getByTestId("logs-filter"), "zzz");
+    expect(await screen.findByText(/No line contains “zzz”/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("logs-clear-filter"));
+    expect(await screen.findByText("No lines yet.")).toBeInTheDocument();
+    expect(screen.getByTestId("logs-filter")).toHaveValue("");
+  });
 });

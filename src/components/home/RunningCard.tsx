@@ -9,11 +9,11 @@ import type { ContextLookup } from "@/lib/modelContext";
 /**
  * "Running": what is serving right now, in four columns.
  *
- * The rows are the Inference screen's join (`lib/inferenceRows.ts`) —
+ * The rows are the Backends screen's join (`lib/inferenceRows.ts`) —
  * the gateway's drivers, the runtimes they follow, the node each runs
  * on — cut down to what a person checking in wants: which model, on
  * which machine, in what state, how busy. Everything else, and every
- * control, is one click away on Inference. Hidden when there is nothing
+ * control, is one click away on Backends. Hidden when there is nothing
  * to show; the first-model card above says what to do about that.
  *
  * "Runtime" is this project's word and not the person's (P5); it appears
@@ -27,7 +27,7 @@ export function RunningCard({ rows, contexts }: { rows: Row[]; contexts: Context
       <div className="section-heading flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-ui text-base font-semibold">Running</h2>
         <Link href="/inference" className="font-ui text-sm underline">
-          Inference
+          Backends
         </Link>
       </div>
       <div className="mt-2 overflow-x-auto">
@@ -58,6 +58,14 @@ export function RunningCard({ rows, contexts }: { rows: Row[]; contexts: Context
                   <td className="py-1.5 pr-4">{row.node ?? "this machine"}</td>
                   <td className={`py-1.5 pr-4 ${state.className}`} title={row.error ?? undefined}>
                     {state.label}
+                    {row.error && (
+                      <span
+                        className="mt-0.5 block text-xs font-normal break-words text-[color:var(--muted)]"
+                        data-testid="running-cause"
+                      >
+                        {row.error}
+                      </span>
+                    )}
                   </td>
                   <td className="py-1.5 pr-4 text-[color:var(--muted)] tabular-nums">
                     {row.inFlight === null
@@ -76,7 +84,7 @@ export function RunningCard({ rows, contexts }: { rows: Row[]; contexts: Context
   );
 }
 
-/** One plain word per state, coloured like the Inference screen's. */
+/** One plain word per state, coloured like the Backends screen's. */
 function stateOf(row: Row): { label: string; className: string } {
   if (row.runtime && row.runtimeStatus) {
     switch (row.runtimeStatus) {

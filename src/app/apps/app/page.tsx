@@ -16,6 +16,7 @@ import { Suspense, useCallback, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api, describeError } from "@/lib/api";
 import {
   agentTarget,
@@ -140,7 +141,7 @@ function Inner() {
             </p>
           )}
           {error && (
-            <p className="status-error text-sm" data-testid="app-error">
+            <p className="status-error text-sm" role="alert" data-testid="app-error">
               {error}
             </p>
           )}
@@ -214,7 +215,8 @@ function Overview({
             className={`${buttonClass} ml-auto`}
             data-testid="app-open"
           >
-            Open ↗
+            Open <span aria-hidden="true">↗</span>
+            <span className="sr-only"> (opens in a new tab)</span>
           </a>
         )}
       </div>
@@ -224,6 +226,7 @@ function Overview({
       {app.lastError && (
         <p
           className="status-error rounded-[var(--radius)] px-2 py-1 text-sm"
+          role="alert"
           data-testid="app-last-error"
         >
           {app.lastError}
@@ -311,7 +314,10 @@ function Overview({
         {app.gatewayUrl && (
           <>
             <dt className="text-[color:var(--muted)]">Talks to</dt>
-            <dd className="font-mono break-all">{app.gatewayUrl}</dd>
+            <dd className="flex flex-wrap items-center gap-2">
+              <span className="font-mono break-all">{app.gatewayUrl}</span>
+              <CopyButton text={app.gatewayUrl} label="Copy" title="Copy the gateway address" />
+            </dd>
           </>
         )}
       </dl>

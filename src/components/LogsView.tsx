@@ -277,6 +277,9 @@ export function LogsView({
           />
           <span>Follow</span>
         </label>
+        <span className="text-[color:var(--muted)]" data-testid="logs-count">
+          {lines.length.toLocaleString()} {lines.length === 1 ? "line" : "lines"}
+        </span>
         <button
           type="button"
           onClick={download}
@@ -311,13 +314,35 @@ export function LogsView({
           const el = e.currentTarget;
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         }}
+        role="log"
+        aria-label={`${title}, newest at the bottom`}
+        tabIndex={0}
         className="min-h-0 flex-1 overflow-y-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1"
       >
         {lines.length === 0 ? (
-          <p className="py-2 text-sm text-[color:var(--muted)]">
-            {!loaded || machines.some((m) => !(m.target in state))
-              ? "Reading…"
-              : "Nothing matches yet."}
+          <p className="py-2 text-sm text-[color:var(--muted)]" data-testid="logs-empty">
+            {!loaded || machines.some((m) => !(m.target in state)) ? (
+              "Reading…"
+            ) : filters.contains || filters.sources.length > 0 ? (
+              <>
+                {filters.contains
+                  ? `No line contains “${filters.contains}”.`
+                  : `No lines from ${filters.sources[0]}.`}{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTyped("");
+                    setFilters((f) => ({ ...f, contains: "", sources: [] }));
+                  }}
+                  className={buttonClass}
+                  data-testid="logs-clear-filter"
+                >
+                  Clear
+                </button>
+              </>
+            ) : (
+              "No lines yet."
+            )}
           </p>
         ) : (
           lines.map((line, i) => (

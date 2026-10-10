@@ -451,7 +451,7 @@ function DiscoverPageInner() {
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="search models, or paste a link to one"
+            placeholder="Search models, or paste a link to one"
             className="font-ui min-w-[220px] flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--border-hover)]"
             aria-label="Search the model catalogue"
           />
@@ -482,7 +482,7 @@ function DiscoverPageInner() {
           </select>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(260px,340px)_1fr] overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:grid sm:grid-cols-[minmax(260px,340px)_1fr] sm:overflow-hidden">
           <ResultsList
             results={results}
             statuses={statuses}
@@ -504,7 +504,7 @@ function DiscoverPageInner() {
             }
           />
 
-          <div className="min-h-0 overflow-y-auto px-5 py-4">
+          <div className="px-5 py-4 sm:min-h-0 sm:overflow-y-auto">
             <ContextControl value={contextLength} onChange={setContextLength} />
             {selection ? (
               <RepoDetail
@@ -704,7 +704,7 @@ function ResultsList({
   const labels = new Map((statuses ?? []).map((s) => [s.id, s.label ?? s.id]));
   const problems = (statuses ?? []).filter((s) => s.searched && s.problem);
   return (
-    <div className="min-h-0 overflow-y-auto border-r border-[color:var(--border)]">
+    <div className="max-h-[35dvh] shrink-0 overflow-y-auto border-b border-[color:var(--border)] sm:max-h-none sm:min-h-0 sm:border-r sm:border-b-0">
       {interpreted === "repo" && (
         <p
           data-testid="resolved-link"
@@ -722,7 +722,18 @@ function ResultsList({
         </p>
       )}
       {results === null && !error && (
-        <p className="px-4 py-3 text-sm text-[color:var(--muted)]">searching…</p>
+        <p role="status" className="px-4 py-3 text-sm text-[color:var(--muted)]">
+          Searching…
+        </p>
+      )}
+      {results !== null && rows.length > 0 && (
+        <p
+          data-testid="result-count"
+          aria-live="polite"
+          className="font-ui border-b border-[color:var(--border)] px-4 py-1.5 text-[0.6875rem] text-[color:var(--muted)]"
+        >
+          {rows.length} {rows.length === 1 ? "result" : "results"}
+        </p>
       )}
       {note && (
         <p
@@ -1519,18 +1530,25 @@ function CandidateTable({
       <table className="w-full text-sm">
         <thead className="font-ui bg-[color:var(--panel-soft)] text-[0.6875rem] text-[color:var(--muted)]">
           <tr>
-            <th className="px-3 py-1.5 text-left font-medium">version</th>
-            <th className="px-3 py-1.5 text-right font-medium">size</th>
+            <th scope="col" className="px-3 py-1.5 text-left font-medium">
+              Version
+            </th>
+            <th scope="col" className="px-3 py-1.5 text-right font-medium">
+              Size
+            </th>
             <th
+              scope="col"
               className="px-3 py-1.5 text-right font-medium"
               title="Measured: file size × 8 ÷ parameter count. The one number that makes different naming schemes comparable."
             >
-              bits/weight
+              Bits per weight
             </th>
-            <th className="px-3 py-1.5 text-left font-medium">
-              fits at {contextLabel(contextLength)}?
+            <th scope="col" className="px-3 py-1.5 text-left font-medium">
+              Fits at {contextLabel(contextLength)}?
             </th>
-            <th className="px-3 py-1.5 text-right font-medium"></th>
+            <th scope="col" className="px-3 py-1.5 text-right font-medium">
+              <span className="sr-only">Download</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -1744,7 +1762,9 @@ function OtherFiles({ files }: { files: CatalogueFile[] }) {
         aria-expanded={open}
       >
         <span>
-          <span className="font-semibold">{files.length} other file(s)</span>
+          <span className="font-semibold">
+            {files.length} other {files.length === 1 ? "file" : "files"}
+          </span>
           <span className="ml-2 text-[color:var(--muted)]">
             in this repository that are not launchable models
           </span>

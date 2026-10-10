@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 /**
  * A button for something that cannot be taken back, asked twice inline.
@@ -27,6 +27,7 @@ export function ConfirmButton({
   className = "",
   confirmClassName = "",
   title,
+  ariaLabel,
   testId,
   onAsking,
 }: {
@@ -43,6 +44,9 @@ export function ConfirmButton({
   /** Extra classes for the action once asked (usually a danger colour). */
   confirmClassName?: string;
   title?: string;
+  /** The button's accessible name before it asks, when its words alone
+   * repeat on every row ("Remove"): name what it acts on. */
+  ariaLabel?: string;
   testId?: string;
   /**
    * Told when it starts and stops asking, so a screen can step its other
@@ -55,6 +59,7 @@ export function ConfirmButton({
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const returnFocus = useRef(false);
+  const promptId = useId();
 
   useEffect(() => {
     onAsking?.(asking);
@@ -84,6 +89,7 @@ export function ConfirmButton({
         disabled={disabled}
         className={className}
         title={title}
+        aria-label={ariaLabel}
         data-testid={testId}
       >
         {label}
@@ -107,7 +113,11 @@ export function ConfirmButton({
         }
       }}
     >
-      {prompt && <span className="basis-full text-xs">{prompt}</span>}
+      {prompt && (
+        <span id={promptId} className="basis-full text-xs">
+          {prompt}
+        </span>
+      )}
       <button
         type="button"
         onClick={() => {
@@ -115,6 +125,7 @@ export function ConfirmButton({
           void onConfirm();
         }}
         disabled={disabled}
+        aria-describedby={prompt ? promptId : undefined}
         className={`${className} text-status-error ${confirmClassName}`}
         data-testid={testId ? `${testId}-confirm` : undefined}
       >
@@ -123,6 +134,7 @@ export function ConfirmButton({
       <button
         type="button"
         ref={cancelRef}
+        aria-describedby={prompt ? promptId : undefined}
         onClick={backOut}
         className={className}
         data-testid={testId ? `${testId}-cancel` : undefined}

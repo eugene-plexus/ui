@@ -64,6 +64,27 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("the app's page", () => {
+  it("says Open opens a new tab, and copies the gateway address it talks to", async () => {
+    app = { ...APP, uiUrl: "http://box.lan:8190", gatewayUrl: "http://box.lan:8080" };
+    render(<AppOverviewPage />);
+    const open = await screen.findByTestId("app-open", {}, { timeout: 5000 });
+    expect(open).toHaveAccessibleName(/^Open[ ]+\(opens in a new tab\)$/);
+    expect(open.querySelector("[aria-hidden='true']")).toHaveTextContent("↗");
+    expect(screen.getByRole("button", { name: /Copy/ })).toBeInTheDocument();
+    expect(screen.getByText("http://box.lan:8080")).toBeInTheDocument();
+  });
+
+  it("announces what the app last failed with", async () => {
+    app = { ...APP, lastError: "it exited with code 1" };
+    render(<AppOverviewPage />);
+    expect(await screen.findByTestId("app-last-error", {}, { timeout: 5000 })).toHaveAttribute(
+      "role",
+      "alert",
+    );
+  });
+});
+
 describe("sign-in", () => {
   it("says people sign in with Eugene, and links to who may", async () => {
     app = { ...APP, signIn: true, oidcClientId: "c-workbench" };

@@ -9,6 +9,31 @@ import { describe, expect, it, vi } from "vitest";
 import { ConfirmButton } from "./ConfirmButton";
 
 describe("ConfirmButton", () => {
+  it("points both answers at the question so it is announced", () => {
+    render(
+      <ConfirmButton
+        label="Turn off"
+        prompt="Apps using this key stop working."
+        onConfirm={() => undefined}
+        testId="k"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("k"));
+    const prompt = screen.getByText("Apps using this key stop working.");
+    expect(prompt.id).not.toBe("");
+    for (const id of ["k-confirm", "k-cancel"]) {
+      expect(screen.getByTestId(id)).toHaveAttribute("aria-describedby", prompt.id);
+    }
+    // Their names are what they were.
+    expect(screen.getByTestId("k-cancel")).toHaveAccessibleName("Keep");
+  });
+
+  it("points at nothing when there is no question", () => {
+    render(<ConfirmButton label="Turn off" onConfirm={() => undefined} testId="k" />);
+    fireEvent.click(screen.getByTestId("k"));
+    expect(screen.getByTestId("k-cancel")).not.toHaveAttribute("aria-describedby");
+  });
+
   it("does nothing on the first click but ask", () => {
     const onConfirm = vi.fn();
     render(
@@ -87,5 +112,10 @@ describe("ConfirmButton", () => {
     expect(screen.getByTestId("k")).toBeInTheDocument();
     expect(screen.getByTestId("k")).toHaveFocus();
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("names what it acts on when its words repeat on every row", () => {
+    render(<ConfirmButton label="Remove" ariaLabel="Remove gemma-3" onConfirm={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Remove gemma-3" })).toHaveTextContent("Remove");
   });
 });

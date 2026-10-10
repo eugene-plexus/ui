@@ -90,12 +90,10 @@ export function ReachCard({
       className="section-panel"
     >
       <div className="section-heading flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-ui text-sm font-semibold">Reach it from other devices</h2>
+        <h2 className="font-ui text-base font-semibold">Reach it from other devices</h2>
         <button
           type="button"
           data-testid="reach-switch"
-          role="switch"
-          aria-checked={on}
           disabled={busy || (state.kind === "off" && state.proposed === null)}
           onClick={() => void send({ enabled: !on, allowFirewall: !on })}
           className="font-ui rounded-[var(--radius)] border border-[color:var(--accent-left)] px-3 py-1 text-sm font-semibold disabled:opacity-50"

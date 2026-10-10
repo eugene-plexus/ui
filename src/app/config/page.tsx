@@ -417,8 +417,19 @@ function SettingsView({
               <p className="text-sm text-[color:var(--muted)]">Reading settings…</p>
             )}
             {loaded === owners.length && nothing && (
-              <p className="text-sm text-[color:var(--muted)]" data-testid="settings-nothing">
-                Nothing matches &ldquo;{query}&rdquo;.
+              <p
+                className="flex flex-wrap items-center gap-2 text-sm text-[color:var(--muted)]"
+                data-testid="settings-nothing"
+              >
+                <span>Nothing matches &ldquo;{query}&rdquo;.</span>
+                <button
+                  type="button"
+                  onClick={() => changeQuery("")}
+                  data-testid="settings-nothing-clear"
+                  className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-sm text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
+                >
+                  Clear
+                </button>
               </p>
             )}
           </div>
@@ -436,7 +447,7 @@ function SettingsView({
             <ConfirmButton
               label="Discard all"
               confirmLabel="Discard every change"
-              prompt="Put every field on this page back as it was saved?"
+              prompt={`Put every field on this page back as it was saved? You will lose ${dirtyTotal} unsaved ${dirtyTotal === 1 ? "change" : "changes"}.`}
               onConfirm={discardAll}
               disabled={savingAll}
               testId="discard-all"

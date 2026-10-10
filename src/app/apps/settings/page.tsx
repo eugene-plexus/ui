@@ -85,7 +85,11 @@ function Inner() {
     <AppShell>
       <main className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-6 py-8">
-          {error && <p className="status-error mb-4 text-sm">{error}</p>}
+          {error && (
+            <p className="status-error mb-4 text-sm" role="alert">
+              {error}
+            </p>
+          )}
           {app && !app.configTrio && (
             <p className="text-sm text-[color:var(--muted)]" data-testid="app-no-settings">
               {app.name} does not publish settings this console can edit. Anything it needs to be

@@ -177,3 +177,37 @@ it("gives every entry Troy's dot, judged by the Library from what the review rec
     "starter:1",
   ]);
 });
+
+it("says Loading suggestions… in sentence case, then Starting… on the busy pick", async () => {
+  const { rerender } = render(
+    <StarterSetPanel
+      budget={null}
+      contextLength={16384}
+      busy={null}
+      onDownload={() => {}}
+      onOpenRepo={() => {}}
+    />,
+  );
+  expect(screen.getByText("Loading suggestions…")).toBeInTheDocument();
+  await screen.findByTestId("starter-recommended");
+  rerender(
+    <StarterSetPanel
+      budget={null}
+      contextLength={16384}
+      busy="unsloth/Qwen3.6-35B-A3B-GGUF"
+      onDownload={() => {}}
+      onOpenRepo={() => {}}
+    />,
+  );
+  expect(screen.getByTestId("starter-download")).toHaveTextContent("Starting…");
+});
+
+it("announces a failed load, with its cause", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ detail: { title: "Library is down" } }, { status: 502 })),
+  );
+  renderPanel();
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("could not be loaded");
+});

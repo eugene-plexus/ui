@@ -185,7 +185,7 @@ function Inner() {
 
           <section aria-labelledby="sites-heading" className="section-panel flex flex-col gap-3">
             <h2 id="sites-heading" className="section-heading font-ui mb-0 text-base font-semibold">
-              Job sites
+              Job sites{list !== null ? ` (${shown.length})` : ""}
             </h2>
             {filtered && (
               <p className="text-sm" data-testid="sites-filter">
@@ -198,7 +198,11 @@ function Inner() {
               </p>
             )}
             {list === null ? (
-              !error && <p className="font-ui text-sm text-[color:var(--muted)]">Loading…</p>
+              !error && (
+                <p role="status" className="font-ui text-sm text-[color:var(--muted)]">
+                  Loading…
+                </p>
+              )
             ) : shown.length === 0 ? (
               <p className="text-sm text-[color:var(--muted)]" data-testid="sites-empty">
                 {filtered ? "No job site matches." : "No job sites yet. Add one below."}
@@ -449,12 +453,14 @@ function Invite({
     ? [
         {
           id: "windows",
+          copyLabel: "Copy Windows command",
           label: "Windows, in PowerShell",
           note: "It asks for administrator rights.",
           command: commands.windows,
         },
         {
           id: "posix",
+          copyLabel: "Copy Linux or macOS command",
           label: "Linux or macOS, in a terminal",
           note: "It may ask for your password.",
           command: commands.posix,
@@ -547,7 +553,7 @@ function Invite({
                   {c.label}
                   <span className="text-[color:var(--muted)]"> &middot; {c.note}</span>
                 </span>
-                <CopyButton text={c.command} label="Copy" />
+                <CopyButton text={c.command} label={c.copyLabel} />
               </div>
               <pre
                 data-testid={`site-command-${c.id}`}

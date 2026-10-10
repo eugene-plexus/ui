@@ -126,6 +126,11 @@ describe("people", () => {
     expect(within(row).getByTestId("person-state-Ada")).toHaveTextContent("Can sign in");
     expect(within(row).getByTestId("person-apps-Ada")).toHaveTextContent("Every app");
     expect(screen.getByText(/You sign in to apps as/)).toHaveTextContent("operator");
+    // The heading counts the people; the buttons name theirs.
+    expect(screen.getByRole("heading", { name: /^People \(\d+\)$/ })).toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: "Turn signing in off for Ada" }),
+    ).toBeInTheDocument();
   });
 
   it("shows how many job sites a person owns, linking to them, and no folder access", async () => {
@@ -285,6 +290,8 @@ describe("apps that sign in with Eugene", () => {
     );
     await userEvent.click(screen.getByTestId("sign-in-app-submit"));
     expect(await screen.findByTestId("sign-in-app-secret")).toHaveTextContent(SECRET);
+    expect(screen.getByRole("button", { name: "Copy client ID" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy client secret" })).toBeInTheDocument();
     expect(sent("POST control/v1/oidc/clients")).toEqual([
       { name: "Open WebUI", redirectUris: ["http://192.168.1.5:3000/oauth/oidc/callback"] },
     ]);

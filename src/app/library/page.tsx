@@ -581,18 +581,24 @@ function ModelList({
             spellCheck={false}
             className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm outline-none focus:border-[color:var(--border-hover)]"
           />
-          {needle && (
-            <p
-              data-testid="model-filter-count"
-              aria-live="polite"
-              className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]"
-            >
-              {shown.length} of {all.length} models
-            </p>
-          )}
         </div>
       )}
-      {models == null && <p className="px-4 py-3 text-sm text-[color:var(--muted)]">loading…</p>}
+      {all.length > 0 && (
+        <p
+          data-testid="model-filter-count"
+          aria-live="polite"
+          className="font-ui px-4 py-1 text-[0.6875rem] text-[color:var(--muted)]"
+        >
+          {needle
+            ? `${shown.length} of ${all.length} ${all.length === 1 ? "model" : "models"}`
+            : `${all.length} ${all.length === 1 ? "model" : "models"}`}
+        </p>
+      )}
+      {models == null && (
+        <p role="status" className="px-4 py-3 text-sm text-[color:var(--muted)]">
+          Loading…
+        </p>
+      )}
       {models?.length === 0 && (
         <p className="px-4 py-3 text-sm leading-relaxed text-[color:var(--muted)]">
           Nothing found yet. Add the folder your models are in on the{" "}
@@ -1189,7 +1195,7 @@ function RunningPanel({
           Use it
         </Link>
         <Link href="/inference" className={buttonClass}>
-          Inference
+          Backends
         </Link>
         <button type="button" onClick={() => void stop()} disabled={busy} className={buttonClass}>
           {busy ? "stopping…" : "Stop"}

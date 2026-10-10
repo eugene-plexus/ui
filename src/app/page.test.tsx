@@ -526,11 +526,36 @@ describe("Home's Running card", () => {
     expect(card).toHaveTextContent("qwen3-14b");
     expect(card).toHaveTextContent("Amish_Station");
     expect(card).toHaveTextContent("loading");
-    expect(within(card).getByRole("link", { name: "Inference" })).toHaveAttribute(
+    expect(within(card).getByRole("link", { name: "Backends" })).toHaveAttribute(
       "href",
       "/inference",
     );
     expectPlainWords();
+  });
+});
+
+describe("Home's Running card says why a backend is down", () => {
+  it("prints the cause the driver reported as text, not only a tooltip", async () => {
+    handlers.set("GET library/v1/models", () => ({ status: 200, body: LIBRARY_WITH_TWO }));
+    handlers.set("GET gateway/v1/admin/drivers", () => ({
+      status: 200,
+      body: {
+        drivers: [
+          {
+            name: "qwen-driver",
+            reachable: false,
+            backend: "openai_compat_http",
+            modelId: "qwen3-14b",
+            error: "connection refused on port 8190",
+          },
+        ],
+      },
+    }));
+    render(<HomePage />);
+    const card = await screen.findByTestId("home-running");
+    expect(within(card).getByTestId("running-cause")).toHaveTextContent(
+      "connection refused on port 8190",
+    );
   });
 });
 
@@ -716,7 +741,9 @@ describe("Reach it from other devices", () => {
       "http://192.168.1.20:8079",
     );
     const toggle = within(card).getByTestId("reach-switch");
-    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(toggle).not.toHaveAttribute("role");
+    expect(toggle).not.toHaveAttribute("aria-checked");
+    expect(toggle).toHaveTextContent("Turn on");
     expectPlainWords();
 
     handlers.set("POST agent/v1/node/reach", () => ({
