@@ -17,21 +17,37 @@ import { RunButton } from "@/components/RunButton";
 import { ApiError, api, describeError } from "@/lib/api";
 import { capableEngines } from "@/lib/engineCompat";
 import {
-  type EligibilityList,
+  type EngineFit,
+  type EngineFitModel,
   type EngineVerdict,
+  type FitQuestion,
   type ModelEligibility,
+  ENGINE_FIT_CLASS,
+  ENGINE_FIT_WORD,
   LEVEL_CLASS,
   LEVEL_SHORT,
   LEVEL_WORDS,
   eligibilityEngines,
+  fitLine,
+  fitModelOf,
+  judge,
+  levelEngine,
   runnable,
 } from "@/lib/eligibility";
 import { engineName as engineLabel } from "@/lib/issues";
-import { type NodeBudget, type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
+import {
+  type NodeBudget,
+  type TargetNode,
+  fitQuery,
+  fitQuestion,
+  shareFitQuery,
+  useTargetNode,
+} from "@/lib/nodeBudget";
 import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
 import { expertsContextSentence, placementSentence } from "@/lib/fitWords";
 import { runModelOf, startPreparation } from "@/lib/oneClickRun";
 import { formatBytesShort } from "@/lib/tasks";
+import { postEligibility, refusedAsOlder } from "@/lib/useEligibility";
 import { usePolling } from "@/lib/usePolling";
 import type {
   EngineDescriptor,
@@ -205,6 +221,10 @@ function LibraryPageInner() {
   // Asked again whenever the engines or the models change: one call, and
   // the answer is per node, so the previous node's is cleared first.
   const modelIds = models?.map((m) => m.id).join(",") ?? null;
+  // Each engine's own fit on the picked node too (LS6), at the Library's
+  // guidance context, as the fit panel is.
+  const pickedBudget = picker.selected?.budget ?? null;
+  const fitKey = picker.selected ? JSON.stringify(fitQuestion(pickedBudget)) : null;
   useEffect(() => {
     setEligibility(null);
     setEligibilityOlder(false);
@@ -212,9 +232,14 @@ function LibraryPageInner() {
     let cancelled = false;
     void (async () => {
       try {
-        const judged = await api.post<EligibilityList>("library", "/v1/eligibility", {
-          engines: eligibilityEngines(engines),
-        });
+        const judged = await judge(
+          postEligibility,
+          {
+            engines: eligibilityEngines(engines),
+            fit: fitKey ? (JSON.parse(fitKey) as FitQuestion) : null,
+          },
+          refusedAsOlder,
+        );
         if (!cancelled) setEligibility(new Map(judged.models.map((m) => [m.modelId, m])));
       } catch (err) {
         // 404: a library older than the judge; 422: one older than a value
@@ -226,7 +251,7 @@ function LibraryPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [engines, modelIds]);
+  }, [engines, modelIds, fitKey]);
 
   // Soft, and per the picked node: `node:<name>` reaches another
   // machine's own agent, which is the only party that knows what it has
@@ -794,6 +819,17 @@ function ModelDetail({
         .filter((e): e is EngineDescriptor => e !== undefined)
     : capableEngines(model, engines ?? []);
   const usable = capable.filter((e) => e.available);
+  // Whose fit the panel shows (LS6): the engine Run would pick, else the one
+  // the dot is about, else (a Library older than the judge) the first that
+  // could load it. Never another engine's number in its place.
+  const fitEngine =
+    usable[0]?.engine ??
+    (verdicts ? levelEngine(verdicts)?.engine : undefined) ??
+    capable[0]?.engine ??
+    null;
+  const fitEngineModel = fitModelOf((engines ?? []).find((e) => e.engine === fitEngine));
+  const verdictFit = (engine: string | null | undefined) =>
+    verdicts?.find((v) => v.engine === engine)?.fit ?? null;
 
   const running = runningModel(model, runtimes);
   // The machine's own name when it has one, even when it is this one:
@@ -883,28 +919,33 @@ function ModelDetail({
       {model.status === "present" && model.format === "prepared" && (
         // The Library does not read an engine's prepared files, and
         // llama.cpp's arithmetic is wrong for an engine that keeps its
-        // experts in RAM (library-sources-and-engines.md §6.1). LS6.
-        <p
-          data-testid="model-fit"
-          className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--muted)]"
-        >
-          <span className="font-ui font-semibold text-[color:var(--foreground)]">
-            Fit not estimated.
-          </span>{" "}
-          {engineLabel(model.prepared?.engine)} has no memory estimate in Eugene yet. Check that{" "}
-          {where} has the memory its setup asked for before starting it.
-        </p>
-      )}
-
-      {model.status === "present" && model.format !== "prepared" && (
-        <FitPanel
-          model={model}
-          running={running}
+        // experts in RAM (library-sources-and-engines.md §6.1): the engine's
+        // own table answers (LS6), through the judge.
+        <EngineFitNote
+          engine={model.prepared?.engine ?? null}
+          fit={verdictFit(model.prepared?.engine)}
           where={where}
-          budget={node?.budget ?? null}
-          ready={node !== null}
         />
       )}
+
+      {/* Whose fit it is waits for the node's engines: before they answer,
+          "not estimated" would be a claim about an engine nobody named. */}
+      {model.status === "present" &&
+        model.format !== "prepared" &&
+        enginesKnown &&
+        (fitEngineModel?.kind === "spill" || fitEngineModel?.kind === "reserved_share" ? (
+          <FitPanel
+            model={model}
+            running={running}
+            where={where}
+            budget={node?.budget ?? null}
+            ready={node !== null}
+            engine={fitEngine}
+            fitModel={fitEngineModel}
+          />
+        ) : (
+          <EngineFitNote engine={fitEngine} fit={verdictFit(fitEngine)} where={where} />
+        ))}
 
       {/* Nothing below is said about engines until the node has answered:
           "no engine can load this" was printed, and Run hidden, for as
@@ -943,6 +984,16 @@ function ModelDetail({
                   : v.installable
                     ? `; not installed on ${where} yet`
                     : `; cannot run on ${where}`}
+                {fitLine(v, engineLabel) && (
+                  <span
+                    data-testid="engine-fit"
+                    className={`block pl-3 ${
+                      v.fit?.estimated && v.fit.verdict ? ENGINE_FIT_CLASS[v.fit.verdict] : ""
+                    }`}
+                  >
+                    fit, {fitLine(v, engineLabel)}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -1007,7 +1058,11 @@ function ModelDetail({
                 {running
                   ? `${describeRunning(running, where)} Start it again and it is back on Home.`
                   : usable.length > 0 && model.format === "prepared"
-                    ? `Starts ${model.name} on ${where} with ${engineLabel(model.prepared?.engine)}; its memory needs are not estimated. Once it says ready, it is on Home.`
+                    ? `Starts ${model.name} on ${where} with ${engineLabel(model.prepared?.engine)}; ${
+                        verdictFit(model.prepared?.engine)?.estimated
+                          ? "its own table says what it needs, above"
+                          : "its memory needs are not estimated"
+                      }. Once it says ready, it is on Home.`
                     : usable.length > 0
                       ? `Starts ${model.name} on ${where} with settings that fit. Once it says ready, it is on Home.`
                       : `${capable.map((e) => engineName(e.engine)).join(", ")} is not installed on ${where} yet; Run asks before installing it.`}
@@ -1175,6 +1230,8 @@ function FitPanel({
   where,
   budget,
   ready,
+  engine,
+  fitModel,
 }: {
   model: LibraryModel;
   /** What the picked node is doing with it. Null means nothing. */
@@ -1184,6 +1241,10 @@ function FitPanel({
   budget: NodeBudget | null;
   /** False until the header's picker has resolved a node. */
   ready: boolean;
+  /** The engine this fit is for (LS6): the one Run would pick. */
+  engine: string | null;
+  /** Its fit model: `spill` (llama.cpp) or `reserved_share` (vLLM). */
+  fitModel: EngineFitModel;
 }) {
   const [fit, setFit] = useState<ModelFit | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1203,7 +1264,10 @@ function FitPanel({
     let cancelled = false;
     void (async () => {
       try {
-        const params = new URLSearchParams(fitQuery(budget)).toString();
+        const share = fitModel.kind === "reserved_share" ? fitModel.gpuMemoryUtilization : null;
+        const params = new URLSearchParams(
+          share != null ? shareFitQuery(budget, share) : fitQuery(budget),
+        ).toString();
         const answer = await api.get<ModelFit>(
           "library",
           `/v1/models/${encodeURIComponent(model.id)}/fit${params ? `?${params}` : ""}`,
@@ -1217,7 +1281,7 @@ function FitPanel({
     return () => {
       cancelled = true;
     };
-  }, [model.id, budget, ready]);
+  }, [model.id, budget, ready, fitModel.kind, fitModel.gpuMemoryUtilization]);
 
   if (error) {
     return <p className="text-sm text-[color:var(--muted)]">could not measure fit: {error}</p>;
@@ -1225,6 +1289,8 @@ function FitPanel({
   if (!fit) return null;
 
   const verdict = fit.fit.verdict;
+  const shares = fitModel.kind === "reserved_share";
+  const name = engineLabel(engine);
   // **A resident model has already answered this question, and the
   // arithmetic below cannot see that it has.** A fit is scored against
   // FREE VRAM, and a loaded model's own weights are in the part that is
@@ -1255,6 +1321,13 @@ function FitPanel({
             ) : (
               `Starting on ${where}`
             )
+          ) : shares ? (
+            <>
+              {verdict === "fits" && `Fits in ${name}'s share of GPU memory`}
+              {verdict === "tight" && `Fits ${name}'s share, but less than it is free now`}
+              {verdict === "no" && `Too large for ${name}'s share of GPU memory`}
+              {verdict === "unknown" && "Can't tell: no GPU memory to take a share of"}
+            </>
           ) : (
             <>
               {verdict === "fits" && "Fits in GPU memory"}
@@ -1266,6 +1339,7 @@ function FitPanel({
                     ? "Needs partial CPU offload"
                     : "Needs system memory as well")}
               {verdict === "no" && "Too large for this node"}
+              {verdict === "unknown" && "Can't tell: a GPU here did not say its memory"}
             </>
           )}
         </p>
@@ -1292,7 +1366,9 @@ function FitPanel({
         {fit.maxContextLength != null && (
           <>
             {" "}
-            The largest context that still fits entirely in GPU memory is{" "}
+            {shares
+              ? `The largest context ${name}'s share holds is `
+              : "The largest context that still fits entirely in GPU memory is "}
             <strong>{fit.maxContextLength.toLocaleString()}</strong> tokens
             {fit.modelContextLength != null && fit.modelContextLength > fit.maxContextLength && (
               <> — this model declares {fit.modelContextLength.toLocaleString()}</>
@@ -1304,7 +1380,9 @@ function FitPanel({
       {/* A3c: what sits where, and the context the experts-in-RAM way
           allows. On a card smaller than the file the sentence above has
           no number at all, and this is the one a profile can take. */}
-      {!resident && placementSentence(fit.fit) && (
+      {/* What sits where is llama.cpp's way of running a model too large for
+          its cards; a share-taking engine moves nothing (LS6). */}
+      {!resident && !shares && placementSentence(fit.fit) && (
         <p className="mt-0.5" data-testid="model-fit-placement">
           {placementSentence(fit.fit)}
           {fit.fit.offload === "experts" && expertsContextSentence(fit.maxContextExpertsInRam) && (
@@ -1312,18 +1390,72 @@ function FitPanel({
           )}
         </p>
       )}
-      {budget && (
-        <p className="mt-0.5 opacity-80">
-          Scored against {budget.node ?? "this host"}
-          {budget.gpu ? ` · ${budget.gpu.name}` : " · no GPU"}, where a launch from here runs
-          {resident && <> — free memory, which this model is already inside</>}.
-        </p>
-      )}
+      <p className="mt-0.5 opacity-80">
+        {name}&rsquo;s estimate
+        {budget && (
+          <>
+            , scored against {budget.node ?? "this host"}
+            {budget.gpu ? ` · ${budget.gpu.name}` : " · no GPU"}, where a launch from here runs
+            {resident && <> — free memory, which this model is already inside</>}
+          </>
+        )}
+        .
+      </p>
       {open && (
         <div className="mt-2">
           <FitBreakdown fit={fit.fit} withPlacement={resident} />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * An engine's fit that is not the Library's arithmetic (LS6): its own table
+ * (Strata's setup, applied to this node by its agent), or *Fit not
+ * estimated* for an engine with no fit model. Never another engine's
+ * number in its place (library-sources-and-engines.md §6.1).
+ */
+function EngineFitNote({
+  engine,
+  fit,
+  where,
+}: {
+  engine: string | null;
+  /** The judge's answer for that engine; null when it gave none. */
+  fit: EngineFit | null;
+  where: string;
+}) {
+  const name = engineLabel(engine);
+  if (!fit || !fit.estimated || !fit.verdict) {
+    return (
+      <p
+        data-testid="model-fit"
+        data-estimated="false"
+        className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--muted)]"
+      >
+        <span className="font-ui font-semibold text-[color:var(--foreground)]">
+          Fit not estimated.
+        </span>{" "}
+        {fit?.reason
+          ? `${name}: ${fit.reason}.`
+          : `${name} has no memory estimate in Eugene yet. Check that ${where} has the memory it needs before starting it.`}
+      </p>
+    );
+  }
+  return (
+    <div
+      data-testid="model-fit"
+      data-estimated="true"
+      className={`${ENGINE_FIT_CLASS[fit.verdict]} rounded-[var(--radius)] border px-3 py-2 text-sm`}
+    >
+      <p className="font-ui font-semibold">
+        {name}: {ENGINE_FIT_WORD[fit.verdict]}
+      </p>
+      <p className="mt-0.5">{fit.reason}.</p>
+      <p className="mt-0.5 opacity-80">
+        {name}&rsquo;s own table, applied to {where} by its agent.
+      </p>
     </div>
   );
 }

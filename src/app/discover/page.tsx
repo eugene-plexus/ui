@@ -6,7 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { AppShell } from "@/components/AppShell";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { EligibilityDot } from "@/components/EligibilityDot";
-import { FitBadge, formatBytes, formatMemory } from "@/components/FitBadge";
+import { EngineFitBadge, FitBadge, formatBytes, formatMemory } from "@/components/FitBadge";
 import { ModelCard } from "@/components/ModelCard";
 import { QuantReference } from "@/components/QuantReference";
 import { ApiError, api, describeError } from "@/lib/api";
@@ -14,7 +14,13 @@ import { NodePicker } from "@/components/NodePicker";
 import { StarterSetPanel } from "@/components/StarterSetPanel";
 import { contextLabel } from "@/lib/starter";
 import { relativeAge } from "@/lib/relativeTime";
-import { type NodeBudget, type TargetNode, fitQuery, useTargetNode } from "@/lib/nodeBudget";
+import {
+  type NodeBudget,
+  type TargetNode,
+  fitQuery,
+  fitQuestion,
+  useTargetNode,
+} from "@/lib/nodeBudget";
 import { startDownloadAndPrepare, startPreparation } from "@/lib/oneClickRun";
 import { PrepareControl } from "@/components/PrepareModel";
 import {
@@ -23,6 +29,7 @@ import {
   engineLists,
   hubFormatFor,
   LEVEL_RANK,
+  levelEngine,
   runsHubModelsAsTheyAre,
   type EligibilityCandidate,
   type EligibilityLevel,
@@ -1002,7 +1009,13 @@ function RepoDetail({
         .filter((f): f is EligibilityCandidate => f != null),
     [detail],
   );
-  const { byId: verdicts } = useCandidateEligibility(engines, facts);
+  // Each engine's own fit on the picked node, at the context above (LS6):
+  // a version too large for every engine that would load it is red.
+  const { byId: verdicts } = useCandidateEligibility(
+    engines,
+    facts,
+    fitQuestion(budget, contextLength),
+  );
   const answerFor = (candidate: CatalogueCandidate) =>
     candidate.facts ? verdicts?.get(candidate.facts.id) : undefined;
   // The entry this was opened from, if the node still lists it.
@@ -1552,6 +1565,13 @@ function CandidateTable({
             const fit = preflighted?.fit ?? candidate.fit;
             const downloading = candidate.files.some((f) => activeDestinations.has(f.path));
             const answer = answerFor(candidate);
+            // Whose fit the column shows (LS6): the engine the dot is about.
+            // The catalogue's own arithmetic is llama.cpp's, so it stands only
+            // for a GGUF whose engine scores by it; any other engine's is its
+            // own answer, named.
+            const engineFor = answer ? levelEngine(answer.engines) : undefined;
+            const ownFit = engineFor?.fit;
+            const spills = candidate.format === "gguf" && (!ownFit || ownFit.model === "spill");
             return (
               <tr
                 key={candidate.label}
@@ -1629,8 +1649,10 @@ function CandidateTable({
                     >
                       —
                     </span>
-                  ) : fit ? (
+                  ) : spills && fit ? (
                     <FitBadge fit={fit} />
+                  ) : engineFor && ownFit ? (
+                    <EngineFitBadge engine={engineName(engineFor.engine)} fit={ownFit} />
                   ) : (
                     "—"
                   )}

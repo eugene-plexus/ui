@@ -3,9 +3,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import {
+  ENGINE_FIT_CLASS,
   LEVEL_CLASS,
   LEVEL_SHORT,
   LEVEL_WORDS,
+  fitLine,
   verdictLine,
   type ModelEligibility,
 } from "@/lib/eligibility";
@@ -19,6 +21,8 @@ import { engineName } from "@/lib/issues";
  * opens the engines' verdicts, each with its reason in the Library's words
  * and whether that engine is on the machine in the picker. An answer the
  * Library marked approximate says so beside the words, never only inside.
+ * Since LS6 each engine's own fit is under its verdict, named, where the
+ * Library was asked for it.
  */
 export function EligibilityDot({
   answer,
@@ -94,11 +98,26 @@ export function EligibilityDot({
             <span className="mt-1 block text-[color:var(--muted)]">{guessNote}</span>
           )}
           <span className="mt-1 block space-y-0.5" data-testid="eligibility-verdicts">
-            {answer.engines.map((v) => (
-              <span key={v.engine} className="block">
-                {verdictLine(v, where, engineName)}
-              </span>
-            ))}
+            {answer.engines.map((v) => {
+              const fit = fitLine(v, engineName);
+              return (
+                <span key={v.engine} className="block">
+                  {verdictLine(v, where, engineName)}
+                  {fit && (
+                    <span
+                      data-testid="eligibility-fit"
+                      className={`block pl-3 ${
+                        v.fit?.estimated && v.fit.verdict
+                          ? ENGINE_FIT_CLASS[v.fit.verdict]
+                          : "text-[color:var(--muted)]"
+                      }`}
+                    >
+                      fit, {fit}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
           </span>
         </span>
       )}

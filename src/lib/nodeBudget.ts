@@ -41,9 +41,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { formatMemory } from "@/components/FitBadge";
+import type { components as LibraryComponents } from "@/generated/library";
 
 import { ApiError, api } from "./api";
 import type { ComputeDevice, NodeIdentity } from "./types";
+
+type FitQuestion = LibraryComponents["schemas"]["FitQuestion"];
 
 export interface NodeBudget {
   /** The node's name in the install, or null before it has enrolled. */
@@ -61,6 +64,8 @@ export interface NodeBudget {
   vramBytes: number;
   /** What goes in `ramBytes`, when the agent reported host memory. */
   ramBytes: number | null;
+  /** The node's whole RAM, for the judge's fit question (LS6). */
+  ramTotalBytes?: number | null;
   /** The GPU computes out of host memory: an integrated GPU (an Intel
    * Arc or Iris, an AMD Radeon 780M), Apple silicon, a GB10. Passed to
    * the library as `unifiedMemory`, because the library's own flag comes
@@ -132,6 +137,7 @@ export function budgetFromNode(node: DeviceBearer): NodeBudget | null {
     gpuCount: cards.length,
     vramBytes: free,
     ramBytes: cpu ? memory(cpu) : null,
+    ramTotalBytes: cpu?.memoryTotalBytes ?? null,
     unifiedMemory: first?.kind === "metal" || first?.sharedMemory === true,
   };
 }
@@ -153,6 +159,37 @@ export function fitQuery(budget: NodeBudget | null): Record<string, string> {
   if (budget.unifiedMemory) query.unifiedMemory = "true";
   if (budget.gpuCount > 1) query.gpuCount = String(budget.gpuCount);
   return query;
+}
+
+/** The same budget for a share-taking engine (LS6, `reserved_share`):
+ * its share is of the cards' TOTAL memory, so that goes too, with the share. */
+export function shareFitQuery(
+  budget: NodeBudget | null,
+  utilization: number,
+): Record<string, string> {
+  const query: Record<string, string> = {
+    ...fitQuery(budget),
+    fitModel: "reserved_share",
+    gpuMemoryUtilization: String(utilization),
+  };
+  if (budget?.gpu?.totalBytes != null) query.vramTotalBytes = String(budget.gpu.totalBytes);
+  return query;
+}
+
+/** The budget as `POST /v1/eligibility` asks for each engine's fit (LS6).
+ * With no budget only the context goes, and the Library scores against its
+ * own host, as `fitQuery` does. */
+export function fitQuestion(budget: NodeBudget | null, contextLength?: number | null): FitQuestion {
+  const question: FitQuestion = {};
+  if (contextLength != null) question.contextLength = contextLength;
+  if (budget === null) return question;
+  question.vramFreeBytes = budget.vramBytes;
+  if (budget.gpu?.totalBytes != null) question.vramTotalBytes = budget.gpu.totalBytes;
+  question.gpuCount = budget.gpuCount;
+  if (budget.ramBytes !== null) question.ramAvailableBytes = budget.ramBytes;
+  if (budget.ramTotalBytes != null) question.ramTotalBytes = budget.ramTotalBytes;
+  if (budget.unifiedMemory) question.unifiedMemory = true;
+  return question;
 }
 
 /** One line about a node's hardware, for pickers and headers.

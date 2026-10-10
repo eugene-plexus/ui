@@ -10,6 +10,7 @@ import {
   verdictWord,
 } from "@/lib/fitWords";
 import { contextLabel } from "@/lib/starter";
+import { ENGINE_FIT_CLASS, ENGINE_FIT_WORD, type EngineFit } from "@/lib/eligibility";
 import type { Fit, FitVerdict, MemoryBudget } from "@/lib/types";
 
 export { formatMemory };
@@ -238,4 +239,34 @@ export function formatBytes(count: number | null | undefined): string {
   const index = Math.min(Math.floor(Math.log10(count) / 3), units.length - 1);
   if (index === 0) return `${count} B`;
   return `${(count / 1000 ** index).toFixed(2)} ${units[index]}`;
+}
+
+/**
+ * One engine's own fit, named (LS6, Troy's L11): for an engine whose fit is
+ * not the Library's arithmetic (Strata's own table, vLLM's share), or that
+ * has none. The engine's reason is on hover; *not estimated* says so,
+ * never a number from another engine.
+ */
+export function EngineFitBadge({ engine, fit }: { engine: string; fit: EngineFit }) {
+  if (!fit.estimated || !fit.verdict) {
+    return (
+      <span
+        data-testid="engine-fit-badge"
+        className="font-ui text-[0.6875rem] text-[color:var(--muted)]"
+        title={fit.reason}
+      >
+        {engine}: not estimated
+      </span>
+    );
+  }
+  return (
+    <span
+      data-testid="engine-fit-badge"
+      className={`${ENGINE_FIT_CLASS[fit.verdict]} font-ui rounded px-1 text-[0.6875rem]`}
+      title={fit.reason}
+    >
+      {engine}: {ENGINE_FIT_WORD[fit.verdict]}
+      {fit.approximate ? " (approx.)" : ""}
+    </span>
+  );
 }

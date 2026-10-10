@@ -8,7 +8,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { budgetFromNode, describeBudget, fitQuery, targetFor } from "./nodeBudget";
+import {
+  budgetFromNode,
+  describeBudget,
+  fitQuery,
+  fitQuestion,
+  shareFitQuery,
+  targetFor,
+} from "./nodeBudget";
 import type { NodeIdentity } from "./types";
 
 const AMISH_STATION: NodeIdentity = {
@@ -250,5 +257,36 @@ describe("a GPU that shares the machine's memory", () => {
     expect(budget?.unifiedMemory).toBe(false);
     expect(fitQuery(budget)).not.toHaveProperty("unifiedMemory");
     expect(describeBudget(budget)).not.toContain("shared");
+  });
+});
+
+describe("each engine's fit (LS6)", () => {
+  it("asks the judge about the node's own memory, total included", () => {
+    const budget = budgetFromNode(AMISH_STATION)!;
+    const question = fitQuestion(budget, 16384);
+    expect(question).toMatchObject({
+      contextLength: 16384,
+      vramFreeBytes: budget.vramBytes,
+      vramTotalBytes: budget.gpu!.totalBytes,
+      gpuCount: 1,
+      ramAvailableBytes: budget.ramBytes,
+    });
+    expect(question.ramTotalBytes).toBeGreaterThan(question.ramAvailableBytes!);
+  });
+
+  it("with no budget only the context goes, and the Library scores its own host", () => {
+    expect(fitQuestion(null, 8192)).toEqual({ contextLength: 8192 });
+    expect(fitQuestion(null)).toEqual({});
+  });
+
+  it("a share-taking engine's fit is asked by its share of the cards' total", () => {
+    const budget = budgetFromNode(AMISH_STATION)!;
+    const query = shareFitQuery(budget, 0.92);
+    expect(query).toMatchObject({
+      ...fitQuery(budget),
+      fitModel: "reserved_share",
+      gpuMemoryUtilization: "0.92",
+      vramTotalBytes: String(budget.gpu!.totalBytes),
+    });
   });
 });

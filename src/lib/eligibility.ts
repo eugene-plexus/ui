@@ -16,6 +16,10 @@ export type EngineVerdict = LibraryComponents["schemas"]["EngineVerdict"];
 export type EligibilityLevel = LibraryComponents["schemas"]["EligibilityLevel"];
 export type ModelEligibility = LibraryComponents["schemas"]["ModelEligibility"];
 export type EligibilityList = LibraryComponents["schemas"]["EligibilityList"];
+export type EngineFit = LibraryComponents["schemas"]["EngineFit"];
+export type EngineFitModel = LibraryComponents["schemas"]["EngineFitModel"];
+export type FitQuestion = LibraryComponents["schemas"]["FitQuestion"];
+type FitVerdict = LibraryComponents["schemas"]["FitVerdict"];
 
 /** Troy's words for the three levels, 2026-10-09. */
 export const LEVEL_WORDS: Record<EligibilityLevel, string> = {
@@ -46,7 +50,105 @@ export function eligibilityEngines(engines: EngineDescriptor[]): EligibilityEngi
     installable: !e.available && offeredOnThisNode(e),
     experimental: Boolean(e.experimental),
     accepts: e.accepts ?? (e.modelFormats ?? []).map((format) => ({ format, preference: 100 })),
+    // How it uses memory (LS6); absent from an agent older than that.
+    ...(e.fit ? { fit: e.fit } : {}),
   }));
+}
+
+/** What a request to the judge carries. */
+export interface JudgeRequest {
+  models?: string[];
+  candidates?: EligibilityCandidate[];
+  engines: EligibilityEngine[];
+  /** Ask for each engine's fit too (LS6). */
+  fit?: FitQuestion | null;
+}
+
+/**
+ * Asks the judge. With a fit question every engine answers its own fit
+ * (LS6); a Library older than that refuses the fields (422), and is asked
+ * again without them, so its dots stay what they were rather than vanish.
+ */
+export async function judge(
+  post: (body: unknown) => Promise<EligibilityList>,
+  request: JudgeRequest,
+  isRefusal: (err: unknown) => boolean,
+): Promise<EligibilityList> {
+  const { fit, ...rest } = request;
+  if (!fit) return post(rest);
+  try {
+    return await post({ ...rest, fit });
+  } catch (err) {
+    if (!isRefusal(err)) throw err;
+    return post({
+      ...rest,
+      engines: rest.engines.map((engine) => {
+        const older = { ...engine };
+        delete older.fit;
+        return older;
+      }),
+    });
+  }
+}
+
+/** A node's fit model for an engine (LS6): as it declared, or llama.cpp's
+ * `spill` from an agent older than that, which is what it always was. */
+export function fitModelOf(engine: EngineDescriptor | undefined): EngineFitModel | null {
+  if (!engine) return null;
+  if (engine.fit) return engine.fit;
+  return engine.engine === "llama_cpp" ? { kind: "spill" } : null;
+}
+
+/** An engine whose own fit is a measured `no`: it counts as one that cannot
+ * run the model (LS6). Not estimated, or unknown, never counts. */
+export function fitsNot(v: EngineVerdict): boolean {
+  return Boolean(v.fit?.estimated && v.fit.verdict === "no");
+}
+
+/**
+ * The engine a model's dot is about, as the Library chose its level: the
+ * first that runs it here and fits, else the first that would with another
+ * step (an install, or a preparation) and fits.
+ */
+export function levelEngine(engines: EngineVerdict[]): EngineVerdict | undefined {
+  const here = engines.find(
+    (v) => v.available && (v.verdict === "runs" || v.verdict === "may_run") && !fitsNot(v),
+  );
+  if (here) return here;
+  return engines.find(
+    (v) =>
+      !fitsNot(v) &&
+      ((v.available && v.verdict === "after_preparation") ||
+        (!v.available && v.installable && v.verdict !== "no")),
+  );
+}
+
+/** One engine's own fit in a word (LS6). `split` covers llama.cpp's offload
+ * and Strata's low-RAM mode alike: it runs, more slowly. */
+export const ENGINE_FIT_WORD: Record<FitVerdict, string> = {
+  fits: "fits",
+  tight: "tight",
+  split: "fits, slower",
+  no: "does not fit",
+  unknown: "can't tell",
+};
+
+export const ENGINE_FIT_CLASS: Record<FitVerdict, string> = {
+  fits: "status-success",
+  tight: "status-warn",
+  split: "status-warn",
+  no: "status-error",
+  unknown: "status-warn",
+};
+
+/** One engine's own fit as a sentence, naming the engine; null when it was
+ * not asked. Never another engine's number in its place. */
+export function fitLine(v: EngineVerdict, name: (e: string) => string): string | null {
+  const fit = v.fit;
+  if (!fit) return null;
+  if (!fit.estimated || !fit.verdict) return `${name(v.engine)}: fit not estimated (${fit.reason})`;
+  const approximate = fit.approximate ? " (approximate)" : "";
+  return `${name(v.engine)}: ${ENGINE_FIT_WORD[fit.verdict]}${approximate}: ${fit.reason}`;
 }
 
 /** The lists of models the node's engines publish as supported (LS4), as

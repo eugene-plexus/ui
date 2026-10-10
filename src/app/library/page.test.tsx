@@ -596,10 +596,12 @@ describe("before the picked node has said which engines it has", () => {
 
   it("says it is asking, and does not call the model unloadable", async () => {
     hanging.add("GET agent/v1/engines");
-    await openTheModel();
-    expect(screen.getByTestId("engines-unknown")).toHaveTextContent(
+    render(<LibraryPage />);
+    expect(await screen.findByTestId("engines-unknown", {}, { timeout: 5000 })).toHaveTextContent(
       "Checking which engines Amish_Station has",
     );
+    // Whose fit it would be is not known yet either (LS6): no fit is claimed.
+    expect(screen.queryByTestId("model-fit")).toBeNull();
     expect(screen.queryByText(/No engine here can load/)).toBeNull();
     expect(screen.queryByText("no engine")).toBeNull();
   });
@@ -609,8 +611,9 @@ describe("before the picked node has said which engines it has", () => {
       status: 502,
       body: { detail: "Amish_Station did not answer." },
     }));
-    await openTheModel();
-    const line = await screen.findByRole("alert");
+    render(<LibraryPage />);
+    const line = await screen.findByRole("alert", {}, { timeout: 5000 });
+    expect(screen.queryByTestId("model-fit")).toBeNull();
     expect(line).toHaveTextContent("Could not ask Amish_Station which engines it has");
     expect(line).toHaveTextContent("Amish_Station did not answer.");
     expect(screen.queryByText(/No engine here can load/)).toBeNull();
@@ -983,5 +986,222 @@ describe("sizes", () => {
     expect(screen.queryByText(/22\.2 GB/)).toBeNull();
     expect(screen.getAllByText("24 GB").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByTitle("23,800,000,000 bytes").length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("a prepared model's fit is its engine's own table (LS6)", () => {
+  it("shows Strata's answer from the judge, and never asks the arithmetic", async () => {
+    const prepared = {
+      id: "qwen",
+      path: "D:\\Models\\qwen-flash.eugene-prepared.json",
+      format: "prepared",
+      name: "qwen-flash",
+      status: "present",
+      fileCount: 1,
+      prepared: { engine: "strata", entry: "strata-qwen.json" },
+    };
+    handlers.set("GET library/v1/models", () =>
+      ok({ models: [libraryModel(), prepared], lastScanAt: null }),
+    );
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
+    handlers.set("GET library/v1/models/qwen/profiles", () => ok({ profiles: [] }));
+    handlers.set("GET agent/v1/engines", () =>
+      ok({
+        engines: [
+          {
+            engine: "strata",
+            available: true,
+            experimental: true,
+            accepts: [{ format: "prepared", preparedFor: "strata" }],
+            fit: { kind: "engine_table", table: [] },
+          },
+        ],
+      }),
+    );
+    handlers.set("POST library/v1/eligibility", () =>
+      ok({
+        models: [
+          {
+            modelId: "qwen",
+            level: "works_here",
+            engines: [
+              {
+                engine: "strata",
+                verdict: "runs",
+                available: true,
+                experimental: true,
+                reason: "runs it as it is",
+                fit: {
+                  estimated: true,
+                  verdict: "fits",
+                  model: "engine_table",
+                  reason:
+                    "Strata keeps its 35.5 GB of experts in RAM: it needs about 48 GB of RAM, and this machine has 94 GB",
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /qwen-flash/ }));
+    // Not estimated until the judge answers; then Strata's own.
+    await waitFor(() =>
+      expect(screen.getByTestId("model-fit")).toHaveAttribute("data-estimated", "true"),
+    );
+    const fit = screen.getByTestId("model-fit");
+    expect(fit).toHaveTextContent("Strata: fits");
+    expect(fit).toHaveTextContent("it needs about 48 GB of RAM, and this machine has 94 GB");
+    expect(gets.some((g) => g.startsWith("library/v1/models/qwen/fit"))).toBe(false);
+  });
+});
+
+describe("each engine owns its fit (LS6)", () => {
+  beforeEach(() => {
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
+  });
+
+  function engines(...list: object[]) {
+    handlers.set("GET agent/v1/engines", () => ok({ engines: list }));
+  }
+  function judgeSays(engineVerdicts: object[], level = "works_here") {
+    handlers.set("POST library/v1/eligibility", () =>
+      ok({ models: [{ modelId: "gemma", level, engines: engineVerdicts }] }),
+    );
+  }
+
+  it("asks the judge with the picked node's memory", async () => {
+    handlers.set("GET agent/v1/node", () =>
+      ok({
+        enrolled: true,
+        name: "Amish_Station",
+        devices: [
+          {
+            kind: "cuda",
+            index: 0,
+            name: "RTX 5090",
+            memoryTotalBytes: 32 * GIB,
+            memoryFreeBytes: 30 * GIB,
+          },
+          { kind: "cpu", memoryTotalBytes: 94 * GIB, memoryFreeBytes: 65 * GIB },
+        ],
+      }),
+    );
+    engines({
+      engine: "llama_cpp",
+      available: true,
+      accepts: [{ format: "gguf" }],
+      fit: { kind: "spill" },
+    });
+    judgeSays([{ engine: "llama_cpp", verdict: "runs", available: true, reason: "runs it" }]);
+    await openTheModel();
+    await waitFor(() =>
+      expect(bodies.get("POST library/v1/eligibility")).toMatchObject({
+        fit: {
+          vramFreeBytes: 30 * GIB,
+          vramTotalBytes: 32 * GIB,
+          gpuCount: 1,
+          ramAvailableBytes: 65 * GIB,
+          ramTotalBytes: 94 * GIB,
+        },
+        engines: [{ engine: "llama_cpp", fit: { kind: "spill" } }],
+      }),
+    );
+    // llama.cpp's own estimate, named (the panel re-measures once the
+    // node's memory arrives, so it is waited for).
+    await waitFor(() =>
+      expect(screen.getByTestId("model-fit")).toHaveTextContent("llama.cpp’s estimate"),
+    );
+  });
+
+  it("asks a share-taking engine's fit by its share, and says whose it is", async () => {
+    engines({
+      engine: "vllm",
+      available: true,
+      accepts: [{ format: "gguf" }],
+      fit: { kind: "reserved_share", gpuMemoryUtilization: 0.92 },
+    });
+    judgeSays([{ engine: "vllm", verdict: "may_run", available: true, reason: "may" }]);
+    handlers.set("GET library/v1/models/gemma/fit", () =>
+      ok({ ...fitBody(), fit: { ...fitBody().fit, verdict: "tight", model: "reserved_share" } }),
+    );
+    render(<LibraryPage />);
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("model-fit")).toHaveTextContent(
+          "Fits vLLM's share, but less than it is free now",
+        ),
+      { timeout: 5000 },
+    );
+    const asked = gets.filter((g) => g.startsWith("library/v1/models/gemma/fit")).at(-1) ?? "";
+    expect(asked).toContain("fitModel=reserved_share");
+    expect(asked).toContain("gpuMemoryUtilization=0.92");
+    expect(screen.getByTestId("model-fit")).toHaveTextContent("vLLM’s estimate");
+    // Nothing moves to system memory on vLLM: llama.cpp's placement words never show.
+    expect(screen.getByTestId("model-fit")).not.toHaveTextContent("system memory");
+    expect(screen.queryByTestId("model-fit-placement")).toBeNull();
+  });
+
+  it("an engine with no fit model says so and never borrows llama.cpp's arithmetic", async () => {
+    engines({ engine: "mlx", available: true, accepts: [{ format: "gguf" }] });
+    judgeSays([
+      {
+        engine: "mlx",
+        verdict: "runs",
+        available: true,
+        reason: "runs it",
+        fit: { estimated: false, reason: "this engine has no fit estimate in Eugene yet" },
+      },
+    ]);
+    render(<LibraryPage />);
+    const fit = await screen.findByTestId("model-fit", {}, { timeout: 5000 });
+    await waitFor(() => expect(fit).toHaveTextContent("Fit not estimated."));
+    expect(fit).toHaveAttribute("data-estimated", "false");
+    expect(fit).toHaveTextContent("MLX: this engine has no fit estimate in Eugene yet.");
+    expect(gets.some((g) => g.startsWith("library/v1/models/gemma/fit"))).toBe(false);
+  });
+
+  it("shows each engine's own fit beside its verdict", async () => {
+    engines(
+      {
+        engine: "llama_cpp",
+        available: true,
+        accepts: [{ format: "gguf" }],
+        fit: { kind: "spill" },
+      },
+      { engine: "strata", available: true, experimental: true, accepts: [{ format: "gguf" }] },
+    );
+    judgeSays(
+      [
+        {
+          engine: "llama_cpp",
+          verdict: "runs",
+          available: true,
+          reason: "runs it",
+          fit: { estimated: true, verdict: "no", model: "spill", reason: "too large here" },
+        },
+        {
+          engine: "strata",
+          verdict: "after_preparation",
+          available: true,
+          experimental: true,
+          reason: "runs it after preparing it",
+          fit: {
+            estimated: true,
+            verdict: "split",
+            model: "engine_table",
+            reason: "fits in Strata's low-RAM mode",
+          },
+        },
+      ],
+      "other_engine",
+    );
+    await openTheModel();
+    const lines = (await screen.findAllByTestId("engine-fit")).map((l) => l.textContent);
+    expect(lines).toEqual([
+      "fit, llama.cpp: does not fit: too large here",
+      "fit, Strata: fits, slower: fits in Strata's low-RAM mode",
+    ]);
   });
 });

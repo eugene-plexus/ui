@@ -11,8 +11,10 @@ import { useEffect, useMemo, useState } from "react";
 import { ApiError, api, describeError } from "./api";
 import {
   eligibilityEngines,
+  judge,
   type EligibilityCandidate,
   type EligibilityList,
+  type FitQuestion,
   type ModelEligibility,
 } from "./eligibility";
 import type { EngineDescriptor, EngineList } from "./types";
@@ -46,20 +48,29 @@ export function useNodeEngines(target: string | null): {
   return { engines, error };
 }
 
+/** `POST /v1/eligibility` through the proxy, and the refusal a Library older
+ * than a field answers with. */
+export const postEligibility = (body: unknown) =>
+  api.post<EligibilityList>("library", "/v1/eligibility", body);
+export const refusedAsOlder = (err: unknown) => err instanceof ApiError && err.status === 422;
+
 /**
  * The Library's verdicts on `candidates`, by their ids. `older` when the
  * Library predates candidates (404 before LS1, 422 before LS2): the page
- * then shows no dots rather than a guess of its own.
+ * then shows no dots rather than a guess of its own. With `fit`, each
+ * engine answers its own fit too (LS6), on the node `fit` describes.
  */
 export function useCandidateEligibility(
   engines: EngineDescriptor[] | null,
   candidates: EligibilityCandidate[],
+  fit: FitQuestion | null = null,
 ): { byId: Map<string, ModelEligibility> | null; older: boolean } {
   const [byId, setById] = useState<Map<string, ModelEligibility> | null>(null);
   const [older, setOlder] = useState(false);
   // Keyed by content: a parent re-rendering with an equal list must not
   // ask again, and a different list must never show the last one's dots.
   const key = useMemo(() => JSON.stringify(candidates), [candidates]);
+  const fitKey = useMemo(() => JSON.stringify(fit), [fit]);
   useEffect(() => {
     setById(null);
     setOlder(false);
@@ -68,10 +79,15 @@ export function useCandidateEligibility(
     let cancelled = false;
     void (async () => {
       try {
-        const judged = await api.post<EligibilityList>("library", "/v1/eligibility", {
-          candidates: asked,
-          engines: eligibilityEngines(engines),
-        });
+        const judged = await judge(
+          postEligibility,
+          {
+            candidates: asked,
+            engines: eligibilityEngines(engines),
+            fit: JSON.parse(fitKey) as FitQuestion | null,
+          },
+          refusedAsOlder,
+        );
         if (!cancelled) setById(new Map(judged.models.map((m) => [m.modelId, m])));
       } catch (err) {
         if (cancelled) return;
@@ -81,6 +97,6 @@ export function useCandidateEligibility(
     return () => {
       cancelled = true;
     };
-  }, [engines, key]);
+  }, [engines, key, fitKey]);
   return { byId, older };
 }

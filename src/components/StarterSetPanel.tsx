@@ -6,7 +6,7 @@ import { EligibilityDot } from "@/components/EligibilityDot";
 import { FitBadge, formatBytes } from "@/components/FitBadge";
 import { ApiError, api, describeError } from "@/lib/api";
 import type { EligibilityCandidate } from "@/lib/eligibility";
-import { fitQuery, type NodeBudget } from "@/lib/nodeBudget";
+import { fitQuery, fitQuestion, type NodeBudget } from "@/lib/nodeBudget";
 import {
   downloadSize,
   isStale,
@@ -102,7 +102,11 @@ export function StarterSetPanel({
       (set?.models ?? []).map((m) => m.facts).filter((f): f is EligibilityCandidate => f != null),
     [set],
   );
-  const { byId: verdicts } = useCandidateEligibility(engines, facts);
+  const { byId: verdicts } = useCandidateEligibility(
+    engines,
+    facts,
+    fitQuestion(budget, contextLength),
+  );
   const answerFor = (model: StarterModel) =>
     model.facts ? verdicts?.get(model.facts.id) : undefined;
 

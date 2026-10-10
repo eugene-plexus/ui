@@ -771,6 +771,70 @@ describe("which engines can run it (LS2)", () => {
     expect(screen.queryByTestId("fit-badge")).toBeNull();
   });
 
+  // LS6, Troy's L11: each engine owns its fit, and a version's column shows
+  // the fit of the engine its dot is about, named; the catalogue's own
+  // arithmetic (llama.cpp's) never stands in for another engine's.
+  it("a version's fit is its engine's own, and the judge is asked at this context", async () => {
+    ANSWERS["catalogue:x:flash"] = {
+      level: "other_engine",
+      approximate: false,
+      engines: [
+        {
+          ...verdict("llama_cpp", "runs", "runs it as it is"),
+          fit: {
+            estimated: true,
+            verdict: "no",
+            model: "spill",
+            reason: "too large here: about 70 GiB at 8,192 tokens",
+          },
+        },
+        {
+          ...verdict("strata", "after_preparation", "runs it after preparing it"),
+          fit: {
+            estimated: true,
+            verdict: "fits",
+            model: "engine_table",
+            reason: "Strata keeps its 35.5 GB of experts in RAM",
+          },
+        },
+      ],
+    };
+    handlers.set("GET library/v1/catalogue/model", (params) => {
+      const body = modelBody(Number(params.get("contextLength")));
+      body.candidates[0] = {
+        ...body.candidates[0]!,
+        facts: { id: "catalogue:x:flash", format: "gguf", sizeBytes: 68_000_000_000 },
+      } as never;
+      return ok(body);
+    });
+    render(<DiscoverPage />);
+    const row = await screen.findByRole("button", { name: /^Green/ }, { timeout: 5000 });
+    await act(async () => {
+      fireEvent.click(row);
+    });
+    const badge = await screen.findByTestId("engine-fit-badge", {}, { timeout: 5000 });
+    expect(badge).toHaveTextContent("Strata: fits");
+    expect(badge).toHaveAttribute("title", "Strata keeps its 35.5 GB of experts in RAM");
+    // llama.cpp's arithmetic is not quoted for a version Strata is the answer for.
+    expect(screen.queryByTestId("fit-badge")).toBeNull();
+    const asked = judged.find((j) => j.candidates?.some((c) => c.id === "catalogue:x:flash")) as
+      | { fit?: { contextLength?: number } }
+      | undefined;
+    expect(asked?.fit?.contextLength).toBe(8192);
+    // The popover names each engine's own fit.
+    const level = screen.getByTestId("candidate-level");
+    await act(async () => {
+      fireEvent.click(within(level).getByRole("button"));
+    });
+    const fits = within(level)
+      .getAllByTestId("eligibility-fit")
+      .map((f) => f.textContent);
+    expect(fits).toEqual([
+      "fit, llama.cpp: does not fit: too large here: about 70 GiB at 8,192 tokens",
+      "fit, Strata: fits: Strata keeps its 35.5 GB of experts in RAM",
+    ]);
+  });
+
   it("an older Library shows no dots and says why every model is listed", async () => {
     handlers.set("POST library/v1/eligibility", () => ({
       status: 422,

@@ -3981,6 +3981,16 @@ export interface components {
              */
             supportedModels?: components["schemas"]["SupportedModel"][];
             /**
+             * @description How this engine uses memory (LS6, Troy's L11), beside `accepts`:
+             *     llama.cpp `spill`, vLLM `reserved_share` with its default share,
+             *     Strata `engine_table` with its setup's answer for each model on
+             *     this node's RAM and card. The console sends it to the library's
+             *     judge (`EligibilityEngine.fit`), and admission measures a launch
+             *     by it. Absent (MLX, Kev): the engine has no fit model, its fit is
+             *     *not estimated*, and admission admits on faith.
+             */
+            fit?: components["schemas"]["EngineFitModel"];
+            /**
              * @description Limited integration and support, including niche engines
              *     whose capabilities and upstream interfaces change quickly.
              *     Independent of hardware test status: a successful hardware
@@ -4973,6 +4983,17 @@ export interface components {
          *     memory as needed (2026-09-30, `docs/design/moe-aware-fit.md`
          *     call A). `no` refuses. `unknown` admits with a warning: a verdict
          *     from a budget that could not be measured is worse than none.
+         *
+         *     **By the engine's own fit model (LS6, `EngineDescriptor.fit`).**
+         *     llama.cpp as above. vLLM (`reserved_share`): it takes its share of
+         *     each card it uses and refuses to start when less than that is free,
+         *     so `tight` refuses whatever `gpuLayers` says, and there is no
+         *     `split`; its context is `maxModelLen`. Strata (`engine_table`): its
+         *     setup's answer for the model on this node (`no` and `tight`
+         *     refuse, its low-RAM mode is `split` and admits), and `tight` too
+         *     when the RAM free now is short of the experts it keeps there. An
+         *     engine with no fit model (MLX, Kev) is `unknown`: never another
+         *     engine's arithmetic in its place.
          * @enum {string}
          */
         AdmissionFit: "fits" | "tight" | "split" | "no" | "unknown";
@@ -4984,9 +5005,13 @@ export interface components {
          *     * `file_size` — the model file's size plus a fixed allowance.
          *       What an agent with no library reachable can measure on its
          *       own, said out loud rather than dressed up.
+         *     * `engine_table` — the engine's own table for the model on this
+         *       node (Strata's setup's RAM figures, LS6), not bytes this node
+         *       computed. `requiredBytes` is then the card's free memory,
+         *       which Strata fills with its expert cache.
          * @enum {string}
          */
-        AdmissionBasis: "metadata" | "file_size";
+        AdmissionBasis: "metadata" | "file_size" | "engine_table";
         AdmissionBlocker: {
             /** @description A runtime holding memory on the device. */
             name: string;
@@ -6075,6 +6100,165 @@ export interface components {
              * @default false
              */
             experimental: boolean;
+        };
+        /**
+         * @description How an engine uses memory, so its fit is its own (LS6, Troy's L11;
+         *     library-sources-and-engines.md §6.1). Engines differ in both
+         *     directions, so one engine's arithmetic is never another's answer.
+         *
+         *     * `spill` (llama.cpp): weights, the KV cache for the context and an
+         *       overhead allowance against the cards' free memory; what does not
+         *       fit moves to system memory, experts first on a mixture-of-experts
+         *       model (`FitOffload`). The library's arithmetic since M3.
+         *     * `reserved_share` (vLLM): the engine takes a share of each card's
+         *       **total** memory when it starts (`gpuMemoryUtilization`) and
+         *       refuses to start when less than that is free; weights and
+         *       overhead come out of the share and the KV cache must hold the
+         *       whole context in what is left. The model is split evenly across
+         *       the cards it uses (tensor parallel). Nothing spills to system
+         *       memory, so there is no `split`. Read off vLLM's own
+         *       `request_memory` (upstream main, 2026-10-09).
+         *     * `engine_table`: the engine's own table of what each model it runs
+         *       needs, applied to this node by its adapter (`EngineFitModel.table`):
+         *       Strata's setup's RAM figures and its low-RAM and RAM-budget modes.
+         * @enum {string}
+         */
+        FitModelKind: "spill" | "reserved_share" | "engine_table";
+        /**
+         * @description Lives here since LS6, because an engine's fit (`EngineFit`) uses it
+         *     as well as the library's `Fit`. For a `spill` engine:
+         *
+         *     * `fits` — inside **free** VRAM. Fully offloaded, no host memory
+         *       in the generation path.
+         *     * `tight` — inside total VRAM but not free VRAM. It would fit on
+         *       an idle GPU; something is holding memory right now, and
+         *       closing it is the operator's call.
+         *     * `split` — needs host memory as well. Runnable with partial
+         *       offload, and a decision rather than a failure. How much slower
+         *       depends on what moves, which `Fit.offload` says: experts (a
+         *       MoE model, little slower) or whole layers (much slower).
+         *     * `no` — larger than VRAM and RAM together.
+         *     * `unknown` — there is a GPU here and we could not read how much
+         *       memory it has, so no comparison against it can be made. Added
+         *       2026-09-18 (roadmap R2.3, review §6.2 #28) because the
+         *       alternative was worse than silence: `_intel_gpus` reports
+         *       `vramTotalBytes: 0` for a card whose size `xpu-smi` will not
+         *       state, the verdict then took the *no accelerator* branch,
+         *       compared the weights against host memory, and told a 16 GB Arc
+         *       owner that a 30 GB model **fits** — with `gpuCount: 1` printed
+         *       beside it. Wrong in the direction that runs out of memory at
+         *       load.
+         *
+         *       It is a property of the machine and not of the model, so every
+         *       candidate on such a host reports it, including small ones: a
+         *       favourable answer computed against a number we do not have is
+         *       right by luck.
+         *
+         *     For a `reserved_share` engine: `fits` when the model and the
+         *     context's cache fit its share and the share is free; `tight` when
+         *     they fit the share but less than the share is free now (the engine
+         *     refuses to start until it is); `no` when they do not fit the share.
+         *     Never `split`.
+         *
+         *     For an `engine_table` engine, the engine's own words map onto these:
+         *     Strata's *fits* and RAM-budget mode are `fits`; its low-RAM mode
+         *     (part of the experts on the card, the rest from the SSD) is `split`;
+         *     *tight* (a few GB short, so the system pages) is `tight`; *does not
+         *     fit* is `no`; a node with no graphics card it can read is `unknown`.
+         *
+         *     Five values rather than a percentage because a percentage of
+         *     *what* — VRAM, or VRAM plus RAM? — is precisely the ambiguity
+         *     the operator is trying to resolve, and because they have
+         *     different advice. `tight` and `split` are the two the field
+         *     usually collapses into "won't fit", and they are the two worth
+         *     naming.
+         * @enum {string}
+         */
+        FitVerdict: "fits" | "tight" | "split" | "no" | "unknown";
+        /**
+         * @description One engine's answer to *does it fit in this node's memory*, by that
+         *     engine's own fit model (LS6, Troy's L11). Shown with the engine's
+         *     name beside it; the library's detailed arithmetic for a library
+         *     model is `GET /v1/models/{id}/fit` with the same `fitModel`.
+         */
+        EngineFit: {
+            /**
+             * @description False: *Fit not estimated*. The engine declares no fit model, its
+             *     table has no row for this model, or the model's size is not known
+             *     yet. Never counts against the model.
+             */
+            estimated: boolean;
+            /** @description Present when `estimated`. */
+            verdict?: components["schemas"]["FitVerdict"];
+            model?: components["schemas"]["FitModelKind"];
+            /**
+             * @description The answer in words, in the engine's own terms: what it needs and
+             *     what this node has, or why there is no estimate.
+             */
+            reason: string;
+            /**
+             * @description `spill` and `reserved_share`: the weights, the KV cache at
+             *     `contextLength` and the overhead allowance, on the cards.
+             */
+            requiredBytes?: number;
+            /**
+             * @description `reserved_share`: what the engine takes, its share of the cards'
+             *     total memory summed.
+             */
+            shareBytes?: number;
+            /**
+             * @description `engine_table`: the system memory the engine's own table asks for
+             *     (Strata's setup's `ram_gb`, in its GB of 2^30 bytes).
+             */
+            ramBytes?: number;
+            /** @description The context this answer is for. Absent where the engine's table does not depend on it. */
+            contextLength?: number;
+            /**
+             * @description `spill`: the longest context that fits in free memory;
+             *     `reserved_share`: the longest the KV cache in the share holds.
+             */
+            maxContextLength?: number;
+            /**
+             * @description The KV cache was a rough share of the weights (no layer
+             *     metadata), or the facts were a guess: as `Fit.basis` `estimate`.
+             * @default false
+             */
+            approximate: boolean;
+        };
+        /** @description One row of an engine's own fit table, as its adapter applied it to one node. */
+        EngineTableFit: {
+            /**
+             * @description The model's file as `ModelRequirement.files` names it: a GGUF's
+             *     first shard, without its folder, compared ignoring case. A
+             *     prepared model is matched by the file it was made from
+             *     (`PreparedSource.file`).
+             */
+            file: string;
+            /** @description The `SupportedModel.id` this row is for. */
+            supportedModel?: string;
+            fit: components["schemas"]["EngineFit"];
+        };
+        /**
+         * @description How one engine uses memory, declared by its adapter beside `accepts`
+         *     (`EngineDescriptor.fit`; LS6, Troy's L11: data where it can be). The
+         *     library applies it (`POST /v1/eligibility` with `fit`,
+         *     `GET /v1/models/{id}/fit` with `fitModel`). An engine that declares
+         *     none has its fit *not estimated*, never another engine's number in
+         *     its place.
+         */
+        EngineFitModel: {
+            kind: components["schemas"]["FitModelKind"];
+            /**
+             * @description `reserved_share`: the share of each card's total memory the
+             *     engine takes when a launch sets none, its own default (vLLM's is
+             *     0.92 on upstream main; it was 0.9 before).
+             */
+            gpuMemoryUtilization?: number;
+            /**
+             * @description `engine_table`: the engine's answer for each model it runs, on
+             *     the node that reported it.
+             */
+            table?: components["schemas"]["EngineTableFit"][];
         };
         /**
          * @description The kind of value a config field holds. The UI uses this to pick

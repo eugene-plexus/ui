@@ -4,11 +4,17 @@ import {
   bestAnswer,
   eligibilityEngines,
   engineLists,
+  fitLine,
+  fitModelOf,
   hubFormatFor,
+  judge,
   LEVEL_WORDS,
+  levelEngine,
   runnable,
   runsHubModelsAsTheyAre,
   verdictLine,
+  type EligibilityList,
+  type EngineVerdict,
 } from "./eligibility";
 import type { EngineDescriptor } from "./types";
 
@@ -169,5 +175,101 @@ describe("the sources list's helpers (LS4)", () => {
     expect(runsHubModelsAsTheyAre([strata])).toBe(false);
     expect(runsHubModelsAsTheyAre([{ ...llama, available: false }])).toBe(false);
     expect(runsHubModelsAsTheyAre(null)).toBe(false);
+  });
+});
+
+// --- each engine owns its fit (LS6) -----------------------------------------
+
+describe("each engine's own fit", () => {
+  const v = (over: Partial<EngineVerdict>): EngineVerdict => ({
+    engine: "llama_cpp",
+    verdict: "runs",
+    available: true,
+    installable: false,
+    experimental: false,
+    reason: "runs it",
+    ...over,
+  });
+
+  it("passes an engine's fit model to the judge, and none from an older agent", () => {
+    const [declared, older] = eligibilityEngines([
+      engine({ fit: { kind: "spill" } }),
+      engine({ engine: "vllm" }),
+    ]);
+    expect(declared!.fit).toEqual({ kind: "spill" });
+    expect("fit" in older!).toBe(false);
+  });
+
+  it("an older agent's llama.cpp is llama.cpp's arithmetic; any other engine has none", () => {
+    expect(fitModelOf(engine({}))).toEqual({ kind: "spill" });
+    expect(fitModelOf(engine({ engine: "mlx" }))).toBeNull();
+    expect(fitModelOf(engine({ engine: "vllm", fit: { kind: "reserved_share" } }))).toEqual({
+      kind: "reserved_share",
+    });
+  });
+
+  it("says each engine's fit in its own words, and not estimated as such", () => {
+    const name = (e: string) => ({ llama_cpp: "llama.cpp", mlx: "MLX" })[e] ?? e;
+    expect(
+      fitLine(
+        v({
+          fit: { approximate: false, estimated: true, verdict: "split", reason: "experts in RAM" },
+        }),
+        name,
+      ),
+    ).toBe("llama.cpp: fits, slower: experts in RAM");
+    expect(
+      fitLine(
+        v({
+          engine: "mlx",
+          fit: { approximate: false, estimated: false, reason: "no fit estimate" },
+        }),
+        name,
+      ),
+    ).toBe("MLX: fit not estimated (no fit estimate)");
+    expect(fitLine(v({}), name)).toBeNull();
+  });
+
+  it("the dot's engine is one that fits: too large here moves it to the next", () => {
+    const tooLarge = v({
+      fit: { approximate: false, estimated: true, verdict: "no", reason: "too large" },
+    });
+    const strata = v({
+      engine: "strata",
+      verdict: "after_preparation",
+      fit: { approximate: false, estimated: true, verdict: "fits", reason: "fits" },
+    });
+    expect(levelEngine([tooLarge, strata])?.engine).toBe("strata");
+    const unmeasured = v({
+      fit: { approximate: false, estimated: false, reason: "not estimated" },
+    });
+    expect(levelEngine([unmeasured, strata])?.engine).toBe("llama_cpp");
+  });
+
+  it("asks again without the fit fields when an older Library refuses them", async () => {
+    const asked: unknown[] = [];
+    const refused = new Error("422");
+    const post = async (body: unknown): Promise<EligibilityList> => {
+      asked.push(body);
+      if ((body as { fit?: unknown }).fit) throw refused;
+      return { models: [] };
+    };
+    const engines = eligibilityEngines([engine({ fit: { kind: "spill" } })]);
+    await judge(post, { engines, fit: { contextLength: 8192 } }, (err) => err === refused);
+    expect(asked).toHaveLength(2);
+    expect(asked[1]).toEqual({ engines: [{ ...engines[0], fit: undefined }] });
+    expect("fit" in (asked[1] as { engines: object[] }).engines[0]!).toBe(false);
+  });
+
+  it("a failure that is not a refusal is not retried", async () => {
+    let calls = 0;
+    const post = async (): Promise<EligibilityList> => {
+      calls += 1;
+      throw new Error("down");
+    };
+    await expect(
+      judge(post, { engines: [], fit: { contextLength: 1 } }, () => false),
+    ).rejects.toThrow("down");
+    expect(calls).toBe(1);
   });
 });
