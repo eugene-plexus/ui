@@ -157,6 +157,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/run-operations/{id}/files/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepared File State
+         * @description What the library holds of one file of the preparation: whole (its
+         *     size and SHA-256), and what has arrived of a send not complete.
+         */
+        post: operations["prepared_file_state_v1_run_operations__id__files_state_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/run-operations/{id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Prepared File Chunk
+         * @description One chunk of a file of the preparation, at `offset`: what has arrived
+         *     so far, or 0 to start the file again (B104).
+         */
+        put: operations["prepared_file_chunk_v1_run_operations__id__files_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/run-operations/{id}/files/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepared File Complete
+         * @description Every byte is sent: checked against the size and SHA-256 the node
+         *     states, then under its own name. Again for a file in place: no change.
+         */
+        post: operations["prepared_file_complete_v1_run_operations__id__files_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1294,6 +1357,60 @@ export interface components {
             shared: boolean | null;
         };
         /**
+         * PreparedFileComplete
+         * @description Every byte of the file has been sent: check it, then put it in place.
+         */
+        PreparedFileComplete: {
+            /** Lease */
+            lease: string;
+            /**
+             * Path
+             * @description Where it goes, relative to the run's Library folder with `/` between folders: inside an engine's own folder at its top (`Strata-data/...`).
+             */
+            path: string;
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Sha256 */
+            sha256: string;
+        };
+        /**
+         * PreparedFileRequest
+         * @description A file of the prepared model, which the library writes itself (LS10):
+         *     the engine's node prepares it in a folder of its own and sends it.
+         */
+        PreparedFileRequest: {
+            /** Lease */
+            lease: string;
+            /**
+             * Path
+             * @description Where it goes, relative to the run's Library folder with `/` between folders: inside an engine's own folder at its top (`Strata-data/...`).
+             */
+            path: string;
+        };
+        /**
+         * PreparedFileState
+         * @description What the library holds at one path of a preparation.
+         */
+        PreparedFileState: {
+            /** Path */
+            path: string;
+            /**
+             * Sizebytes
+             * @description The whole file under its own name, when there is one.
+             */
+            sizeBytes?: number | null;
+            /**
+             * Sha256
+             * @description Its SHA-256, in hex.
+             */
+            sha256?: string | null;
+            /**
+             * Receivedbytes
+             * @description What has arrived of a send that is not complete yet.
+             */
+            receivedBytes: number;
+        };
+        /**
          * PreparedProvenance
          * @description The file `<name>.eugene-prepared.json` that makes an engine's
          *     prepared files a library model (`ModelFormat` `prepared`;
@@ -1963,6 +2080,120 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepared_file_state_v1_run_operations__id__files_state_post: {
+        parameters: {
+            query?: {
+                node?: string | null;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreparedFileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparedFileState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepared_file_chunk_v1_run_operations__id__files_put: {
+        parameters: {
+            query: {
+                path: string;
+                offset: number;
+                lease: string;
+                node?: string | null;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparedFileState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepared_file_complete_v1_run_operations__id__files_complete_post: {
+        parameters: {
+            query?: {
+                node?: string | null;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreparedFileComplete"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparedFileState"];
                 };
             };
             /** @description Validation Error */
