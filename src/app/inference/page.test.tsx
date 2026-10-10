@@ -32,8 +32,9 @@ import { checkVisibleCopy } from "@/lib/vocabulary";
 import InferencePage from "./page";
 
 let search = new URLSearchParams();
+const nav = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ replace: nav.replace, push: vi.fn(), refresh: vi.fn() }),
   usePathname: () => "/inference",
   useSearchParams: () => search,
 }));
@@ -969,5 +970,74 @@ describe("a served model's context window", () => {
     const row = await rowFor("gemma-3-27b");
     expect(row).toBeInTheDocument();
     expect(screen.queryByTestId("model-context")).toBeNull();
+  });
+});
+
+describe("why the gateway routes nothing to a row (2026-10-10)", () => {
+  function driver(over: Record<string, unknown>) {
+    handlers.set("GET gateway/v1/admin/drivers", () => ({
+      status: 200,
+      body: {
+        drivers: [
+          {
+            name: "gemma-a-driver",
+            runtime: "gemma-a",
+            url: "http://192.168.16.75:8093/",
+            ...over,
+          },
+        ],
+      },
+    }));
+  }
+
+  it("says the gateway cannot reach a runtime's driver, and why, on its row", async () => {
+    driver({
+      reachable: false,
+      error:
+        "no answer within 10 s connecting to 192.168.16.75:8093: the machine is off the " +
+        "network, or a firewall there is dropping connections to port 8093",
+    });
+    const row = await rowFor("gemma-3-27b");
+    expect(within(row).getByTestId("driver-unreachable")).toHaveTextContent(
+      "The gateway cannot reach its driver: no answer within 10 s connecting to 192.168.16.75:8093",
+    );
+  });
+
+  it("says what a driver that answers but serves nothing said", async () => {
+    driver({ reachable: true, error: "answers, but serves nothing: no backend configured" });
+    const row = await rowFor("gemma-3-27b");
+    expect(within(row).getByTestId("driver-error")).toHaveTextContent(
+      "Its driver answers, but serves nothing: no backend configured",
+    );
+  });
+});
+
+describe("a selection that is not here any more", () => {
+  it("says so instead of showing it", async () => {
+    search = new URLSearchParams("sel=driver:gone-driver@Amish_Station");
+    await rowFor("gemma-3-27b");
+    await waitFor(() =>
+      expect(screen.getByTestId("inference-scope")).toHaveTextContent(
+        "Nothing named gone-driver on Amish_Station is listed; showing Amish_Station.",
+      ),
+    );
+  });
+
+  it("moves to the machine when the selected backend is removed", async () => {
+    nav.replace.mockClear();
+    search = new URLSearchParams("sel=driver:gemma-a-driver@Amish_Station");
+    handlers.set("DELETE agent/v1/runtimes/gemma-a", () => ({ status: 204 }));
+    const row = await rowFor("gemma-3-27b");
+    await act(async () => {
+      within(row).getByTestId("remove-row").click();
+    });
+    await act(async () => {
+      within(row).getByTestId("remove-row-confirm").click();
+    });
+    await waitFor(() =>
+      expect(nav.replace).toHaveBeenCalledWith(
+        `/inference?sel=${encodeURIComponent("backends:node:Amish_Station")}`,
+      ),
+    );
   });
 });

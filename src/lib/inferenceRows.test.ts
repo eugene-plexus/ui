@@ -237,6 +237,48 @@ describe("buildRows joins and fallbacks", () => {
     expect(first(rows).model).toBe("Huihui-Qwen3.8-27B-abliterated-Q6_K_L");
   });
 
+  it("with the gateway's list missing, a placed companion is its runtime's row, not an external backend", () => {
+    // Troy's live install, 2026-10-10: the gateway's driver list failed,
+    // and Strata's driver read "external backend · runs on its own · no
+    // model reported" beside its own runtime, with a Remove of its own.
+    const runtime = "qwen3-8-flash-next-iq2-xs";
+    const rows = buildRows(
+      {
+        ...LIVE,
+        drivers: null,
+        routing: null,
+        placement: {
+          components: [
+            {
+              node: "Amish_Station",
+              name: `${runtime}-driver`,
+              kind: "inference-driver",
+              url: "http://127.0.0.1:8093/",
+              status: "running",
+            },
+          ],
+        },
+        runtimes: {
+          runtimes: [
+            {
+              node: "Amish_Station",
+              name: runtime,
+              modelAlias: "qwen3.8-flash-next-iq2_xs",
+              status: "ready",
+              engine: "strata",
+            },
+          ],
+        },
+      },
+      "Amish_Station",
+    );
+    expect(rows).toHaveLength(1);
+    expect(first(rows).runtime).toBe(runtime);
+    expect(first(rows).engine).toBe("strata");
+    expect(first(rows).runtimeStatus).toBe("ready");
+    expect(first(rows).model).toBe("qwen3.8-flash-next-iq2_xs");
+  });
+
   it("a driver named like another machine's runtime is not joined to it", () => {
     const rows = buildRows(
       {

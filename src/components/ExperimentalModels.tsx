@@ -41,13 +41,16 @@ export function ExperimentalModels({ node, rows }: { node: string | null; rows: 
   return (
     <div className="mt-3 space-y-2 text-sm">
       <p>
-        <strong>Strata · Experimental</strong> — text chat with prepared models. Memory fit is
-        unknown; tools, media and automatic model preparation are not supported yet. Add a prepared
-        model on the{" "}
+        <strong>Strata · Experimental</strong> — text chat with models prepared for it; tools and
+        media are not supported yet. Prepare one from a model&apos;s{" "}
         <Link href="/library" className="underline">
           Library
         </Link>{" "}
-        page (<em>add prepared model</em>), then Run it there.
+        page (<em>Prepare for Strata</em>), or download and prepare one from{" "}
+        <Link href="/discover" className="underline">
+          Discover
+        </Link>
+        .
       </p>
       {running.length > 0 && stopped.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">

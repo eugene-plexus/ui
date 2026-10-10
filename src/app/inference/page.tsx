@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -169,6 +169,7 @@ function InferencePageInner() {
   const localName = picker.nodes.find((n) => n.local)?.name ?? null;
   const contexts = useServedContexts();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const scope = useMemo(() => scopeOf(searchParams.get("sel")), [searchParams]);
 
   const [sources, setSources] = useState<Sources | null>(null);
@@ -341,6 +342,12 @@ function InferencePageInner() {
       } else if (row.driver) {
         await api.delete<void>(target, `/v1/components/${encodeURIComponent(row.driver)}`);
       }
+      // The page was showing what is now gone: show its machine instead,
+      // never "Showing <removed>" over the rest (2026-10-10).
+      if (scope?.driver && scope.driver === row.driver) {
+        const sel = formatSelection({ type: "backendsNode", node: row.node, name: null });
+        router.replace(`/inference?sel=${encodeURIComponent(sel)}`);
+      }
       await load();
     } catch (err) {
       failed("remove", row.runtime ?? row.driver ?? "this backend", row.node, err);
@@ -441,9 +448,11 @@ function InferencePageInner() {
         <div className="flex-1 space-y-6 overflow-y-auto p-4">
           {scope && (
             <p className="text-sm text-[color:var(--muted)]" data-testid="inference-scope">
-              {scope.driver
-                ? `Showing ${scope.driver}${scope.node ? ` on ${scope.node}` : ""}.`
-                : `Showing ${scope.node ?? localName ?? "this machine"} only.`}{" "}
+              {scope.driver && sources !== null && !rows.some((r) => r.driver === scope.driver)
+                ? `Nothing named ${scope.driver}${scope.node ? ` on ${scope.node}` : ""} is listed; showing ${scope.node ?? "everything"}.`
+                : scope.driver
+                  ? `Showing ${scope.driver}${scope.node ? ` on ${scope.node}` : ""}.`
+                  : `Showing ${scope.node ?? localName ?? "this machine"} only.`}{" "}
               <Link href="/inference?sel=backends" className="underline">
                 Show everything
               </Link>
@@ -865,9 +874,28 @@ function RowView({
             not routable: {row.ineligibleReason}
           </div>
         )}
+        {/* Why the gateway routes nothing here, in words, on a runtime's
+            row too: Strata's read only "ready" while its driver could not
+            be reached, and the reason sat in a tooltip (2026-10-10). */}
+        {row.reachable === false && (
+          <div
+            className="text-[0.6875rem]"
+            style={{ color: "var(--status-error-fg)" }}
+            data-testid="driver-unreachable"
+          >
+            {row.runtime
+              ? "The gateway cannot reach its driver: "
+              : "The gateway cannot reach it: "}
+            {row.error ?? "it did not say why"}
+          </div>
+        )}
         {row.error && row.reachable !== false && (
-          <div className="text-[0.6875rem]" style={{ color: "var(--status-error-fg)" }}>
-            {row.error}
+          <div
+            className="text-[0.6875rem]"
+            style={{ color: "var(--status-error-fg)" }}
+            data-testid="driver-error"
+          >
+            {row.runtime || row.error.startsWith("is ") ? `Its driver ${row.error}` : row.error}
           </div>
         )}
       </td>
@@ -1199,7 +1227,9 @@ function EnginesLine({
                 </button>
               </>
             ) : !e.available && reason ? (
-              <span title={reason}>(not installable here)</span>
+              // The reason in words, not a tooltip: "not installable here"
+              // alone says nothing to someone new (2026-10-10).
+              <span className="text-[color:var(--muted)]">({reason})</span>
             ) : null}
             {refused && (
               <span role="alert" className="text-status-error">

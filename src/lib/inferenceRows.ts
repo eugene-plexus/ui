@@ -194,23 +194,31 @@ export function buildRows(sources: Sources, localName: string | null): Row[] {
   // an operator is looking for when a model is missing from the list.
   for (const c of placedDrivers) {
     if (rows.some((r) => r.driver === c.name && r.node === c.node)) continue;
+    // A runtime's companion is its runtime's row here too: with the
+    // gateway's list missing, Strata's driver read as an "external
+    // backend… runs on its own" beside its own runtime, with a Remove
+    // that would have broken it (2026-10-10).
+    const runtimeName = companionOf(c.name, c.node);
+    const runtime = runtimeName ? runtimeFor(c.node, runtimeName) : null;
+    if (runtimeName) seenRuntimes.add(onNode(runtime?.node ?? c.node, runtimeName));
     rows.push({
       key: `placed:${c.node}/${c.name}`,
       node: c.node,
       driver: c.name,
-      model: null,
+      model: runtime?.model ?? null,
       backend: null,
       url: c.url ?? null,
-      runtime: null,
-      engine: null,
-      runtimeStatus: null,
+      runtime: runtimeName,
+      engine: runtime?.engine ?? null,
+      runtimeStatus: runtime?.status ?? null,
       stopReason: null,
       reachable: null,
       eligible: null,
       ineligibleReason: null,
       inFlight: null,
       idleSeconds: null,
-      error: c.status && c.status !== "running" ? `driver ${c.status}` : null,
+      // Said as the row says it: "Its driver is stopped" on a runtime's row.
+      error: c.status && c.status !== "running" ? `is ${c.status}` : null,
     });
   }
 
