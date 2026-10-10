@@ -1419,6 +1419,13 @@ export interface paths {
          *     The companion driver, if any, keeps running: it is cheap, and a
          *     driver that still answers `/v1/info` for a stopped engine is
          *     what lets the gateway keep listing an on-demand model.
+         *
+         *     **A stop for `operator` (or with no reason) is remembered across
+         *     agent restarts** (agent#11): the runtime stays stopped after an
+         *     update or a reboot, whatever its `autoStart`, until it is started
+         *     again. Before that, every runtime with `autoStart` came back, so
+         *     a model someone had stopped to free the GPU took it back at the
+         *     next boot. `idle` and `measurement` are not remembered.
          */
         post: operations["stopRuntime"];
         delete?: never;
@@ -1452,8 +1459,40 @@ export interface paths {
          *     Accepts the operator or a `gateway` service token, because the
          *     gateway is what starts a
          *     `startOnDemand` runtime when a request arrives for its model.
+         *
+         *     Any start forgets a remembered stop (`StopReason.operator`): this,
+         *     a restart, and an edit with `PATCH`.
          */
         post: operations["startRuntime"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runtimes/{name}/auto-start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Whether this runtime starts when the agent starts.
+         * @description Sets `autoStart` alone, without restarting the engine (agent#11).
+         *     `PATCH /v1/runtimes/{name}` replaces the whole declaration and
+         *     restarts the engine, because every other field is part of its
+         *     command line. This one is not part of it. A running engine keeps
+         *     running and a stopped one stays stopped. Only the next boot reads
+         *     the change.
+         *
+         *     The console's "Start when Eugene starts" on each runtime.
+         */
+        put: operations["setRuntimeAutoStart"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4202,7 +4241,10 @@ export interface components {
              * @description Whether the agent spawns this runtime at startup and
              *     respawns it on exit. False leaves it declared but
              *     `stopped`, which is how a rarely-used large model stays
-             *     configured without holding VRAM.
+             *     configured without holding VRAM. A runtime someone stopped
+             *     stays stopped at startup whatever this says
+             *     (`StopReason.operator`). `PUT /v1/runtimes/{name}/auto-start`
+             *     changes it without restarting the engine.
              * @default true
              */
             autoStart: boolean;
@@ -4770,8 +4812,15 @@ export interface components {
         StopRequest: {
             reason?: components["schemas"]["StopReason"];
         };
+        /** @description Body for `PUT /v1/runtimes/{name}/auto-start`. */
+        RuntimeAutoStart: {
+            /** @description Whether this runtime starts when the agent starts. */
+            autoStart: boolean;
+        };
         /**
          * @description * `operator` — an explicit stop, from the UI or the API.
+         *       Remembered across agent restarts: the runtime stays stopped,
+         *       whatever its `autoStart`, until something starts it.
          *     * `idle` — the gateway unloaded it after `idleUnloadSeconds`
          *       passed with no request for its model. It comes back on the
          *       next request if `startOnDemand` is set.
@@ -8758,6 +8807,33 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    setRuntimeAutoStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeAutoStart"];
+            };
+        };
+        responses: {
+            /** @description Saved. The runtime as it is now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Runtime"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
     previewEntryPoint: {

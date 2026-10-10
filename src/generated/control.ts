@@ -1779,79 +1779,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/oidc/job-sites/{site}/folders": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                site: components["schemas"]["SiteId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Register an existing folder on the person's own Job Site
-         * @description The site registers the folder itself (J6b): its host opens the folder,
-         *     records its identity, and offers it through its one file server by
-         *     its name, which must be unused on that machine (J6g). Nobody is
-         *     granted anything.
-         */
-        post: operations["addMyJobSiteFolder"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/oidc/job-sites/{site}/folders/{folder_id}/remove": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                site: components["schemas"]["SiteId"];
-                folder_id: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Remove a folder from the person's own Job Site */
-        post: operations["removeMyJobSiteFolder"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/oidc/job-sites/{site}/folders/{folder_id}/people": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                site: components["schemas"]["SiteId"];
-                folder_id: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Say who may use a folder on the person's own Job Site
-         * @description Replaces the folder's list of people, the site's owner included (J11:
-         *     the owner grants their own access too). People are named by how they
-         *     sign in. `writable` lets a person change files without asking each
-         *     time, a standing pre-approval for `write_text` and `edit_text`, and
-         *     cannot exceed the folder's. The site applies it to its own list and
-         *     answers with what it holds (J6b, J6g).
-         */
-        post: operations["grantMyJobSiteFolder"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/oidc/job-sites/{site}/servers/{server}/access": {
         parameters: {
             query?: never;
@@ -1866,8 +1793,8 @@ export interface paths {
         put?: never;
         /**
          * Say who may use which tools of one local server on the person's own Job Site
-         * @description For a local server only; folders are granted through
-         *     `/oidc/job-sites/{site}/folders/{folder_id}/people` (J6g). Replaces
+         * @description For a local server only; workspaces are shared through the site's
+         *     own workspace actions (2b.3b). Replaces
          *     the server's list of people, the site's owner included (J11: the
          *     owner grants their own access too). People are named by how they
          *     sign in. The site applies it to its own list and answers with what it
@@ -2679,13 +2606,6 @@ export interface components {
             rootKey: string;
             /** @description The sign-in name the machine will ask for. */
             owner: string;
-        };
-        JobSiteFolderCreate: {
-            refreshToken: string;
-            name: string;
-            path: string;
-            /** @default false */
-            writable: boolean;
         };
         JobSitePeopleRequest: {
             refreshToken: string;
@@ -5269,12 +5189,6 @@ export interface components {
             server: components["schemas"]["SiteServer"];
             people: components["schemas"]["JobSiteServerPerson"][];
         };
-        JobSitePersonGrant: {
-            /** @description How the person signs in. */
-            name: string;
-            /** @description May change files in the folder without asking each time. Cannot exceed the folder's own `writable`. */
-            writable: boolean;
-        };
         JobSitePersonTools: {
             /** @description How the person signs in. */
             name: string;
@@ -5389,6 +5303,12 @@ export interface components {
             name: string;
             read: components["schemas"]["SiteDecision"];
             change: components["schemas"]["SiteDecision"];
+        };
+        JobSitePersonGrant: {
+            /** @description How the person signs in. */
+            name: string;
+            /** @description May change files in the folder without asking each time. Cannot exceed the folder's own `writable`. */
+            writable: boolean;
         };
     };
     responses: {
@@ -7937,207 +7857,6 @@ export interface operations {
             };
             /** @description Authentication, current permission, state, or availability refused the request. */
             503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    addMyJobSiteFolder: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                site: components["schemas"]["SiteId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["JobSiteFolderCreate"];
-            };
-        };
-        responses: {
-            /** @description The folder, as the site recorded it, with nobody on its list. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobSiteFolder"];
-                };
-            };
-            /** @description The site holds the change until its owner approves it at the machine with their key (J14a). Nothing changed yet. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobSiteHeld"];
-                };
-            };
-            /** @description Authentication, current permission, state, or availability refused the request. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authentication, current permission, state, or availability refused the request. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authentication, current permission, state, or availability refused the request. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authentication, current permission, state, or availability refused the request. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authentication, current permission, state, or availability refused the request. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    removeMyJobSiteFolder: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                site: components["schemas"]["SiteId"];
-                folder_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["JobSiteRequest"];
-            };
-        };
-        responses: {
-            /** @description Removed, with every grant to it. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authentication, current permission, state, or availability refused the request. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authentication, current permission, state, or availability refused the request. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authentication, current permission, state, or availability refused the request. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authentication, current permission, state, or availability refused the request. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authentication, current permission, state, or availability refused the request. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    grantMyJobSiteFolder: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                site: components["schemas"]["SiteId"];
-                folder_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["JobSitePeopleRequest"];
-            };
-        };
-        responses: {
-            /** @description The folder and who may use it, as the site now holds them. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobSiteFolder"];
-                };
-            };
-            /** @description The site holds the change until its owner approves it at the machine with their key (J14a). Nothing changed yet. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobSiteHeld"];
-                };
-            };
-            /** @description Workbench client or person sign-in is invalid. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The person owns no such site, or it has no such folder, or no such person signs in. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The site refused it; `detail` says why in the site's words. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The site is offline, its file support is off, or it needs an update. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The site did not answer in time. */
-            504: {
                 headers: {
                     [name: string]: unknown;
                 };

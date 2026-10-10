@@ -1041,3 +1041,68 @@ describe("a selection that is not here any more", () => {
     );
   });
 });
+
+describe("a stop that outlives a reboot, and whether a model starts with Eugene (agent#11)", () => {
+  it("says why a runtime is stopped, in words", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: { runtimes: [nodeRuntime({ status: "stopped", stopReason: "operator" })] },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    await waitFor(() =>
+      expect(within(row).getByTestId("stop-reason")).toHaveTextContent(
+        "someone stopped it, and it stays stopped until it is started",
+      ),
+    );
+  });
+
+  it("saves Start when Eugene starts without restarting the model", async () => {
+    // The node's own read is slower than this screen: it still says true
+    // after the save, and the box shows what was saved.
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: { runtimes: [nodeRuntime({ autoStart: true })] },
+    }));
+    handlers.set("PUT agent/v1/runtimes/gemma-a/auto-start", () => ({
+      status: 200,
+      body: nodeRuntime({ autoStart: false }),
+    }));
+    const row = await rowFor("gemma-3-27b");
+    const box = (await within(row).findByTestId("auto-start")) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    await act(async () => {
+      fireEvent.click(box);
+    });
+    await waitFor(() => expect(box.checked).toBe(false));
+    const calls = vi.mocked(fetch).mock.calls.map(([input, init]) => ({
+      route: String(input),
+      method: init?.method ?? "GET",
+      body: init?.body,
+    }));
+    const put = calls.find((c) => c.method === "PUT");
+    expect(put?.route).toContain("agent/v1/runtimes/gemma-a/auto-start");
+    expect(JSON.parse(String(put?.body))).toEqual({ autoStart: false });
+    // Nothing was stopped, started or restarted to save it.
+    expect(calls.some((c) => c.method === "POST" && /\/(start|stop|restart)$/.test(c.route))).toBe(
+      false,
+    );
+  });
+
+  it("keeps the box as it was, and says why, when the node refuses", async () => {
+    handlers.set("PUT agent/v1/runtimes/gemma-a/auto-start", () => ({
+      status: 500,
+      body: { detail: "disk full" },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    const box = (await within(row).findByTestId("auto-start")) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(box);
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Could not change whether Eugene starts gemma-a/),
+      ).toBeInTheDocument(),
+    );
+    expect(box.checked).toBe(true);
+  });
+});

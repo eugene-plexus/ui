@@ -1558,6 +1558,12 @@ export interface paths {
          *     driver's `/v1/info`, in the order the operator configured
          *     them. Used by the UI to render dynamic per-driver tabs and by
          *     ops to confirm the topology.
+         *
+         *     Every driver is listed whatever it answered, each unreachable
+         *     or degraded one with its `error`; an empty topology is an empty
+         *     list. Until 2026-10-10 an all-unreachable topology was a 503,
+         *     and the console lost every driver's reason and every
+         *     companion's runtime with it.
          */
         get: operations["listDrivers"];
         put?: never;
@@ -2070,7 +2076,12 @@ export interface components {
              */
             runtime?: string;
             version?: string;
-            /** @description Populated when `reachable: false`. */
+            /**
+             * @description Why the gateway routes nothing to this driver, in words:
+             *     populated when `reachable: false` (never empty: a timeout
+             *     says so, with the address and port), and when the driver
+             *     answered but is degraded (its `/v1/info` `degraded`).
+             */
             error?: string;
         };
         ModelList: {
@@ -7946,7 +7957,7 @@ export interface operations {
                     "application/json": components["schemas"]["DriversInfo"];
                 };
             };
-            /** @description All configured drivers are unreachable. */
+            /** @description The gateway is starting up or in safe mode, so it has no routing table yet. */
             503: {
                 headers: {
                     [name: string]: unknown;

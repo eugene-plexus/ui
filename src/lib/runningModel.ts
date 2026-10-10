@@ -145,10 +145,17 @@ export function describeRunning(running: RunningModel, where: string): string {
  * operator stop is a decision to undo.
  */
 const STOP_REASON: Record<StopReason, string> = {
-  operator: "someone stopped it",
+  // Kept across an update or a reboot since agent#11, so the words say so.
+  operator: "someone stopped it, and it stays stopped until it is started",
   idle: "nothing asked for it, so the gateway unloaded it",
   autoStart: "it is set not to start on its own",
   // PB1: a benchmark or a profile build stopped it, with the person's
   // agreement, and starts it again when the job ends.
   measurement: "a test of this machine paused it, and it starts again when the test ends",
 };
+
+/** A stop reason in the page's words; null when there is none. */
+export function stopReasonWords(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  return STOP_REASON[reason as StopReason] ?? reason;
+}

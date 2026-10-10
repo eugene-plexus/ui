@@ -2218,6 +2218,16 @@ export interface components {
              *     by reading two components' configs side by side.
              */
             runtime?: string;
+            /**
+             * @description Set when the driver could not build its engine from its
+             *     configuration and so serves nothing: why, in the driver's own
+             *     words (the same text as `/healthz`'s `adapter_error`). Absent
+             *     when the engine is built. The gateway reports it as the
+             *     driver's `error`, so a driver that answers but routes nothing
+             *     says why on the Inference page (2026-10-10: every Strata
+             *     driver came up degraded and showed only *no model reported*).
+             */
+            degraded?: string;
             /** @description inference-driver semver. */
             version?: string;
         };

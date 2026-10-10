@@ -34,6 +34,7 @@ import { formatSelection, parseSelection } from "@/lib/resourceTree";
 import { useIssues } from "@/lib/useIssues";
 import { useServedContexts } from "@/lib/useServedContexts";
 import { usePolling } from "@/lib/usePolling";
+import { stopReasonWords } from "@/lib/runningModel";
 import { expertHint } from "@/lib/vocabulary";
 import type {
   ComponentPlacementList,
@@ -356,6 +357,26 @@ function InferencePageInner() {
     }
   }
 
+  /** agent#11: whether a runtime starts when Eugene does, saved without
+   * restarting it. True when the node saved it. */
+  async function setAutoStart(node: string | null, runtime: string, value: boolean) {
+    setBusy(`${node ?? ""}/${runtime}:autoStart`);
+    setActionError(null);
+    try {
+      await api.put(
+        targetFor(node, localName),
+        `/v1/runtimes/${encodeURIComponent(runtime)}/auto-start`,
+        { autoStart: value },
+      );
+      return true;
+    } catch (err) {
+      failed("change whether Eugene starts", runtime, node, err);
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function act(node: string | null, runtime: string, action: "start" | "stop" | "restart") {
     const key = `${node ?? ""}/${runtime}:${action}`;
     setBusy(key);
@@ -475,6 +496,7 @@ function InferencePageInner() {
               now={now}
               busy={busy}
               onAct={act}
+              onAutoStart={setAutoStart}
               onRemove={remove}
               contexts={contexts}
               marked={scope?.driver ?? null}
@@ -526,6 +548,7 @@ function NodeSection({
   now,
   busy,
   onAct,
+  onAutoStart,
   onRemove,
   contexts,
   marked,
@@ -540,6 +563,7 @@ function NodeSection({
   now: number;
   busy: string | null;
   onAct: (node: string | null, runtime: string, action: "start" | "stop" | "restart") => void;
+  onAutoStart: AutoStartHandler;
   onRemove: (row: Row) => void;
   /** Each served model's context window, said beside its name. */
   contexts: ContextLookup;
@@ -603,6 +627,7 @@ function NodeSection({
                   now={now}
                   busy={busy}
                   onAct={onAct}
+                  onAutoStart={onAutoStart}
                   onRemove={onRemove}
                   contexts={contexts}
                   marked={marked !== null && marked !== undefined && row.driver === marked}
@@ -616,6 +641,9 @@ function NodeSection({
   );
 }
 
+/** Saves whether a runtime starts when Eugene does; true when it did. */
+type AutoStartHandler = (node: string | null, runtime: string, value: boolean) => Promise<boolean>;
+
 function RowView({
   row,
   engines,
@@ -623,6 +651,7 @@ function RowView({
   now,
   busy,
   onAct,
+  onAutoStart,
   onRemove,
   contexts,
   marked,
@@ -639,6 +668,7 @@ function RowView({
   now: number;
   busy: string | null;
   onAct: (node: string | null, runtime: string, action: "start" | "stop" | "restart") => void;
+  onAutoStart: AutoStartHandler;
   onRemove: (row: Row) => void;
   /** Each served model's context window, said beside its name. */
   contexts: ContextLookup;
@@ -698,6 +728,20 @@ function RowView({
   const actionName = row.model ?? row.driver ?? row.runtime ?? "this backend";
   const missingEngine = stoppedForWantOfEngine(row, engines);
   const failure = runtimeFailure(row.runtimeStatus, own?.lastError);
+  // Why it is stopped, in words (agent#11: "someone stopped it" now
+  // outlives a reboot, and the row says so).
+  const stopReason =
+    status === "stopped" ? stopReasonWords(row.stopReason ?? own?.stopReason ?? null) : null;
+  // Whether it starts when Eugene does, once the node has said: the box
+  // never shows a guess. What was just saved is shown until the node's
+  // slower read catches up with it.
+  const autoStartNow = own ? own.autoStart !== false : null;
+  const [savedAutoStart, setSavedAutoStart] = useState<{
+    value: boolean;
+    over: boolean | null;
+  } | null>(null);
+  const autoStart =
+    savedAutoStart && savedAutoStart.over === autoStartNow ? savedAutoStart.value : autoStartNow;
   return (
     <tr
       className={`border-t border-[color:var(--border)] ${marked ? "bg-[color:var(--panel-hover)]" : ""}`}
@@ -756,8 +800,10 @@ function RowView({
             title={known ? STATUS_HELP[status as RuntimeStatus] : undefined}
           >
             {status}
-            {row.stopReason && (
-              <span className="ml-1 text-[color:var(--muted)]">({row.stopReason})</span>
+            {stopReason && (
+              <span className="ml-1 text-[color:var(--muted)]" data-testid="stop-reason">
+                — {stopReason}
+              </span>
             )}
           </span>
         ) : row.reachable === null ? (
@@ -868,6 +914,26 @@ function RowView({
               {failure || status === "stopped" ? "what its engine said" : "its log"}
             </Link>
           </div>
+        )}
+        {row.runtime && autoStart !== null && (
+          <label
+            className="mt-0.5 flex items-center gap-1 text-[0.6875rem] text-[color:var(--muted)]"
+            title="Whether it starts when Eugene starts, after an update or a reboot. A model you stop stays stopped either way, until you start it."
+          >
+            <input
+              type="checkbox"
+              checked={autoStart}
+              disabled={busy !== null}
+              data-testid="auto-start"
+              onChange={async (e) => {
+                const value = e.target.checked;
+                if (await onAutoStart(row.node, row.runtime as string, value)) {
+                  setSavedAutoStart({ value, over: autoStartNow });
+                }
+              }}
+            />
+            Start when Eugene starts
+          </label>
         )}
         {row.eligible === false && row.ineligibleReason && (
           <div className="text-[0.6875rem] text-[color:var(--muted)]">
