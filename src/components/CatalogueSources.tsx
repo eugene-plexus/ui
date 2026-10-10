@@ -126,6 +126,15 @@ export function CatalogueSourcesInput({
     update(next);
   }
 
+  /** Searches answer in the list's order, whatever a source's kind (LS7). */
+  function move(index: number, by: -1 | 1) {
+    const to = index + by;
+    if (to < 0 || to >= rows.length) return;
+    const next = [...rows];
+    [next[index], next[to]] = [next[to]!, next[index]!];
+    update(next);
+  }
+
   function add(kind: Kind) {
     const label = kind === "hf_hub" ? "Another hub" : "An engine's list";
     update([
@@ -158,6 +167,12 @@ export function CatalogueSourcesInput({
           No sources: Discover has nowhere to look. Add a hub, or an engine&rsquo;s list.
         </p>
       )}
+      {rows.length > 1 && (
+        <p className="text-xs text-[color:var(--muted)]">
+          Discover shows each source&rsquo;s results in this order: move one up to see its models
+          first.
+        </p>
+      )}
       {rows.map((row, index) => (
         <div
           key={row.id}
@@ -187,6 +202,26 @@ export function CatalogueSourcesInput({
             <span className="font-mono text-[0.6875rem] text-[color:var(--muted)]" title="Its id">
               {row.id}
             </span>
+            <button
+              type="button"
+              onClick={() => move(index, -1)}
+              disabled={pending || index === 0}
+              className={buttonClass}
+              aria-label={`Move ${row.label || row.id} up`}
+              title="Its results come before the source above it."
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              onClick={() => move(index, 1)}
+              disabled={pending || index === rows.length - 1}
+              className={buttonClass}
+              aria-label={`Move ${row.label || row.id} down`}
+              title="Its results come after the source below it."
+            >
+              ↓
+            </button>
             <button
               type="button"
               onClick={() => update(rows.filter((_, i) => i !== index))}

@@ -112,6 +112,18 @@ describe("catalogue sources", () => {
     expect(screen.getByTestId("source-another-hub")).toBeInTheDocument();
   });
 
+  it("moves a source up or down: Discover answers in the list's order (LS7)", () => {
+    const onChange = renderField();
+    expect(screen.getByRole("button", { name: "Move Hugging Face up" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move Engines' own lists down" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Move Engines' own lists up" }));
+    expect(lastSent(onChange).map((s) => s.id)).toEqual(["engines", "huggingface"]);
+    // The hub's saved token is not sent by moving it.
+    expect(lastSent(onChange)[1]).not.toHaveProperty("token");
+    fireEvent.click(screen.getByRole("button", { name: "Move Engines' own lists down" }));
+    expect(lastSent(onChange).map((s) => s.id)).toEqual(["huggingface", "engines"]);
+  });
+
   it("removes a source", () => {
     const onChange = renderField();
     fireEvent.click(screen.getAllByRole("button", { name: "remove" })[1]!);

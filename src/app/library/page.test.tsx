@@ -848,6 +848,12 @@ describe("prepared models are Library models (LS3)", () => {
       entry: "E:\\Strata\\strata-qwen.json",
       entryPath: "E:\\Strata\\strata-qwen.json",
       entryFound: false,
+      mode: "every expert in RAM",
+      files: [{ path: "mtp/rt/experts.bin", sizeBytes: 5_000_000_000, shared: true }],
+      missing: [
+        { fact: "source", reason: "it was added without naming the model it was made from" },
+        { fact: "contextLength", reason: "its provenance file does not record it" },
+      ],
     },
   };
   let listed: unknown[];
@@ -931,11 +937,34 @@ describe("prepared models are Library models (LS3)", () => {
     const detail = screen.getByTestId("model-eligibility");
     expect(detail).toHaveTextContent("Strata (experimental): runs it as it is");
     expect(screen.getByText("prepared outside Eugene")).toBeInTheDocument();
+    // What the Library knows of it, and what it cannot say, with why (LS7).
+    expect(screen.getByText(/every expert in RAM/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/1 file its engine.s other models in this folder use too/),
+    ).toHaveTextContent("(5.0 GB)");
+    expect(screen.getByTestId("prepared-missing-contextLength")).toHaveTextContent(
+      "not known: its provenance file does not record it",
+    );
+    expect(screen.queryByTestId("prepared-missing-source")).toBeNull();
+    expect(
+      screen.getByText(/not known: it was added without naming the model it was made from/),
+    ).toBeInTheDocument();
     expect(screen.getByText(/not on the Library.s machine/)).toBeInTheDocument();
     expect(gets.some((g) => g.startsWith("library/v1/models/qwen/fit"))).toBe(false);
   });
 
   it("adds one through the Library, then shows it", async () => {
+    // What Strata on the node reads off its file (LS7, B22 replaced and B26).
+    const READ = {
+      engine: "strata",
+      entry: "D:\\Models\\Strata-data\\strata-qwen.json",
+      source: { path: MODEL_PATH, repoId: "o/r", file: "q/x.gguf" },
+      title: "Qwen IQ2",
+      contextLength: 65536,
+      mode: "every expert in RAM",
+      files: [{ path: "strata-qwen.json", sizeBytes: 2 }],
+    };
+    handlers.set("POST agent/v1/engines/strata/prepared/inspect", () => ok(READ));
     handlers.set("POST library/v1/models/prepared", () => {
       const made = { ...PREPARED, id: "new", name: "strata-qwen" };
       listed = [...listed, made];
@@ -966,7 +995,14 @@ describe("prepared models are Library models (LS3)", () => {
         .getAllByRole("option")
         .map((o) => o.textContent),
     ).toEqual(["Not in the Library, or not known", "gemma-3-27b-it-Q6_K_L"]);
-    fireEvent.change(from, { target: { value: "gemma" } });
+    // Strata read its file: what it is, and the source it names, chosen.
+    expect(await within(form).findByTestId("prepared-read")).toHaveTextContent(
+      "Qwen IQ2 · 65,536 tokens of context · every expert in RAM",
+    );
+    expect(within(form).getByTestId("prepared-read")).toHaveTextContent(
+      "Made from gemma-3-27b-it-Q6_K_L",
+    );
+    expect(from).toHaveValue("gemma");
     await act(async () => {
       fireEvent.click(within(form).getByRole("button", { name: "Add model" }));
     });
@@ -974,11 +1010,7 @@ describe("prepared models are Library models (LS3)", () => {
     // Beside its entry, in the Library folder holding it.
     expect(bodies.get("POST library/v1/models/prepared")).toEqual({
       name: "strata-qwen",
-      provenance: {
-        engine: "strata",
-        entry: "D:\\Models\\Strata-data\\strata-qwen.json",
-        source: { path: MODEL_PATH },
-      },
+      provenance: READ,
     });
     // No runtime is posted straight to the node any more.
     expect(

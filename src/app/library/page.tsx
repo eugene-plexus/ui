@@ -424,6 +424,7 @@ function LibraryPageInner() {
             {adding ? (
               <AddPreparedModel
                 engines={engines}
+                target={target}
                 models={models ?? []}
                 eligibility={eligibility}
                 where={picker.selected?.name ?? "this machine"}
@@ -1523,13 +1524,19 @@ function Facts({ model }: { model: LibraryModel }) {
           {/* The model's trained context, not what an engine will serve
               — that depends on the launch flags and is reported on the
               runtime. Showing only one of the two tells a comfortable
-              lie. */}
-          <span
-            className="ml-2 text-[color:var(--muted)]"
-            title="The runtime's contextSize sets the context used when serving."
-          >
-            as trained; your launch settings decide
-          </span>
+              lie. A prepared model's is the one it was prepared for. */}
+          {model.format === "prepared" ? (
+            <span className="ml-2 text-[color:var(--muted)]">
+              as prepared; preparing it again changes it
+            </span>
+          ) : (
+            <span
+              className="ml-2 text-[color:var(--muted)]"
+              title="The runtime's contextSize sets the context used when serving."
+            >
+              as trained; your launch settings decide
+            </span>
+          )}
         </Row>
       )}
 
@@ -1553,6 +1560,11 @@ function Facts({ model }: { model: LibraryModel }) {
           </span>{" "}
           across {model.fileCount ?? 1} file
           {(model.fileCount ?? 1) === 1 ? "" : "s"}
+          {model.format === "prepared" && (
+            <span className="ml-2 text-[color:var(--muted)]">
+              its own files; the model it was made from is counted there
+            </span>
+          )}
         </Row>
       )}
 
@@ -1592,13 +1604,46 @@ function Facts({ model }: { model: LibraryModel }) {
   );
 }
 
-/** What a prepared model's provenance file says (LS3). */
+/** A fact a prepared model may lack, as the page names it. */
+const PREPARED_FACT_WORDS: Record<string, string> = {
+  architecture: "architecture",
+  contextLength: "context",
+  diskBytes: "on disk",
+  files: "its files",
+  source: "made from",
+};
+
+/** What a prepared model's provenance file says (LS3), and since LS7 what
+ * the Library knows of it and what it cannot say, with why. */
 function PreparedFacts({ model, prepared }: { model: LibraryModel; prepared: PreparedDetail }) {
   const source = prepared.source;
   const repo = source?.repoId ? [source.repoId, source.file].filter(Boolean).join(" · ") : null;
+  const shared = (prepared.files ?? []).filter((f) => f.shared);
   return (
     <>
       <Row label="prepared for">{engineLabel(prepared.engine)}</Row>
+      {prepared.mode && (
+        <Row label="runs with">
+          {prepared.mode}
+          <span className="ml-2 text-[color:var(--muted)]">on the machine that prepared it</span>
+        </Row>
+      )}
+      {shared.length > 0 && (
+        <Row label="shared files">
+          {shared.length} file{shared.length === 1 ? "" : "s"} its engine&rsquo;s other models in
+          this folder use too (
+          {formatBytesShort(shared.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0))})
+        </Row>
+      )}
+      {(prepared.missing ?? [])
+        .filter((m) => m.fact !== "source")
+        .map((m) => (
+          <Row key={m.fact} label={PREPARED_FACT_WORDS[m.fact] ?? m.fact}>
+            <span data-testid={`prepared-missing-${m.fact}`} className="text-[color:var(--muted)]">
+              not known: {m.reason}
+            </span>
+          </Row>
+        ))}
       <Row label="entry file">
         <span className="font-mono text-[0.625rem] break-all">
           {prepared.entryPath ?? prepared.entry}
@@ -1623,7 +1668,9 @@ function PreparedFacts({ model, prepared }: { model: LibraryModel; prepared: Pre
             {source?.path ?? prepared.sourceModelId}
           </Link>
         ) : (
-          (repo ?? source?.path ?? "not known")
+          (repo ??
+          source?.path ??
+          `not known: ${prepared.missing?.find((m) => m.fact === "source")?.reason ?? "it names none"}`)
         )}
       </Row>
       <Row label="provenance">

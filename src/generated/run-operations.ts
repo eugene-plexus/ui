@@ -1199,13 +1199,19 @@ export interface components {
          *     (`PreparedProvenance`) says it, and what the library made of it.
          *     Present iff `format` is `prepared` and the file could be read.
          *
-         *     The engine's own files are not read (experimental-engines.md:
-         *     prepared files stay usable without the library parsing them), so
-         *     a prepared model has no architecture, context, size or fit here:
-         *     the engine says what it loaded when it is ready
-         *     (`RuntimeCapabilities`), and fit waits for the engine's own fit
-         *     model (LS6). `files` lists the provenance file (`index`) and the
-         *     entry file (`config`) when the library's host can see it.
+         *     The library does not read the engine's own files
+         *     (experimental-engines.md: prepared files stay usable without the
+         *     library parsing them). What it knows of a prepared model (LS7,
+         *     B22 replaced: the Library imparts what is known and names what is
+         *     not) is what the engine's adapter read off those files when it
+         *     was prepared or added and the provenance file records (`title`,
+         *     `contextLength`, `mode`, `files`), measured on this host; what it
+         *     inherits from the model it was made from when the library lists
+         *     that (`LibraryModel.architecture`, `parameters`, `sizeLabel`);
+         *     and in `missing`, each fact it cannot give, with why. Fit is the
+         *     engine's own (LS6). `LibraryModel.files` lists the provenance
+         *     file (`index`), the entry file (`config`) and the files it
+         *     records, and `LibraryModel.sizeBytes` is `diskBytes`.
          */
         PreparedDetail: {
             engine: components["schemas"]["EngineKind"];
@@ -1249,6 +1255,73 @@ export interface components {
             sourceModelId?: string | null;
             /** Preparedat */
             preparedAt?: string | null;
+            /**
+             * Title
+             * @description From the provenance file (LS7).
+             */
+            title?: string | null;
+            /**
+             * Contextlength
+             * @description The context it was prepared for, from the provenance file (LS7).
+             */
+            contextLength?: number | null;
+            /**
+             * Mode
+             * @description How the engine runs it, in the engine's words, from the provenance file (LS7).
+             */
+            mode?: string | null;
+            /**
+             * Files
+             * @description The files it is made of beside its source model, each measured
+             *     on this host where the Library sees it (LS7).
+             */
+            files?: components["schemas"]["PreparedFile"][] | null;
+            /**
+             * Diskbytes
+             * @description What its own files take on disk, the shared ones counted too,
+             *     measured on this host (LS7). Absent when they are not on the
+             *     Library's machine.
+             */
+            diskBytes?: number | null;
+            /**
+             * Missing
+             * @description Each fact the Library could not give, and why (LS7, Troy: the
+             *     Library imparts what is known, and names what is not).
+             */
+            missing?: components["schemas"]["PreparedFactMissing"][] | null;
+        };
+        /**
+         * PreparedFactMissing
+         * @description A fact about a prepared model the Library could not give, and why.
+         */
+        PreparedFactMissing: {
+            /**
+             * Fact
+             * @description Which (`architecture`, `contextLength`, `diskBytes`, `source`, ...).
+             */
+            fact: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * PreparedFile
+         * @description One file a prepared model is made of (LS7).
+         */
+        PreparedFile: {
+            /**
+             * Path
+             * @description Relative to the folder holding the provenance file, with `/`.
+             */
+            path: string;
+            /** Sizebytes */
+            sizeBytes?: number | null;
+            /**
+             * Shared
+             * @description Used by other models the same engine prepared in this folder too
+             *     (Strata's MTP helper): kept while any of them is.
+             * @default false
+             */
+            shared: boolean | null;
         };
         /**
          * PreparedProvenance
@@ -1309,6 +1382,46 @@ export interface components {
              * @description When this file was written.
              */
             preparedAt?: string | null;
+            /**
+             * Title
+             * @description What it is, in the engine's list's words when it came from the
+             *     list (`SupportedModel.title`), e.g. `Qwen3.8-Flash-Next IQ2_XS`
+             *     (LS7, B22 replaced).
+             */
+            title?: string | null;
+            /**
+             * Architecture
+             * @description The architecture of the model it was made from, as the hub or
+             *     the source file read it (`qwen4exp`): kept for when the source
+             *     model is no longer in the Library.
+             */
+            architecture?: string | null;
+            /**
+             * Quantization
+             * @description The engine's name for the size it was made from, e.g. `IQ2_XS`.
+             */
+            quantization?: string | null;
+            /**
+             * Contextlength
+             * @description The context, in tokens, it was prepared for: an engine that fixes
+             *     the context when it prepares (Strata's `--max-context`).
+             */
+            contextLength?: number | null;
+            /**
+             * Mode
+             * @description How the engine runs it on the node that prepared it, in the
+             *     engine's own words (Strata: *every expert in RAM*, *a RAM budget
+             *     of its experts, the rest from the SSD*, *the low-RAM mode*).
+             */
+            mode?: string | null;
+            /**
+             * Files
+             * @description Every file the model is made of beside its source model and
+             *     this provenance file, the entry first, as the engine's adapter
+             *     read them off its entry file: what is the model's own on disk.
+             *     The source model's files are its own model's, not listed.
+             */
+            files?: components["schemas"]["PreparedFile"][] | null;
         } & {
             [key: string]: unknown;
         };

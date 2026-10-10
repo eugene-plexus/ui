@@ -84,6 +84,23 @@ describe("PrepareControl", () => {
     fireEvent.click(screen.getByTestId("prepare-start"));
     expect(start).not.toHaveBeenCalled();
   });
+
+  it("says the node's engine is too old to prepare it, and how to fix that (B30)", () => {
+    const start = vi.fn(() => "x");
+    const old: SupportedModel = {
+      ...ENTRY,
+      preparation: { ...ENTRY.preparation!, minEngineVersion: "v0.1.38", engineTooOld: "v0.1.37" },
+    };
+    render(
+      <PrepareControl engine="strata" entry={old} node={NODE} where="amish" onStart={start} />,
+    );
+    expect(screen.getByTestId("prepare-engine-too-old")).toHaveTextContent(
+      "This needs Strata v0.1.38 or newer, and amish has v0.1.37: update Strata on amish from Backends first.",
+    );
+    expect(screen.getByTestId("prepare-start")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("prepare-start"));
+    expect(start).not.toHaveBeenCalled();
+  });
 });
 
 describe("entryForFile", () => {

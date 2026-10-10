@@ -637,6 +637,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/engines/{engine}/prepared/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engine: components["schemas"]["EngineKind"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What a model this engine prepared is, read off the engine's own files.
+         * @description For *Add a prepared model* (LS7, B22 replaced and B26): the
+         *     engine's adapter reads its own entry file (Strata's JSON
+         *     configuration) as this node reaches it and answers what the
+         *     provenance file should record: the source model it names (its
+         *     GGUF), the context it was prepared for, how the engine runs it,
+         *     and every file it is made of. The engine's format stays the
+         *     adapter's knowledge (B2): the console relays the answer to the
+         *     Library. 422, naming why, when the file is not one this engine
+         *     prepared or cannot be read.
+         */
+        post: operations["inspectPreparedModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/engines/{engine}/install": {
         parameters: {
             query?: never;
@@ -4542,6 +4572,14 @@ export interface components {
              */
             source: "windows_io_counters" | "proc_io_rchar" | "rusage_diskio";
         };
+        PreparedInspectRequest: {
+            /**
+             * @description The engine's entry file, as the Library spells it (a path in a
+             *     Library folder); the agent reaches it through this node's path
+             *     mappings.
+             */
+            entry: string;
+        };
         /**
          * @description How far into copying a model file to this node's own disk the
          *     agent is (`docs/design/node-local-model-copy.md`). Present
@@ -5970,6 +6008,20 @@ export interface components {
              *     Absent: the preparation takes no context.
              */
             contexts?: number[];
+            /**
+             * @description The oldest version of the engine that prepares this model, as
+             *     the engine's own setup states it (LS7, B30): e.g. Strata's
+             *     `v0.1.38` for UD-IQ4_XS. Absent: any version the adapter runs.
+             */
+            minEngineVersion?: string;
+            /**
+             * @description Set by the node that reported it when its installed engine is
+             *     older than `minEngineVersion` (LS7, B30): the installed
+             *     version, so the console says *needs Strata vX: update Strata on
+             *     this node* before a preparation would fail halfway. Absent: the
+             *     installed engine can prepare it, or none is installed.
+             */
+            engineTooOld?: string;
         };
         /**
          * @description Who can say a match will load. Absent means `eugene`. `eugene`:
@@ -6623,6 +6675,103 @@ export interface components {
             categories?: {
                 [key: string]: string;
             };
+        };
+        /** @description One file a prepared model is made of (LS7). */
+        PreparedFile: {
+            /** @description Relative to the folder holding the provenance file, with `/`. */
+            path: string;
+            sizeBytes?: number;
+            /**
+             * @description Used by other models the same engine prepared in this folder too
+             *     (Strata's MTP helper): kept while any of them is.
+             * @default false
+             */
+            shared: boolean;
+        };
+        /**
+         * @description The file `<name>.eugene-prepared.json` that makes an engine's
+         *     prepared files a library model (`ModelFormat` `prepared`;
+         *     library-sources-and-engines.md §4.5, Troy's L6). A plain JSON
+         *     file in a Library folder, in the person's own layout like every
+         *     other model file, and the prepared model's `LibraryModel.path`.
+         *
+         *     Written by the library's `POST /v1/models/prepared` when a person
+         *     adopts a model prepared outside Eugene, and by a preparation job
+         *     (LS5). Read by the library's scan, which lists a `prepared` model
+         *     from it, and by the agent at every launch, which hands the engine
+         *     its entry file. Nothing reads the engine's own files beyond what
+         *     launching them needs: they stay usable without the library
+         *     parsing them (experimental-engines.md).
+         *
+         *     A reader keeps and ignores fields it does not know, so a newer
+         *     Eugene can add some; a `formatVersion` above the one it knows
+         *     means the file was written by a newer Eugene, and the model is
+         *     listed as unreadable rather than guessed at.
+         */
+        PreparedProvenance: {
+            /** @description The layout of this file. Absent means 1, the only one so far. */
+            formatVersion?: number;
+            /** @description The engine it was prepared for. Only that engine loads it. */
+            engine: components["schemas"]["EngineKind"];
+            /**
+             * @description The engine's own entry file: for Strata, its JSON
+             *     configuration, which names the pack, tokenizer and MTP files.
+             *     Relative to the folder holding this file, or absolute. A
+             *     relative entry travels with the folder (through a node's
+             *     `pathMappings`, like any model path); an absolute one is a
+             *     path on the node that runs the model, used as written,
+             *     because an engine's prepared files belong on that node's own
+             *     fast drive.
+             */
+            entry: string;
+            /**
+             * @description The preparation that made it (`ModelPreparation.recipe`, e.g.
+             *     `strata-prepare`). Absent: it was made outside Eugene and
+             *     adopted as it is.
+             */
+            recipe?: string;
+            /** @description The recipe's or engine's version that made it, e.g. Strata `v0.1.39`. */
+            recipeVersion?: string;
+            source?: components["schemas"]["PreparedSource"];
+            /**
+             * Format: date-time
+             * @description When this file was written.
+             */
+            preparedAt?: string;
+            /**
+             * @description What it is, in the engine's list's words when it came from the
+             *     list (`SupportedModel.title`), e.g. `Qwen3.8-Flash-Next IQ2_XS`
+             *     (LS7, B22 replaced).
+             */
+            title?: string;
+            /**
+             * @description The architecture of the model it was made from, as the hub or
+             *     the source file read it (`qwen4exp`): kept for when the source
+             *     model is no longer in the Library.
+             */
+            architecture?: string;
+            /** @description The engine's name for the size it was made from, e.g. `IQ2_XS`. */
+            quantization?: string;
+            /**
+             * @description The context, in tokens, it was prepared for: an engine that fixes
+             *     the context when it prepares (Strata's `--max-context`).
+             */
+            contextLength?: number;
+            /**
+             * @description How the engine runs it on the node that prepared it, in the
+             *     engine's own words (Strata: *every expert in RAM*, *a RAM budget
+             *     of its experts, the rest from the SSD*, *the low-RAM mode*).
+             */
+            mode?: string;
+            /**
+             * @description Every file the model is made of beside its source model and
+             *     this provenance file, the entry first, as the engine's adapter
+             *     read them off its entry file: what is the model's own on disk.
+             *     The source model's files are its own model's, not listed.
+             */
+            files?: components["schemas"]["PreparedFile"][];
+        } & {
+            [key: string]: unknown;
         };
         /**
          * @description Current effective config values, keyed by `ConfigField.key`: a
@@ -7639,6 +7788,39 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    inspectPreparedModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engine: components["schemas"]["EngineKind"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreparedInspectRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description A draft of the provenance file: `entry` as given; `source.path`
+             *     as the Library spells it (the source file's place beside the
+             *     entry on this node, applied to the entry); `files` relative to
+             *     the entry's folder.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparedProvenance"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
     getEngineInstall: {

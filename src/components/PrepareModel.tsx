@@ -55,7 +55,13 @@ export function PrepareControl({
     if (!node) return;
     setRunId(onStart({ engine, contextSize: context }));
   };
-  const disabled = !node || busy || disabledReason !== null;
+  // The node judges its own install (LS7, B30): said before a preparation
+  // would fail halfway, with the fix.
+  const tooOld = preparation?.engineTooOld
+    ? `This needs ${name} ${preparation.minEngineVersion ?? "a newer version"} or newer, and ${where} has ${preparation.engineTooOld}: update ${name} on ${where} from Backends first.`
+    : null;
+  const blocked = disabledReason ?? tooOld;
+  const disabled = !node || busy || blocked !== null;
 
   return (
     <section
@@ -105,7 +111,7 @@ export function PrepareControl({
           type="button"
           onClick={start}
           disabled={disabled}
-          title={disabledReason ?? undefined}
+          title={blocked ?? undefined}
           data-testid="prepare-start"
           className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -117,6 +123,11 @@ export function PrepareControl({
         </button>
         {disabledReason && (
           <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">{disabledReason}</p>
+        )}
+        {tooOld && (
+          <p data-testid="prepare-engine-too-old" className="status-warn mt-1 px-1 text-xs">
+            {tooOld}
+          </p>
         )}
       </div>
       {task && <RunStatus task={task} onRetry={start} />}
