@@ -1521,3 +1521,18 @@ describe("a routing choice nothing serves", () => {
     expect(issues[0]!.href).toBe("/routing?sel=gateway");
   });
 });
+
+describe("describeCopying a model of several files (LS7)", () => {
+  it("says how many files are whole so far", () => {
+    const line = describeCopying({
+      status: "copying",
+      copyProgress: { bytesCopied: 50, totalBytes: 100, files: 10, filesCopied: 3 },
+    });
+    expect(line?.text).toContain("3 of 10 files");
+    const one = describeCopying({
+      status: "copying",
+      copyProgress: { bytesCopied: 50, totalBytes: 100, files: 1, filesCopied: 0 },
+    });
+    expect(one?.text).not.toContain("files");
+  });
+});

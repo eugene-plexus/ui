@@ -106,6 +106,10 @@ export function AddPreparedModel({
   }, []);
 
   const holder = folders ? folderHolding(entry, folders) : null;
+  // The Library is the home of a model's files (Troy, LS7): an engine's
+  // files outside every Library folder are moved in first, never adopted
+  // from one node's own disk.
+  const outside = entry.trim() !== "" && folders !== null && holder === null;
   // Beside the entry when it is in a Library folder, else the first folder,
   // until the person chooses.
   const chosenFolder = folder ?? (holder ? BESIDE : (folders?.[0] ?? BESIDE));
@@ -168,9 +172,10 @@ export function AddPreparedModel({
       <div>
         <h2 className="text-base font-medium">Add a prepared model</h2>
         <p className="mt-1 text-[color:var(--muted)]">
-          A model an engine prepared for itself, such as one made by Strata&rsquo;s setup. The
-          Library keeps one small file about it in a Library folder; the engine&rsquo;s own files
-          stay where they are. It then has profiles and Run like any other model.
+          A model an engine prepared for itself, such as one made by Strata&rsquo;s setup. Its files
+          must already be in a Library folder: the Library is their home, so any machine can run it
+          and nothing is lost with one. The Library keeps one small file about it beside them, and
+          it then has profiles and Run like any other model.
         </p>
       </div>
 
@@ -257,6 +262,16 @@ export function AddPreparedModel({
         </select>
       </label>
 
+      {outside && (
+        <p
+          data-testid="prepared-outside"
+          className="status-warn rounded-[var(--radius)] border px-3 py-2"
+        >
+          This file is not in a Library folder. Move the engine&rsquo;s folder into one first, then
+          choose its file there.
+        </p>
+      )}
+
       {error && (
         <p role="alert" className="status-error rounded-[var(--radius)] border px-3 py-2">
           {error}
@@ -266,7 +281,7 @@ export function AddPreparedModel({
       <div className="flex gap-3">
         <button
           type="submit"
-          disabled={busy || folders === null}
+          disabled={busy || folders === null || outside}
           className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)]"
         >
           {busy ? "Adding…" : "Add model"}

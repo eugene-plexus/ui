@@ -945,9 +945,18 @@ describe("prepared models are Library models (LS3)", () => {
     await screen.findByTestId("model-fit");
     fireEvent.click(screen.getByRole("button", { name: "add prepared model" }));
     const form = await screen.findByTestId("add-prepared");
+    // Outside every Library folder (LS7, Troy's principle): said, and not sent.
     fireEvent.change(within(form).getByLabelText(/configuration file/), {
       target: { value: "E:\\Strata\\strata-qwen.json" },
     });
+    expect(within(form).getByTestId("prepared-outside")).toHaveTextContent(
+      "not in a Library folder",
+    );
+    expect(within(form).getByRole("button", { name: "Add model" })).toBeDisabled();
+    fireEvent.change(within(form).getByLabelText(/configuration file/), {
+      target: { value: "D:\\Models\\Strata-data\\strata-qwen.json" },
+    });
+    expect(within(form).queryByTestId("prepared-outside")).toBeNull();
     // Named for its file, as a GGUF is.
     expect(within(form).getByLabelText(/^Name/)).toHaveValue("strata-qwen");
     // Only what Strata prepares from is offered as its source.
@@ -962,12 +971,12 @@ describe("prepared models are Library models (LS3)", () => {
       fireEvent.click(within(form).getByRole("button", { name: "Add model" }));
     });
     await waitFor(() => expect(posted).toContain("POST library/v1/models/prepared"));
+    // Beside its entry, in the Library folder holding it.
     expect(bodies.get("POST library/v1/models/prepared")).toEqual({
       name: "strata-qwen",
-      root: "D:\\Models",
       provenance: {
         engine: "strata",
-        entry: "E:\\Strata\\strata-qwen.json",
+        entry: "D:\\Models\\Strata-data\\strata-qwen.json",
         source: { path: MODEL_PATH },
       },
     });

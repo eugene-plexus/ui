@@ -1164,6 +1164,8 @@ export function describeCopying(runtime: {
     totalBytes?: number | null;
     bytesPerSecond?: number | null;
     destination?: string | null;
+    files?: number | null;
+    filesCopied?: number | null;
   } | null;
 }): LoadingDescription | null {
   if (runtime.status !== "copying") return null;
@@ -1185,6 +1187,11 @@ export function describeCopying(runtime: {
   const parts: string[] = [
     total ? `${formatBytes(copied)} of ${formatBytes(total)}` : `${formatBytes(copied)} copied`,
   ];
+  // A model of several files (a split GGUF, a prepared model's set, LS7)
+  // says how many are whole so far.
+  if (typeof progress.files === "number" && progress.files > 1) {
+    parts.push(`${progress.filesCopied ?? 0} of ${progress.files} files`);
+  }
   if (rate) parts.push(`${formatBytes(rate)}/s`);
   if (total && rate) {
     const left = (total - copied) / rate;
