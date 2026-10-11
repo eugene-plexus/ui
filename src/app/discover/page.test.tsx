@@ -1200,3 +1200,76 @@ describe("the machine line", () => {
     expect(text).toContain("NVIDIA GeForce RTX 5090 · 29.6 GiB free of 31.8 GiB");
   });
 });
+
+/**
+ * MR3: the Search models shelf on Discover's empty pane.
+ *
+ * Not a chat model, so not in the starter set: the three files an app that searches a
+ * person's documents needs. Opening one selects its repo in place, as the starter
+ * set's "See the versions" does, because this page reads `?repo=` only when it
+ * loads and a link to itself would do nothing.
+ */
+describe("the Search models shelf (MR3)", () => {
+  beforeEach(() => {
+    handlers.set("GET library/v1/catalogue/starter", () =>
+      ok({ reviewed: "2026-09-16", reviewedDaysAgo: 0, source: "shipped", models: [] }),
+    );
+  });
+
+  it("is on the empty pane, with the three models", async () => {
+    render(<DiscoverPage />);
+    const shelf = await screen.findByTestId("search-models-shelf", {}, { timeout: 5000 });
+    expect(within(shelf).getAllByRole("listitem")).toHaveLength(3);
+    expect(shelf).toHaveTextContent("Qwen3-Embedding-0.6B");
+    expect(shelf).toHaveTextContent("Qwen3-Reranker-0.6B");
+  });
+
+  it("opens a suggested repo here: asks the catalogue for it and writes ?repo= to the URL", async () => {
+    handlers.set("GET library/v1/catalogue/model", (params) =>
+      ok({
+        ...modelBody(Number(params.get("contextLength"))),
+        repo: params.get("repo"),
+        name: "Qwen3-Embedding-0.6B-GGUF",
+      }),
+    );
+    render(<DiscoverPage />);
+    const open = await screen.findByTestId(
+      "search-model-open-qwen3-embedding",
+      {},
+      { timeout: 5000 },
+    );
+    await act(async () => {
+      fireEvent.click(open);
+    });
+    await waitFor(() =>
+      expect(lastQuery("library/v1/catalogue/model").get("repo")).toBe(
+        "Qwen/Qwen3-Embedding-0.6B-GGUF",
+      ),
+    );
+    await waitFor(() =>
+      expect(nav.replace).toHaveBeenCalledWith(
+        `/discover?repo=${encodeURIComponent("Qwen/Qwen3-Embedding-0.6B-GGUF")}`,
+        { scroll: false },
+      ),
+    );
+    // The shelf was for the empty pane; the repo's own page has taken its place.
+    expect(screen.queryByTestId("search-models-shelf")).toBeNull();
+  });
+
+  it("opens the sorter's own repo, which is the only copy that scores right", async () => {
+    render(<DiscoverPage />);
+    const open = await screen.findByTestId(
+      "search-model-open-qwen3-reranker",
+      {},
+      { timeout: 5000 },
+    );
+    await act(async () => {
+      fireEvent.click(open);
+    });
+    await waitFor(() =>
+      expect(lastQuery("library/v1/catalogue/model").get("repo")).toBe(
+        "ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF",
+      ),
+    );
+  });
+});

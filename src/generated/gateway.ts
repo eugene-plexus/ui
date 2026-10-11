@@ -1469,6 +1469,21 @@ export interface paths {
          *     little-endian `float32`, then base64, verified byte-for-byte
          *     against a real backend's own output rather than inferred from
          *     the OpenAI documentation.
+         *
+         *     **`dimensions` and `user` are accepted and ignored, and the
+         *     answer says so** (MR0, 2026-10-11). Neither reaches a backend --
+         *     the driver's `EmbedRequest` has no field for either -- and this
+         *     layer does not emulate `dimensions`, because a silently
+         *     truncated vector is a wrong answer that looks like a right one.
+         *     A request that carries either is answered with
+         *     `x-eugene-plexus-ignored-settings` naming each one it sent, in
+         *     this order (`dimensions, user`), as the other doors name what
+         *     they do not honour. A request that carries neither gets no such
+         *     header, and a JSON `null` is not a setting. The vectors come
+         *     back at the model's own width whatever was asked, so read the
+         *     width off them. Until 2026-10-11 the request schema called
+         *     `dimensions` "passed through" and `user` "recorded"; the code
+         *     dropped both without a word.
          */
         post: operations["createEmbedding"];
         delete?: never;
@@ -2187,11 +2202,37 @@ export interface components {
              *     error. This install knows, because the driver determines it
              *     from the backend, so it says.
              *
-             *     **Measured, not assumed, and the two are not always
-             *     disjoint**: an Ollama runner started for chat refuses to
-             *     embed, `nomic-embed-text` refuses to chat -- but
-             *     `llama-server` given `--embedding` still serves chat
-             *     perfectly well. Hence a list.
+             *     **Embeddings and chat are disjoint on every engine measured.**
+             *     An Ollama runner started for chat refuses to embed and
+             *     `nomic-embed-text` refuses to chat. A `llama-server` started
+             *     with `--embedding` answers `/v1/chat/completions` and
+             *     `/v1/completions` with a 500, and one started without it
+             *     answers `/v1/embeddings` with a 501 naming the flag (builds
+             *     b10948 and b11552, measured 2026-10-11). So a single-model
+             *     driver reports `embeddings` or `chat`, never both. Until
+             *     2026-10-11 this text said `llama-server --embedding` "still
+             *     serves chat perfectly well". That was recorded on 2026-09-12
+             *     and had stopped reproducing by 2026-09-16 (b10948). The
+             *     surfaces are a list for other reasons: a chat model also
+             *     carries `completion` where a local engine continues raw text
+             *     and `transcription` where its projector hears, and an
+             *     account's image-and-text model carries `image` beside `chat`.
+             *
+             *     **Eugene starts a llama.cpp model as an embedder when the file
+             *     is one (MR3, 2026-10-11).** The agent's adapter reads the
+             *     GGUF header, or takes the runtime's `mode`
+             *     (`RuntimeSpec.mode`), and adds `--embeddings` itself, so an
+             *     embedding model started from the Library is listed here as
+             *     `embeddings` and not `chat`. Until then this text said that
+             *     nothing did: the adapter passed the model, host, port and
+             *     alias, the profile's curated flags and its extra arguments,
+             *     and an embedding model answered neither surface (501 on
+             *     `/v1/embeddings`, 500 on chat, both measured on b10948 and
+             *     b11552) and was listed here as `chat`. **A reranker still is**:
+             *     there is no `rerank` surface or door yet, and its driver
+             *     finds nothing it recognises (the engine answers
+             *     `/v1/embeddings` with zeros and gaps, which the driver
+             *     cannot read as a vector), so it lists as `chat`.
              *
              *     Empty means nothing serving this model would admit to either
              *     surface, which is a backend that could not be reached rather
@@ -3788,13 +3829,24 @@ export interface components {
              * @enum {string}
              */
             encoding_format: "float" | "base64";
-            /** @description Opaque end-user id, as OpenAI defines it. Recorded, not routed on. */
+            /**
+             * @description Opaque end-user id, as OpenAI defines it. **Accepted and
+             *     ignored**: it is not sent to any backend, not recorded and not
+             *     routed on. A request that carries one is answered with
+             *     `x-eugene-plexus-ignored-settings: user` (`dimensions, user`
+             *     when both are sent). Before 2026-10-11 this said "recorded".
+             */
             user?: string;
             /**
-             * @description Passed through to the backend unchanged. Most local backends
-             *     ignore it; this layer does not emulate truncation, because a
-             *     silently-truncated vector is a wrong answer that looks like
-             *     a right one.
+             * @description **Accepted and ignored.** The vectors come back at the
+             *     model's own width, whatever is asked here. No backend is sent
+             *     this field (the driver's `EmbedRequest` has none), and this
+             *     layer does not emulate truncation, because a silently
+             *     truncated vector is a wrong answer that looks like a right
+             *     one. A request that carries one is answered with
+             *     `x-eugene-plexus-ignored-settings: dimensions` (`dimensions,
+             *     user` when both are sent). Before 2026-10-11 this said it was
+             *     passed through to the backend unchanged; it never was.
              */
             dimensions?: number;
         };
@@ -7774,7 +7826,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Vectors produced. */
+            /**
+             * @description Vectors produced. `x-eugene-plexus-ignored-settings` names
+             *     `dimensions` and `user` when the request carried them, and is
+             *     absent otherwise.
+             */
             200: {
                 headers: {
                     [name: string]: unknown;

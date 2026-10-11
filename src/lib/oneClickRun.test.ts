@@ -9,6 +9,9 @@ import {
   getRuns,
   refreshRuns,
   resetRunsForTests,
+  runHref,
+  runModelOf,
+  runsSearchModel,
   runTask,
   startDownloadAndRun,
   startRun,
@@ -208,6 +211,46 @@ describe("durable run observer", () => {
         .detail,
     ).toContain("Installing llama.cpp failed: Disk full");
     expect(runTask(task).cancel).toBeTypeOf("function");
+  });
+});
+
+describe("a run of a search model (MR3)", () => {
+  async function ready(model: object) {
+    startRun(MODEL, HERE);
+    await vi.waitFor(() => expect(records).toHaveLength(1));
+    records[0]!.step = "ready";
+    records[0]!.runtime = "example";
+    records[0]!.model = model as RunOperation["model"];
+    await refreshRuns();
+    return getRuns()[0]!;
+  }
+
+  it("says a chat model is ready to try on Home, and links there", async () => {
+    const task = await ready({ ...MODEL, capabilities: { chat: true, embedding: false } });
+    expect(describeRunDetail(task).detail).toBe("ready — try it on Home");
+    expect(runHref(task)).toBe("/");
+    expect(runsSearchModel(task.model)).toBe(false);
+  });
+
+  it("says a search model keeps running for apps, and links to Inference", async () => {
+    const task = await ready({ ...MODEL, capabilities: { chat: false, embedding: true } });
+    expect(describeRunDetail(task).detail).toBe("ready — it keeps running for apps to use");
+    expect(runHref(task)).toBe("/inference");
+    expect(runsSearchModel(task.model)).toBe(true);
+  });
+
+  it("says it of a result sorter too", async () => {
+    const task = await ready({ ...MODEL, capabilities: { chat: false, rerank: true } });
+    expect(describeRunDetail(task).detail).toBe("ready — it keeps running for apps to use");
+    expect(runHref(task)).toBe("/inference");
+  });
+
+  it("carries the file's capabilities from the Library onto the run, so a recovered run reads true", () => {
+    const search = runModelOf({ ...MODEL, capabilities: { embedding: true } });
+    expect(search.capabilities).toEqual({ embedding: true });
+    expect(runsSearchModel(search)).toBe(true);
+    // And nothing extra for a model the Library said nothing about.
+    expect(runModelOf(MODEL)).not.toHaveProperty("capabilities");
   });
 });
 

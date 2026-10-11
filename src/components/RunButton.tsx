@@ -8,6 +8,7 @@ import {
   dismissRun,
   findRun,
   isTerminal,
+  runsSearchModel,
   startRun,
   useRuns,
   type RunTask,
@@ -115,12 +116,14 @@ export function RunStatus({ task, onRetry }: { task: RunTask; onRetry: () => voi
       )}
       {isTerminal(task.step) && (
         <p className="mt-1.5 flex flex-wrap items-center gap-2">
-          {task.step === "ready" && (
+          {task.step === "ready" && !runsSearchModel(task.model) && (
             <Link href="/" className="underline" data-testid="run-try-it">
               Try it on Home
             </Link>
           )}
-          {task.step !== "ready" && (
+          {/* A search model is not chatted with: it is used by apps, and Inference is
+              where it is seen. */}
+          {(task.step !== "ready" || runsSearchModel(task.model)) && (
             <Link href="/inference" className="underline">
               See it on Inference
             </Link>

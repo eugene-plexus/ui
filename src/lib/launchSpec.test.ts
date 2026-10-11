@@ -51,6 +51,17 @@ describe("composeSpec", () => {
     expect(spec.profile).toEqual({ id: "p7", name: "Built for Amish_Station" });
   });
 
+  it("copies a profile's mode (MR3), so what a person chose is what starts", () => {
+    for (const mode of ["chat", "embedding", "reranking"] as const) {
+      expect(composeSpec(MODEL, { ...DEFAULT, mode }).mode).toBe(mode);
+    }
+  });
+
+  it("sends no mode for Auto or for a profile older than modes: absent already means Auto", () => {
+    expect(composeSpec(MODEL, DEFAULT)).not.toHaveProperty("mode", expect.anything());
+    expect(composeSpec(MODEL, { ...DEFAULT, mode: "auto" }).mode).toBeUndefined();
+  });
+
   it("sends autoStart false for Skip, and nothing else changes", () => {
     const spec = composeSpec(MODEL, DEFAULT, { autoStart: false });
     expect(spec.autoStart).toBe(false);

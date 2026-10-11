@@ -16,6 +16,8 @@ import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
 import { PrepareControl, entryForFile } from "@/components/PrepareModel";
 import { RunButton } from "@/components/RunButton";
+import { RunsAsNote } from "@/components/RunsAsNote";
+import { SearchModelsShelf } from "@/components/SearchModelsShelf";
 import { ApiError, api, describeError } from "@/lib/api";
 import {
   type EngineFit,
@@ -38,6 +40,7 @@ import {
   runnable,
 } from "@/lib/eligibility";
 import { engineName as engineLabel } from "@/lib/issues";
+import { isSearchFile, kindOfFile, kindWords } from "@/lib/searchModels";
 import {
   type NodeBudget,
   type TargetNode,
@@ -666,7 +669,18 @@ function ModelList({
                   {formatBytesShort(m.sizeBytes)}
                 </span>
               )}
-              {m.capabilities?.embedding && <span>embedding</span>}
+              {isSearchFile(m.capabilities) && (
+                <span
+                  data-testid="model-list-kind"
+                  title={
+                    m.capabilities?.rerank
+                      ? "A reranker: apps use it to put the best matches first."
+                      : "An embedding model: apps use it to find text by meaning."
+                  }
+                >
+                  {kindWords(kindOfFile(m.capabilities))}
+                </span>
+              )}
               {m.capabilities?.vision && <span>vision</span>}
               {(m.profileCount ?? 0) > 0 && (
                 <span title="saved launch profiles">
@@ -694,8 +708,9 @@ function ModelList({
 function EmptyDetail({ models, scan }: { models: LibraryModel[] | null; scan: Scan | null }) {
   const skipped = scan?.skipped ?? [];
   return (
-    <div className="text-sm text-[color:var(--muted)]">
+    <div className="space-y-4 text-sm text-[color:var(--muted)]">
       {models && models.length > 0 && <p>Select a model.</p>}
+      <SearchModelsShelf models={models} />
       {skipped.length > 0 && <SkippedPanel scan={scan!} />}
     </div>
   );
@@ -801,6 +816,9 @@ function ModelDetail({
   onDeleted: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  // Counts the profile saves under this model, so the line under Run is never about
+  // a profile that has since been edited (MR3).
+  const [profilesVersion, setProfilesVersion] = useState(0);
 
   // Which engines could load this model at all, and which of those are
   // installed here. Two different answers with two different fixes.
@@ -1089,10 +1107,15 @@ function ModelDetail({
                           ? "its own table says what it needs, above"
                           : "its memory needs are not estimated"
                       }. Once it says ready, it is on Home.`
-                    : usable.length > 0
-                      ? `Starts ${model.name} on ${where} with settings that fit. Once it says ready, it is on Home.`
-                      : `${capable.map((e) => engineName(e.engine)).join(", ")} is not installed on ${where} yet; Run asks before installing it.`}
+                    : usable.length > 0 && isSearchFile(model.capabilities)
+                      ? // Not "on Home": nothing here writes text. Apps use it, and it stays up.
+                        `Starts ${model.name} on ${where} as a ${kindWords(kindOfFile(model.capabilities))} and keeps it running for apps to use.`
+                      : usable.length > 0
+                        ? `Starts ${model.name} on ${where} with settings that fit. Once it says ready, it is on Home.`
+                        : `${capable.map((e) => engineName(e.engine)).join(", ")} is not installed on ${where} yet; Run asks before installing it.`}
               </p>
+              {/* What it will be started as, and where to change it (MR3). */}
+              <RunsAsNote model={model} version={profilesVersion} />
             </>
           )}
         </div>
@@ -1111,7 +1134,10 @@ function ModelDetail({
         model={model}
         engines={usable.length > 0 ? usable : capable}
         node={node}
-        onChanged={onChanged}
+        onChanged={() => {
+          setProfilesVersion((n) => n + 1);
+          onChanged();
+        }}
       />
 
       {model.status === "present" && (
@@ -1487,7 +1513,8 @@ function Facts({ model }: { model: LibraryModel }) {
   const capabilityList = caps
     ? [
         caps.chat && "chat",
-        caps.embedding && "embedding",
+        caps.embedding && "search model",
+        caps.rerank && "result sorter",
         caps.vision && "vision",
         caps.chatTemplate && "chat template",
       ].filter(Boolean)

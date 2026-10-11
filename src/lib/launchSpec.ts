@@ -8,6 +8,7 @@
  * Pure, so the composition is testable as data.
  */
 
+import { modeToSave } from "./searchModels";
 import type { LibraryModel, ModelProfile, ModelProfileSpec, RuntimeSpec } from "./types";
 
 /**
@@ -46,6 +47,9 @@ export function composeSpec(
     name: runtimeName(model, profile),
     engine: profile.engine,
     modelPath: model.path,
+    // What to start the file as (MR3), copied like every other launch field. Auto is
+    // not sent: absent already means Auto, and the agent reads the file's header.
+    mode: modeToSave(profile.mode ?? "auto"),
     flags: profile.flags ?? undefined,
     extraArgs: profile.extraArgs ?? undefined,
     env: profile.env ?? undefined,

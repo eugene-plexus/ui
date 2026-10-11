@@ -17,9 +17,18 @@ import { libraryFoldersHref } from "@/lib/libraryReach";
 import type { TargetNode } from "@/lib/nodeBudget";
 import { builtFieldLabel, builtOn, editedSinceBuilt, measuredLine } from "@/lib/profileBuild";
 import { currentFlags } from "@/lib/legacyFlags";
+import {
+  isSearchFile,
+  modeToSave,
+  offersModes,
+  runsAs,
+  runsAsLine,
+  type ModeChoice,
+} from "@/lib/searchModels";
 
 import { ProfileBenchmark } from "./ProfileBenchmark";
 import { ProfileBuilder } from "./ProfileBuilder";
+import { RunsAs } from "./RunsAs";
 import type {
   Admission,
   ConfigField,
@@ -126,8 +135,11 @@ export function ProfileEditor({
   // form can start at a number that fits instead of one that is refused.
   const probeEngine = engines[0]?.engine ?? null;
   const { id: modelId, path: modelPath, contextLength: modelContext } = model;
+  const searchFile = isSearchFile(model.capabilities);
   useEffect(() => {
-    if (!creating || !node || !probeEngine) {
+    // A search model is not sized to the card: the agent starts it with its own small
+    // window, and the largest context that fits would be a setting that beat it.
+    if (!creating || !node || !probeEngine || searchFile) {
       setPrefillContext(null);
       return;
     }
@@ -146,13 +158,14 @@ export function ProfileEditor({
     return () => {
       cancelled = true;
     };
-  }, [creating, node, probeEngine, modelId, modelPath, modelContext]);
+  }, [creating, node, probeEngine, modelId, modelPath, modelContext, searchFile]);
 
   async function setContext(profile: ModelProfile, context: number) {
     setError(null);
     const spec: ModelProfileSpec = {
       name: profile.name,
       engine: profile.engine,
+      mode: profile.mode ?? undefined,
       default: profile.default ?? false,
       flags: { ...(profile.flags ?? {}), contextSize: context },
       extraArgs: profile.extraArgs ?? undefined,
@@ -233,7 +246,7 @@ export function ProfileEditor({
   const previewProfile = profiles?.find((p) => p.default) ?? profiles?.[0] ?? null;
 
   return (
-    <section className="mt-2">
+    <section id="launch-profiles" className="mt-2">
       <div className="flex items-center justify-between">
         <h3 className="font-ui text-xs font-semibold tracking-wide uppercase">
           Launch profiles
@@ -254,16 +267,19 @@ export function ProfileEditor({
         Save more profiles to compare speed, longer context, or different GPUs.
       </p>
 
-      <ProfileBuilder
-        model={model}
-        profiles={profiles ?? []}
-        engines={engines}
-        node={node}
-        onSaved={async () => {
-          await load();
-          onChanged();
-        }}
-      />
+      {/* It measures how fast a model writes. A search model does not write. */}
+      {!searchFile && (
+        <ProfileBuilder
+          model={model}
+          profiles={profiles ?? []}
+          engines={engines}
+          node={node}
+          onSaved={async () => {
+            await load();
+            onChanged();
+          }}
+        />
+      )}
 
       {canLaunch && node && previewProfile && (
         <LaunchPreview
@@ -358,6 +374,7 @@ export function ProfileEditor({
               onSaved={async () => {
                 setEditing(null);
                 await load();
+                onChanged();
               }}
             />
           ) : (
@@ -508,6 +525,9 @@ function ProfileRow({
 }) {
   const flags = Object.entries(profile.flags ?? {});
   const env = Object.entries(profile.env ?? {});
+  // Said only when a person chose: Auto is what every profile was before.
+  const chosenMode = profile.mode != null && profile.mode !== "auto";
+  const searches = runsAs(model.capabilities, profile.mode).kind !== "chat";
   return (
     <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -580,13 +600,18 @@ function ProfileRow({
           ].join("  ")}
         </p>
       )}
+      {chosenMode && (
+        <p className="mt-1" data-testid="profile-runs-as">
+          {runsAsLine(model.capabilities, profile.mode)}
+        </p>
+      )}
       {profile.notes && <p className="mt-1 text-[color:var(--muted)] italic">{profile.notes}</p>}
       {measuredLine(profile) && (
         <p className="mt-1" data-testid="profile-measured" data-edited={editedSinceBuilt(profile)}>
           {measuredLine(profile)}
         </p>
       )}
-      <ProfileBenchmark model={model} profile={profile} node={node} />
+      {!searches && <ProfileBenchmark model={model} profile={profile} node={node} />}
       {generationFields.some(({ key }) => profile[key] != null) && (
         <p className="mt-1 text-[color:var(--muted)]" data-testid="profile-generation">
           {generationFields
@@ -672,6 +697,8 @@ function ProfileForm({
 }) {
   const [name, setName] = useState(existing?.name ?? suggestedName(model));
   const [engine, setEngine] = useState(existing?.engine ?? engines[0]?.engine ?? "llama_cpp");
+  // What to start the file as (MR3). Auto reads the file's header.
+  const [mode, setMode] = useState<ModeChoice>(existing?.mode ?? "auto");
   const [flags, setFlags] = useState<Record<string, unknown>>(() => ({
     ...currentFlags(existing?.flags ?? {}),
     ...(!existing && suggestedContext != null ? { contextSize: suggestedContext } : {}),
@@ -737,6 +764,9 @@ function ProfileForm({
       name: name.trim(),
       ...defaults,
       engine,
+      // Nothing for Auto, and nothing for an engine that cannot start a search model:
+      // a replace that omits it clears it, which is what Auto means.
+      mode: offersModes(engine) ? modeToSave(mode) : undefined,
       default: isDefault,
       // Empty values are dropped rather than stored as nulls: an unset
       // flag must not become `--flag null` on a command line.
@@ -816,6 +846,18 @@ function ProfileForm({
           <span>default</span>
         </label>
       </div>
+
+      {/* Only llama.cpp starts a model as a search model; another engine refuses one. */}
+      {offersModes(engine) && (
+        <div className="mt-3" data-testid="profile-runs-as-control">
+          <RunsAs
+            capabilities={model.capabilities}
+            mode={mode}
+            onChange={setMode}
+            disabled={saving}
+          />
+        </div>
+      )}
 
       {/* Rendered from the agent's flagSchema, so adding a curated
           flag to an engine adapter is a server-side change only. */}

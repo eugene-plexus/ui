@@ -44,6 +44,52 @@ describe("RunStatus", () => {
     expect(screen.getByTestId("run-status")).toContainElement(line);
   });
 
+  it("sends a chat model's person to Home when it is ready, as it always has", () => {
+    render(<RunStatus task={task({ step: "ready" })} onRetry={vi.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent("ready — try it on Home");
+    expect(screen.getByTestId("run-try-it")).toHaveAttribute("href", "/");
+  });
+
+  it("does not send a search model's person to Home: nothing there can chat with it (MR3)", () => {
+    const search = task({
+      step: "ready",
+      model: {
+        id: "e1",
+        name: "Qwen3-Embedding-0.6B-Q8_0",
+        path: "x",
+        format: "gguf",
+        contextLength: null,
+        capabilities: { chat: false, embedding: true },
+      },
+    });
+    render(<RunStatus task={search} onRetry={vi.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "ready — it keeps running for apps to use",
+    );
+    expect(screen.queryByTestId("run-try-it")).toBeNull();
+    expect(screen.getByRole("link", { name: "See it on Inference" })).toHaveAttribute(
+      "href",
+      "/inference",
+    );
+  });
+
+  it("says the same for a result sorter", () => {
+    const sorter = task({
+      step: "ready",
+      model: {
+        id: "r1",
+        name: "Qwen3-Reranker",
+        path: "x",
+        format: "gguf",
+        contextLength: null,
+        capabilities: { chat: false, rerank: true },
+      },
+    });
+    render(<RunStatus task={sorter} onRetry={vi.fn()} />);
+    expect(screen.queryByTestId("run-try-it")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("keeps running for apps to use");
+  });
+
   it("announces a failure as an alert", () => {
     render(
       <RunStatus

@@ -20,6 +20,9 @@ export const COPY_SCREENS: Record<string, string[]> = {
     // A3c: the fit words the badge, the starter set, Home and the
     // Library's panel all render.
     "lib/fitWords.ts",
+    // MR3: the search models shelf and the words for what a file is.
+    "components/SearchModelsShelf.tsx",
+    "lib/searchModels.ts",
   ],
   library: [
     "app/library",
@@ -34,6 +37,11 @@ export const COPY_SCREENS: Record<string, string[]> = {
     // A3d: Low's smaller-file offer.
     "components/SmallerFileOffer.tsx",
     "lib/smallerFile.ts",
+    // MR3: what a file runs as, the override, and the shelf of search models.
+    "components/RunsAs.tsx",
+    "components/RunsAsNote.tsx",
+    "components/SearchModelsShelf.tsx",
+    "lib/searchModels.ts",
   ],
   // The other doors (playground-doors.md) are a person's first look at
   // speech, pictures and video, so their words are held to the same rules.

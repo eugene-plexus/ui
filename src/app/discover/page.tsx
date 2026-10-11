@@ -11,6 +11,7 @@ import { ModelCard } from "@/components/ModelCard";
 import { QuantReference } from "@/components/QuantReference";
 import { ApiError, api, describeError } from "@/lib/api";
 import { NodePicker } from "@/components/NodePicker";
+import { SearchModelsShelf } from "@/components/SearchModelsShelf";
 import { StarterSetPanel } from "@/components/StarterSetPanel";
 import { contextLabel } from "@/lib/starter";
 import { relativeAge } from "@/lib/relativeTime";
@@ -895,6 +896,9 @@ function EmptyDetail({
         onDownload={onDownload}
         onOpenRepo={onOpenRepo}
       />
+      {/* Not a chat model, so not in the starter set: the files an app that searches a
+          person's own documents needs (MR3). Opens the repo in place. */}
+      <SearchModelsShelf onOpenRepo={onOpenRepo} />
       <p>Or pick a model on the left to see what it ships and which version fits here.</p>
       {budget && !budget.gpu && (
         <div className="status-warn rounded-[var(--radius)] border px-3 py-2">

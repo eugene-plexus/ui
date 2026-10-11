@@ -1417,3 +1417,123 @@ describe("each engine owns its fit (LS6)", () => {
     ]);
   });
 });
+
+/**
+ * MR3: a file that is a search model or a result sorter, and what the page says of it.
+ *
+ * The Library reads the header (`capabilities.embedding`, `capabilities.rerank`); the
+ * agent starts the file as what it is. The page has to stop calling such a file by the
+ * engine's word, stop promising that a started one is "on Home" (nothing here writes
+ * text), and say what Run will make of it, where a person who disagrees can change it.
+ */
+describe("a search model or a result sorter (MR3)", () => {
+  const SEARCH = { chat: false, embedding: true, rerank: false, chatTemplate: true };
+  const SORTER = { chat: false, embedding: false, rerank: true, chatTemplate: true };
+
+  function asModel(capabilities: Record<string, unknown>) {
+    handlers.set("GET library/v1/models", () =>
+      ok({ models: [{ ...libraryModel(), capabilities }], lastScanAt: null }),
+    );
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
+  }
+
+  it("is listed by what it is, in plain words, and not by the engine's word", async () => {
+    asModel(SEARCH);
+    await openTheModel();
+    const list = screen.getByTestId("model-list");
+    expect(within(list).getByTestId("model-list-kind")).toHaveTextContent("search model");
+    expect(list).not.toHaveTextContent("embedding");
+  });
+
+  it("keeps the engine's word for an expert, on hover", async () => {
+    asModel(SEARCH);
+    await openTheModel();
+    expect(screen.getByTestId("model-list-kind")).toHaveAttribute(
+      "title",
+      expect.stringContaining("embedding model"),
+    );
+  });
+
+  it("calls a reranker a result sorter", async () => {
+    asModel(SORTER);
+    await openTheModel();
+    expect(screen.getByTestId("model-list-kind")).toHaveTextContent("result sorter");
+  });
+
+  it("lists nothing of the kind for a chat model", async () => {
+    asModel({ chat: true, embedding: false, rerank: false });
+    await openTheModel();
+    expect(screen.queryByTestId("model-list-kind")).toBeNull();
+  });
+
+  it("says what Run will make of it, under the button", async () => {
+    asModel(SEARCH);
+    await openTheModel();
+    const note = await screen.findByTestId("run-runs-as");
+    expect(within(note).getByTestId("runs-as-line")).toHaveTextContent(
+      "Runs as: search model (found in the file)",
+    );
+    expect(note).toHaveTextContent("Change how it runs");
+    expect(within(note).getByRole("link", { name: "Change how it runs" })).toHaveAttribute(
+      "href",
+      "#launch-profiles",
+    );
+  });
+
+  it("does not promise a search model is on Home: nothing here writes text", async () => {
+    asModel(SEARCH);
+    await openTheModel();
+    const run = screen.getByTestId("model-run");
+    expect(run).toHaveTextContent("as a search model and keeps it running for apps to use");
+    expect(run).not.toHaveTextContent("it is on Home");
+  });
+
+  it("says result sorter for a reranker", async () => {
+    asModel(SORTER);
+    await openTheModel();
+    expect(
+      within(await screen.findByTestId("run-runs-as")).getByTestId("runs-as-line"),
+    ).toHaveTextContent("Runs as: result sorter (found in the file)");
+    expect(screen.getByTestId("model-run")).toHaveTextContent("as a result sorter");
+  });
+
+  it("still promises Home for a chat model, as before", async () => {
+    asModel({ chat: true, embedding: false, rerank: false });
+    await openTheModel();
+    expect(screen.getByTestId("model-run")).toHaveTextContent("it is on Home");
+    expect(screen.queryByTestId("run-runs-as")).toBeNull();
+  });
+
+  it("says a person's choice beats the file: a profile that says Chat", async () => {
+    asModel(SEARCH);
+    handlers.set("GET library/v1/models/gemma/profiles", () =>
+      ok({
+        profiles: [{ id: "p", name: "default", engine: "llama_cpp", default: true, mode: "chat" }],
+      }),
+    );
+    await openTheModel();
+    const line = await screen.findByTestId("runs-as-line");
+    await waitFor(() => expect(line).toHaveTextContent("Runs as: chat model (you chose this)"));
+  });
+
+  it("says it for a chat file whose profile chose otherwise", async () => {
+    asModel({ chat: true, embedding: false, rerank: false });
+    handlers.set("GET library/v1/models/gemma/profiles", () =>
+      ok({
+        profiles: [
+          { id: "p", name: "default", engine: "llama_cpp", default: true, mode: "reranking" },
+        ],
+      }),
+    );
+    await openTheModel();
+    const note = await screen.findByTestId("run-runs-as");
+    expect(note).toHaveTextContent("Runs as: result sorter (you chose this)");
+  });
+
+  it("names the capability in the facts", async () => {
+    asModel(SEARCH);
+    await openTheModel();
+    expect(screen.getByText("capabilities").nextElementSibling).toHaveTextContent("search model");
+    expect(screen.getByText("capabilities").nextElementSibling).not.toHaveTextContent("embedding");
+  });
+});

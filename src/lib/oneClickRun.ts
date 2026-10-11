@@ -5,8 +5,15 @@ import { useSyncExternalStore } from "react";
 import type { components as RunProtocol } from "@/generated/run-operations";
 import { ApiError, api, describeError } from "./api";
 import type { TargetNode } from "./nodeBudget";
+import { isSearchFile } from "./searchModels";
 import { engineLabel, formatBytesShort, type Task } from "./tasks";
-import type { Download, EngineInstall, LibraryModel, RuntimeStatus } from "./types";
+import type {
+  Download,
+  EngineInstall,
+  LibraryModel,
+  ModelCapabilities,
+  RuntimeStatus,
+} from "./types";
 
 export type RunStep = RunProtocol["schemas"]["Operation"]["step"];
 /** Where a preparation is, as the engine's node reports it (LS5). */
@@ -53,6 +60,13 @@ export interface RunModel {
   path: string;
   format: string;
   contextLength: number | null;
+  /**
+   * What the Library says the file is. The server's own record carries it, so it is
+   * there for a run recovered after a browser reset too. A search model keeps
+   * running for apps to use and cannot be chatted with, so "try it on Home" would be
+   * untrue of it (MR3).
+   */
+  capabilities?: ModelCapabilities | null;
 }
 
 export interface RunNode {
@@ -291,7 +305,13 @@ export function runModelOf(model: LibraryModel): RunModel {
     path: model.path,
     format: model.format,
     contextLength: model.contextLength ?? null,
+    ...(model.capabilities ? { capabilities: model.capabilities } : {}),
   };
+}
+
+/** Whether a run is for a search model or a result sorter, which nobody chats with. */
+export function runsSearchModel(model: RunModel): boolean {
+  return isSearchFile(model.capabilities);
 }
 
 async function submit(
@@ -635,7 +655,11 @@ export function describeRunDetail(task: RunTask): { detail: string; progress?: n
               : "waiting for the engine to start",
       };
     case "ready":
-      return { detail: "ready — try it on Home" };
+      return {
+        detail: runsSearchModel(task.model)
+          ? "ready — it keeps running for apps to use"
+          : "ready — try it on Home",
+      };
     case "skipped":
       return {
         detail: `not started: ${label} is not installed on ${task.node.label}. It is listed on Inference as stopped; install the engine there and press start.`,
@@ -673,7 +697,7 @@ function describePreparation(task: RunTask): { detail: string; progress?: number
 export function runHref(task: RunTask): string {
   switch (task.step) {
     case "ready":
-      return "/";
+      return runsSearchModel(task.model) ? "/inference" : "/";
     case "downloading":
       return "/discover";
     case "settings":

@@ -957,19 +957,41 @@ export interface components {
             /**
              * Chat
              * @description Text generation — the default assumption for a causal model.
-             *     False for an embedding model.
+             *     False for an embedding model and for a reranker.
              */
             chat?: boolean | null;
             /**
              * Embedding
              * @description The model is a dedicated embedding model (a pooling type in
-             *     its metadata, or non-causal attention). Load-bearing rather
-             *     than informational: llama-server's own help says
-             *     `--embedding` is "for use only with dedicated embedding
-             *     models", and launching one of these as a chat model does not
-             *     fail — it starts, serves, and returns nonsense.
+             *     its metadata, or non-causal attention): a *search model*, in
+             *     the console's words. Load-bearing rather than informational:
+             *     llama-server's own help says `--embedding` is "for use only
+             *     with dedicated embedding models", and launching one of these
+             *     as a chat model does not fail — it starts, and answers
+             *     neither embeddings (a 501) nor chat (a 500, or text that
+             *     means nothing), measured on b11552. The agent starts one
+             *     correctly by itself: `RuntimeMode`.
+             *
+             *     False for a reranker, whose metadata carries a pooling type
+             *     too: that one is `rerank`.
              */
             embedding?: boolean | null;
+            /**
+             * Rerank
+             * @description The model is a reranker: it scores how well a passage answers
+             *     a question instead of turning text into a vector (a pooling
+             *     type of 4, `rank`, or classifier output labels in its
+             *     metadata). The console says "sort results". It needs
+             *     `--reranking` the way an embedder needs `--embeddings`, and
+             *     the agent starts one that way by itself (`RuntimeMode`).
+             *
+             *     **The metadata can miss one.** A cross-encoder converted
+             *     without either key (the gpustack bge-reranker-v2-m3 file is
+             *     one: a non-causal `bert` with a classifier head and neither
+             *     key) reads as `embedding`, and `ModelProfileSpec.mode` is
+             *     how a person says otherwise.
+             */
+            rerank?: boolean | null;
             /**
              * Vision
              * @description A vision projector was found for this model, so it can take
@@ -1089,6 +1111,8 @@ export interface components {
             /** Topp */
             topP?: number | null;
             engine: components["schemas"]["EngineKind"];
+            /** @description What to start the model as, as saved (`ModelProfileSpec.mode`). */
+            mode?: components["schemas"]["ProfileMode"] | null;
             /** Flags */
             flags?: {
                 [key: string]: unknown;
@@ -1636,6 +1660,19 @@ export interface components {
          * @enum {string}
          */
         ProfileBuiltEvaluationSource: "bundled" | "custom";
+        /**
+         * ProfileMode
+         * @description What to start a model as: the agent's `RuntimeMode`, with the same
+         *     four values and the same meanings, copied onto
+         *     `RuntimeSpec.mode` like every other launch field. A profile that
+         *     does not say is `auto`, which leaves
+         *     the agent to read the file's header, which is what
+         *     `ModelCapabilities.embedding` and `ModelCapabilities.rerank`
+         *     predict; the other three are the person's override. This
+         *     component never acts on it: it holds no engine knowledge.
+         * @enum {string}
+         */
+        ProfileMode: "auto" | "chat" | "embedding" | "reranking";
         /** ProfileRequest */
         ProfileRequest: {
             /** Lease */
