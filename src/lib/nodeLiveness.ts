@@ -63,7 +63,7 @@ export function describeLiveness(liveness: Liveness): { label: string; title: st
       return {
         label: "checking…",
         title:
-          "This root has not polled since it started; a sealed root cannot poll. This is not " +
+          "This root has not polled since it started; a sealed root cannot poll. It clears within one poll interval after an unlock. This is not " +
           "a report that the node is down.",
       };
     default:

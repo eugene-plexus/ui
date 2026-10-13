@@ -290,7 +290,7 @@ export function versionDifference(
     channels.size > 1
       ? "These machines follow different update channels. Choose the same channel under Settings › Updates if you want them to match."
       : channels.has("edge")
-        ? "Enabled update checks refresh automatically while versions differ. If no newer update is offered yet, check again shortly."
+        ? "Enabled update checks refresh automatically while versions differ. An Edge container can arrive before release checks finish, so if no update is offered yet, check again shortly."
         : "Check each machine’s update status below, and its channel under Settings › Updates. Different installed versions do not always mean a newer update is available.";
   return {
     title: "Machines in this install run different versions of Eugene",

@@ -328,7 +328,7 @@ describe("the issues", () => {
     const b = identity({ channel: "releases" });
     const difference = versionDifference([facts("NAS", a), facts("worker", b)]);
     expect(difference?.detail).toContain("different update channels");
-    expect(difference?.detail).not.toContain("release checks finish");
+    expect(difference?.detail).not.toContain("check again shortly");
   });
 
   it("does not offer an update in the badge when the card says it is already running", () => {

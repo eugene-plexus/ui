@@ -233,7 +233,7 @@ export default function AddSearchAccountPage() {
               <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
                 A model searches when an app asks and the model can use tools. In Codex, set{" "}
                 <code>web_search = &quot;live&quot;</code>. Claude Code&rsquo;s WebSearch works as
-                it is.
+                it is. Each key&rsquo;s permissions can turn search off.
               </p>
               <p className="mb-4 text-sm text-[color:var(--muted)]" data-testid="search-order-link">
                 Which search account goes first is set on the{" "}

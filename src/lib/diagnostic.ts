@@ -128,7 +128,7 @@ export function baseUrlHints(raw: string, page: PageLocation): string[] {
   if (isLoopbackHost(url.hostname) && !isLoopbackHost(page.hostname)) {
     hints.push(
       `The base URL is loopback but this page is on ${page.hostname}: 127.0.0.1 is the ` +
-        "browser's own machine, not the gateway. Use the gateway host's address.",
+        "browser's own machine, not the gateway. Use the gateway host's address. Chrome may also block it behind a local-network permission.",
     );
   }
   return hints;

@@ -481,7 +481,7 @@ export function AccessSetup() {
         {mode === "proxy" && (
           <p>
             Your proxy handles certificates and forwards to Eugene. On the same Docker host, share a
-            network and publish no ports.
+            network and Eugene needs no published ports.
           </p>
         )}
         {mode === "automatic" && (
@@ -493,14 +493,15 @@ export function AccessSetup() {
         )}
         {mode === "local" && (
           <p>
-            No public domain needed. Set up local DNS, and trust Eugene’s CA certificate on each
-            browser and node.
+            No public domain or Internet access needed. Set up local DNS, and trust Eugene’s CA
+            certificate on each browser and node.
           </p>
         )}
         {mode === "certificate" && (
           <p>
-            Supply certificate files from your organisation or a certificate manager. This works
-            without public inbound ports, and renewed files reload automatically.
+            Supply certificate files from your organisation or a certificate manager with DNS
+            verification. This works without public inbound ports, and renewed files reload
+            automatically.
           </p>
         )}
         <label className="block">
@@ -616,13 +617,13 @@ export function AccessSetup() {
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>
                 Anyone on the internet can open the console’s sign-in page and try passphrases. Your
-                passphrase alone then protects the whole install, including backend keys, Library
-                folders, accounts and machines.
+                passphrase is then all that stands between them and the whole install, including its
+                models, backend keys, Library folders, apps, accounts and machines.
               </li>
               <li>
                 Eugene allows 5 wrong passphrases a minute per visitor address. Behind Cloudflare or
-                similar, visitors share addresses: an attacker gets more tries, and strangers’ wrong
-                guesses can lock you out for a minute.
+                similar, visitors share its addresses, so an attacker spread across them gets more
+                tries, and strangers’ wrong guesses can lock you out for a minute.
               </li>
               <li>
                 A signed-in console stays signed in for 14 days, from wherever it is, until you sign
@@ -772,8 +773,8 @@ export function AccessSetup() {
                 >
                   Your proxy, {proxy}, is inside {network}, but Allowed private networks are for the
                   people using Eugene. If this is the Docker network the proxy shares with Eugene,
-                  enter your home or VPN network instead. If the proxy is on another machine, ignore
-                  this.
+                  enter your home or VPN network instead. If the proxy is on another machine on the
+                  same network as the people using it, ignore this.
                 </p>
               ),
             )}

@@ -921,7 +921,8 @@ function ProfileForm({
         <legend className="font-medium">Generation defaults</legend>
         <p className="text-[color:var(--muted)]">
           When this is the default profile, these values fill any parameter an app omits. Changes
-          apply shortly, without restarting the model. Blank uses{" "}
+          apply within the gateway’s profile refresh interval, without restarting the model. Blank
+          uses{" "}
           <Link href="/config?sel=gateway#defaultMaxTokens" className="underline">
             the gateway&rsquo;s answer defaults
           </Link>
