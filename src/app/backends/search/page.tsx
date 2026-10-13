@@ -125,9 +125,9 @@ export default function AddSearchAccountPage() {
         <div className="mx-auto w-full max-w-2xl">
           <h1 className="font-ui mb-2 text-xl font-semibold">Add a search account</h1>
           <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
-            Lets your local models search the web when an app asks them to: Codex, Claude Code, or
-            any chat app that asks for a search. Eugene runs the search here and gives the model the
-            results. The words searched for go to the internet.
+            Lets your local models search the web when an app asks, as Codex and Claude Code do.
+            Eugene runs the search and gives the model the results. The words searched for go to the
+            internet.
           </p>
 
           {phase.kind === "form" && (
@@ -233,7 +233,7 @@ export default function AddSearchAccountPage() {
               <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
                 A model searches when an app asks and the model can use tools. In Codex, set{" "}
                 <code>web_search = &quot;live&quot;</code>. Claude Code&rsquo;s WebSearch works as
-                it is. Each app key can be kept from searching under its permissions.
+                it is.
               </p>
               <p className="mb-4 text-sm text-[color:var(--muted)]" data-testid="search-order-link">
                 Which search account goes first is set on the{" "}

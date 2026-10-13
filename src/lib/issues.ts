@@ -278,9 +278,8 @@ function sealedRootIssue(sources: IssueSources): Issue[] {
       severity: "blocking",
       title: "The control root is locked",
       detail:
-        "It holds this install's keys sealed and has not been given the passphrase since it " +
-        "last started, which is what happens on every restart of a machine with no key store. " +
-        "Nothing is lost, and nothing else will work until it is unlocked.",
+        "It is waiting for the passphrase, as after every restart of a machine with no key " +
+        "store. Nothing is lost, but nothing else works until it is unlocked.",
       href: "/nodes",
       action: "unlock-control-root",
     },
@@ -401,8 +400,8 @@ function clockSkewIssues(perNode: NodeFacts[]): Issue[] {
       title: `${ahead.label} and ${behind.label} disagree about the time by ${formatSkew(seconds)}`,
       detail:
         `${ahead.label}'s clock is ahead. Machines here tolerate five minutes of difference; ` +
-        `past that they start refusing each other's sign-ins, which looks like a machine being ` +
-        `down for no reason. Turn on automatic time setting on both` +
+        `past that they refuse each other's sign-ins and look down. ` +
+        `Turn on automatic time setting on both` +
         (blocking ? " — this install is close to the limit." : "."),
       href: "/nodes",
     },
@@ -539,8 +538,8 @@ function trustStaleIssues(node: NodeFacts): Issue[] {
       severity: "warning",
       title: `${node.label} has not heard from the control root for ${formatAge(age)}`,
       detail:
-        "It keeps working with what it last heard. A machine removed from the install, " +
-        "or a sign-out, since then is not known there yet. Check that it can reach the control root.",
+        "It keeps working with what it last heard, so removals and sign-outs since then are " +
+        "unknown there. Check that it can reach the control root.",
       href: "/nodes",
       node: node.name,
     },
@@ -753,9 +752,8 @@ function staleBuildIssues(node: NodeFacts): Issue[] {
             ? `${label(stale[0]!)} is running on ${engineName(engine)} ${stale[0]!.engineVersion}, not the ${current} that is installed`
             : `${stale.length} models on ${node.label} are running on an older ${engineName(engine)} than the ${current} that is installed`,
         detail:
-          "Restarting them picks up the new build. Until then the gateway is sharing requests " +
-          "between two different versions of the engine, which is the sort of difference that " +
-          "shows up as one model being mysteriously slower than another.",
+          "Restarting them picks up the new build. Until then the gateway shares requests " +
+          "between two engine versions, which can make one model slower than another.",
         href: "/inference",
         node: node.name,
       });
@@ -875,9 +873,8 @@ function cpuRuntimeIssues(node: NodeFacts): Issue[] {
       severity: "warning" as const,
       title: `${label(r)} is running on the processor, not the graphics card`,
       detail:
-        `${node.label} has a card that is not being used for it, because this model's settings ` +
-        "put no layers on the graphics card. Expect it to be many times slower than it needs " +
-        "to be. Raise the GPU layers in its settings and restart it.",
+        `Its settings put no layers on ${node.label}'s graphics card, so it runs many ` +
+        "times slower than it needs to. Raise the GPU layers in its settings and restart it.",
       href: "/inference",
       node: node.name,
     }));
@@ -969,7 +966,7 @@ export function describeCompute(
       text: "on the processor",
       detail:
         "This machine reports no graphics card, so everything on it runs on the processor. " +
-        "That is not a fault; it is slower than a card and it is what this machine has.",
+        "That is not a fault, only slower.",
     };
   }
   if (declaresNoOffload(runtime as Runtime)) {
@@ -977,9 +974,8 @@ export function describeCompute(
       tone: "warn",
       text: "on the processor — its settings put no layers on the card",
       detail:
-        "GPU layers is 0 in this model's settings, so the card on this machine is not used " +
-        "for it. No engine reports where its weights went; this is read from what it was " +
-        "started with.",
+        "GPU layers is 0 in this model's settings, so the card is not used. This is read from " +
+        "what it was started with; no engine reports where its weights went.",
     };
   }
   return null;

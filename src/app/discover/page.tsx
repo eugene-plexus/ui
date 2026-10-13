@@ -645,7 +645,7 @@ function ContextControl({ value, onChange }: { value: number; onChange: (value: 
           </option>
         ))}
       </select>
-      <span title="How much conversation the model can hold at once. It costs memory: the cache grows in step with it, so this is the number that decides which version fits.">
+      <span title="How much conversation the model can hold at once. It costs memory, so it decides which version fits.">
         of conversation
       </span>
     </label>
@@ -904,9 +904,8 @@ function EmptyDetail({
         <div className="status-warn rounded-[var(--radius)] border px-3 py-2">
           <p className="mb-1 font-semibold">No GPU on {where}</p>
           <p>
-            Verdicts are scored against host memory alone, because a model launched from this
-            browser runs on this machine. If the GPU is on another node of this install, open
-            Discover from that node&rsquo;s own address.
+            Verdicts use host memory alone, because models launched here run on this machine. If the
+            GPU is on another node, open Discover from that node&rsquo;s address.
           </p>
         </div>
       )}
@@ -920,14 +919,12 @@ function EmptyDetail({
         </div>
       )}
       <p>
-        One repository usually holds a dozen or more versions of the same model at different
-        precisions. This screen groups the files into models you can launch and checks which ones
-        fit. Vision projectors, calibration files, and draft models are listed separately.
+        One repository usually holds many versions of a model at different precisions. Here they are
+        grouped into models you can launch and checked for fit.
       </p>
       <p>
-        Downloads land in the first of your configured model directories, keeping their upstream
-        filenames. Nothing is renamed, hashed, or moved into a cache: delete Eugene Plexus and every
-        model is still where it was.
+        Downloads go to the first of your model directories under their upstream filenames. Nothing
+        is renamed or cached: delete Eugene and every model is still there.
       </p>
       {/* The library's warnings are about the host the LIBRARY runs on.
           Shown only when its reading is the one in use -- otherwise a
@@ -1205,7 +1202,7 @@ function RepoDetail({
             <>
               {" "}
               ·{" "}
-              <span title="Downloads fetch exactly this revision. A file the publisher replaces upstream mid-download is detected and refetched, never spliced into your copy.">
+              <span title="Downloads fetch exactly this revision; a file replaced upstream mid-download is refetched.">
                 pinned at {detail.resolvedCommit.slice(0, 7)}
               </span>
             </>
@@ -1265,8 +1262,8 @@ function RepoDetail({
         >
           <p className="font-semibold">No chat template</p>
           <p className="mt-0.5">
-            This looks like a base model: it continues text rather than holding a conversation. Chat
-            apps will get odd answers from it. Fine if raw completion is what you want.
+            This looks like a base model: it continues text rather than holding a conversation, so
+            chat apps get odd answers. Fine for raw completion.
           </p>
         </div>
       )}
@@ -1331,7 +1328,7 @@ function RepoDetail({
               disabled={busy !== null || !!recommendedPreflight}
               className={smallButton}
               data-testid="repo-recommended-check"
-              title="Reads this file's own metadata over the network — about 11 MB of a multi-gigabyte file — so the verdict above is computed from the model's real shape instead of estimated from its size."
+              title="Reads this file's metadata over the network (about 11 MB) so the verdict uses the model's real shape, not an estimate from its size."
             >
               {recommendedPreflight
                 ? "exact fit checked"
@@ -1378,8 +1375,8 @@ function RepoDetail({
           data-testid="no-candidates"
           className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--muted)]"
         >
-          Nothing in this repository can be launched as a model. It may hold only documentation or
-          files in a format this install does not serve — the other files are listed below.
+          Nothing here can be launched as a model: it may hold only documentation or formats this
+          install does not serve. Other files are listed below.
         </p>
       ) : (
         <CandidateTable
@@ -1659,7 +1656,7 @@ function CandidateTable({
                     onClick={() => onPreflight(candidate)}
                     disabled={busy !== null || !!preflighted}
                     className={smallButton}
-                    title="Reads this file's own metadata over the network — about 11 MB of a multi-gigabyte file — so the fit is computed from the model's real shape instead of estimated from its size."
+                    title="Reads this file's metadata over the network (about 11 MB) so the fit uses the model's real shape, not an estimate from its size."
                   >
                     {preflighted ? "checked" : busy === candidate.label ? "checking…" : "check"}
                   </button>
@@ -1720,9 +1717,8 @@ function VisionPairing({
         Also get the part that lets it see images
       </label>
       <p className="mt-0.5 text-[color:var(--muted)]">
-        This model takes images, and the vision part ships as its own file. It downloads beside
-        whichever version you pick and is used automatically when the model launches. Without it the
-        model runs, and is text-only.
+        The vision part is a separate file. It downloads beside the version you pick and is used
+        automatically. Without it the model runs as text-only.
       </p>
       {projectors.length > 1 && enabled && (
         <div className="mt-2 space-y-1">

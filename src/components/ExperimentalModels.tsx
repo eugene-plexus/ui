@@ -41,8 +41,8 @@ export function ExperimentalModels({ node, rows }: { node: string | null; rows: 
   return (
     <div className="mt-3 space-y-2 text-sm">
       <p>
-        <strong>Strata · Experimental</strong> — text chat with models prepared for it; tools and
-        media are not supported yet. Prepare one from a model&apos;s{" "}
+        <strong>Strata · Experimental</strong> — text chat with prepared models; no tools or media
+        yet. Prepare one from a model&apos;s{" "}
         <Link href="/library" className="underline">
           Library
         </Link>{" "}
@@ -94,8 +94,8 @@ export function ExperimentalModels({ node, rows }: { node: string | null; rows: 
             {busy ? "Switching…" : "Switch model"}
           </button>
           <p className="w-full text-[color:var(--muted)]">
-            Waits up to 30 seconds for current gateway requests to finish, then stops the old model
-            and loads the new one. Each keeps its own alias.
+            Waits up to 30 seconds for current requests to finish, then swaps the models. Each keeps
+            its own alias.
           </p>
         </div>
       )}

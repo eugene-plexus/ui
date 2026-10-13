@@ -80,7 +80,7 @@ describe("describeAdmission", () => {
   it("with no rule it says to state the folder's mount, or an override", () => {
     const preview = describeAdmission(NOT_HERE_UNMAPPED, "Amish_Station", "node:Amish_Station");
     expect(preview.detail).toContain("/models/q.gguf does not exist there");
-    expect(preview.detail).toContain("say where that folder is mounted");
+    expect(preview.detail).toContain("set the mount on the folder");
     expect(preview.fixTarget).toBe("node:Amish_Station");
   });
 

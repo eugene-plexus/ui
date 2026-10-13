@@ -437,7 +437,7 @@ export function ChatInput({
           placeholder={
             disabled
               ? "Waiting…"
-              : "Send a message… (Enter to send, Shift+Enter for newline; attach, drop or paste text files, PNG/JPEG images, WAV/MP3 recordings or PDFs)"
+              : "Send a message… (Enter to send, Shift+Enter for a new line; attach, drop or paste files)"
           }
           disabled={disabled}
           className="max-h-[calc(10lh_+_1rem_+_2px)] min-w-0 basis-full resize-none overflow-y-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm leading-relaxed transition-colors outline-none hover:border-[color:var(--border-hover)] focus:border-[color:var(--accent-left)] disabled:opacity-50 sm:flex-1 sm:basis-auto"
@@ -455,7 +455,7 @@ export function ChatInput({
           type="button"
           onClick={() => fileInput.current?.click()}
           disabled={disabled}
-          title="Attach text files (inlined into the message, as a harness would paste them), PNG/JPEG images (up to 4, 5 MB each), WAV/MP3 recordings or PDFs (10 MB each; 11 MB for everything attached)"
+          title="Attach text files (inlined into the message), PNG/JPEG images (up to 4, 5 MB each), WAV/MP3 recordings or PDFs (10 MB each; 11 MB in all)"
           className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--muted)] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30"
         >
           Attach

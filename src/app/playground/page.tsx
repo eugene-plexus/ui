@@ -1085,9 +1085,8 @@ function RoutingBar({ info }: { info: TurnInfo }) {
         <span
           className="status-error px-1"
           title={
-            "The backend discarded most of the prompt to make it fit and answered anyway. " +
-            "The reply is about what survived, not what you sent. Raise the backend's " +
-            "context window, or send less."
+            "The backend discarded most of the prompt to make it fit. The reply is about " +
+            "what survived. Raise the backend's context window, or send less."
           }
         >
           input truncated

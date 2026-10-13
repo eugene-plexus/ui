@@ -106,8 +106,8 @@ export default function PeoplePage() {
         <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-8">
           <p className="text-sm text-[color:var(--muted)]">
             Apps can ask Eugene who is using them. With nobody added here, an app asks for
-            Eugene&rsquo;s passphrase. Add people to give each one a name and password of their own.
-            Nobody added here can open this console.
+            Eugene&rsquo;s passphrase. Add people to give each one a name and password. They cannot
+            open this console.
           </p>
           {error && (
             <p className="status-error rounded-[var(--radius)] px-2 py-1 text-sm" role="alert">

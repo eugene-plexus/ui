@@ -111,12 +111,11 @@ const STATUS_TONE: Record<RuntimeStatus, string> = {
 
 const STATUS_HELP: Record<RuntimeStatus, string> = {
   ready: "Model loaded and serving. The only state the gateway routes to.",
-  copying:
-    "Copying the model onto this machine's own disk before starting it. Nothing has been started yet; the engine follows when the copy lands.",
+  copying: "Copying the model onto this machine's disk. The engine starts when the copy lands.",
   loading: "Answering, but still reading the model into memory.",
   starting: "Spawned, not yet answering its readiness probe.",
   stopped:
-    "Not running and not being respawned: stopped by the operator, unloaded by the gateway after its idle timeout, or declared with autoStart off. The stop reason says which.",
+    "Not running and not being restarted: stopped by you, unloaded after its idle timeout, or autoStart is off. The stop reason says which.",
   exited: "Exited cleanly; the agent is respawning it.",
   crashed: "Exited non-zero repeatedly. The agent gave up — see the error.",
 };
@@ -411,14 +410,14 @@ function InferencePageInner() {
           <Link
             href="/library"
             className={buttonClass}
-            title="Pick a model you own, choose the node, and launch it. The agent there declares a companion driver and the gateway starts routing when the engine is ready."
+            title="Pick a model you own, choose the node, and launch it. The gateway routes to it when the engine is ready."
           >
             Launch a model
           </Link>
           <Link
             href="/backends/add"
             className={buttonClass}
-            title="Something you already run — Ollama, LM Studio, an OpenAI-compatible server, a cloud CLI — joins the install so the gateway can send requests to it. A short form asks which app it is and what it needs."
+            title="Connect something you already run: Ollama, LM Studio, an OpenAI-compatible server or a cloud CLI. A short form asks what it needs."
           >
             Add an external backend
           </Link>
@@ -1033,7 +1032,7 @@ function RowView({
                 )}`}
                 className={smallButton}
                 aria-label={`Settings for ${actionName}`}
-                title="An external backend is not ours to start or stop. Its driver's settings — the URL, the model id, the API key — are on its Settings page."
+                title="Eugene does not start or stop an external backend. Its URL, model id and API key are in its driver's settings."
               >
                 Settings
               </Link>
@@ -1245,9 +1244,9 @@ function EnginesLine({
                     aria-label={`Build of ${e.engine} to install`}
                     data-testid="engine-build-choice"
                     title={expertHint(
-                      "The build chosen for this machine is first. The others are every " +
-                        "build upstream publishes for this system: try SYCL on an Intel " +
-                        "Arc, or the CPU build to rule the graphics card out.",
+                      "The build chosen for this machine is first, then every other build " +
+                        "published for this system. Try SYCL on an Intel Arc, or CPU to " +
+                        "rule out the card.",
                     )}
                     value={builds[e.engine] ?? ""}
                     onChange={(event) =>

@@ -72,7 +72,7 @@ export function verdictMeaning(fit: FitWords): string {
       return expertHint("Larger than this machine's GPU and host memory together.");
     case "unknown":
       return expertHint(
-        "There is a graphics card here and nothing on this machine would say how much memory it has, so there is nothing to compare against. Install the card's own tool, or score against a budget you supply.",
+        "A graphics card is present but nothing on this machine reports its memory, so there is nothing to compare against. Install the card's own tool, or score against a budget you supply.",
       );
     case "split":
       if (fit.offload === "experts")

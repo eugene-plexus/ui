@@ -244,8 +244,7 @@ function LoginForm() {
           </p>
           <h1 className="font-ui mt-1 text-xl font-semibold">Unlock</h1>
           <p className="mt-3 text-sm leading-relaxed text-[color:var(--muted)]">
-            Enter your install passphrase. It was set during the first-run setup wizard and is used
-            to decrypt at-rest secrets like provider API keys.
+            Enter your install passphrase, the one you set during first-run setup.
           </p>
         </header>
         {/* The api client sends `reason=expired` only when the session it

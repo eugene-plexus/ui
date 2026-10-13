@@ -133,8 +133,8 @@ export function StarterSetPanel({
   if (models.length === 0) {
     return (
       <p className="text-sm text-[color:var(--muted)]">
-        There are no suggested models on this install. Search above for one by name — a family name
-        or a publisher works better than a description.
+        No suggested models on this install. Search above by name; a family name or publisher works
+        better than a description.
       </p>
     );
   }

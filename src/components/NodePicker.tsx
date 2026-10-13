@@ -26,8 +26,8 @@ export function NodePicker({
 
   const summary = describeBudget(selected.budget);
   const title =
-    "Verdicts are scored against this node's free memory, and Launch runs the model here. " +
-    "The library itself may run on another machine; its own hardware is not what is measured.";
+    "Verdicts use this node's free memory, and Launch runs the model here. " +
+    "The library may be on another machine; its hardware is not measured.";
 
   if (nodes.length <= 1) {
     return (

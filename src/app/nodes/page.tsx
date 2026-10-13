@@ -462,14 +462,13 @@ export default function NodesPage() {
             <section className="mb-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-4">
               <h2 className="font-ui text-base font-semibold">This control root is locked</h2>
               <p className="mt-2 text-sm text-[color:var(--muted)]">
-                It is set up and nothing is lost. It keeps this install&rsquo;s signing key sealed
-                until it is given the passphrase after a restart. Until then no models are listed
-                and nothing is served.
+                It is set up and nothing is lost, but after a restart it waits for the passphrase.
+                Until then no models are listed and nothing is served.
               </p>
               <p className="mt-2 text-sm text-[color:var(--muted)]">
                 Signing in to this web UI unlocks it too, with the same passphrase. You see this
                 form because the root restarted after you signed in, or holds a different
-                passphrase. This form talks to the control root itself.
+                passphrase.
               </p>
               <form onSubmit={unlock} className="mt-3 flex flex-wrap items-center gap-2">
                 <label htmlFor="unlock-passphrase" className="sr-only">
@@ -501,10 +500,10 @@ export default function NodesPage() {
                 </div>
               )}
               <p className="mt-3 text-sm text-[color:var(--muted)]">
-                This happens on every restart unless auto-unlock is on. A host can use its OS
-                keyring; a container has none, so it reads the passphrase from a file you mount —
-                see <span className="font-mono">securityMode</span> in the control root&rsquo;s
-                settings.
+                This happens on every restart unless auto-unlock is on. Hosts can use the OS
+                keyring; containers read a mounted passphrase file (
+                <span className="font-mono">securityMode</span> in the control root&rsquo;s
+                settings).
               </p>
             </section>
           )}
@@ -699,8 +698,8 @@ export default function NodesPage() {
             <section className="section-panel mb-6" data-testid="node-versions">
               <h2 className="section-heading font-ui text-base font-semibold">Versions</h2>
               <p className="mb-3 text-sm text-[color:var(--muted)]">
-                These versions and Needs Attention use the same status. When versions differ, update
-                checks refresh automatically. Nothing is installed until you press Update.
+                These versions and Needs Attention use the same status. Nothing is installed until
+                you press Update.
               </p>
               {difference && (
                 <div
@@ -743,9 +742,8 @@ export default function NodesPage() {
           <section hidden={locked} className="section-panel">
             <h2 className="section-heading font-ui text-base font-semibold">Add a node</h2>
             <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
-              Make a token here, then run the command it gives you on the other machine. The token
-              works once, for a short time, and is <strong>shown once</strong>. A lost one is
-              replaced rather than looked up.
+              Make a token, then run the command it gives you on the other machine. A token works
+              once and is <strong>shown once</strong>; a lost one is replaced.
             </p>
 
             <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -926,9 +924,8 @@ export default function NodesPage() {
                   ))}
                 </ul>
                 <p className="mt-2 text-[0.6875rem] text-[color:var(--muted)]">
-                  The id is a handle, not the token. The token was shown once and is not kept
-                  anywhere it could be read back. Revoking one stops it working immediately; a token
-                  that has already enrolled a node can be cleared here and the node is untouched.
+                  The id is not the token, which was shown once and is not kept. Revoking stops a
+                  token working at once. Clearing a used token leaves its node untouched.
                 </p>
               </div>
             )}
@@ -1003,7 +1000,7 @@ export default function NodesPage() {
                     <Link href="/" className="underline">
                       Reach it from other devices
                     </Link>{" "}
-                    on Home, or type an address the other machine can reach in the box above.
+                    on Home, or type a reachable address above.
                   </p>
                 )}
               </div>
@@ -1075,8 +1072,8 @@ function describe(e: unknown): string {
     if (p?.detail || p?.title) return p.detail || p.title || "";
     if (e.status === 503) {
       return (
-        "The control root is not reachable, or has not been set up yet. Until it is set " +
-        "up it refuses every request, by design."
+        "The control root is not reachable, or has not been set up yet. Until then it " +
+        "refuses every request."
       );
     }
     return `${e.status} ${e.statusText}`;

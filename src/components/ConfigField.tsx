@@ -672,12 +672,11 @@ export function ConfigFieldInput({
           // the expert control should be told the easy one exists; a
           // half added without its link is a defect.
           <p className="text-sm text-[color:var(--muted)]">
-            The one-click version of this is{" "}
             <Link href="/" className="underline">
               Reach it from other devices
             </Link>{" "}
-            on Home, which also restarts what has to restart and offers to settle the firewall. What
-            you type here wins over what it would have chosen.
+            on Home does this in one click, restarts what must restart and offers to settle the
+            firewall. What you type here wins.
           </p>
         )}
       </div>
@@ -980,8 +979,7 @@ function PathMappingsInput({
     <div className="flex flex-col gap-2">
       {rows.length === 0 && (
         <p className="text-sm text-[color:var(--muted)] italic">
-          No overrides. This machine inherits each Library folder&rsquo;s mount for its kind of
-          node, set once on{" "}
+          No overrides. This machine inherits each Library folder&rsquo;s mount, set on{" "}
           <Link
             href={libraryFoldersHref(null)}
             className="underline"
@@ -989,7 +987,7 @@ function PathMappingsInput({
           >
             Library &rarr; Folders
           </Link>
-          . Add a row only if this machine mounts a folder somewhere else.
+          . Add a row only if it mounts a folder somewhere else.
         </p>
       )}
       {rows.map((mapping, index) => (
@@ -1155,16 +1153,16 @@ function LibraryFoldersInput({
         </p>
       )}
       <p className="text-sm text-[color:var(--muted)]">
-        A folder&rsquo;s mounts cover every node of that kind. A machine that mounts a folder
-        somewhere else gets an <em>override</em> of its own, under that machine on{" "}
+        A folder&rsquo;s mounts cover every node of that kind. A machine that mounts it elsewhere
+        gets its own <em>override</em>, on{" "}
         <Link
           href={libraryFoldersHref(null)}
           className="underline"
           data-testid="node-overrides-link"
         >
           Library &rarr; Folders
-        </Link>
-        , or as <em>Library folder overrides</em> in that machine&rsquo;s agent Config.
+        </Link>{" "}
+        or as <em>Library folder overrides</em> in its agent Config.
       </p>
       {rows.map((folder, index) => (
         <div

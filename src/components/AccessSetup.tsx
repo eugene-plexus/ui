@@ -413,8 +413,8 @@ export function AccessSetup() {
             </>
           ) : (
             <p className="mt-2">
-              Eugene is going back to its direct ports. Open it at the address and port you used
-              before one HTTPS port, once those ports are published again.
+              Eugene is going back to its direct ports. Once they are published again, open it at
+              the old address and port.
             </p>
           )}
         </section>
@@ -435,8 +435,8 @@ export function AccessSetup() {
           {confirming === "off" ? (
             <div className="section-panel" role="group" aria-label="Turn off one HTTPS port">
               <p>
-                Eugene restarts on its direct ports, and this address stops answering. Its
-                configuration is kept, so you can apply it again later.
+                Eugene restarts on its direct ports and this address stops answering. Your
+                configuration is kept.
               </p>
               <div className="mt-3 flex gap-3">
                 <button
@@ -480,28 +480,27 @@ export function AccessSetup() {
         </label>
         {mode === "proxy" && (
           <p>
-            Your existing proxy manages public certificates and forwards to Eugene. On the same
-            Docker host, the two can share a Docker network and Eugene needs no published ports.
+            Your proxy handles certificates and forwards to Eugene. On the same Docker host, share a
+            network and publish no ports.
           </p>
         )}
         {mode === "automatic" && (
           <p>
-            Use a domain you control and forward public TCP port 443 directly to Eugene. Port 80 is
-            not needed. Behind CGNAT or without inbound access, use a reverse proxy or a certificate
-            manager with DNS verification.
+            Use a domain you control and forward public TCP port 443 to Eugene; port 80 is not
+            needed. Without inbound access (behind CGNAT, say), use a proxy or DNS-verified
+            certificates.
           </p>
         )}
         {mode === "local" && (
           <p>
-            No public domain or Internet access is needed. Configure local DNS and trust Eugene’s
-            public CA certificate on each browser and node.
+            No public domain needed. Set up local DNS, and trust Eugene’s CA certificate on each
+            browser and node.
           </p>
         )}
         {mode === "certificate" && (
           <p>
-            Use certificates from your organisation or a manager that supports DNS verification.
-            This also works on LANs and VPNs without public inbound ports. Renewed certificate files
-            reload automatically.
+            Supply certificate files from your organisation or a certificate manager. This works
+            without public inbound ports, and renewed files reload automatically.
           </p>
         )}
         <label className="block">
@@ -551,9 +550,8 @@ export function AccessSetup() {
             <span>
               On its own port, as now (recommended)
               <span className={hintClass}>
-                Only Workbench goes through this setup. You keep opening the console at its own
-                address on your network, with no DNS entry to add. Its name, eugene.
-                {domain || "your-domain"}, is still needed, only for signing in to Workbench.
+                Only Workbench goes through this setup. The console keeps its own address, with no
+                DNS entry. Workbench sign-in still uses eugene.{domain || "your-domain"}.
               </span>
             </span>
           </label>
@@ -583,10 +581,9 @@ export function AccessSetup() {
             onChange={(e) => set("privateNetworks", e.target.value)}
           />
           <span className={hintClass}>
-            Where the people and machines that use the console are: your home or office network, or
-            your VPN. Not your proxy’s Docker network. Through Cloudflare, every visitor looks like
-            Cloudflare, so to reach the console from home, point its name at your proxy in your
-            local DNS, or allow the console from any network below.
+            Home, office or VPN networks that open the console; not your proxy’s Docker network.
+            Behind Cloudflare, every visitor looks like Cloudflare: point the console’s name at your
+            proxy in local DNS, or allow any network below.
           </span>
         </label>
         {!consoleDirect && (
@@ -603,9 +600,8 @@ export function AccessSetup() {
             <span>
               Allow the console from any network, with sign-in
               <span className={hintClass}>
-                Off: only the networks above can open the console. Safer ways to reach it from
-                outside are a VPN such as Tailscale, or Cloudflare Access in front of the console’s
-                name.
+                Off: only the networks above can open the console. Safer from outside: a VPN such as
+                Tailscale, or Cloudflare Access.
               </span>
             </span>
           </label>
@@ -620,15 +616,13 @@ export function AccessSetup() {
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>
                 Anyone on the internet can open the console’s sign-in page and try passphrases. Your
-                passphrase is then all that stands between them and the whole install: its models,
-                backends and their keys, Library folders, apps, people’s accounts and connected
-                machines.
+                passphrase alone then protects the whole install, including backend keys, Library
+                folders, accounts and machines.
               </li>
               <li>
-                Eugene allows 5 wrong passphrases a minute from each visitor address. Behind
-                Cloudflare or a similar service, visitors share that service’s addresses, so an
-                attacker spread across them gets more tries, and other people’s wrong guesses can
-                lock you out for a minute.
+                Eugene allows 5 wrong passphrases a minute per visitor address. Behind Cloudflare or
+                similar, visitors share addresses: an attacker gets more tries, and strangers’ wrong
+                guesses can lock you out for a minute.
               </li>
               <li>
                 A signed-in console stays signed in for 14 days, from wherever it is, until you sign
@@ -640,8 +634,8 @@ export function AccessSetup() {
               </li>
             </ul>
             <p className="mt-2">
-              If you do it, use a long passphrase you use nowhere else, and check Logs for failed
-              sign-ins. Connections from other machines stay limited to your networks either way.
+              If you do this, use a long, unique passphrase and watch Logs for failed sign-ins.
+              Other machines stay limited to your networks either way.
             </p>
             <label className="mt-3 flex gap-2">
               <input
@@ -672,8 +666,8 @@ export function AccessSetup() {
           <span>
             Also an inference name (inference.{domain || "your-domain"})
             <span className={hintClass}>
-              For apps on other machines, such as Claude Code or Open WebUI, to use Eugene’s models
-              through this port. Apps on this machine need nothing.
+              For apps on other machines, such as Claude Code or Open WebUI. Apps on this machine
+              need nothing.
             </span>
           </span>
         </label>
@@ -687,9 +681,8 @@ export function AccessSetup() {
           <span>
             Also a name for other machines (nodes.{domain || "your-domain"})
             <span className={hintClass}>
-              Off: machines you have connected keep reaching this one at its control port, with
-              nothing to change on them. On: they use this name instead, and each one’s saved
-              address must be changed to it.
+              Off: connected machines keep using this one’s control port. On: they use this name,
+              and each one’s saved address must change to it.
             </span>
           </span>
         </label>
@@ -708,9 +701,8 @@ export function AccessSetup() {
             <span>
               Job sites can connect from anywhere
               <span className={hintClass}>
-                People’s own machines, anywhere, use Workbench’s file tools through this name. It
-                answers job sites for joining and their own calls only; the console and everything
-                else stay on your networks.
+                People’s own machines can use Workbench’s file tools from anywhere. This name
+                answers job sites only; everything else stays on your networks.
               </span>
             </span>
           </label>
@@ -724,19 +716,18 @@ export function AccessSetup() {
             <p className="font-semibold">What this risks</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>
-                The internet can reach Eugene’s control root on this name, for six paths: joining
-                with a token, the list of trusted certificates and a job site’s four calls, each
-                with that site’s own key. A flaw found later in them would be reachable from
-                anywhere.
+                Six paths on the control root become reachable from the internet: joining with a
+                token, the trusted-certificate list and a job site’s four calls, each with that
+                site’s own key. A flaw in them would be exposed.
               </li>
               <li>
-                A leaked join token lets someone join a machine as a job site within its 15 minutes,
-                if they also know the invited person’s password. It is listed under Job sites, runs
-                nothing and gets no folders until its owner grants them.
+                A leaked join token, with the invited person’s password, lets someone join a machine
+                as a job site within 15 minutes. It runs nothing and gets no folders until its owner
+                grants them.
               </li>
               <li>
-                Forward this port to Eugene on your router. Without a public certificate, machines
-                trust this one by the key in their join command, so no outside service is needed.
+                Forward this port to Eugene on your router. Machines trust this one by the key in
+                their join command, not by a public certificate.
               </li>
             </ul>
             <label className="mt-3 flex gap-2">
@@ -762,15 +753,14 @@ export function AccessSetup() {
                 onChange={(e) => set("proxies", e.target.value)}
               />
               <span className={hintClass}>
-                Your proxy’s own address, as Eugene sees it, one address per proxy, not a network.
-                When the proxy and Eugene share a Docker network, that is the proxy’s address on
-                that network, not its LAN address. To list them:{" "}
+                Your proxy’s address as Eugene sees it: one per proxy, not a network. On a shared
+                Docker network, use its address there, not its LAN address. To list them:{" "}
                 <code>
                   {
                     "docker network inspect <network> -f '{{range .Containers}}{{.Name}} {{.IPv4Address}}{{\"\\n\"}}{{end}}'"
                   }
                 </code>
-                . Give the proxy a fixed address there, so it does not change.
+                . Give the proxy a fixed address so it does not change.
               </span>
             </label>
             {proxiesInsideNetworks(networks(proxies), networks(privateNetworks)).map(
@@ -780,11 +770,10 @@ export function AccessSetup() {
                   className="status-warn rounded-[var(--radius)] px-4 py-3"
                   role="note"
                 >
-                  Your proxy, {proxy}, is inside {network} in Allowed private networks. Those
-                  networks are checked against the people using Eugene, not the proxy. If {network}{" "}
-                  is the Docker network your proxy shares with Eugene, no one connects from it: put
-                  your home or VPN network there instead. If your proxy is on another machine on the
-                  same network as the people using it, this is fine.
+                  Your proxy, {proxy}, is inside {network}, but Allowed private networks are for the
+                  people using Eugene. If this is the Docker network the proxy shares with Eugene,
+                  enter your home or VPN network instead. If the proxy is on another machine, ignore
+                  this.
                 </p>
               ),
             )}
@@ -911,9 +900,8 @@ export function AccessSetup() {
               <div className="mt-5" role="group" aria-label="Apply this setup">
                 {consoleDirect ? (
                   <p>
-                    Eugene saves this and restarts, and this page comes back in a few seconds. If
-                    nobody signs in to the console within 15 minutes, Eugene goes back to how it
-                    was.
+                    Eugene saves this and restarts; this page comes back in a few seconds. If nobody
+                    signs in to the console within 15 minutes, Eugene goes back to how it was.
                   </p>
                 ) : (
                   <p>

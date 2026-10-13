@@ -55,7 +55,7 @@ export function describeControlRoot(
       tone: "warn",
       text: `${where} did not answer on the gateway's last refresh${why}: showing the last node list it had${nodesText}.`,
       detail: sealed
-        ? "The root is sealed, as it is after every restart of a container: unlock it on the Nodes page, or set up the passphrase file so it comes back on its own."
+        ? "The root is sealed, as after every container restart: unlock it on the Nodes page, or set up the passphrase file so it unlocks itself."
         : `${where.charAt(0).toUpperCase()}${where.slice(1)} was ${from}. Backends on the nodes it last listed stay routable; a node that joined since will not appear until it answers.`,
     };
   }

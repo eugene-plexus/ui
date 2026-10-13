@@ -182,8 +182,8 @@ export default function AddBackendPage() {
         <div className="mx-auto w-full max-w-2xl">
           <h1 className="font-ui mb-2 text-xl font-semibold">Add an app you already run</h1>
           <p className="mb-6 text-sm leading-relaxed text-[color:var(--muted)]">
-            Ollama, LM Studio, a cloud API, or a subscription you already pay for. Eugene adds it
-            beside your own models and sends requests to it the same way.
+            Ollama, LM Studio, a cloud API or a subscription you already pay for. Eugene adds it
+            beside your own models.
           </p>
 
           {phase.kind === "form" && (

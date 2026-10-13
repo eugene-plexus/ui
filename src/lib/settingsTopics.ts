@@ -63,7 +63,7 @@ export const TOPICS: readonly Topic[] = [
     id: "serving",
     label: "Serving & failover",
     blurb:
-      "How long a request may take, when an idle model is unloaded, how a stopped one is woken, and how load spreads across copies.",
+      "Request time limits, unloading idle models, waking stopped ones, and spreading load across copies.",
   },
   {
     id: "engines",
@@ -459,7 +459,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     id: "search-accounts",
     label: "Web search accounts, and which goes first",
     description:
-      "Search with SearXNG, Brave or Google (with a Gemini key), and set the order a web search tries them: on the Backends and Routing pages.",
+      "Add a SearXNG, Brave or Google (Gemini key) search account on Backends, and set the order they are tried on Routing.",
     href: "/backends/search?sel=backends",
     keywords: [
       "google",

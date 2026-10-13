@@ -468,8 +468,8 @@ export default function MetricsPage() {
       <main data-testid="metrics-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-6 py-8">
           <p className="mb-6 text-sm text-[color:var(--muted)]">
-            What each backend did on <em>this</em> machine. Useful for comparing your own backends
-            against each other; not a benchmark of the hardware.
+            What each backend did on <em>this</em> machine. For comparing your backends, not a
+            hardware benchmark.
           </p>
 
           {loading && <p className="font-ui text-sm text-[color:var(--muted)]">Loading…</p>}
@@ -483,8 +483,7 @@ export default function MetricsPage() {
                 <Link href="/config?sel=gateway#metricsEnabled" className="underline">
                   Settings page
                 </Link>{" "}
-                and restart the gateway. Recording starts from then on — nothing reconstructs
-                traffic served while it was off.
+                and restart the gateway. Earlier traffic is not recovered.
               </p>
             </section>
           )}
@@ -504,8 +503,7 @@ export default function MetricsPage() {
                 >
                   {summary.rowsDropped.toLocaleString()} measurement
                   {summary.rowsDropped === 1 ? "" : "s"} were dropped because the recorder could not
-                  keep up, so these numbers are a sample rather than a complete record. Inference
-                  was not affected.
+                  keep up, so these numbers are a sample. Inference was not affected.
                 </p>
               )}
               {summary.truncated && (
@@ -641,13 +639,13 @@ export default function MetricsPage() {
                         <th className="py-2 pr-3 text-right font-medium">Slowest</th>
                         <th
                           className="py-2 pr-3 text-right font-medium"
-                          title="Time to the first streamed token, median. Includes the hop to the driver, so on a local engine it is mostly prompt processing."
+                          title="Median time to the first token. On a local engine it is mostly prompt processing."
                         >
                           First token
                         </th>
                         <th
                           className="py-2 pr-3 text-right font-medium"
-                          title="Share of prompt tokens the engine took from its prompt cache instead of reading again, over the requests whose backend said."
+                          title="Share of prompt tokens served from the engine's prompt cache, over requests whose backend reported it."
                         >
                           Reused
                         </th>
@@ -659,7 +657,7 @@ export default function MetricsPage() {
                         </th>
                         <th
                           className="py-2 pr-3 text-right font-medium"
-                          title="Of those that went back to their replica, how many found their history gone there: the engine read the conversation again. Many here means this model needs more context or another replica."
+                          title="Of those that went back to their replica, how many found their history gone. Many means this model needs more context or another replica."
                         >
                           Evicted
                         </th>
@@ -671,7 +669,7 @@ export default function MetricsPage() {
                         </th>
                         <th
                           className="py-2 pr-3 text-right font-medium"
-                          title="Tokens per second over the whole serving attempt, prefill included. Lower than Decode on long prompts — the gap is the prefill cost."
+                          title="Tok/s over the whole attempt, prefill included. Lower than Decode on long prompts."
                         >
                           Tokens/sec
                         </th>
@@ -778,7 +776,7 @@ export default function MetricsPage() {
                             ) : (
                               <span
                                 className="text-[color:var(--muted)]"
-                                title="This backend did not report token counts for these requests, so the rate cannot be computed. Not the same as zero."
+                                title="This backend reported no token counts for these requests, so there is no rate. Not the same as zero."
                               >
                                 unreported
                               </span>
@@ -797,7 +795,7 @@ export default function MetricsPage() {
                             ) : (
                               <span
                                 className="text-[color:var(--muted)]"
-                                title="This backend does not report how long its own call took, so the split cannot be computed. Not the same as no overhead."
+                                title="This backend does not report its own call time, so overhead cannot be computed. Not the same as none."
                               >
                                 unreported
                               </span>
@@ -840,28 +838,22 @@ export default function MetricsPage() {
               )}
 
               <p className="mt-3 text-[0.6875rem] text-[color:var(--muted)]">
-                <strong>Decode</strong> is tokens per second after the first token — the number
-                people mean when they compare speeds — and <strong>Tokens/sec</strong> is the whole
-                serving attempt, prefill included. Both are measured from the backend that actually
-                answered, not from the whole request, so a failover does not make the backend that
-                rescued it look slow. The number in brackets is how many requests the median is
-                over.
+                <strong>Decode</strong> is tok/s after the first token. <strong>Tokens/sec</strong>{" "}
+                includes prefill. Both are measured on the backend that answered, so a failover does
+                not count against it. The number in brackets is how many requests the median covers.
               </p>
               <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">
                 <strong>First token</strong> includes the hop to the driver, so on a local engine it
-                is mostly prompt processing — but it is not a pure prefill measurement, and no
-                prompt-tokens-per-second is derived from it on purpose. The{" "}
+                is mostly prompt processing. For real prefill numbers, use the{" "}
                 <Link href="/library" className="underline">
                   benchmark
-                </Link>{" "}
-                is the instrument for real curves.
+                </Link>
+                .
               </p>
               <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">
-                <strong>Overhead</strong> is what Eugene Plexus itself costs: the gap between how
-                long the backend said it took and how long the gateway saw it take. Compare it
-                against the median to decide whether routing is worth worrying about — on a local
-                install it usually is not, and this is where you can check that rather than take our
-                word for it.
+                <strong>Overhead</strong> is what Eugene itself costs: the gap between the backend’s
+                own time and the gateway’s. Compare it with the median; on a local install it is
+                usually small.
               </p>
 
               {clientError && (
@@ -884,10 +876,9 @@ export default function MetricsPage() {
                     Usage by client key
                   </h2>
                   <p className="mb-2 text-sm text-[color:var(--muted)]">
-                    This gateway, within the selected window and retained request history — all
-                    models, whatever the filter above says. Tokens are reported usage only; failed
-                    attempts may consume unreported tokens. Requests with incomplete usage are
-                    counted below. This is not a billing total.
+                    All models on this gateway in the selected window, whatever the filter above
+                    says. Tokens are reported usage only; failed attempts may use unreported tokens.
+                    This is not a billing total.
                   </p>
                   {clientUsage.truncated && (
                     <p role="status" className="status-warn text-sm">
@@ -971,10 +962,8 @@ export default function MetricsPage() {
                     Recent requests
                   </h2>
                   <p className="mb-3 text-sm text-[color:var(--muted)]">
-                    The rows behind the numbers above, newest first. A request that tried more than
-                    one backend shows each attempt in the order it was tried, and one where there
-                    was a choice to make shows what the balancer saw when it made it — which is the
-                    answer to &ldquo;why did this go there and not to the other one&rdquo;.
+                    The rows behind the numbers above, newest first. Each attempt is shown in order;
+                    where the balancer chose, what it saw is shown too.
                   </p>
                   <ul className="space-y-1">
                     {recent.map((r, i) => (
@@ -1074,10 +1063,8 @@ export default function MetricsPage() {
               )}
 
               <p className="mt-8 text-[0.6875rem] text-[color:var(--muted)]">
-                Recorded on this machine, in a file beside the gateway&rsquo;s config. Never sent
-                anywhere, and not part of the install&rsquo;s replicated log — a standby control
-                root promoted later starts with no history, because the history described a
-                different process.
+                Recorded on this machine, beside the gateway&rsquo;s config, and never sent
+                anywhere. A standby promoted later starts with no history.
               </p>
             </>
           )}

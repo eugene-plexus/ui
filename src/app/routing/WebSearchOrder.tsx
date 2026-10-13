@@ -99,8 +99,8 @@ export function WebSearchOrder({
     >
       <h2 className="section-heading font-ui text-base font-semibold">Web search order</h2>
       <p className="mb-3 text-sm text-[color:var(--muted)]">
-        When a model searches the web, Eugene tries these search accounts from the top, and the next
-        one when an account fails. Add or change accounts on{" "}
+        Eugene tries these search accounts from the top, and the next when one fails. Add or change
+        accounts on{" "}
         <Link href="/backends/search?sel=backends" className="underline">
           the search accounts page
         </Link>

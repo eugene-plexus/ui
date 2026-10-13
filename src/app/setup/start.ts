@@ -183,9 +183,9 @@ export async function initializeControlRoot(passphrase: string): Promise<void> {
   const because = lastError instanceof Error ? lastError.message : String(lastError);
   throw new Error(
     `The control root did not take the passphrase (${because}).` +
-      ` Your passphrase is saved on this machine, so do not run setup again: it will be` +
+      ` Do not run setup again: your passphrase is saved on this machine and it would be` +
       ` refused.` +
-      ` Open Needs attention on the home page — it names what is wrong and what to do.`,
+      ` Open Needs attention on the home page to see what is wrong.`,
   );
 }
 

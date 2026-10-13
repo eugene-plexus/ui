@@ -133,10 +133,10 @@ export function ClientKeyLimitsEditor({
             onChange={(e) => onChange({ ...value, allowedModels: e.target.value.split("\n") })}
           />
           <span className="block text-[color:var(--muted)]">
-            Use exact IDs from Models, or a pattern: <span className="font-mono">openrouter/*</span>{" "}
-            allows every model of the connection named openrouter (
-            <span className="font-mono">*</span> matches anything). For an alias, allow both its
-            name and each target it may use. Leave empty to deny every model.
+            Use exact IDs from Models, or a pattern such as{" "}
+            <span className="font-mono">openrouter/*</span> (every model of the connection named
+            openrouter). For an alias, allow its name and each target it may use. Empty denies every
+            model.
           </span>
         </label>
       )}

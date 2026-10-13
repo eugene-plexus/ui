@@ -78,7 +78,7 @@ export function describeAdmission(
       tone: "error",
       headline: `Not on ${nodeLabel}`,
       detail: same
-        ? `${location.path} does not exist there${via}. If the Library's files are reachable from ${nodeLabel} over a share, say where that folder is mounted: on the folder itself (every node of that kind inherits it), or as an override for ${nodeLabel}.`
+        ? `${location.path} does not exist there${via}. If ${nodeLabel} reaches the Library's files over a share, set the mount on the folder (every node of that kind inherits it) or as an override for ${nodeLabel}.`
         : `${location.path} resolves to ${location.localPath} there${via}, and nothing is at that path. Check the mount, or fix the folder's mount or ${nodeLabel}'s override.`,
       fixTarget: nodeTarget,
       suggestedContext: null,

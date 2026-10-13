@@ -109,13 +109,12 @@ export default function AppsPage() {
       <main data-testid="apps-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-8">
           <p className="text-sm text-[color:var(--muted)]">
-            Apps are optional programs a machine in this install can run for you, like a chat app.
-            Each one gets its own key and talks to your models the same way any other app does.
-            Remove one at any time and its key stops working. Keys are listed with the rest on{" "}
+            Apps are optional programs a machine can run for you, like a chat app. Each gets its own
+            key, listed on{" "}
             <Link href="/" className="underline">
               Home
             </Link>
-            .
+            . Remove one and its key stops working.
           </p>
 
           <section
@@ -589,9 +588,9 @@ function AddCustom({
       </summary>
       <div className="mt-3 flex flex-col gap-3">
         <p className="text-sm text-[color:var(--muted)]">
-          For an app that is not in the list above, such as one you are writing. It runs its own
-          code on that machine, as the user the agent runs as, holding the key made for it. This is
-          off until you turn on “Allow apps not in the catalogue” in{" "}
+          For an app not in the list above, such as one you are writing. It runs its own code on
+          that machine as the agent&rsquo;s user. Off until you turn on “Allow apps not in the
+          catalogue” in{" "}
           <Link href={configHref} className="underline">
             that machine&rsquo;s agent settings
           </Link>

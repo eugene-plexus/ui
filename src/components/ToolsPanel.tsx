@@ -133,14 +133,13 @@ export function ToolsPanel({
       {enabled && modelToolCalling === false && (
         <p className="status-warn rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]">
           The selected model reports <code className="font-mono">tool_calling: false</code>: one of
-          the backends serving it cannot carry tool definitions. The gateway will refuse this
-          request with a 400 rather than strip the tools, by design — a plain answer would be
-          indistinguishable from the model choosing not to call anything.
+          its backends cannot carry tool definitions. The gateway will refuse this request with a
+          400 rather than strip the tools.
         </p>
       )}
       <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
         The playground executes nothing. When the model calls a tool, the call is shown and you type
-        the result — the loop a harness runs, with a person as the tool runtime.
+        the result.
       </p>
     </section>
   );

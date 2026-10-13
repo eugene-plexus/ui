@@ -262,9 +262,9 @@ export function ProfileEditor({
       </div>
 
       <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted)]">
-        The settings that worked, saved against the model instead of retyped. Run makes one called{" "}
+        Saved settings for this model. Run makes one called{" "}
         <span className="font-mono">{DEFAULT_PROFILE_NAME}</span> with a context size that fits.
-        Save more profiles to compare speed, longer context, or different GPUs.
+        Save more to compare speed, longer context or different GPUs.
       </p>
 
       {/* It measures how fast a model writes. A search model does not write. */}
@@ -323,8 +323,8 @@ export function ProfileEditor({
           <a href="/inference" className="underline">
             Inference
           </a>{" "}
-          page — a large quant takes a while. The gateway serves it under its alias as soon as the
-          engine reports <span className="font-mono">ready</span>; nothing else to wire.
+          page; a large quant takes a while. The gateway serves it under its alias once the engine
+          reports <span className="font-mono">ready</span>.
         </p>
       )}
 
@@ -354,13 +354,7 @@ export function ProfileEditor({
           <p className="text-sm text-[color:var(--muted)] italic">
             None yet. Press Run above and one called{" "}
             <span className="font-mono not-italic">{DEFAULT_PROFILE_NAME}</span> is made for you at
-            the context that fits this machine; make one here only to choose the flags yourself. A
-            profile is the saved engine flags for this file, so the same model is never retuned
-            twice. An app you already run (Ollama, a cloud CLI) joins from{" "}
-            <Link href="/backends/add" className="underline">
-              Add an app you already run
-            </Link>{" "}
-            instead.
+            the context that fits this machine. Make one here only to choose the flags yourself.
           </p>
         )}
         {profiles?.map((p) =>
@@ -926,13 +920,12 @@ function ProfileForm({
       <fieldset className="mt-3 space-y-2 text-sm">
         <legend className="font-medium">Generation defaults</legend>
         <p className="text-[color:var(--muted)]">
-          When this is the default profile, these values fill parameters omitted by your app.
-          Changes apply within the gateway&rsquo;s profile refresh interval without restarting the
-          model. Leave blank to use{" "}
+          When this is the default profile, these values fill any parameter an app omits. Changes
+          apply shortly, without restarting the model. Blank uses{" "}
           <Link href="/config?sel=gateway#defaultMaxTokens" className="underline">
             the gateway&rsquo;s answer defaults
           </Link>
-          ; blank Top-p leaves that parameter unspecified.
+          ; blank Top-p leaves it unspecified.
         </p>
         {generationFields.map((field) => (
           <label key={field.key} className="flex flex-col gap-1">

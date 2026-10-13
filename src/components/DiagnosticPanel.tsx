@@ -108,10 +108,9 @@ export function DiagnosticPanel({
 
       {mode === "proxy" ? (
         <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
-          Requests go to <code className="font-mono">/api/proxy/gateway</code> on this page&apos;s
-          origin and the agent forwards them. A harness does not take this path, so a turn that
-          works here says the control plane works — not that it is reachable from where the harness
-          stands. Switch to <em>Direct</em> to test that.
+          Requests go through the agent&apos;s proxy. A harness does not, so a turn that works here
+          does not prove the gateway is reachable from where the harness runs. Switch to{" "}
+          <em>Direct</em> to test that.
         </p>
       ) : (
         <>
@@ -136,7 +135,7 @@ export function DiagnosticPanel({
                   type="button"
                   onClick={() => onBaseUrl(guessDisplay)}
                   className="rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]"
-                  title="This page's host plus the gateway's port from the agent's topology. A guess: a container that publishes the port under another number will make it wrong, exactly as it would be for a harness given the same numbers."
+                  title="This page's host plus the gateway's port from the agent's topology. A guess: a container that publishes the port under another number makes it wrong."
                 >
                   Use guess {guessDisplay}
                 </button>
@@ -211,11 +210,11 @@ export function DiagnosticPanel({
           </p>
           <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
             {keyIsSession
-              ? "This is the token you were issued when you signed in. It can do everything you can " +
-                "and it expires 14 days after sign-in, so it is right for a one-off check and wrong " +
-                "for a harness you leave configured -- make a client key for that."
-              : "A key you typed or made. The gateway accepts the operator's session token, a " +
-                "component's service token, or a client key; anything else is refused with a 401."}
+              ? "This is your sign-in token. It can do everything you can and expires 14 days " +
+                "after sign-in: fine for a one-off check. For a harness you leave configured, " +
+                "make a client key."
+              : "A key you typed or made. The gateway accepts a session token, a service token " +
+                "or a client key; anything else gets a 401."}
           </p>
         </>
       )}

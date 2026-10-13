@@ -354,10 +354,9 @@ export default function WizardPage() {
       const missing = requiredKindsMissing(components);
       if (missing.length > 0) {
         throw new Error(
-          `This node has no ${missing.join(", ")}. The agent declares those on its ` +
-            `first boot, so they are missing from its Python environment. Install ` +
-            `them there (scripts/bootstrap.ps1 does this) and restart the agent. ` +
-            `Your passphrase is set; re-run setup after fixing it.`,
+          `This node has no ${missing.join(", ")}: they are missing from the agent's ` +
+            `Python environment. Install them there (scripts/bootstrap.ps1 does this) ` +
+            `and restart the agent. Your passphrase is set; re-run setup afterwards.`,
         );
       }
 

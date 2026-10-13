@@ -73,8 +73,7 @@ export function describeOwnerInDevMode(
   if (ownerInDevMode === false) {
     return (
       `${ownerName} has not let Eugene's owner in on this machine. ` +
-      "Access you give yourself here does nothing until they do (Workbench, Job sites). " +
-      "Dev mode alone opens nothing on a job site."
+      "Access you give yourself here does nothing until they do (Workbench, Job sites)."
     );
   }
   return "This machine has not said yet whether its owner lets Eugene's owner in.";

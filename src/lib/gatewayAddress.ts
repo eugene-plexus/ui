@@ -236,9 +236,9 @@ export type Tone = "ok" | "warn" | "error";
 export function describeRemap(evidence: RemapEvidence): string | null {
   if (evidence.kind !== "remapped") return null;
   return (
-    `This page reached the agent on port ${evidence.pagePort}, but the agent is listening on ` +
-    `${evidence.agentPort} — something between them publishes ports differently. The address ` +
-    `above is worked out from the gateway's own port the same way, so it is probably wrong too.`
+    `This page reached the agent on port ${evidence.pagePort}, but the agent listens on ` +
+    `${evidence.agentPort}, so ports are published differently here. The address above is ` +
+    `probably wrong too.`
   );
 }
 
@@ -335,9 +335,8 @@ export function describeVerdict(
       return {
         tone: "error",
         text:
-          `Something answered at ${baseUrl}, but it is not this gateway — it replied ` +
-          `${verdict.status}. Another service is on that port, so this address will not work ` +
-          `in any app. Correct it above.`,
+          `Something answered at ${baseUrl} but is not this gateway (it replied ` +
+          `${verdict.status}). Another service is on that port: correct the address above.`,
       };
     case "blocked":
       // **The sentence this branch used to end on was the dangerous one.**
@@ -350,13 +349,13 @@ export function describeVerdict(
       return {
         tone: "error",
         text: remapped
-          ? `Something is listening at ${baseUrl}, but it did not answer as this gateway — and ` +
-            `the ports on this machine are published differently (below), so this is most likely ` +
-            `the wrong port with another service on it. Correct the address above.`
-          : `Something is listening at ${baseUrl}, but it would not answer this page. Either the ` +
-            `gateway has browser clients turned off (Settings › Access & security › Answer browser clients, corsEnabled), in which ` +
-            `case a non-browser app would still work — or this is not the gateway at all, in ` +
-            `which case nothing will. Correct the address above if you are not sure.`,
+          ? `Something is listening at ${baseUrl} but did not answer as this gateway. Ports here ` +
+            `are published differently (below), so this is most likely the wrong port. Correct ` +
+            `the address above.`
+          : `Something is listening at ${baseUrl} but would not answer this page. Either the ` +
+            `gateway has browser clients off (Settings › Access & security › Answer browser ` +
+            `clients, corsEnabled) and non-browser apps still work, or this is not the gateway ` +
+            `at all. Correct the address above if unsure.`,
       };
     case "unreachable":
       return {

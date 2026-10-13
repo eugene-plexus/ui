@@ -82,7 +82,7 @@ export function WorkingIndicator({ since, state = {} }: { since?: number; state?
       {saysStillWorking(state, seconds) && (
         <p data-testid="working-still" className="mt-1">
           Still working. A large model, or one running on the processor, can take a few minutes to
-          start. Keep this page open and the answer will appear here.
+          start. Keep this page open.
         </p>
       )}
     </div>

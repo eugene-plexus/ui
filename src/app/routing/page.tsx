@@ -262,25 +262,17 @@ export default function RoutingPage() {
       <main data-testid="routing-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-6 py-8">
           <p className="mb-2 text-sm text-[color:var(--muted)]">
-            A priority list gives one model name an ordered set of fallbacks: a request for the name
-            is served by its own backends first, then by each target in order when everything before
-            it failed. Targets are model ids — each one means every backend serving that id.
+            A priority list gives a model name ordered fallbacks: a request is served by the
+            name&rsquo;s own backends first, then by each target in order. A target is a model id,
+            meaning every backend serving it.
           </p>
           <p className="mb-6 text-sm text-[color:var(--muted)]">
             These lists are the gateway&rsquo;s <span className="font-mono">modelSlots</span>{" "}
-            setting — the rest of its settings are on{" "}
+            setting; its other settings are on{" "}
             <Link href="/config?tab=gateway&sel=gateway" className="underline">
               the gateway&rsquo;s Settings page
             </Link>
-            . What is actually running is on{" "}
-            <Link href="/inference" className="underline">
-              Backends
-            </Link>
-            ; which tier served each request is on{" "}
-            <Link href="/metrics?sel=gateway" className="underline">
-              Metrics
-            </Link>
-            . Which search account a web search tries first is{" "}
+            . Search account order is{" "}
             <a href="#web-search-order" className="underline">
               further down
             </a>
@@ -315,8 +307,7 @@ export default function RoutingPage() {
               {parseError ? (
                 <section className="mb-6 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-4">
                   <p className="status-error mb-2 text-sm" data-testid="slots-parse-error">
-                    The stored value does not parse into lists: {parseError}. Fix it as JSON below —
-                    the structured editor would have to guess which entries to keep.
+                    The stored value does not parse into lists: {parseError}. Fix it as JSON below.
                   </p>
                   <JsonEditor slots={draft} onApply={setDraft} disabled={saving} raw={rawValue} />
                 </section>
@@ -337,8 +328,8 @@ export default function RoutingPage() {
 
                   {draft.length === 0 && (
                     <p className="mb-4 text-sm text-[color:var(--muted)]" data-testid="no-slots">
-                      No priority lists yet. Without one, a request is served only by the backends
-                      serving the exact model it asked for — add a list to give a model fallbacks.
+                      No priority lists yet. Without one, a request is served only by backends
+                      serving the exact model it asked for.
                     </p>
                   )}
 

@@ -105,18 +105,18 @@ export function ScreenPassphrase({
           className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
           data-testid="passphrase-file-note"
         >
-          Eugene runs under its own account on this machine. It keeps your passphrase in a file only
-          that account can read, so it unlocks itself after a restart. Programs you run, AI agents
-          included, cannot read that file.
+          Eugene runs under its own account and keeps your passphrase in a file only that account
+          can read, so it unlocks itself after a restart. Your programs and AI agents cannot read
+          it.
         </p>
       ) : noKeyring ? (
         <p
           className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
           data-testid="no-keyring-note"
         >
-          This machine has no password manager Eugene can use. After each restart, Eugene will ask
-          for the passphrase to open its stored secrets. A server or a container can read the
-          passphrase from a file instead: Settings &rarr; Access &amp; security, once setup is done.
+          This machine has no password manager Eugene can use, so after each restart Eugene will ask
+          for the passphrase. A server or container can read it from a file instead: Settings &rarr;
+          Access &amp; security, after setup.
         </p>
       ) : null}
       {/* **The label said "Start", and after R2.6 that is the wrong

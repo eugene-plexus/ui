@@ -528,7 +528,7 @@ export function ConfigEditor({
         setRestart({
           phase: "timeout",
           message:
-            "Didn't see the process come back within 30s. If you're running without a supervisor (systemd / docker / smoke-test launcher), relaunch it manually, then close this dialog.",
+            "Did not see the process come back within 30s. Without a supervisor (systemd, Docker), relaunch it manually, then close this dialog.",
         });
       }
     } catch (e) {

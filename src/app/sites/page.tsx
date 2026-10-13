@@ -169,13 +169,12 @@ function Inner() {
       <main data-testid="sites-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-8">
           <p className="text-sm text-[color:var(--muted)]">
-            A job site is a machine a person lends to their tools. Each site belongs to one person,
-            who manages it from <WorkbenchWord link={workbench} /> (Job sites). It is separate from
-            the machines under{" "}
+            A job site is a machine a person lends to their tools, separate from the machines under{" "}
             <Link href="/nodes" className="underline">
               Machines
             </Link>
-            . Here you can add a site and remove one.
+            . Each belongs to one person, who manages it from <WorkbenchWord link={workbench} />{" "}
+            (Job sites).
           </p>
           {error && (
             <p className="status-error rounded-[var(--radius)] px-2 py-1 text-sm" role="alert">
@@ -585,7 +584,7 @@ function Invite({
               className="status-warn mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
             >
               That address only works on this machine, so the command will fail on the other one.
-              Type an address the other machine can reach in the box above.
+              Type a reachable address above.
             </p>
           )}
         </div>

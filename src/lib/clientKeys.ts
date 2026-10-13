@@ -222,15 +222,13 @@ function claudeCode(s: Strings): Recipe {
   if (reply !== null) lines.push(`CLAUDE_CODE_MAX_OUTPUT_TOKENS=${reply}`);
 
   const auth =
-    "No /v1 on the base URL here — Claude Code adds it. Use ANTHROPIC_AUTH_TOKEN, " +
-    "not ANTHROPIC_API_KEY: the API-key variable needs a one-off approval prompt, and " +
-    "if you are signed in to a Claude subscription it is ignored and your Anthropic " +
-    "token is sent instead.";
+    "No /v1 on the base URL: Claude Code adds it. Use ANTHROPIC_AUTH_TOKEN, not " +
+    "ANTHROPIC_API_KEY, which needs a one-off approval and, with a Claude subscription, " +
+    "is ignored so your Anthropic token is sent instead.";
   const size =
     window === null
-      ? " This model's window is not known yet, so set CLAUDE_CODE_MAX_CONTEXT_TOKENS " +
-        "to it yourself. Without it, Claude Code assumes 200,000 tokens and the model " +
-        "runs out of room first."
+      ? " This model's window is not known yet: set CLAUDE_CODE_MAX_CONTEXT_TOKENS " +
+        "yourself, or Claude Code assumes 200,000 tokens and the model runs out first."
       : " CLAUDE_CODE_MAX_CONTEXT_TOKENS is this model's window, so Claude Code sums up " +
         "older turns before the window fills. It assumes 200,000 tokens otherwise." +
         (reply === null
@@ -279,8 +277,8 @@ function codex(s: Strings): Recipe {
   ];
   const size =
     window === null
-      ? " This model's window is not known yet, so add model_context_window with it yourself. " +
-        "Without it, Codex assumes 272,000 tokens and stops when the model runs out of room."
+      ? " This model's window is not known yet: add model_context_window yourself, or " +
+        "Codex assumes 272,000 tokens and stops when the model runs out."
       : " model_context_window is this model's window. Without it, Codex assumes 272,000 " +
         "tokens and stops when the model runs out of room.";
   return {
@@ -327,9 +325,8 @@ function openAiRecipes(s: Strings): Recipe[] {
       where: "Settings → Connections → OpenAI API",
       snippet: [`URL:  ${s.baseUrl}`, `Key:  ${s.key}`].join("\n"),
       note:
-        "Open WebUI asks the endpoint which models it has, so there is no model to type. " +
-        "For images, select a vision model with its matching projector loaded. " +
-        "PNG and JPEG attachments are supported; text-only models refuse them.",
+        "Open WebUI lists the endpoint's models, so there is no model to type. " +
+        "For images, pick a vision model with its projector loaded; PNG and JPEG are supported.",
     },
     {
       name: "SillyTavern",
@@ -406,10 +403,7 @@ export function blockers(args: {
 }): string[] {
   const out: string[] = [];
   if (!args.baseUrl) {
-    out.push(
-      "The address is not known yet — the gateway has not said which port it listens on. " +
-        "It appears once the gateway is running.",
-    );
+    out.push("The address is not known yet: the gateway has not said which port it listens on.");
   }
   if (!args.model) {
     out.push("No model is running, so there is no model id to give an app. Start one first.");

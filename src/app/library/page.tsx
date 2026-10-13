@@ -750,8 +750,7 @@ function SkippedPanel({ scan }: { scan: Scan }) {
       {open && (
         <div className="mt-2 flex flex-col gap-3">
           <p className="leading-relaxed">
-            Files the scan looked at and decided were not models. If something you expected is
-            missing from the list, it is probably here with a reason.
+            Files the scan skipped, with the reason. If a model you expected is missing, look here.
           </p>
           {grouped.map(([reason, items]) => (
             <div key={reason}>
@@ -912,8 +911,7 @@ function ModelDetail({
           </p>
           <p className="mt-1">
             If you moved it, scan again to find it at its new path. Copy the settings across, then
-            forget this entry. Nothing guesses that two paths are the same model, because guessing
-            wrong applies one model&rsquo;s tuning to another.
+            forget this entry. Eugene does not guess that two paths are the same model.
           </p>
           {/* Asked, because the profiles are the one thing here a rescan
               cannot bring back, and the prompt says how many go. */}
@@ -1395,9 +1393,8 @@ function FitPanel({
       </div>
       {resident && (
         <p className="mt-0.5">
-          This machine is holding it, so the memory reading below is what is left{" "}
-          <em>with it loaded</em> — the verdict there is about starting a <em>second</em> copy
-          beside this one, not about this model.
+          This machine already holds it, so the memory reading below is what is left{" "}
+          <em>with it loaded</em>: the verdict is about a <em>second</em> copy, not this model.
         </p>
       )}
       <p className="mt-0.5">

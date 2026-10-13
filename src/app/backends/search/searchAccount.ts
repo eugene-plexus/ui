@@ -101,7 +101,7 @@ export function freeSearchPort(existing: Component[]): number {
  */
 export function remedyFor(provider: SearchProvider, error: string): string | null {
   if (provider === "searxng" && /search\.formats|403/.test(error)) {
-    return 'In your SearXNG’s settings.yml, add json under search: formats: (so it reads "- html" and "- json"), then restart SearXNG and press Try again.';
+    return "In your SearXNG’s settings.yml, add json to search: formats: (beside html), then restart SearXNG and press Try again.";
   }
   if (provider === "searxng" && /could not be reached|did not answer/.test(error)) {
     return "Check the address, and that this machine can reach it. A SearXNG in a container must publish its port.";

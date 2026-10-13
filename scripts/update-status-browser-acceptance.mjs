@@ -139,8 +139,8 @@ try {
   await expect(page.getByTestId("node-versions")).not.toContainText("Up to date");
   await page.getByTestId("issues-badge").click();
   const detail = await page.getByTestId("version-difference").innerText();
-  await expect(page.getByTestId("issues-popover")).toContainText("release checks finish");
-  assert(detail.includes("release checks finish"));
+  await expect(page.getByTestId("issues-popover")).toContainText("check again shortly");
+  assert(detail.includes("check again shortly"));
   checks.push("A stale worker is checked automatically; pending Edge is explained in both places");
 
   available = true;

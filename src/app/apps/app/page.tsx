@@ -364,8 +364,8 @@ function Overview({
       <section className="section-panel flex flex-col gap-2">
         <h3 className="section-heading font-ui mb-0 text-sm font-semibold">Uninstall</h3>
         <p className="text-sm text-[color:var(--muted)]">
-          Stops it, turns its key off, and removes what was installed. Its saved data stays unless
-          you tick the box, so installing it again picks up where it left off.
+          Stops it, turns its key off and removes what was installed. Its saved data stays unless
+          you tick the box.
         </p>
         <label className="font-ui flex items-center gap-2 text-sm">
           <input type="checkbox" checked={purge} onChange={(e) => onPurge(e.target.checked)} />

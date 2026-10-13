@@ -65,15 +65,12 @@ export function QuantReference() {
       {open && (
         <div className="space-y-3 border-t border-[color:var(--border)] px-3 py-3">
           <p className="text-[color:var(--muted)]">
-            Quantization trades precision for size. A model&rsquo;s weights are stored at fewer bits
-            each, so it takes less memory and runs faster, and it gets worse at doing its job. The
-            names below describe how the bits are spent.
+            Quantization trades precision for size: fewer bits per weight means less memory and more
+            speed, but worse answers. The names below say how the bits are spent.
           </p>
           <p className="text-[color:var(--muted)]">
-            The rule of thumb worth carrying:{" "}
-            <strong>around 4 bits per weight is the sweet spot</strong>, below 4 the degradation
-            becomes noticeable, and below 3 it becomes severe. Between two versions that both fit,
-            the larger one is better.
+            Rule of thumb: <strong>around 4 bits per weight is the sweet spot</strong>. Below 4
+            quality drops noticeably, below 3 severely. Of two versions that fit, take the larger.
           </p>
 
           {error && (
@@ -123,15 +120,13 @@ export function QuantReference() {
           )}
 
           <p className="text-[color:var(--muted)]">
-            The bits-per-weight column is the tier&rsquo;s nominal width. The figure on each version
-            above it is that file&rsquo;s <em>measured</em> width, which is routinely half a bit off
-            the nominal because these schemes mix precisions from tensor to tensor.
+            The bits-per-weight column is the nominal width. Each version&rsquo;s own figure is its{" "}
+            <em>measured</em> width, often half a bit off because these schemes mix precisions.
           </p>
           <p className="text-[color:var(--muted)]">
-            Two naming decorations you will meet: <code>UD-</code> means the publisher chose the
-            width per tensor rather than taking the scheme&rsquo;s defaults, and the <code>_S</code>{" "}
-            / <code>_M</code> / <code>_L</code> / <code>_XL</code> suffixes are the mixture within
-            one tier, smallest to largest — not the bit width.
+            <code>UD-</code> means the publisher chose each tensor&rsquo;s width. The{" "}
+            <code>_S</code> / <code>_M</code> / <code>_L</code> / <code>_XL</code> suffixes are the
+            mixture within one tier, smallest to largest, not the bit width.
           </p>
         </div>
       )}

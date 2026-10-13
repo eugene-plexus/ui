@@ -121,16 +121,14 @@ export function baseUrlHints(raw: string, page: PageLocation): string[] {
   }
   if (page.protocol === "https:" && url.protocol === "http:") {
     hints.push(
-      "This page is https and the base URL is http. The browser blocks that as mixed " +
-        "content before any request leaves. Serve the gateway over https too, or open the UI over http.",
+      "This page is https and the base URL is http: the browser blocks that as mixed " +
+        "content. Serve the gateway over https, or open the UI over http.",
     );
   }
   if (isLoopbackHost(url.hostname) && !isLoopbackHost(page.hostname)) {
     hints.push(
-      `The base URL is loopback but this page is on ${page.hostname}. A request to 127.0.0.1 ` +
-        "goes to the machine running the browser, not the gateway -- a harness on another " +
-        "machine would be wrong in the same way -- and Chrome may gate it behind a local-network " +
-        "permission it never showed you.",
+      `The base URL is loopback but this page is on ${page.hostname}: 127.0.0.1 is the ` +
+        "browser's own machine, not the gateway. Use the gateway host's address.",
     );
   }
   return hints;
@@ -342,29 +340,29 @@ export function explainFailure(r: RequestReport, page: PageLocation): string[] {
   const out: string[] = [];
   if (r.status === 401) {
     out.push(
-      "The gateway refused the key. It expires 14 days after sign-in, and a key from one install " +
-        "is refused by another -- sign in again and use the token this panel shows.",
+      "The gateway refused the key: it expires 14 days after sign-in, and another install's " +
+        "key is refused. Sign in again and use the token shown here.",
     );
     return out;
   }
   if (r.status === 404) {
     out.push(
-      `${r.url} is not a gateway: nothing answers at /v1/chat/completions there. The agent's ` +
-        "port is the usual mistake -- the gateway is a different process on a different port.",
+      `${r.url} is not a gateway: nothing answers at /v1/chat/completions. The agent's ` +
+        "port is the usual mistake; the gateway has its own port.",
     );
     return out;
   }
   if (r.status === 403) {
     out.push(
-      "The gateway answered the browser's preflight with 403: this page's origin is not in its " +
+      "The gateway refused the browser's preflight (403): this page's origin is not in " +
         "corsAllowedOrigins. Add it under Config -> Gateway -> Browser clients, or clear the list.",
     );
     return out;
   }
   if (r.status === 405) {
     out.push(
-      "405 to a preflight is what a gateway older than 2026-09-13 says: it does not speak CORS " +
-        "at all. Upgrade it; until then only non-browser clients can use it directly.",
+      "405 to a preflight means a gateway older than 2026-09-13 that does not speak CORS. " +
+        "Upgrade it; until then only non-browser clients can reach it.",
     );
     return out;
   }
@@ -383,20 +381,19 @@ export function explainFailure(r: RequestReport, page: PageLocation): string[] {
   if (url && isLoopbackHost(url.hostname) && !isLoopbackHost(page.hostname)) {
     out.push(
       `The base URL is loopback and this page is on ${page.hostname}: the request went to the ` +
-        "browser's own machine. Use the gateway host's address, as a harness elsewhere would have to.",
+        "browser's own machine. Use the gateway host's address.",
     );
   }
   out.push(
-    `Nothing answered at ${r.url} in a way the browser would accept. In order of likelihood: the ` +
-      "port is published differently than the topology says (a container remap, 8080 -> 8280); " +
-      "the gateway binds 127.0.0.1 on a machine you are not on; corsEnabled is false on the " +
-      "gateway (Config -> Gateway -> Browser clients). The same request works through the agent's " +
-      "proxy if the gateway itself is healthy, so switch modes to bisect.",
+    `Nothing answered at ${r.url} that the browser accepts. Likely causes: the port is ` +
+      "published differently (a container remap, 8080 -> 8280); the gateway binds 127.0.0.1 on " +
+      "another machine; corsEnabled is off (Config -> Gateway -> Browser clients). If proxy " +
+      "mode works, the gateway itself is healthy.",
   );
   out.push(
     `To see which: curl -i -X OPTIONS ${shellQuote(r.url)} -H 'Origin: ${page.protocol}//${page.hostname}' ` +
-      "-H 'Access-Control-Request-Method: POST' -- a 204 means CORS is fine and the problem is " +
-      "reachability from this browser; a 403 names the config key; connection refused is the address.",
+      "-H 'Access-Control-Request-Method: POST'. 204 means CORS is fine and this browser cannot " +
+      "reach it; 403 names the setting; connection refused means a wrong address.",
   );
   return out;
 }

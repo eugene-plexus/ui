@@ -203,9 +203,8 @@ export function BenchmarkPanel({
         <strong>{node?.label ?? "the selected machine"}</strong> using this saved profile.
       </p>
       <p className="text-[color:var(--muted)]">
-        Close other GPU workloads first. Models running on this machine are stopped only if you
-        agree below, and start again when it ends. Runs continue when you leave this page; cancel
-        here. Maximum 15 minutes.
+        Close other GPU workloads first. Running models stop only if you agree below, and restart
+        afterwards. The run continues if you leave this page; cancel it here. Maximum 15 minutes.
       </p>
       <p className="text-[color:var(--muted)]">
         One sequence, three context depths. This measures token evaluation, excluding tokenization,
@@ -218,8 +217,8 @@ export function BenchmarkPanel({
         </p>
       )}
       <p className="text-[color:var(--muted)]">
-        Unset settings use this llama-bench build’s defaults. Set GPU layers explicitly to compare
-        offload settings; the server’s automatic placement is not reproduced by this instrument.
+        Unset settings use llama-bench’s defaults. To compare offload settings, set GPU layers
+        explicitly; automatic placement is not reproduced here.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <label htmlFor={`${id}-tokens`}>

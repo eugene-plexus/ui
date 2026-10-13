@@ -258,10 +258,9 @@ export function AddPreparedModel({
       <div>
         <h2 className="text-base font-medium">Add a prepared model</h2>
         <p className="mt-1 text-[color:var(--muted)]">
-          A model an engine prepared for itself, such as one made by Strata&rsquo;s setup. Its files
-          must already be in a Library folder: the Library is their home, so any machine can run it
-          and nothing is lost with one. The Library keeps one small file about it beside them, and
-          it then has profiles and Run like any other model.
+          A model an engine prepared for itself, such as by Strata&rsquo;s setup. Its files must
+          already be in a Library folder; the Library adds a small file beside them, and it then has
+          profiles and Run like any model.
         </p>
       </div>
 
