@@ -60,6 +60,7 @@ export function IssueRow({
       {issue.more && issue.more.length > 0 ? (
         <More
           summary="Details"
+          label={issue.title}
           summaryClassName="text-[0.6875rem] text-[color:var(--muted)] underline"
           className="mt-1"
           testId="issue-details"

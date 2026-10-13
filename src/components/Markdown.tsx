@@ -12,7 +12,8 @@ import remarkGfm from "remark-gfm";
  * HTML. `react-markdown` builds React elements from the Markdown and never
  * sets inner HTML; an HTML tag in the source is drawn as the text it is.
  * `rehype-raw` is deliberately not added. Links open in a new tab with
- * `noreferrer`, and images are not fetched.
+ * `noreferrer`, a link whose address is refused is drawn as its text, and
+ * images are not drawn at all, so nothing is fetched.
  *
  * `gfm` adds tables, strikethrough and bare-address links. A model card
  * wants them. A setting's help does not: `~/models` would strike through
@@ -52,16 +53,22 @@ const COMPONENTS: Components = {
   h3: ({ children }) => (
     <h3 className="font-ui mt-2 mb-1 text-sm font-semibold first:mt-0">{children}</h3>
   ),
-  a: ({ href, children }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="underline decoration-[color:var(--muted)]"
-    >
-      {children}
-    </a>
-  ),
+  // `react-markdown` empties an address it refuses (`javascript:`, `data:`,
+  // anything but a web, mail or relative one). An `<a href="">` that is left is
+  // a link to this very page, in a new tab: the words are all that is kept.
+  a: ({ href, children }) =>
+    href ? (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline decoration-[color:var(--muted)]"
+      >
+        {children}
+      </a>
+    ) : (
+      <>{children}</>
+    ),
   code: ({ children }) => (
     <code className="font-mono-ui rounded-[var(--radius)] bg-[color:var(--panel-soft)] px-1 py-0.5">
       {children}

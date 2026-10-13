@@ -154,7 +154,7 @@ describe("saving a real High build", () => {
       name: "default",
       default: true,
       engine: "llama_cpp",
-      flags: { contextSize: 4096, gpuLayers: 99, threads: 8, flashAttention: true },
+      flags: { contextSize: 4096, gpuLayers: 99, threads: 8, flashAttention: "on" },
       extraArgs: ["--jinja"],
       env: { CUDA_VISIBLE_DEVICES: "0" },
       maxTokens: 400,
@@ -256,6 +256,17 @@ describe("a built profile, read back", () => {
     expect(builtFieldLabel(edited.builtBy!, "edited")).toContain("and edited since");
     expect(measuredLine(edited)).toContain("before this profile was edited");
     expect(measuredLine(edited)).toContain("may no longer describe it");
+  });
+
+  it("compares Flash attention as saved with as built, exactly, and reads no old checkbox", () => {
+    const saved = (flash: unknown) =>
+      ({ ...profile, flags: { ...profile.flags, flashAttention: flash } }) as ModelProfile;
+    expect(builtFieldStates(saved("on")).flashAttention).toBe("built");
+    expect(builtFieldStates(saved("off")).flashAttention).toBe("edited");
+    expect(builtFieldStates(saved(undefined)).flashAttention).toBe("edited");
+    // A checkbox is nobody's saved value now: the Library converts it once, in
+    // the profile and in the record of its build. Read as On it would hide an edit.
+    expect(builtFieldStates(saved(true)).flashAttention).toBe("edited");
   });
 
   it("counts gpuLayers set by hand as an edit: it takes placement away from fit", () => {

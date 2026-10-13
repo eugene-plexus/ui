@@ -719,6 +719,7 @@ export default function NodesPage() {
                   {/* Which commits, and why no update shows: for whoever asks. */}
                   <More
                     summary="Details"
+                    label="the version difference"
                     summaryClassName="text-sm underline"
                     className="mt-1"
                     testId="version-difference-details"

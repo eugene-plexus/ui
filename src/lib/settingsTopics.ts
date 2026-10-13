@@ -427,6 +427,45 @@ export interface ElsewhereEntry {
   keywords: readonly string[];
   /** The topic card that shows this as a "see also" line, when one does. */
   topic?: TopicId;
+  /**
+   * Entries that would say the same thing share a line: each is a link by its
+   * own name, and what they hold is said once, after the last (every
+   * backend's page holds the same four things).
+   */
+  group?: string;
+}
+
+/** One line of "On other pages": a link, or several that share a sentence. */
+export interface ElsewhereLine {
+  id: string;
+  links: readonly { label: string; href: string }[];
+  description: string;
+}
+
+/**
+ * What the page draws for the entries it has: one line each, except that
+ * entries of a group are one line, in the order the group first appears. The
+ * line's sentence is its first entry's, and a group's entries have one.
+ */
+export function elsewhereLines(entries: readonly ElsewhereEntry[]): ElsewhereLine[] {
+  const lines: ElsewhereLine[] = [];
+  const groups = new Map<string, { label: string; href: string }[]>();
+  for (const entry of entries) {
+    const link = { label: entry.label, href: entry.href };
+    const shared = entry.group === undefined ? undefined : groups.get(entry.group);
+    if (shared) {
+      shared.push(link);
+      continue;
+    }
+    const links = [link];
+    if (entry.group !== undefined) groups.set(entry.group, links);
+    lines.push({
+      id: entry.group === undefined ? entry.id : `group:${entry.group}`,
+      links,
+      description: entry.description,
+    });
+  }
+  return lines;
 }
 
 const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
@@ -556,15 +595,21 @@ export interface BackendRef {
   node: string | null;
 }
 
+/**
+ * Each backend is its own entry, so a search finds the one it names, but they
+ * are one group: the page lists them by name and says what a backend's page
+ * holds once, not once per backend.
+ */
 export function elsewhereIndex(backends: readonly BackendRef[] = []): ElsewhereEntry[] {
   const perBackend: ElsewhereEntry[] = backends.map((b) => ({
     id: `backend:${b.name}@${b.node ?? ""}`,
     label: `${b.name}${b.node ? ` on ${b.node}` : ""}`,
-    description: "This backend's provider, model, address and API key.",
+    description: "A backend's provider, model, address and API key.",
     href: `/config?sel=${encodeURIComponent(
       b.node ? `driver:${b.name}@${b.node}` : `driver:${b.name}`,
     )}`,
     keywords: ["backend", "driver", "provider", "model", "api key", "base url", "timeout"],
+    group: "backends",
   }));
   return [...ELSEWHERE_STATIC, ...perBackend];
 }

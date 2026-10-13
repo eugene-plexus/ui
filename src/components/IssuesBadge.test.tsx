@@ -111,6 +111,35 @@ describe("the badge", () => {
     expect(screen.queryByTestId("issues-unlock-passphrase")).toBeNull();
   });
 
+  it("says which issue a Details belongs to, to a screen reader", () => {
+    const differ: Issue = {
+      id: "versions-differ",
+      kind: "versions-differ",
+      severity: "warning",
+      title: "Machines run different versions",
+      detail: "No update is offered yet.",
+      more: ["Amish_Station: 2dcf645", "unraid: 06c321b"],
+      href: "/nodes",
+    };
+    const channels: Issue = {
+      ...differ,
+      id: "versions-differ-channels",
+      title: "Machines follow different update channels",
+      detail: "Choose the same one under Settings › Updates.",
+    };
+    render(<IssuesBadgeView issues={[differ, channels, STALE_BUILD]} worst="warning" loaded />);
+    fireEvent.click(screen.getByTestId("issues-badge"));
+    // Two rows have a Details and one has none: each reads out which is whose.
+    const toggles = screen.getAllByText("Details");
+    expect(toggles.map((toggle) => toggle.textContent)).toEqual([
+      "Details about Machines run different versions",
+      "Details about Machines follow different update channels",
+    ]);
+    // What a sighted person reads has not changed: the one word.
+    for (const toggle of toggles) expect(toggle.firstChild?.textContent).toBe("Details");
+    expect(screen.getAllByTestId("issue-details")).toHaveLength(2);
+  });
+
   it("prints the whole sentence that says what to do", () => {
     render(<IssuesBadgeView issues={[SEALED]} worst="blocking" loaded={true} />);
     fireEvent.click(screen.getByTestId("issues-badge"));

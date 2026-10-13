@@ -15,6 +15,7 @@ import type { Topology } from "./resourceTree";
 import {
   buildCards,
   elsewhereIndex,
+  elsewhereLines,
   elsewhereMatches,
   HIDDEN_KEYS,
   isTopicId,
@@ -218,6 +219,50 @@ describe("the search", () => {
     expect(elsewhereMatches(index, "nothing like this")).toEqual([]);
     // A backend's entry opens that backend's own settings page.
     expect(index.at(-1)?.href).toBe("/config?sel=driver%3Aollama-qwen%40Amish_Station");
+  });
+
+  it("lists the backends by name on one line, and says what their pages hold once", () => {
+    const index = elsewhereIndex([
+      { name: "qwen", node: "Amish_Station" },
+      { name: "ollama", node: "nas" },
+      { name: "claude", node: null },
+    ]);
+    const lines = elsewhereLines(index);
+    const backends = lines.filter((line) => line.id === "group:backends");
+    expect(backends).toHaveLength(1);
+    expect(backends[0]!.links).toEqual([
+      { label: "qwen on Amish_Station", href: "/config?sel=driver%3Aqwen%40Amish_Station" },
+      { label: "ollama on nas", href: "/config?sel=driver%3Aollama%40nas" },
+      { label: "claude", href: "/config?sel=driver%3Aclaude" },
+    ]);
+    // One sentence for all of them, not three that are the same.
+    const said = lines.map((line) => line.description).join("\n");
+    expect(said.match(/provider, model, address and API key/g)).toHaveLength(1);
+    // Every other entry is still its own line, in its own place.
+    expect(lines.slice(0, -1).map((line) => line.id)).toEqual(
+      elsewhereIndex().map((entry) => entry.id),
+    );
+    // No backend, no line about them.
+    expect(elsewhereLines(elsewhereIndex()).some((line) => line.id === "group:backends")).toBe(
+      false,
+    );
+  });
+
+  it("finds one backend by its name and still draws the one line", () => {
+    const index = elsewhereIndex([
+      { name: "qwen", node: "Amish_Station" },
+      { name: "ollama", node: "nas" },
+    ]);
+    const lines = elsewhereLines(elsewhereMatches(index, "qwen"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.links.map((link) => link.label)).toEqual(["qwen on Amish_Station"]);
+    // A word every backend has finds every backend, on the one line.
+    const all = elsewhereLines(elsewhereMatches(index, "timeout"));
+    expect(all).toHaveLength(1);
+    expect(all[0]!.links.map((link) => link.label)).toEqual([
+      "qwen on Amish_Station",
+      "ollama on nas",
+    ]);
   });
 });
 

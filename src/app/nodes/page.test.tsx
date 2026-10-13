@@ -847,6 +847,17 @@ describe("versions, and updating a machine from here (2026-09-27)", () => {
       ),
     );
   });
+
+  it("checks this machine through its own agent, not by name through the root", async () => {
+    const user = userEvent.setup();
+    render(<NodesPage />);
+    const unraid = await card("unraid");
+    await user.click(within(unraid).getByTestId("node-update-check"));
+    await waitFor(() =>
+      expect(posted.map((p) => p.url)).toContain("/api/proxy/agent/v1/node/update/check"),
+    );
+    expect(posted.map((p) => p.url)).not.toContain("/api/proxy/node:unraid/v1/node/update/check");
+  });
 });
 
 describe("job sites are not machines (J19)", () => {

@@ -214,6 +214,44 @@ describe("Versions", () => {
     );
   });
 
+  it("says nothing about a difference while a machine is updating, and calls the other up to date", async () => {
+    stub({
+      unraid: machine("unraid", "a"),
+      amish: machine("Amish_Station", "b", {
+        running: {
+          target: NEWEST.ref,
+          startedAt: new Date().toISOString(),
+          outcome: "running",
+        },
+      }),
+    });
+    render(<NodesPage />);
+    const amish = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>(
+        '[data-testid="node-update"][data-node="Amish_Station"][data-state="running"]',
+      );
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(within(amish).getByTestId("node-update-headline")).toHaveTextContent(/^Updating/);
+    // The commits differ because one machine is on its way to the other's:
+    // "No update is offered yet" beside an update that is running would be false.
+    const unraid = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>(
+        '[data-testid="node-update"][data-node="unraid"][data-state="current"]',
+      );
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(within(unraid).getByTestId("node-update-headline")).toHaveTextContent(
+      "Up to date on edge",
+    );
+    expect(screen.queryByTestId("version-difference")).toBeNull();
+    expect(screen.getByTestId("node-versions").textContent).not.toMatch(
+      /different versions|No update is offered yet|No newer update found/,
+    );
+  });
+
   it("keeps the commits behind Details, on the notice and on each card", async () => {
     stub({ unraid: machine("unraid", "a"), amish: machine("Amish_Station", "b") });
     render(<NodesPage />);
@@ -242,6 +280,32 @@ describe("Versions", () => {
     expect(within(amish).getByText("agent bbbbbbb · gateway bbbbbbb")).not.toBeVisible();
     expect(within(amish).getByTestId("node-update-headline").textContent).not.toMatch(/bbbbbbb/);
     expect(amish.querySelector('[data-testid="node-version"]')).toBeNull();
+  });
+});
+
+describe("Details", () => {
+  it("say what they are about to a screen reader, on the notice and on each machine", async () => {
+    stub({ unraid: machine("unraid", "a"), amish: machine("Amish_Station", "b") });
+    render(<NodesPage />);
+    // A page of three "Details" read out one after another is three buttons
+    // with the same name: each says whose, and the notice says what.
+    const notice = await screen.findByTestId("version-difference");
+    const aboutNotice = within(notice).getByText("Details");
+    expect(aboutNotice).toHaveTextContent("Details about the version difference");
+    expect(aboutNotice.querySelector(".sr-only")).toHaveTextContent("about the version difference");
+    for (const name of ["Amish_Station", "unraid"]) {
+      const card = await waitFor(() => {
+        const found = document.querySelector<HTMLElement>(
+          `[data-testid="node-update"][data-node="${name}"]`,
+        );
+        expect(within(found!).getByTestId("node-update-details")).toBeInTheDocument();
+        return found!;
+      });
+      const toggle = within(card).getByText("Details");
+      expect(toggle).toHaveTextContent(`Details about ${name}`);
+      // What a sighted person reads has not changed: the one word.
+      expect(toggle.firstChild?.textContent).toBe("Details");
+    }
   });
 });
 

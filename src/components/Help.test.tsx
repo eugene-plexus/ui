@@ -14,29 +14,36 @@ import { describe, expect, it } from "vitest";
 
 import { Help, More } from "./Help";
 
+/**
+ * The shape the control root writes its long settings in now (a44c772, the
+ * Security mode text, shortened): one sentence, a blank line, a list with
+ * bold lead-ins and a code span, and a closing paragraph.
+ */
+const SENTENCE = "How this control root keeps its master encryption key between restarts.";
 const LONG =
-  "How the control root keeps its key between restarts.\n\n" +
-  "**The keyring is host-bound.** The key lives in *this* machine's store.\n\n" +
-  "A file is `not` host-bound.\n\n" +
-  "- first reason\n- second reason";
+  `${SENTENCE}\n\n` +
+  "- **Prompt on startup**: every restart asks for the passphrase.\n" +
+  "- **OS keyring**: unlocks from *this* machine's keyring. It is host-bound.\n" +
+  "- **Passphrase file**: set `EUGENE_PLEXUS_CONTROL_PASSPHRASE_FILE` to its path.\n\n" +
+  "Either auto-unlock mode lets anyone who can read the keyring or the file unlock this install.";
 
 describe("Help", () => {
   it("shows the first sentence, and keeps the rest closed until it is opened", async () => {
     render(<Help text={LONG} />);
-    expect(screen.getByText("How the control root keeps its key between restarts.")).toBeVisible();
-    expect(screen.getByText("The keyring is host-bound.")).not.toBeVisible();
+    expect(screen.getByText(SENTENCE)).toBeVisible();
+    expect(screen.getByText("OS keyring")).not.toBeVisible();
     const toggle = screen.getByText("More");
     expect(toggle.closest("details")).not.toHaveAttribute("open");
 
     await userEvent.click(toggle);
     expect(toggle.closest("details")).toHaveAttribute("open");
-    expect(screen.getByText("The keyring is host-bound.")).toBeVisible();
+    expect(screen.getByText("OS keyring")).toBeVisible();
     // The label says what a click does now, and the summary never went away.
     expect(screen.getByText("Less")).toBe(toggle);
-    expect(screen.getByText("How the control root keeps its key between restarts.")).toBeVisible();
+    expect(screen.getByText(SENTENCE)).toBeVisible();
 
     await userEvent.click(toggle);
-    expect(screen.getByText("The keyring is host-bound.")).not.toBeVisible();
+    expect(screen.getByText("OS keyring")).not.toBeVisible();
     expect(screen.getByText("More")).toBe(toggle);
   });
 
@@ -55,25 +62,27 @@ describe("Help", () => {
   it("draws Markdown, not the marks it is written with", async () => {
     render(<Help text={LONG} />);
     await userEvent.click(screen.getByText("More"));
-    expect(screen.getByText("The keyring is host-bound.").tagName).toBe("STRONG");
+    expect(screen.getByText("OS keyring").tagName).toBe("STRONG");
     expect(screen.getByText("this").tagName).toBe("EM");
-    expect(screen.getByText("not").tagName).toBe("CODE");
-    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "first reason",
-      "second reason",
-    ]);
+    expect(screen.getByText("EUGENE_PLEXUS_CONTROL_PASSPHRASE_FILE").tagName).toBe("CODE");
+    // A list is a list, and its marks are not printed.
+    expect(
+      screen.getAllByRole("listitem").map((li) => li.querySelector("strong")?.textContent),
+    ).toEqual(["Prompt on startup", "OS keyring", "Passphrase file"]);
     // Paragraphs stay paragraphs: the blank lines were what the page lost.
     const details = document.querySelector("details")!;
-    expect(details.querySelectorAll("p")).toHaveLength(2);
+    expect(details.querySelectorAll("p")).toHaveLength(1);
     expect(document.body.textContent).not.toContain("**");
     expect(document.body.textContent).not.toContain("`");
+    expect(document.body.textContent).not.toContain("- ");
   });
 
   it("puts the id on the summary alone, so an input is described by the line and not the wall", () => {
     render(<Help id="the-line" text={LONG} />);
     const line = document.getElementById("the-line")!;
-    expect(line).toHaveTextContent("How the control root keeps its key between restarts.");
+    expect(line).toHaveTextContent(SENTENCE);
     expect(line).not.toHaveTextContent("host-bound");
+    expect(line).not.toHaveTextContent("Prompt on startup");
     expect(line.closest("details")).toBeNull();
   });
 

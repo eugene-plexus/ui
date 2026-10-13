@@ -1,14 +1,16 @@
 /**
  * A setting's help, as a person reads it on the Settings page (Troy,
- * 2026-10-13): the control root's `securityMode` description is 254 words
- * with Markdown in it, and it was drawn as one block of raw asterisks.
+ * 2026-10-13): the control root's `securityMode` description was 254 words
+ * with Markdown in it, and it was drawn as one block of raw asterisks. The
+ * control root now writes it for this page (control a44c772): one sentence,
+ * the three modes as a list, and a closing paragraph, 107 words.
  *
  * The body is the one the control root really serves, captured in
  * `settings-wire.json`, so this fails if the component and this page stop
  * agreeing about what a description is.
  */
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -38,33 +40,43 @@ describe("a long description", () => {
     show("control", "securityMode");
     const help = screen.getByTestId("description-securityMode");
     expect(help).toHaveTextContent(
-      "How this host keeps its master encryption key between restarts.",
+      "How this control root keeps its master encryption key between restarts.",
     );
-    // Nothing of the other four paragraphs is in view.
-    expect(screen.getByText("OS keyring is host-bound.")).not.toBeVisible();
-    expect(screen.getByText(/Both auto-unlock modes trade the same thing away/)).not.toBeVisible();
+    // Nothing of the list or the paragraph after it is in view.
+    expect(within(help).getByText("OS keyring")).not.toBeVisible();
+    expect(screen.getByText(/Either auto-unlock mode lets anyone who can read/)).not.toBeVisible();
     expect(screen.getByText("More")).toBeVisible();
   });
 
-  it("is Markdown when it is opened: bold and paragraphs, no asterisks", async () => {
+  it("is Markdown when it is opened: a list of the three modes, bold and code, no marks", async () => {
     show("control", "securityMode");
     await userEvent.click(screen.getByText("More"));
-    expect(screen.getByText("OS keyring is host-bound.").tagName).toBe("STRONG");
-    expect(screen.getByText("OS keyring is host-bound.")).toBeVisible();
-    expect(screen.getByText("this").tagName).toBe("EM");
-    expect(screen.getByText("EUGENE_PLEXUS_CONTROL_PASSPHRASE_FILE").tagName).toBe("CODE");
-    // Six paragraphs in the description. The first gives its first sentence
-    // to the page and the rest of itself to More, so More holds six.
     const help = screen.getByTestId("description-securityMode");
-    expect(help.querySelectorAll("details p")).toHaveLength(6);
+    // The three modes are a list, each led by its name in bold.
+    expect(help.querySelectorAll("details ul")).toHaveLength(1);
+    const modes = [...help.querySelectorAll("details li")];
+    expect(modes.map((li) => li.querySelector("strong")?.textContent)).toEqual([
+      "Prompt on startup",
+      "OS keyring",
+      "Passphrase file",
+    ]);
+    expect(within(help).getByText("OS keyring").tagName).toBe("STRONG");
+    expect(within(help).getByText("OS keyring")).toBeVisible();
+    expect(screen.getByText("EUGENE_PLEXUS_CONTROL_PASSPHRASE_FILE").tagName).toBe("CODE");
+    // The closing paragraph is the only paragraph: a list item is not one.
+    expect(help.querySelectorAll("details p")).toHaveLength(1);
+    expect(help.querySelector("details p")).toHaveTextContent(
+      "Either auto-unlock mode lets anyone who can read the keyring or the file unlock this install without the passphrase.",
+    );
     expect(help.textContent).not.toContain("**");
     expect(help.textContent).not.toContain("`");
+    expect(help.textContent).not.toContain("- ");
   });
 
   it("describes the input by its first sentence, not by all of it", () => {
     show("control", "securityMode");
     expect(screen.getByRole("combobox")).toHaveAccessibleDescription(
-      "How this host keeps its master encryption key between restarts.",
+      "How this control root keeps its master encryption key between restarts.",
     );
   });
 

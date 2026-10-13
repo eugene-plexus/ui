@@ -203,7 +203,7 @@ export function NodeUpdateCard({
       {/* The commits are for whoever is chasing a build, not for a status
           line: one click away. */}
       {stamps.length > 0 && (
-        <More summary="Details" testId="node-update-details" className="mt-2">
+        <More summary="Details" label={name} testId="node-update-details" className="mt-2">
           <p className="font-mono text-xs break-words text-[color:var(--muted)]">
             {stamps.join(" · ")}
           </p>

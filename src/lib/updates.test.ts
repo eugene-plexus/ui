@@ -512,4 +512,61 @@ describe("the issues", () => {
     expect(versionDifference(behind)).not.toBeNull();
     expect(unexplainedVersionDifference(behind)).toBeNull();
   });
+
+  it("calls a difference explained while a machine is updating, on the page and in the list", () => {
+    const other = identity(
+      {},
+      {
+        name: "unraid",
+        install: {
+          mechanism: "container",
+          development: false,
+          components: [{ name: "agent", state: "stamped", commit: NEW_AGENT }],
+        },
+      },
+    );
+    const running = {
+      target: EDGE,
+      startedAt: "2026-09-27T17:59:00Z",
+      outcome: "running" as const,
+    };
+    const updating = [facts("Amish_Station", identity({ running })), facts("unraid", other)];
+    // The commits differ and no update is on offer, which used to read
+    // "No update is offered yet" beside a machine that was installing one.
+    expect(versionDifference(updating)).not.toBeNull();
+    expect(unexplainedVersionDifference(updating)).toBeNull();
+    // The badge and the page are asked the same question.
+    expect(issuesFrom(sources(updating)).map((i) => i.kind)).not.toContain("versions-differ");
+
+    // The other machine is the one updating: it is still one machine, either way round.
+    const reversed = [
+      facts("Amish_Station", identity({})),
+      facts("unraid", { ...other, update: { ...other.update!, running } }),
+    ];
+    expect(unexplainedVersionDifference(reversed)).toBeNull();
+    expect(issuesFrom(sources(reversed)).map((i) => i.kind)).not.toContain("versions-differ");
+
+    // Once it is over, with the machines still apart, it is said again.
+    const over = {
+      ...running,
+      finishedAt: "2026-09-27T17:59:50Z",
+      outcome: "succeeded" as const,
+      detail: "Updated.",
+    };
+    const after = [facts("Amish_Station", identity({ last: over })), facts("unraid", other)];
+    expect(unexplainedVersionDifference(after)?.title).toBe("Machines run different versions");
+    expect(issuesFrom(sources(after)).map((i) => i.kind)).toContain("versions-differ");
+
+    // A development checkout never updates itself, so its flag explains nothing.
+    const dev = identity(
+      { running },
+      { install: { mechanism: "none", development: true, components: [] } },
+    );
+    const withDev = [
+      facts("dev", dev),
+      facts("Amish_Station", identity({})),
+      facts("unraid", other),
+    ];
+    expect(unexplainedVersionDifference(withDev)?.title).toBe("Machines run different versions");
+  });
 });

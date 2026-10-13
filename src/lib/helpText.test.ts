@@ -197,10 +197,16 @@ describe("every description a component really serves", () => {
     expect(short.length / descriptions.length).toBeGreaterThanOrEqual(0.8);
   });
 
-  it("the control root's security mode, which was 254 words, leads with one sentence", () => {
-    const { summary, more } = splitHelp(cases.control!.securityMode!.field.description as string);
-    expect(summary).toBe("How this host keeps its master encryption key between restarts.");
-    expect(more).toContain("**OS keyring is host-bound.**");
-    expect(more).toContain("\n\n");
+  it("the control root's security mode, once 254 words and now 107, leads with one sentence", () => {
+    const text = cases.control!.securityMode!.field.description as string;
+    expect(wordCount(text)).toBeLessThan(130);
+    const { summary, more } = splitHelp(text);
+    expect(summary).toBe("How this control root keeps its master encryption key between restarts.");
+    expect(wordCount(summary)).toBeLessThanOrEqual(20);
+    // The details are the list of the three modes, then a closing paragraph.
+    expect(more?.startsWith("- **Prompt on startup**:")).toBe(true);
+    expect(more).toContain("\n- **OS keyring**:");
+    expect(more).toContain("\n- **Passphrase file**:");
+    expect(more).toContain("\n\nEither auto-unlock mode");
   });
 });

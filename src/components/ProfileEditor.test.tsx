@@ -71,22 +71,22 @@ it("saves explicit zeroes, clears omitted defaults and preserves launch settings
   expect(writes[1]).toHaveProperty("maxTokens", 123);
 });
 
-it("saves an old checkbox's Flash attention as what it always did (agent#6)", async () => {
-  // True sent on; false sent nothing, which was llama.cpp's own choice.
-  const writes = setup({ contextSize: 4096, flashAttention: false, threads: 8 });
+// The Library converts an old Flash attention checkbox once, when it first
+// reads the profile file, so a saved profile holds On, Off or nothing. What
+// the console is given is what it saves back.
+it.each([
+  ["on", { contextSize: 4096, flashAttention: "on", threads: 8 }],
+  ["off", { contextSize: 4096, flashAttention: "off" }],
+  ["not set", { contextSize: 4096, threads: 8 }],
+  // Nobody's saved value any more: not read as On or as the engine's own
+  // choice, and not dropped, so the Library says what it is.
+  ["a leftover checkbox", { contextSize: 4096, flashAttention: true }],
+])("saves Flash attention as it was given: %s", async (_name, flags) => {
+  const writes = setup(flags);
   fireEvent.click(await screen.findByRole("button", { name: "edit" }));
   fireEvent.click(screen.getByRole("button", { name: "save" }));
   await waitFor(() => expect(writes).toHaveLength(1));
-  expect(writes[0]).toMatchObject({ flags: { contextSize: 4096, threads: 8 } });
-  expect((writes[0]?.flags as Record<string, unknown>).flashAttention).toBeUndefined();
-});
-
-it("saves an old checkbox's ticked Flash attention as on", async () => {
-  const writes = setup({ contextSize: 4096, flashAttention: true });
-  fireEvent.click(await screen.findByRole("button", { name: "edit" }));
-  fireEvent.click(screen.getByRole("button", { name: "save" }));
-  await waitFor(() => expect(writes).toHaveLength(1));
-  expect(writes[0]).toMatchObject({ flags: { contextSize: 4096, flashAttention: "on" } });
+  expect(writes[0]?.flags).toEqual(flags);
 });
 
 /**

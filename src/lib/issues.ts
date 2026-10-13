@@ -213,8 +213,7 @@ export function issuesFrom(sources: IssueSources): Issue[] {
     ...accountListIssues(sources.drivers),
     ...unservedTargetIssues(sources.routing),
   ];
-  const updates = sources.perNode.flatMap(updateIssues);
-  issues.push(...updates, ...(updates.length === 0 ? versionsDifferIssues(sources.perNode) : []));
+  issues.push(...sources.perNode.flatMap(updateIssues), ...versionsDifferIssues(sources.perNode));
   for (const node of sources.perNode) {
     issues.push(
       ...componentDownIssues(node),
@@ -514,21 +513,32 @@ function updateIssues(node: NodeFacts): Issue[] {
   ];
 }
 
+/** A machine in the middle of an update, as its card says it. */
+function isUpdating(node: NodeFacts): boolean {
+  return describeUpdate(node.identity, Date.now()).state === "running";
+}
+
 /**
  * Machines on different versions, when nothing explains it: no machine has an
- * update on offer or one that failed, which would say it better. Machines draws
- * its notice and its cards from this, so the page and the badge never disagree
- * about whether a difference needs saying.
+ * update on offer, one that failed, or one running, each of which says it
+ * better. A machine part-way through updating is on its way to the others'
+ * version, and "No update is offered yet" beside it would be false. Machines
+ * draws its notice and its cards from this, and the Needs-attention list from
+ * the same call, so the page and the badge never disagree about whether a
+ * difference needs saying.
  */
 export function unexplainedVersionDifference(perNode: NodeFacts[]): VersionDifference | null {
-  return perNode.flatMap(updateIssues).length === 0 ? versionDifference(perNode) : null;
+  if (perNode.some(isUpdating) || perNode.some((node) => updateIssues(node).length > 0)) {
+    return null;
+  }
+  return versionDifference(perNode);
 }
 
 /** Machines that each say they are up to date, on different versions: two
- * channels, most likely. Only said when nothing is simply behind, which
- * already explains a difference. */
+ * channels, most likely. Only said when nothing is behind or on its way to
+ * the others, which already explains a difference. */
 function versionsDifferIssues(perNode: NodeFacts[]): Issue[] {
-  const difference = versionDifference(perNode);
+  const difference = unexplainedVersionDifference(perNode);
   if (!difference) return [];
   return [
     {

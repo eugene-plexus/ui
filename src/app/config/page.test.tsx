@@ -98,11 +98,14 @@ const SCHEMAS: Record<
 let docs: Record<string, Record<string, unknown>>;
 let calls: string[];
 let patches: { target: string; body: Record<string, unknown> }[];
+/** The backends the root lists: one, by default, on the other machine. */
+let backends: { node: string; name: string }[];
 
 beforeEach(() => {
   query = "";
   calls = [];
   patches = [];
+  backends = [{ node: "Amish_Station", name: "qwen" }];
   docs = {
     gateway: {
       defaultTemperature: "0.7",
@@ -172,7 +175,7 @@ beforeEach(() => {
             { node: "root", name: "gateway", kind: "gateway" },
             { node: "root", name: "library", kind: "library" },
             { node: "root", name: "control", kind: "control" },
-            { node: "Amish_Station", name: "qwen", kind: "inference-driver" },
+            ...backends.map((b) => ({ ...b, kind: "inference-driver" })),
           ],
         });
       }
@@ -327,6 +330,51 @@ describe("the Settings page", () => {
     fireEvent.click(screen.getByTestId("settings-nothing-clear"));
     expect(screen.getByTestId("settings-search")).toHaveValue("");
     await waitFor(() => expect(screen.queryByTestId("settings-nothing")).toBeNull());
+  });
+
+  it("lists the backends by name under On other pages, and says what their pages hold once", async () => {
+    backends = [
+      { node: "Amish_Station", name: "qwen" },
+      { node: "root", name: "ollama" },
+      { node: "root", name: "claude" },
+    ];
+    render(<ConfigPage />);
+    const elsewhere = await screen.findByTestId("settings-elsewhere");
+    // Three backends, one line: each a link by its own name...
+    const links = await waitFor(() => {
+      const found = within(elsewhere)
+        .getAllByTestId("elsewhere-link")
+        .filter((link) => (link.getAttribute("href") ?? "").startsWith("/config?sel=driver"));
+      expect(found).toHaveLength(3);
+      return found;
+    });
+    expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["qwen on Amish_Station", "/config?sel=driver%3Aqwen%40Amish_Station"],
+      ["ollama on root", "/config?sel=driver%3Aollama%40root"],
+      ["claude on root", "/config?sel=driver%3Aclaude%40root"],
+    ]);
+    expect(new Set(links.map((link) => link.closest("li"))).size).toBe(1);
+    // ...and what they hold, said the once.
+    expect(elsewhere.textContent!.match(/provider, model, address and API key/g)).toHaveLength(1);
+    expect(elsewhere.textContent).not.toContain("This backend's");
+  });
+
+  it("finds one backend by name among the others", async () => {
+    backends = [
+      { node: "Amish_Station", name: "qwen" },
+      { node: "root", name: "ollama" },
+    ];
+    render(<ConfigPage />);
+    await card("access");
+    fireEvent.change(screen.getByTestId("settings-search"), { target: { value: "ollama" } });
+    const elsewhere = await screen.findByTestId("settings-elsewhere");
+    await waitFor(() => {
+      const names = within(elsewhere)
+        .getAllByTestId("elsewhere-link")
+        .map((link) => link.textContent);
+      expect(names).toContain("ollama on root");
+      expect(names).not.toContain("qwen on Amish_Station");
+    });
   });
 
   it("lands a deep link on its field and marks it", async () => {

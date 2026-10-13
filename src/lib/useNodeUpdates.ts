@@ -17,7 +17,8 @@ export interface NodeReading {
  * up the shared poll while an update is running; never start a second one.
  *
  * `difference` is the one nothing else explains: while a machine has an
- * update on offer, that is what Machines says about it, on its card. */
+ * update on offer, or is running one, that is what Machines says about it,
+ * on its card. */
 export function useNodeUpdates(names: string[] | null, updating: boolean) {
   const { facts, loaded, reload, checkingUpdates } = useIssues(
     names === null ? 30_000 : updating ? 3_000 : 15_000,

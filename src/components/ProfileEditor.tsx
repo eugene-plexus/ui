@@ -16,7 +16,6 @@ import { DEFAULT_PROFILE_NAME, composeSpec } from "@/lib/launchSpec";
 import { libraryFoldersHref } from "@/lib/libraryReach";
 import type { TargetNode } from "@/lib/nodeBudget";
 import { builtFieldLabel, builtOn, editedSinceBuilt, measuredLine } from "@/lib/profileBuild";
-import { currentFlags } from "@/lib/legacyFlags";
 import {
   isSearchFile,
   modeToSave,
@@ -693,7 +692,7 @@ function ProfileForm({
   // What to start the file as (MR3). Auto reads the file's header.
   const [mode, setMode] = useState<ModeChoice>(existing?.mode ?? "auto");
   const [flags, setFlags] = useState<Record<string, unknown>>(() => ({
-    ...currentFlags(existing?.flags ?? {}),
+    ...(existing?.flags ?? {}),
     ...(!existing && suggestedContext != null ? { contextSize: suggestedContext } : {}),
   }));
   const [extraArgs, setExtraArgs] = useState((existing?.extraArgs ?? []).join(" "));

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ConfigEditor, type SectionHandle } from "@/components/ConfigEditor";
@@ -23,10 +23,12 @@ import {
 import {
   buildCards,
   elsewhereIndex,
+  elsewhereLines,
   elsewhereMatches,
   matchesQuery,
   ownersFor,
   type ElsewhereEntry,
+  type ElsewhereLine,
   type SettingsOwner,
 } from "@/lib/settingsTopics";
 import type { ConfigSchema } from "@/lib/types";
@@ -401,13 +403,8 @@ function SettingsView({
                   Settings that live where the thing they change is.
                 </p>
                 <ul className="flex flex-col gap-1.5">
-                  {elsewhere.map((e) => (
-                    <li key={e.id} className="text-sm">
-                      <Link href={e.href} className="underline" data-testid="elsewhere-link">
-                        {e.label}
-                      </Link>
-                      <span className="text-[color:var(--muted)]"> — {e.description}</span>
-                    </li>
+                  {elsewhereLines(elsewhere).map((line) => (
+                    <ElsewhereItem key={line.id} line={line} testId="elsewhere-link" />
                   ))}
                 </ul>
               </section>
@@ -476,15 +473,30 @@ function SeeAlso({ entries }: { entries: ElsewhereEntry[] }) {
       className="mt-3 flex flex-col gap-1 border-t border-[color:var(--border)] pt-2"
       data-testid="see-also"
     >
-      {entries.map((e) => (
-        <li key={e.id} className="text-sm">
-          <Link href={e.href} className="underline">
-            {e.label}
-          </Link>
-          <span className="text-[color:var(--muted)]"> — {e.description}</span>
-        </li>
+      {elsewhereLines(entries).map((line) => (
+        <ElsewhereItem key={line.id} line={line} />
       ))}
     </ul>
+  );
+}
+
+/**
+ * One line: its link, or its links by name, then what is there. A line that
+ * lists several backends says what a backend's page holds once, after them.
+ */
+function ElsewhereItem({ line, testId }: { line: ElsewhereLine; testId?: string }) {
+  return (
+    <li className="text-sm">
+      {line.links.map((link, index) => (
+        <Fragment key={link.href}>
+          {index > 0 && <span className="text-[color:var(--muted)]"> · </span>}
+          <Link href={link.href} className="underline" data-testid={testId}>
+            {link.label}
+          </Link>
+        </Fragment>
+      ))}
+      <span className="text-[color:var(--muted)]"> — {line.description}</span>
+    </li>
   );
 }
 
