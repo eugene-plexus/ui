@@ -911,7 +911,7 @@ function ModelDetail({
           </p>
           <p className="mt-1">
             If you moved it, scan again to find it at its new path. Copy the settings across, then
-            forget this entry. Eugene does not guess that two paths are the same model.
+            forget this entry.
           </p>
           {/* Asked, because the profiles are the one thing here a rescan
               cannot bring back, and the prompt says how many go. */}

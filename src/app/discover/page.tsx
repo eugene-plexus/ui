@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { EligibilityDot } from "@/components/EligibilityDot";
 import { EngineFitBadge, FitBadge, formatBytes, formatMemory } from "@/components/FitBadge";
+import { More } from "@/components/Help";
 import { ModelCard } from "@/components/ModelCard";
 import { QuantReference } from "@/components/QuantReference";
 import { ApiError, api, describeError } from "@/lib/api";
@@ -918,14 +919,18 @@ function EmptyDetail({
           </p>
         </div>
       )}
-      <p>
-        One repository usually holds many versions of a model at different precisions. Here they are
-        grouped into models you can launch and checked for fit.
-      </p>
-      <p>
-        Downloads go to the first of your model directories under their upstream filenames. Nothing
-        is renamed or cached: delete Eugene and every model is still there.
-      </p>
+      <More label="how Discover works" testId="discover-how">
+        <div className="space-y-2">
+          <p>
+            One repository usually holds many versions of a model at different precisions. Here they
+            are grouped into models you can launch and checked for fit.
+          </p>
+          <p>
+            Downloads go to the first of your model directories under their upstream filenames.
+            Nothing is renamed or cached: delete Eugene and every model is still there.
+          </p>
+        </div>
+      </More>
       {/* The library's warnings are about the host the LIBRARY runs on.
           Shown only when its reading is the one in use -- otherwise a
           worker would read "nvidia-smi is not on PATH" about a NAS. */}

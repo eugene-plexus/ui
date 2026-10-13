@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { CatalogueSourcesInput } from "@/components/CatalogueSources";
 import { FolderPicker } from "@/components/FolderPicker";
+import { Help } from "@/components/Help";
 import { REDACTED, formatValue, readValue, unsetSentence } from "@/lib/configValue";
 import {
   type MountBoxes,
@@ -174,8 +175,9 @@ export function ConfigFieldInput({
   const descriptionId = `${inputId}-description`;
   const errorId = `${inputId}-error`;
   const compound = COMPOUND_VALUE_TYPES.has(field.valueType);
+  const hasDescription = Boolean(field.description?.trim());
   const describedBy =
-    [field.description ? descriptionId : null, error ? errorId : null].filter(Boolean).join(" ") ||
+    [hasDescription ? descriptionId : null, error ? errorId : null].filter(Boolean).join(" ") ||
     undefined;
   const controlProps = {
     id: inputId,
@@ -634,10 +636,16 @@ export function ConfigFieldInput({
             {field.status.text}
           </p>
         )}
-        {field.description && (
-          <p id={descriptionId} className="text-sm leading-relaxed text-[color:var(--muted)]">
-            {field.description}
-          </p>
+        {hasDescription && field.description && (
+          // The component writes this in Markdown and some of it runs to
+          // 250 words. The first sentence stays; the rest is one click away.
+          <Help
+            id={descriptionId}
+            text={field.description}
+            label={field.label}
+            testId={`description-${field.key}`}
+            className="text-sm leading-relaxed text-[color:var(--muted)]"
+          />
         )}
         {hasDefault && (
           // The schema has always carried the default and PATCH has always

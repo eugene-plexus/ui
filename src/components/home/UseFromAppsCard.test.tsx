@@ -31,7 +31,11 @@ describe("install-wide key registry", () => {
     show();
     expect(await screen.findByText("Laptop")).toBeInTheDocument();
     expect(screen.getByText(/apply to every gateway in this install/)).toBeInTheDocument();
-    expect(screen.getByText(/Client requests need the active key authority/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/If the key authority is unreachable, clients cannot start/),
+    ).toBeVisible();
+    // What a permission change does to requests in flight is one click down.
+    expect(screen.getByText(/Permission changes stop active requests/)).not.toBeVisible();
     expect(screen.queryByText(/migrat/i)).toBeNull();
     expect(get).toHaveBeenCalledWith("agent", "/v1/auth/client-keys");
   });

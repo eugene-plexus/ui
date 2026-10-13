@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { More } from "@/components/Help";
 import { api, ApiError, describeError } from "@/lib/api";
 import type { ModelEligibility } from "@/lib/eligibility";
 import { engineName } from "@/lib/issues";
@@ -258,10 +259,14 @@ export function AddPreparedModel({
       <div>
         <h2 className="text-base font-medium">Add a prepared model</h2>
         <p className="mt-1 text-[color:var(--muted)]">
-          A model an engine prepared for itself, such as by Strata&rsquo;s setup. Its files must
-          already be in a Library folder; the Library adds a small file beside them, and it then has
-          profiles and Run like any model.
+          A model an engine prepared for itself, such as by Strata&rsquo;s setup.
         </p>
+        <More label="adding a prepared model" className="mt-1">
+          <p className="text-[color:var(--muted)]">
+            Its files must already be in a Library folder; the Library adds a small file beside
+            them, and it then has profiles and Run like any model.
+          </p>
+        </More>
       </div>
 
       {offered.length > 1 && (

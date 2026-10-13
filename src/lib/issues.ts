@@ -52,7 +52,7 @@ import type {
   RuntimeList,
 } from "./types";
 import { nodeLiveness } from "./nodeLiveness";
-import { describeUpdate, versionDifference } from "./updates";
+import { describeUpdate, releaseName, versionDifference, type VersionDifference } from "./updates";
 
 export type IssueKind =
   | "control-sealed"
@@ -98,6 +98,9 @@ export interface Issue {
   /** What to do about it. Never empty: an issue with no next step is a
    * status light, and this project has enough of those. */
   detail: string;
+  /** Lines behind a Details disclosure, for the person who wants the whole
+   * of it: which commits differ, why no update shows. Never the next step. */
+  more?: string[];
   /** Where the fix is. */
   href: string;
   action?: IssueAction;
@@ -485,28 +488,40 @@ function updateIssues(node: NodeFacts): Issue[] {
         kind: "update-failed",
         severity: "warning",
         title: `The last update of ${node.label} did not finish`,
-        detail: last.detail ?? "It left no record of why. Try again from Nodes.",
+        detail: last.detail ?? "It left no record of why. Try again on Machines.",
         href: "/nodes",
         node: node.name,
       },
     ];
   }
   if (!update.available || !update.newest) return [];
-  const label = update.newest.release ?? `edge ${update.newest.ref.slice(0, 7)}`;
-  const title = `A newer version of Eugene is ready for ${node.label}: ${label}`;
+  // A release has a name; an edge build is only a commit, which is not said.
+  const release = releaseName(update);
+  const title = `Update available for ${node.label}${release ? `: ${release}` : ""}`;
   return [
     {
       id: `update-available:${node.name ?? node.label}`,
       kind: "update-available",
       severity: "warning",
       title,
+      // What updating costs is said where the Update button is.
       detail: update.apply.possible
-        ? "Update it from Nodes. Eugene restarts there, and its models stop for a minute or two."
-        : `${update.apply.reason ?? "It cannot update itself."} Nodes says how.`,
+        ? "Update it on Machines."
+        : `${update.apply.reason ?? "It cannot update itself."} Machines says how.`,
       href: "/nodes",
       node: node.name,
     },
   ];
+}
+
+/**
+ * Machines on different versions, when nothing explains it: no machine has an
+ * update on offer or one that failed, which would say it better. Machines draws
+ * its notice and its cards from this, so the page and the badge never disagree
+ * about whether a difference needs saying.
+ */
+export function unexplainedVersionDifference(perNode: NodeFacts[]): VersionDifference | null {
+  return perNode.flatMap(updateIssues).length === 0 ? versionDifference(perNode) : null;
 }
 
 /** Machines that each say they are up to date, on different versions: two
@@ -751,9 +766,11 @@ function staleBuildIssues(node: NodeFacts): Issue[] {
           stale.length === 1
             ? `${label(stale[0]!)} is running on ${engineName(engine)} ${stale[0]!.engineVersion}, not the ${current} that is installed`
             : `${stale.length} models on ${node.label} are running on an older ${engineName(engine)} than the ${current} that is installed`,
-        detail:
-          "Restarting them picks up the new build. Until then the gateway shares requests " +
-          "between two engine versions, which can make one model slower than another.",
+        detail: "Restarting them picks up the new build.",
+        more: [
+          "Until then the gateway shares requests between two engine versions, which can make " +
+            "one model slower than another.",
+        ],
         href: "/inference",
         node: node.name,
       });

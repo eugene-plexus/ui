@@ -28,6 +28,7 @@ import {
 } from "@/lib/issues";
 import { loadKey, recallLoadSeconds, rememberLoadSeconds } from "@/lib/loadMemory";
 import { engineLogsHref } from "@/lib/logs";
+import { repeatsModel } from "@/lib/servedLine";
 import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib/nodeBudget";
 import type { ContextLookup } from "@/lib/modelContext";
 import { formatSelection, parseSelection } from "@/lib/resourceTree";
@@ -533,7 +534,6 @@ function EmptyState() {
           you already run, such as Ollama, an OpenAI-compatible server or a cloud CLI.
         </li>
       </ul>
-      <p>Either way it appears here, on the machine it runs on, with the same controls.</p>
     </div>
   );
 }
@@ -637,6 +637,21 @@ function NodeSection({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Whether a row's driver says nothing its other names do not. A model that
+ * Eugene runs has a driver called `<runtime>-driver`, and the runtime is
+ * named for the model, so the line would give a third spelling of one name.
+ * An account's driver is the prefix of every model it lists, said above.
+ */
+function driverIsImplied(row: Row): boolean {
+  if (!row.driver) return true;
+  if (row.account) return true;
+  return (
+    (row.runtime !== null && repeatsModel(row.driver, row.runtime)) ||
+    (row.model !== null && repeatsModel(row.driver, row.model))
   );
 }
 
@@ -786,7 +801,7 @@ function RowView({
             <span className="text-[color:var(--muted)]"> · runs on its own</span>
           </>
         )}
-        {row.driver && (
+        {row.driver && !driverIsImplied(row) && (
           <div className="text-[0.6875rem] text-[color:var(--muted)]">
             driver <span className="font-mono">{row.driver}</span>
           </div>

@@ -35,6 +35,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { More } from "@/components/Help";
 import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
 import {
@@ -261,11 +262,15 @@ export default function RoutingPage() {
           in the same commit. */}
       <main data-testid="routing-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-6 py-8">
-          <p className="mb-2 text-sm text-[color:var(--muted)]">
-            A priority list gives a model name ordered fallbacks: a request is served by the
-            name&rsquo;s own backends first, then by each target in order. A target is a model id,
-            meaning every backend serving it.
+          <p className="text-sm text-[color:var(--muted)]">
+            A priority list gives a model name ordered fallbacks.
           </p>
+          <More label="priority lists" className="mb-2">
+            <p className="text-sm text-[color:var(--muted)]">
+              A request is served by the name&rsquo;s own backends first, then by each target in
+              order. A target is a model id, meaning every backend serving it.
+            </p>
+          </More>
           <p className="mb-6 text-sm text-[color:var(--muted)]">
             These lists are the gateway&rsquo;s <span className="font-mono">modelSlots</span>{" "}
             setting; its other settings are on{" "}

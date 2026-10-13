@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
+import { Markdown } from "@/components/Markdown";
 import { api, describeError } from "@/lib/api";
 import type { CatalogueCard } from "@/lib/types";
 
@@ -92,7 +91,7 @@ export function ModelCard({ repo, source }: { repo: string; source?: string | nu
           {markdown && (
             <>
               <div className="max-h-[50vh] overflow-y-auto pr-1">
-                <Card>{markdown}</Card>
+                <Markdown>{markdown}</Markdown>
               </div>
               <p className="mt-2 border-t border-[color:var(--border)] pt-2 text-[0.6875rem] text-[color:var(--muted)]">
                 Written by whoever published the model, shown unedited.
@@ -107,67 +106,3 @@ export function ModelCard({ repo, source }: { repo: string; source?: string | nu
 
 const RETRY =
   "font-ui ml-2 rounded-[var(--radius)] border border-current px-2 py-0.5 text-[0.6875rem] hover:bg-[color:var(--panel-hover)]";
-
-function Card({ children }: { children: string }) {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-        ul: ({ children }) => <ul className="mb-2 ml-5 list-disc last:mb-0">{children}</ul>,
-        ol: ({ children }) => <ol className="mb-2 ml-5 list-decimal last:mb-0">{children}</ol>,
-        li: ({ children }) => <li className="mb-0.5">{children}</li>,
-        h1: ({ children }) => (
-          <h1 className="font-ui mt-3 mb-1.5 text-sm font-semibold first:mt-0">{children}</h1>
-        ),
-        h2: ({ children }) => (
-          <h2 className="font-ui mt-3 mb-1.5 text-sm font-semibold first:mt-0">{children}</h2>
-        ),
-        h3: ({ children }) => (
-          <h3 className="font-ui mt-2 mb-1 text-sm font-semibold first:mt-0">{children}</h3>
-        ),
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline decoration-[color:var(--muted)]"
-          >
-            {children}
-          </a>
-        ),
-        code: ({ children }) => (
-          <code className="font-mono-ui rounded-[var(--radius)] bg-[color:var(--panel-soft)] px-1 py-0.5">
-            {children}
-          </code>
-        ),
-        pre: ({ children }) => (
-          <pre className="font-mono-ui mb-2 overflow-x-auto rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-2">
-            {children}
-          </pre>
-        ),
-        table: ({ children }) => (
-          <div className="mb-2 overflow-x-auto">
-            <table className="w-full">{children}</table>
-          </div>
-        ),
-        th: ({ children }) => (
-          <th className="font-ui border-b border-[color:var(--border)] px-2 py-1 text-left font-medium">
-            {children}
-          </th>
-        ),
-        td: ({ children }) => (
-          <td className="border-b border-[color:var(--border)] px-2 py-1">{children}</td>
-        ),
-        img: () => null,
-        blockquote: ({ children }) => (
-          <blockquote className="mb-2 border-l-2 border-[color:var(--border)] pl-2 text-[color:var(--muted)]">
-            {children}
-          </blockquote>
-        ),
-      }}
-    >
-      {children}
-    </ReactMarkdown>
-  );
-}

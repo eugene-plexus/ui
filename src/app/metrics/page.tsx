@@ -47,6 +47,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { HourChart, RequestOutcomes, StatTile } from "@/components/MetricsCharts";
 import { CopyButton } from "@/components/CopyButton";
+import { More } from "@/components/Help";
 import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
 import { compact, hourlyPoints, msLabel, tilesFrom } from "@/lib/metricsCharts";
@@ -837,24 +838,35 @@ export default function MetricsPage() {
                 </div>
               )}
 
-              <p className="mt-3 text-[0.6875rem] text-[color:var(--muted)]">
-                <strong>Decode</strong> is tok/s after the first token. <strong>Tokens/sec</strong>{" "}
-                includes prefill. Both are measured on the backend that answered, so a failover does
-                not count against it. The number in brackets is how many requests the median covers.
-              </p>
-              <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">
-                <strong>First token</strong> includes the hop to the driver, so on a local engine it
-                is mostly prompt processing. For real prefill numbers, use the{" "}
-                <Link href="/library" className="underline">
-                  benchmark
-                </Link>
-                .
-              </p>
-              <p className="mt-1 text-[0.6875rem] text-[color:var(--muted)]">
-                <strong>Overhead</strong> is what Eugene itself costs: the gap between the backend’s
-                own time and the gateway’s. Compare it with the median; on a local install it is
-                usually small.
-              </p>
+              {/* What each column measures: for whoever asks, not under every table. */}
+              <More
+                summary="How these are measured"
+                summaryClassName="text-[0.6875rem] text-[color:var(--muted)] underline"
+                className="mt-3"
+                testId="metrics-how-measured"
+              >
+                <div className="space-y-1 text-[0.6875rem] text-[color:var(--muted)]">
+                  <p>
+                    <strong>Decode</strong> is tok/s after the first token.{" "}
+                    <strong>Tokens/sec</strong> includes prefill. Both are measured on the backend
+                    that answered, so a failover does not count against it. The number in brackets
+                    is how many requests the median covers.
+                  </p>
+                  <p>
+                    <strong>First token</strong> includes the hop to the driver, so on a local
+                    engine it is mostly prompt processing. For real prefill numbers, use the{" "}
+                    <Link href="/library" className="underline">
+                      benchmark
+                    </Link>
+                    .
+                  </p>
+                  <p>
+                    <strong>Overhead</strong> is what Eugene itself costs: the gap between the
+                    backend’s own time and the gateway’s. Compare it with the median; on a local
+                    install it is usually small.
+                  </p>
+                </div>
+              </More>
 
               {clientError && (
                 <section className="section-panel mt-6" aria-label="Usage by client key">

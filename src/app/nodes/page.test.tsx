@@ -777,8 +777,14 @@ describe("versions, and updating a machine from here (2026-09-27)", () => {
     render(<NodesPage />);
     const amish = await card("Amish_Station");
     expect(amish).toHaveAttribute("data-state", "available");
+    // Troy, 2026-10-13: "I don't care how many parts are different. Just say
+    // I need an update." No commit, no part count, no restart sentence.
     expect(within(amish).getByTestId("node-update-headline")).toHaveTextContent(
-      "A newer version is ready: edge b8b30bd",
+      /^Update available$/,
+    );
+    expect(within(amish).queryByTestId("node-update-detail")).toBeNull();
+    expect(within(amish).getByTestId("node-update-headline").textContent).not.toMatch(
+      /seven|parts|b8b30bd|2dcf645|restart/i,
     );
     await user.click(within(amish).getByTestId("node-update-now"));
     // Nothing is sent on the first click: it asks, and says what it costs.
@@ -816,11 +822,18 @@ describe("versions, and updating a machine from here (2026-09-27)", () => {
     expect(posted[0]?.url).toMatch(/\/check$/);
   });
 
-  it("gives a container its steps and no button", async () => {
+  it("gives a container no button, and does not call it behind because another machine is", async () => {
     render(<NodesPage />);
     const unraid = await card("unraid");
-    expect(unraid).toHaveAttribute("data-state", "different");
+    // Amish_Station is the one behind, and says so. The difference between
+    // them is explained, so the container is simply up to date.
+    expect(unraid).toHaveAttribute("data-state", "current");
+    expect(within(unraid).getByTestId("node-update-headline")).toHaveTextContent(
+      "Up to date on edge",
+    );
     expect(within(unraid).queryByTestId("node-update-now")).toBeNull();
+    // And nothing above the cards says the versions differ: the card is the cue.
+    expect(screen.queryByTestId("version-difference")).toBeNull();
   });
 
   it("checks again when asked, on that machine", async () => {

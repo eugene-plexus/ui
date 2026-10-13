@@ -11,6 +11,7 @@ import {
 
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
+import { More } from "@/components/Help";
 import { ApiError, api, describeError } from "@/lib/api";
 import { contextOf, contextText, withContext } from "@/lib/modelContext";
 import {
@@ -527,7 +528,7 @@ export function UseFromAppsCard({
                   : "reading…"
                 : liveKeys.length === 0
                   ? "none yet"
-                  : `${liveKeys.length} key${liveKeys.length === 1 ? "" : "s"} made; a key is shown once, so make a new one if you no longer have it`}
+                  : `${liveKeys.length} key${liveKeys.length === 1 ? "" : "s"} made; a key is shown once`}
             </span>
           )}
         </Row>
@@ -535,7 +536,7 @@ export function UseFromAppsCard({
 
       {fresh && (
         <p className="status-warn mt-2 rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]">
-          Copy this now — it is shown once and is not stored anywhere. Lose it and you make another.
+          Copy this now — it is shown once and is not stored anywhere.
         </p>
       )}
 
@@ -577,10 +578,18 @@ export function UseFromAppsCard({
       </p>
 
       <p className="font-ui mt-1 text-[0.6875rem] text-[color:var(--muted)]">
-        Client requests need the active key authority. If it is unreachable, clients cannot start
-        inference or list models; operator management remains available. Permission changes stop
-        active requests when their reservation next renews.
+        If the key authority is unreachable, clients cannot start inference or list models; operator
+        management remains available.
       </p>
+      <More
+        label="the key authority"
+        summaryClassName="text-[0.6875rem] text-[color:var(--muted)] underline"
+        className="mt-0.5"
+      >
+        <p className="font-ui text-[0.6875rem] text-[color:var(--muted)]">
+          Permission changes stop active requests when their reservation next renews.
+        </p>
+      </More>
       <button type="button" onClick={() => void load()} className="font-ui mt-1 text-sm underline">
         Refresh key status
       </button>

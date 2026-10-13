@@ -318,13 +318,12 @@ export function ProfileEditor({
       {launched && !launchedStopped && (
         <p className="status-success mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
           Starting <span className="font-mono">{launched}</span>
-          {node && !node.local ? ` on ${node.label}` : ""} and its driver{" "}
-          <span className="font-mono">{launched}-driver</span>. Watch it load on the{" "}
+          {node && !node.local ? ` on ${node.label}` : ""}. Watch it load on the{" "}
           <a href="/inference" className="underline">
             Inference
           </a>{" "}
-          page; a large quant takes a while. The gateway serves it under its alias once the engine
-          reports <span className="font-mono">ready</span>.
+          page; a large quant takes a while. It is served once the engine reports{" "}
+          <span className="font-mono">ready</span>.
         </p>
       )}
 

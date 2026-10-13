@@ -131,16 +131,27 @@ await page.route("**/api/**", async (route) => {
 try {
   await page.goto(`${url}/nodes/`);
   const worker = page.locator('[data-testid="node-update"][data-node="Amish_Station"]');
-  await expect(page.getByRole("status")).toContainText("Checking for newer versions");
+  await expect(page.getByRole("status")).toContainText("Checking for updates");
   releaseCheck();
   await expect(page.getByRole("status")).toHaveCount(0);
   await expect(worker).toHaveAttribute("data-state", "different");
   await expect(worker).toContainText("No newer update found on edge");
   await expect(page.getByTestId("node-versions")).not.toContainText("Up to date");
+  // One line of state and one of what to do, with nothing a person has to
+  // read past: the commits and the Edge explanation are behind Details.
+  const notice = page.getByTestId("version-difference");
+  await expect(notice).toContainText("Machines run different versions");
+  await expect(notice).toContainText("No update is offered yet.");
+  assert(!(await notice.innerText()).includes("check again shortly"));
+  await notice.getByText("Details", { exact: true }).click();
+  assert((await notice.innerText()).includes("check again shortly"));
   await page.getByTestId("issues-badge").click();
-  const detail = await page.getByTestId("version-difference").innerText();
-  await expect(page.getByTestId("issues-popover")).toContainText("check again shortly");
-  assert(detail.includes("check again shortly"));
+  const popover = page.getByTestId("issues-popover");
+  await expect(popover).toContainText("Machines run different versions");
+  await expect(popover).toContainText("No update is offered yet.");
+  assert(!(await popover.innerText()).includes("check again shortly"));
+  await popover.getByText("Details", { exact: true }).click();
+  assert((await popover.innerText()).includes("check again shortly"));
   checks.push("A stale worker is checked automatically; pending Edge is explained in both places");
 
   available = true;
@@ -148,10 +159,10 @@ try {
   await expect(worker.getByTestId("node-update-now")).toBeVisible();
   await page.getByTestId("issues-badge").click();
   await expect(page.getByTestId("issues-popover")).toContainText(
-    "A newer version of Eugene is ready for Amish_Station",
+    "Update available for Amish_Station",
   );
   await expect(page.getByTestId("issues-popover")).not.toContainText(
-    "Machines in this install run different versions",
+    "Machines run different versions",
   );
   checks.push("Check now changes the worker's action and the open warning together");
 

@@ -13,6 +13,12 @@
  *
  * This turns one machine's answer into the words a page shows. It is pure,
  * so every sentence is tested without a network.
+ *
+ * **What a status line says** (Troy, 2026-10-13): the state or the action, in
+ * one line. A person with a machine that is behind needs to read "Update
+ * available", not which of seven parts and at which commit. The commits are
+ * in `buildStamps`, for a Details disclosure; the consequence of updating is
+ * in the Update button's confirmation, not in the status.
  */
 
 import type { NodeIdentity, UpdateRun, UpdateStep } from "./types";
@@ -40,8 +46,9 @@ export interface UpdateView {
   state: UpdateState;
   headline: string;
   detail: string | null;
-  /** What it runs now, in a few characters. */
-  version: string;
+  /** What it runs now, when a person would call it a version: a release, or
+   * a development build. Null for a build named only by its commits. */
+  version: string | null;
   /** Whether the Update button belongs here, and what it installs. */
   canUpdate: boolean;
   target: string | null;
@@ -57,15 +64,29 @@ function short(commit: string): string {
   return commit.slice(0, 7);
 }
 
-/** `edge 1a2b3c4` or `v0.1.0-alpha.4`: the newest, as a person reads it. */
-export function targetLabel(update: NonNullable<NodeIdentity["update"]>): string | null {
-  const newest = update.newest;
-  if (!newest) return null;
-  return newest.release ?? `edge ${short(newest.ref)}`;
+/**
+ * `v0.1.0-alpha.4`: the newest, when it is a release. An edge build is named
+ * by its commit, which is for Details and never for a status line.
+ */
+export function releaseName(update: NonNullable<NodeIdentity["update"]>): string | null {
+  return update.newest?.release ?? null;
 }
 
-/** What this machine runs, from the agent's own stamped commit. */
-export function versionLabel(identity: NodeIdentity | null): string {
+/** The commit each part was built from, for a Details disclosure: `agent 85e9e76`. */
+export function buildStamps(identity: NodeIdentity | null): string[] {
+  const install = identity?.install;
+  if (!install || install.development) return [];
+  return install.components
+    .filter((part) => part.state === "stamped" && part.commit)
+    .map((part) => `${part.name} ${short(part.commit!)}`);
+}
+
+/**
+ * What this machine runs, in words: the release when it is exactly that one,
+ * a development build, or that nothing was recorded. A build that is none of
+ * those is only its commits, which `buildStamps` gives to Details: null.
+ */
+export function versionLabel(identity: NodeIdentity | null): string | null {
   const install = identity?.install;
   if (!install) return "version not recorded";
   if (install.development) return "development build";
@@ -84,7 +105,7 @@ export function versionLabel(identity: NodeIdentity | null): string {
     ) {
       return newest.release;
     }
-    return `agent ${short(agent.commit)}`;
+    return null;
   }
   return "version not recorded";
 }
@@ -102,8 +123,9 @@ export function ago(iso: string | null | undefined, now: number): string | null 
   return `${Math.round(hours / 24)} days ago`;
 }
 
-const RESTART =
-  "Updating restarts Eugene on this machine, and the models running on it stop until it is back, usually a minute or two.";
+/** While it runs. What updating costs is said before it starts, in the Update confirmation. */
+export const RESTARTING =
+  "Restarting with the new version. This page picks it up again when it is back.";
 
 export function describeUpdate(
   identity: NodeIdentity | null,
@@ -132,7 +154,8 @@ export function describeUpdate(
     ? now - Date.parse(update.last.finishedAt) < WEEK_MS
     : false;
   const last = recent ? (update.last ?? null) : null;
-  const label = targetLabel(update);
+  const newest = update.newest;
+  const release = releaseName(update);
   const checked = ago(update.checkedAt, now);
   const checkNote = update.error
     ? `The last check could not finish: ${update.error}`
@@ -150,23 +173,22 @@ export function describeUpdate(
     };
   }
   if (update.running) {
-    const what = update.running.target;
+    // A release has a name; an edge build is only a commit, which is not said.
+    const named = release ?? (/^v[0-9]/.test(update.running.target) ? update.running.target : null);
     return {
       ...base,
       last,
       state: "running",
-      headline: `Updating to ${label ?? short(what)}`,
-      detail:
-        "Eugene on this machine is restarting with the new version. This page picks it up again when it is back.",
+      headline: named ? `Updating to ${named}` : "Updating",
+      detail: RESTARTING,
     };
   }
   const failed = last?.outcome === "failed" ? last : null;
   // **Only a newer version is called newer** (2026-09-30): `available` means
   // `newest` is newer, and what is ahead of it is never offered.
   const ahead = update.ahead ?? [];
-  const parts = identity.install?.components.length || 7;
-  const offer = `A newer version is ready: ${label}`;
-  if (update.available && label) {
+  const offer = release ? `Update available: ${release}` : "Update available";
+  if (update.available && newest) {
     if (!update.apply.possible) {
       return {
         ...base,
@@ -182,21 +204,20 @@ export function describeUpdate(
       last,
       state: failed ? "failed" : "available",
       headline: failed ? "The last update did not finish" : offer,
-      detail: failed?.detail ?? `${partsBehind(update.behind.length, parts)} ${RESTART}`,
+      detail: failed?.detail ?? null,
       canUpdate: true,
       target: update.newest?.ref ?? null,
     };
   }
-  if (ahead.length > 0 && label) {
-    const newer = partsCount(ahead.length, parts);
+  if (ahead.length > 0 && newest) {
     if (update.behind.length > 0) {
       return {
         ...base,
         last,
         state: "mixed",
-        headline: `Parts of this machine are newer than ${label}`,
+        headline: "Mixed versions",
         detail: joined(
-          `${newer} newer and ${update.behind.length} older than the newest on ${update.channel}, ` +
+          `Some of it is newer than the newest on ${update.channel} and some is older, ` +
             "so nothing is offered: updating would move the newer ones back.",
           checkNote,
         ),
@@ -207,11 +228,7 @@ export function describeUpdate(
       last,
       state: "ahead",
       headline: `Newer than the newest on ${update.channel}`,
-      detail: joined(
-        `${newer} newer than ${label}, so nothing is offered.`,
-        checkNote,
-        sourceNote(update),
-      ),
+      detail: joined(release ? `The newest is ${release}.` : null, checkNote, sourceNote(update)),
     };
   }
   if (!update.enabled) {
@@ -256,11 +273,25 @@ export function describeUpdate(
   };
 }
 
-/** The same explanation in Needs Attention and on Machines. Compare full
+/** Machines on different versions, as Machines and Needs Attention say it. */
+export interface VersionDifference {
+  /** The state, in one line. */
+  title: string;
+  /** What to do about it, or that nothing can be done yet. One line. */
+  detail: string;
+  /**
+   * Behind a Details disclosure: what each machine runs, and why no update
+   * shows. A person with machines to update does not need the commits, and
+   * the one who does is one click from them.
+   */
+  more: string[];
+}
+
+/** The same notice in Needs Attention and on Machines. Compare full
  * commits of shared components: a UI-only release need not change agent. */
 export function versionDifference(
   nodes: { label: string; identity: NodeIdentity | null }[],
-): { title: string; detail: string } | null {
+): VersionDifference | null {
   const installed = nodes.filter((n) => !n.identity?.install?.development);
   const versions = new Map<string, Set<string>>();
   for (const node of installed) {
@@ -273,28 +304,37 @@ export function versionDifference(
   }
   const differing = [...versions].filter(([, values]) => values.size > 1).map(([name]) => name);
   if (!differing.length) return null;
-  const which = installed
-    .map((node) => {
-      const parts = (node.identity?.install?.components ?? [])
-        .filter((part) => differing.includes(part.name) && part.state === "stamped" && part.commit)
-        .map(
-          (part) =>
-            `${differing.length === 1 && part.name === "agent" ? "" : `${part.name} `}${short(part.commit!)}`,
-        );
-      return parts.length ? `${node.label}: ${parts.join(", ")}` : null;
-    })
-    .filter(Boolean)
-    .join("; ");
+  const which = installed.flatMap((node) => {
+    const parts = (node.identity?.install?.components ?? [])
+      .filter((part) => differing.includes(part.name) && part.state === "stamped" && part.commit)
+      .map(
+        (part) =>
+          `${differing.length === 1 && part.name === "agent" ? "" : `${part.name} `}${short(part.commit!)}`,
+      );
+    return parts.length ? [`${node.label}: ${parts.join(", ")}`] : [];
+  });
   const channels = new Set(installed.map((n) => n.identity?.update?.channel).filter(Boolean));
-  const explanation =
-    channels.size > 1
-      ? "These machines follow different update channels. Choose the same channel under Settings › Updates if you want them to match."
-      : channels.has("edge")
-        ? "Enabled update checks refresh automatically while versions differ. An Edge container can arrive before release checks finish, so if no update is offered yet, check again shortly."
-        : "Check each machine’s update status below, and its channel under Settings › Updates. Different installed versions do not always mean a newer update is available.";
+  if (channels.size > 1) {
+    const follows = installed.flatMap((node) =>
+      node.identity?.update?.channel
+        ? [`${node.label} follows ${node.identity.update.channel}`]
+        : [],
+    );
+    return {
+      title: "Machines follow different update channels",
+      detail: "Choose the same one under Settings › Updates.",
+      more: [...which, `${follows.join(", ")}.`],
+    };
+  }
   return {
-    title: "Machines in this install run different versions of Eugene",
-    detail: `${which}. ${explanation}`,
+    title: "Machines run different versions",
+    detail: "No update is offered yet.",
+    more: [
+      ...which,
+      channels.has("edge")
+        ? "Enabled update checks refresh automatically while versions differ. An Edge container can arrive before release checks finish, so if no update is offered yet, check again shortly."
+        : "Check each machine’s update status below, and its channel under Settings › Updates. Different installed versions do not always mean a newer update is available.",
+    ],
   };
 }
 
@@ -316,24 +356,4 @@ function sourceNote(update: NonNullable<NodeIdentity["update"]>): string | null 
 function joined(...parts: (string | null)[]): string | null {
   const kept = parts.filter((p): p is string => Boolean(p));
   return kept.length ? kept.join(" ") : null;
-}
-
-/** "Two of the seven parts" -- the words `partsBehind` uses, without "behind". */
-function partsCount(count: number, total: number): string {
-  if (count >= total) return `All ${numberWord(total)} parts are`;
-  if (count === 1) return `One of the ${numberWord(total)} parts is`;
-  return `${numberWord(count)[0]?.toUpperCase()}${numberWord(count).slice(1)} of the ${numberWord(total)} parts are`;
-}
-
-function partsBehind(count: number, total: number): string {
-  const all = numberWord(total);
-  if (count >= total) return `All ${all} parts of Eugene are behind.`;
-  if (count === 1) return `One of the ${all} parts of Eugene is behind.`;
-  return `${count} of the ${all} parts of Eugene are behind.`;
-}
-
-function numberWord(n: number): string {
-  return (
-    ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][n] ?? `${n}`
-  );
 }

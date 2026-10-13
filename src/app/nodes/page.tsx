@@ -34,6 +34,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { CopyButton } from "@/components/CopyButton";
+import { More } from "@/components/Help";
 import { NodeUpdateCard } from "@/components/NodeUpdateCard";
 import { StandbyPanel } from "@/components/StandbyPanel";
 import { ApiError, api } from "@/lib/api";
@@ -49,6 +50,7 @@ import {
 } from "@/lib/joinCommand";
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
 import { timeAgo, timeUntil } from "@/lib/relativeTime";
+import { describeServed } from "@/lib/servedLine";
 import { siteHref, sitesHostedBy } from "@/lib/sites";
 import { isStandby, type StandbyStatus } from "@/lib/standby";
 import type { Site, SiteList } from "@/lib/types";
@@ -465,11 +467,6 @@ export default function NodesPage() {
                 It is set up and nothing is lost, but after a restart it waits for the passphrase.
                 Until then no models are listed and nothing is served.
               </p>
-              <p className="mt-2 text-sm text-[color:var(--muted)]">
-                Signing in to this web UI unlocks it too, with the same passphrase. You see this
-                form because the root restarted after you signed in, or holds a different
-                passphrase.
-              </p>
               <form onSubmit={unlock} className="mt-3 flex flex-wrap items-center gap-2">
                 <label htmlFor="unlock-passphrase" className="sr-only">
                   Operator passphrase
@@ -499,24 +496,25 @@ export default function NodesPage() {
                   {unlockError}
                 </div>
               )}
-              <p className="mt-3 text-sm text-[color:var(--muted)]">
-                This happens on every restart unless auto-unlock is on. Hosts can use the OS
-                keyring; containers read a mounted passphrase file (
-                <span className="font-mono">securityMode</span> in the control root&rsquo;s
-                settings).
-              </p>
+              {/* Why this form, and how to stop seeing it: for whoever asks. */}
+              <More label="the locked control root" className="mt-3">
+                <p className="text-sm text-[color:var(--muted)]">
+                  Signing in to this web UI unlocks it too, with the same passphrase. You see this
+                  form because the root restarted after you signed in, or holds a different
+                  passphrase.
+                </p>
+                <p className="mt-2 text-sm text-[color:var(--muted)]">
+                  This happens on every restart unless auto-unlock is on. Hosts can use the OS
+                  keyring; containers read a mounted passphrase file (
+                  <span className="font-mono">securityMode</span> in the control root&rsquo;s
+                  settings).
+                </p>
+              </More>
             </section>
           )}
 
           <section className="section-panel mb-6">
             <h2 className="section-heading font-ui text-base font-semibold">This install</h2>
-            <p className="mb-3 text-sm text-[color:var(--muted)]">
-              A machine can also be a job site, which is listed on its own under{" "}
-              <Link href="/sites" className="underline">
-                Job sites
-              </Link>
-              .
-            </p>
             {nodes === null ? (
               <p className="text-sm text-[color:var(--muted)]">Loading…</p>
             ) : locked ? (
@@ -527,10 +525,7 @@ export default function NodesPage() {
                 Unknown until the root is unlocked.
               </p>
             ) : nodes.length === 0 ? (
-              <p className="text-sm text-[color:var(--muted)]">
-                No nodes are enrolled. That is unusual — the machine running the control root
-                enrolls itself like any other.
-              </p>
+              <p className="text-sm text-[color:var(--muted)]">No nodes are enrolled.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -654,22 +649,39 @@ export default function NodesPage() {
                             <span className="text-[color:var(--muted)]">nothing</span>
                           ) : (
                             <ul className="space-y-0.5">
-                              {(served[n.name] ?? []).map((s) => (
-                                <li key={s.driver} className="font-mono">
-                                  {s.model ?? s.driver}
-                                  <span className="ml-1 font-sans text-[color:var(--muted)]">
-                                    via {s.driver}
-                                    {s.runtime ? (
-                                      <span title={"runtime " + s.runtime}>
-                                        {` (${s.runtime}${s.status ? `, ${s.status}` : ""})`}
+                              {(served[n.name] ?? []).map((s) => {
+                                // The model, then its state. The driver only
+                                // when its name is not just the model's.
+                                const line = describeServed(s);
+                                return (
+                                  <li key={s.driver} data-testid="node-serves" title={line.title}>
+                                    <span className="font-mono">{line.lead}</span>
+                                    {line.state ? (
+                                      <>
+                                        {" "}
+                                        <span
+                                          data-testid="node-serves-state"
+                                          className={
+                                            line.tone === "good"
+                                              ? "text-status-success"
+                                              : line.tone === "bad"
+                                                ? "text-status-error"
+                                                : "text-[color:var(--muted)]"
+                                          }
+                                        >
+                                          {line.state}
+                                        </span>
+                                      </>
+                                    ) : null}
+                                    {line.via ? (
+                                      <span className="text-[color:var(--muted)]">
+                                        {" "}
+                                        · via {line.via}
                                       </span>
-                                    ) : (
-                                      ""
-                                    )}
-                                    {s.reachable === false ? " · unreachable" : ""}
-                                  </span>
-                                </li>
-                              ))}
+                                    ) : null}
+                                  </li>
+                                );
+                              })}
                             </ul>
                           )}
                           <Link href="/inference" className="mt-1 block text-[0.6875rem] underline">
@@ -697,10 +709,6 @@ export default function NodesPage() {
           {!locked && nodes && nodes.length > 0 && (
             <section className="section-panel mb-6" data-testid="node-versions">
               <h2 className="section-heading font-ui text-base font-semibold">Versions</h2>
-              <p className="mb-3 text-sm text-[color:var(--muted)]">
-                These versions and Needs Attention use the same status. Nothing is installed until
-                you press Update.
-              </p>
               {difference && (
                 <div
                   data-testid="version-difference"
@@ -708,11 +716,24 @@ export default function NodesPage() {
                 >
                   <p className="font-semibold">{difference.title}</p>
                   <p>{difference.detail}</p>
+                  {/* Which commits, and why no update shows: for whoever asks. */}
+                  <More
+                    summary="Details"
+                    summaryClassName="text-sm underline"
+                    className="mt-1"
+                    testId="version-difference-details"
+                  >
+                    <ul className="space-y-1">
+                      {difference.more.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </More>
                 </div>
               )}
               {checkingUpdates && (
                 <p role="status" className="mb-3 text-sm text-[color:var(--muted)]">
-                  Checking for newer versions on the machines’ update channels…
+                  Checking for updates…
                 </p>
               )}
               <div className="grid gap-3 sm:grid-cols-2">
@@ -743,7 +764,7 @@ export default function NodesPage() {
             <h2 className="section-heading font-ui text-base font-semibold">Add a node</h2>
             <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
               Make a token, then run the command it gives you on the other machine. A token works
-              once and is <strong>shown once</strong>; a lost one is replaced.
+              once and is <strong>shown once</strong>.
             </p>
 
             <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -924,8 +945,8 @@ export default function NodesPage() {
                   ))}
                 </ul>
                 <p className="mt-2 text-[0.6875rem] text-[color:var(--muted)]">
-                  The id is not the token, which was shown once and is not kept. Revoking stops a
-                  token working at once. Clearing a used token leaves its node untouched.
+                  The id is not the token, which was shown once and is not kept. Clearing a used
+                  token leaves its machine untouched.
                 </p>
               </div>
             )}
@@ -946,7 +967,7 @@ export default function NodesPage() {
               <div className="rounded-[var(--radius)] border border-[color:var(--border)] p-3">
                 <p className="font-ui mb-3 text-sm text-[color:var(--muted)]">
                   Run one of these on the machine you are adding. It installs Eugene there and joins
-                  it to this install in one step. The token expires{" "}
+                  it to this install. The token expires{" "}
                   <span title={new Date(minted.expiresAt).toLocaleString()}>
                     {timeUntil(minted.expiresAt) ?? "soon"}
                   </span>
@@ -1026,7 +1047,7 @@ function behindHint(seen: number, root: number): string {
     seen +
     expertHint(", and the root is at ") +
     root +
-    expertHint(". Bounded, self-healing, and deliberately shown rather than hidden.")
+    "."
   );
 }
 

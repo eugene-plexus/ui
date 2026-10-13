@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useId, useState } from "react";
 
+import { More } from "@/components/Help";
 import { unlockControlRoot } from "@/lib/controlUnlock";
 import type { Issue } from "@/lib/issues";
 import { getSessionToken } from "@/lib/session";
@@ -55,6 +56,21 @@ export function IssueRow({
       {/* Never truncated. This is the sentence that says what to do, and
           it is read by somebody who is already unhappy. */}
       <p className="mt-0.5 text-[0.6875rem] text-[color:var(--muted)]">{issue.detail}</p>
+      {/* The whole of it, for whoever asks: the next step is above. */}
+      {issue.more && issue.more.length > 0 ? (
+        <More
+          summary="Details"
+          summaryClassName="text-[0.6875rem] text-[color:var(--muted)] underline"
+          className="mt-1"
+          testId="issue-details"
+        >
+          <ul className="space-y-0.5 text-[0.6875rem] text-[color:var(--muted)]">
+            {issue.more.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </More>
+      ) : null}
       {issue.action === "unlock-control-root" ? (
         <UnlockForm onFixed={onFixed} autoFocus={focusUnlock} />
       ) : (

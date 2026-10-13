@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
+import { More } from "@/components/Help";
 import { api, describeError } from "@/lib/api";
 import type { NodeIdentity, NodeUpdate } from "@/lib/types";
 import { refreshIssues } from "@/lib/useIssues";
-import { describeUpdate } from "@/lib/updates";
+import { RESTARTING, buildStamps, describeUpdate } from "@/lib/updates";
 
 /** After this long without the machine reporting back, say so. */
 const NO_WORD_MS = 15 * 60 * 1000;
@@ -45,6 +46,7 @@ export function NodeUpdateCard({
   const [error, setError] = useState<string | null>(null);
   const [requested, setRequested] = useState<{ at: number; label: string } | null>(null);
   const view = describeUpdate(identity, now, versionsDiffer);
+  const stamps = buildStamps(identity);
 
   // An update this page asked for is over once the machine says it finished
   // after the request -- or, having never reported back, after a long wait.
@@ -109,7 +111,7 @@ export function NodeUpdateCard({
       ? "Reading this machine's version…"
       : view.headline;
   const detail = waiting
-    ? "Eugene on this machine is restarting with the new version. This page picks it up again when it is back."
+    ? RESTARTING
     : silent
       ? "It has not reported back after fifteen minutes. Check that machine."
       : reading
@@ -131,9 +133,11 @@ export function NodeUpdateCard({
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="font-ui text-sm font-semibold">{name}</h3>
-        <span data-testid="node-version" className="font-mono text-xs text-[color:var(--muted)]">
-          {loaded ? view.version : "…"}
-        </span>
+        {(!loaded || view.version) && (
+          <span data-testid="node-version" className="font-mono text-xs text-[color:var(--muted)]">
+            {loaded ? view.version : "…"}
+          </span>
+        )}
       </div>
       <p
         data-testid="node-update-headline"
@@ -171,7 +175,7 @@ export function NodeUpdateCard({
               testId="node-update-now"
               label={busy === "updating" ? "Checking newest and starting…" : "Update"}
               confirmLabel={`Update ${name}`}
-              prompt={`${name} restarts, and the models on it stop for a minute or two. The newest version on its channel is checked again before starting.`}
+              prompt={`${name} restarts, and the models on it stop for a minute or two.`}
               disabled={busy !== null}
               onConfirm={update}
               className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:opacity-50"
@@ -195,6 +199,15 @@ export function NodeUpdateCard({
         >
           {error}
         </p>
+      )}
+      {/* The commits are for whoever is chasing a build, not for a status
+          line: one click away. */}
+      {stamps.length > 0 && (
+        <More summary="Details" testId="node-update-details" className="mt-2">
+          <p className="font-mono text-xs break-words text-[color:var(--muted)]">
+            {stamps.join(" · ")}
+          </p>
+        </More>
       )}
     </section>
   );

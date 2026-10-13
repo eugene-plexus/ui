@@ -1005,9 +1005,12 @@ function fieldForRender(
     valueType: "string",
     enumValues: undefined,
     enumLabels: undefined,
-    description:
-      (field.description ?? "") +
-      "\n\nProvider has changed; the dropdown can't refresh until Save + Restart. Type a model name or leave blank to use the new provider's default.",
+    // A state, not help: said beside the control, so it never lands behind
+    // the description's "More".
+    status: {
+      level: "warning",
+      text: "Provider has changed; the list refreshes after Save and restart. Type a model name, or leave it blank for the new provider's default.",
+    },
   };
 }
 

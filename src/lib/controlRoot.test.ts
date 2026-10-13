@@ -49,7 +49,7 @@ describe("describeControlRoot", () => {
       "Control root http://127.0.0.1:8083 did not answer on the gateway's last refresh (503 Locked): showing the last node list it had · 2 nodes.",
     );
     // A sealed root has a specific remedy, and the line says it.
-    expect(line?.detail).toContain("Nodes page");
+    expect(line?.detail).toContain("Machines page");
     expect(line?.detail).toContain("passphrase file");
   });
 
@@ -64,7 +64,7 @@ describe("describeControlRoot", () => {
       "Control root http://nowhere:1 did not answer on the gateway's last refresh (HTTP 404): showing the last node list it had.",
     );
     expect(line?.detail).toContain("set under Settings");
-    expect(line?.detail).not.toContain("Nodes page");
+    expect(line?.detail).not.toContain("Machines page");
   });
 
   it("says when there is no control root at all", () => {

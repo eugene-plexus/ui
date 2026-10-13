@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { More } from "@/components/Help";
 import { api, describeError } from "@/lib/api";
 import type { components } from "@/generated/agent";
 
@@ -572,21 +573,28 @@ export function AccessSetup() {
             </span>
           </label>
         </fieldset>
-        <label className="block">
-          Allowed private networks
-          <input
-            className={inputClass}
-            required={!consoleDirect || inference || nodes}
-            placeholder="192.168.16.0/24, 10.20.0.0/24"
-            value={privateNetworks}
-            onChange={(e) => set("privateNetworks", e.target.value)}
-          />
-          <span className={hintClass}>
+        <div>
+          <label className="block">
+            Allowed private networks
+            <input
+              className={inputClass}
+              required={!consoleDirect || inference || nodes}
+              placeholder="192.168.16.0/24, 10.20.0.0/24"
+              value={privateNetworks}
+              onChange={(e) => set("privateNetworks", e.target.value)}
+              aria-describedby="private-networks-help"
+            />
+          </label>
+          <div id="private-networks-help" className={hintClass}>
             Home, office or VPN networks that open the console; not your proxy’s Docker network.
-            Behind Cloudflare, every visitor looks like Cloudflare: point the console’s name at your
-            proxy in local DNS, or allow any network below.
-          </span>
-        </label>
+            <More label="allowed private networks">
+              <p>
+                Behind Cloudflare, every visitor looks like Cloudflare: point the console’s name at
+                your proxy in local DNS, or allow any network below.
+              </p>
+            </More>
+          </div>
+        </div>
         {!consoleDirect && (
           <label className="flex items-start gap-2">
             <input
@@ -744,26 +752,34 @@ export function AccessSetup() {
         )}
         {mode === "proxy" && (
           <>
-            <label className="block">
-              Trusted proxy IP addresses
-              <input
-                className={inputClass}
-                required
-                placeholder="172.18.0.4"
-                value={proxies}
-                onChange={(e) => set("proxies", e.target.value)}
-              />
-              <span className={hintClass}>
-                Your proxy’s address as Eugene sees it: one per proxy, not a network. On a shared
-                Docker network, use its address there, not its LAN address. To list them:{" "}
-                <code>
-                  {
-                    "docker network inspect <network> -f '{{range .Containers}}{{.Name}} {{.IPv4Address}}{{\"\\n\"}}{{end}}'"
-                  }
-                </code>
-                . Give the proxy a fixed address so it does not change.
-              </span>
-            </label>
+            <div>
+              <label className="block">
+                Trusted proxy IP addresses
+                <input
+                  className={inputClass}
+                  required
+                  placeholder="172.18.0.4"
+                  value={proxies}
+                  onChange={(e) => set("proxies", e.target.value)}
+                  aria-describedby="trusted-proxies-help"
+                />
+              </label>
+              <div id="trusted-proxies-help" className={hintClass}>
+                Your proxy’s address as Eugene sees it: one per proxy, not a network.
+                <More label="trusted proxy addresses">
+                  <p>
+                    On a shared Docker network, use its address there, not its LAN address. To list
+                    them:{" "}
+                    <code>
+                      {
+                        "docker network inspect <network> -f '{{range .Containers}}{{.Name}} {{.IPv4Address}}{{\"\\n\"}}{{end}}'"
+                      }
+                    </code>
+                    . Give the proxy a fixed address so it does not change.
+                  </p>
+                </More>
+              </div>
+            </div>
             {proxiesInsideNetworks(networks(proxies), networks(privateNetworks)).map(
               ({ proxy, network }) => (
                 <p

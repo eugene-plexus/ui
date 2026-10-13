@@ -2,9 +2,9 @@
 
 import { useMemo } from "react";
 import { targetFor } from "./nodeBudget";
+import { unexplainedVersionDifference } from "./issues";
 import type { NodeIdentity } from "./types";
 import { useIssues } from "./useIssues";
-import { versionDifference } from "./updates";
 
 export interface NodeReading {
   name: string;
@@ -14,7 +14,10 @@ export interface NodeReading {
 }
 
 /** Machines and Needs Attention subscribe to the very same reads. Speed
- * up the shared poll while an update is running; never start a second one. */
+ * up the shared poll while an update is running; never start a second one.
+ *
+ * `difference` is the one nothing else explains: while a machine has an
+ * update on offer, that is what Machines says about it, on its card. */
 export function useNodeUpdates(names: string[] | null, updating: boolean) {
   const { facts, loaded, reload, checkingUpdates } = useIssues(
     names === null ? 30_000 : updating ? 3_000 : 15_000,
@@ -41,6 +44,6 @@ export function useNodeUpdates(names: string[] | null, updating: boolean) {
     refresh: reload,
     localName,
     checkingUpdates,
-    difference: versionDifference(facts),
+    difference: unexplainedVersionDifference(facts),
   };
 }

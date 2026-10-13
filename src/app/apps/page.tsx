@@ -114,7 +114,7 @@ export default function AppsPage() {
             <Link href="/" className="underline">
               Home
             </Link>
-            . Remove one and its key stops working.
+            .
           </p>
 
           <section
@@ -355,8 +355,7 @@ function Catalogue({
 
       {catalogue && catalogue.apps.length === 0 && (
         <p className="text-sm text-[color:var(--muted)]" data-testid="apps-catalogue-empty">
-          This release does not include any apps yet. Workbench, Eugene&rsquo;s own app, is planned
-          next.
+          This release does not include any apps yet.
         </p>
       )}
 

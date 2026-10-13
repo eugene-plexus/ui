@@ -5,9 +5,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { issuesFrom, type NodeFacts } from "./issues";
+import { issuesFrom, unexplainedVersionDifference, type NodeFacts } from "./issues";
 import type { NodeIdentity } from "./types";
-import { ago, describeUpdate, versionDifference, versionLabel } from "./updates";
+import { ago, buildStamps, describeUpdate, versionDifference, versionLabel } from "./updates";
 
 const NOW = Date.parse("2026-09-27T18:00:00Z");
 const EDGE = "b8b30bd18a790a4af55e9b44786b61be4783adaa";
@@ -61,16 +61,19 @@ const SEVEN: NonNullable<NodeIdentity["install"]> = {
 };
 
 describe("describeUpdate", () => {
-  it("offers the update, and says what it costs", () => {
+  it("offers the update, and says only that", () => {
     const view = describeUpdate(
       identity({ available: true, behind: ["agent", "ui"], newest: NEWEST }, { install: SEVEN }),
       NOW,
     );
     expect(view.state).toBe("available");
-    expect(view.headline).toBe("A newer version is ready: edge b8b30bd");
-    // Counted from the install, not written into the sentence: "six"
-    // outlived P8's seventh part by a day.
-    expect(view.detail).toMatch(/^2 of the seven parts of Eugene are behind\. Updating restarts/);
+    expect(view.headline).toBe("Update available");
+    // Troy, 2026-10-13: "I don't care how many parts are different. Just say
+    // I need an update." No part count, no commit, and no restart sentence:
+    // what updating costs is said in the Update button's confirmation.
+    expect(view.detail).toBeNull();
+    const said = `${view.headline} ${view.detail ?? ""} ${view.version ?? ""}`;
+    expect(said).not.toMatch(/seven|parts|restart|b8b30bd|[0-9a-f]{7}/i);
     expect(view.canUpdate).toBe(true);
     // What the button sends is exactly what the agent found.
     expect(view.target).toBe(EDGE);
@@ -91,7 +94,7 @@ describe("describeUpdate", () => {
       }),
       NOW,
     );
-    expect(view.headline).toBe("A newer version is ready: v0.1.0-alpha.4");
+    expect(view.headline).toBe("Update available: v0.1.0-alpha.4");
   });
 
   it("gives a container its steps instead of a button", () => {
@@ -227,7 +230,7 @@ describe("only a newer version is called newer (settings never lie, 2026-09-30)"
       identity({ available: true, behind: ["agent"], newest: NEWEST, ahead: [] }),
       NOW,
     );
-    expect(view.headline).toBe(`A newer version is ready: edge ${EDGE.slice(0, 7)}`);
+    expect(view.headline).toBe("Update available");
     expect(view.canUpdate).toBe(true);
   });
 
@@ -249,10 +252,12 @@ describe("only a newer version is called newer (settings never lie, 2026-09-30)"
     );
     expect(view.state).toBe("ahead");
     expect(view.headline).toBe("Newer than the newest on releases");
-    expect(view.detail).toContain("Two of the seven parts are newer than v0.1.0-alpha.5");
+    expect(view.detail).toContain("The newest is v0.1.0-alpha.5.");
     expect(view.detail).toContain("It follows releases, the default. To follow edge");
+    // The headline already says nothing is newer; no count of parts says it again.
+    expect(view.detail).not.toMatch(/seven|parts/);
     expect(view.canUpdate).toBe(false);
-    expect(versionLabel(identity({ ahead: ["agent"], newest: OLDER }))).toBe("agent 2dcf645");
+    expect(versionLabel(identity({ ahead: ["agent"], newest: OLDER }))).toBeNull();
   });
 
   it("a mixed install is offered nothing that would move a part back", () => {
@@ -266,9 +271,10 @@ describe("only a newer version is called newer (settings never lie, 2026-09-30)"
   });
 });
 
-describe("versionLabel and ago", () => {
-  it("is the agent's own commit, or the release it is exactly", () => {
-    expect(versionLabel(identity({}))).toBe("agent 2dcf645");
+describe("versionLabel, buildStamps and ago", () => {
+  it("is the release it is exactly, and otherwise nothing a person would call a version", () => {
+    // A build is its commits. Those are for Details (`buildStamps`), not a label.
+    expect(versionLabel(identity({}))).toBeNull();
     expect(
       versionLabel(
         identity({
@@ -282,6 +288,13 @@ describe("versionLabel and ago", () => {
         }),
       ),
     ).toBe("v0.1.0-alpha.3");
+  });
+
+  it("keeps each part's commit for Details, and none for a development build", () => {
+    expect(buildStamps(identity({}))).toEqual(["agent 2dcf645", "control ccccccc"]);
+    const dev = identity({}, { install: { mechanism: "none", development: true, components: [] } });
+    expect(buildStamps(dev)).toEqual([]);
+    expect(buildStamps(null)).toEqual([]);
   });
 
   it("reads as a person says it", () => {
@@ -319,7 +332,10 @@ describe("the issues", () => {
     expect(versionDifference([facts("NAS", local), facts("worker", remote)])).toBeNull();
     remote.install!.components.find((part) => part.name === "ui")!.commit = "c".repeat(39) + "d";
     const nodes = [facts("NAS", local), facts("worker", remote)];
-    expect(versionDifference(nodes)?.detail).toContain("ui ccccccc");
+    // The commits are there for whoever opens Details, and nowhere above it.
+    const difference = versionDifference(nodes);
+    expect(difference?.more.join("\n")).toContain("ui ccccccc");
+    expect(`${difference?.title} ${difference?.detail}`).not.toMatch(/[0-9a-f]{7}/);
     expect(issuesFrom(sources(nodes)).map((issue) => issue.kind)).toContain("versions-differ");
   });
 
@@ -327,8 +343,23 @@ describe("the issues", () => {
     const a = identity({ channel: "edge" }, { install: structuredClone(SEVEN) });
     const b = identity({ channel: "releases" });
     const difference = versionDifference([facts("NAS", a), facts("worker", b)]);
-    expect(difference?.detail).toContain("different update channels");
-    expect(difference?.detail).not.toContain("check again shortly");
+    expect(difference?.title).toBe("Machines follow different update channels");
+    expect(difference?.detail).toBe("Choose the same one under Settings › Updates.");
+    expect(difference?.more.join("\n")).toContain("NAS follows edge, worker follows releases");
+    expect(difference?.more.join("\n")).not.toContain("check again shortly");
+  });
+
+  it("says one thing about machines that differ with nothing on offer, and keeps the rest in Details", () => {
+    const a = identity({ channel: "edge" }, { install: structuredClone(SEVEN) });
+    const b = identity({ channel: "edge" });
+    const difference = versionDifference([facts("NAS", a), facts("worker", b)]);
+    // Troy, 2026-10-13: "Holy Smokes that is a lot of noise. The user doesn't
+    // CARE which components were updated, much less what their git hash is."
+    expect(difference?.title).toBe("Machines run different versions");
+    expect(difference?.detail).toBe("No update is offered yet.");
+    // How Edge arrives before its release checks is explained, one click down.
+    expect(difference?.more.join("\n")).toContain("check again shortly");
+    expect(difference?.more.join("\n")).toContain("worker: 2dcf645");
   });
 
   it("does not offer an update in the badge when the card says it is already running", () => {
@@ -346,9 +377,55 @@ describe("the issues", () => {
       ]),
     );
     const found = issues.find((i) => i.kind === "update-available");
-    expect(found?.title).toBe("A newer version of Eugene is ready for Amish_Station: edge b8b30bd");
+    // No commit in the title, and the restart is said by the Update button's
+    // confirmation, not here.
+    expect(found?.title).toBe("Update available for Amish_Station");
+    expect(found?.detail).toBe("Update it on Machines.");
     expect(found?.href).toBe("/nodes");
     expect(found?.severity).toBe("warning");
+  });
+
+  it("names a release in the title, since a release has a name", () => {
+    const issues = issuesFrom(
+      sources([
+        facts(
+          "Amish_Station",
+          identity({
+            channel: "releases",
+            available: true,
+            behind: ["agent"],
+            newest: {
+              channel: "releases",
+              ref: "v0.2.1",
+              release: "v0.2.1",
+              components: {},
+            },
+          }),
+        ),
+      ]),
+    );
+    expect(issues.find((i) => i.kind === "update-available")?.title).toBe(
+      "Update available for Amish_Station: v0.2.1",
+    );
+  });
+
+  it("says where to go for a machine that cannot update itself", () => {
+    const issues = issuesFrom(
+      sources([
+        facts(
+          "unraid",
+          identity({
+            available: true,
+            behind: ["agent"],
+            newest: NEWEST,
+            apply: { possible: false, reason: "This machine runs in a container." },
+          }),
+        ),
+      ]),
+    );
+    expect(issues.find((i) => i.kind === "update-available")?.detail).toBe(
+      "This machine runs in a container. Machines says how.",
+    );
   });
 
   it("lists a failed update instead, in its own words", () => {
@@ -393,7 +470,9 @@ describe("the issues", () => {
       sources([facts("Amish_Station", identity({})), facts("unraid", other)]),
     );
     const found = differ.find((i) => i.kind === "versions-differ");
-    expect(found?.detail).toMatch(/Amish_Station: 2dcf645; unraid: 06c321b/);
+    expect(found?.more).toEqual(
+      expect.arrayContaining(["Amish_Station: 2dcf645", "unraid: 06c321b"]),
+    );
     const behind = issuesFrom(
       sources([
         facts("Amish_Station", identity({ available: true, behind: ["agent"], newest: NEWEST })),
@@ -409,5 +488,28 @@ describe("the issues", () => {
       { install: { mechanism: "none", development: true, components: [] } },
     );
     expect(issuesFrom(sources([facts("dev", dev)]))).toEqual([]);
+  });
+
+  it("calls a difference unexplained only while no machine has an update on offer", () => {
+    const other = identity(
+      {},
+      {
+        name: "unraid",
+        install: {
+          mechanism: "container",
+          development: false,
+          components: [{ name: "agent", state: "stamped", commit: NEW_AGENT }],
+        },
+      },
+    );
+    const level = [facts("Amish_Station", identity({})), facts("unraid", other)];
+    expect(unexplainedVersionDifference(level)?.title).toBe("Machines run different versions");
+    // One machine is behind: that is what Machines says, on its card.
+    const behind = [
+      facts("Amish_Station", identity({ available: true, behind: ["agent"], newest: NEWEST })),
+      facts("unraid", other),
+    ];
+    expect(versionDifference(behind)).not.toBeNull();
+    expect(unexplainedVersionDifference(behind)).toBeNull();
   });
 });

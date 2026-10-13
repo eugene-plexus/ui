@@ -387,9 +387,11 @@ describe("useIssues on a healthy standalone install", () => {
     render(<IssuesBadge />);
     const badge = await screen.findByTestId("issues-badge");
     fireEvent.click(badge);
-    expect(
-      await screen.findByText("Machines in this install run different versions of Eugene"),
-    ).toBeVisible();
+    expect(await screen.findByText("Machines run different versions")).toBeVisible();
+    // The commits and the Edge explanation are there, behind Details and closed.
+    expect(screen.getByText("No update is offered yet.")).toBeVisible();
+    expect(screen.getByTestId("issue-details")).not.toHaveAttribute("open");
+    expect(screen.getByText(/Different installed versions do not always mean/)).not.toBeVisible();
     fixed = true;
     // The update page's refresh is a POST; completion also pulls all issue
     // readers forward when its next identity read sees the new version.
