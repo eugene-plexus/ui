@@ -143,14 +143,22 @@ try {
   await expect(notice).toContainText("Machines run different versions");
   await expect(notice).toContainText("No update is offered yet.");
   assert(!(await notice.innerText()).includes("check again shortly"));
-  await notice.getByText("Details", { exact: true }).click();
+  // Each Details says what it is about, to a screen reader, and is one click.
+  const noticeDetails = notice.getByTestId("version-difference-details").locator("summary");
+  await expect(noticeDetails).toHaveAccessibleName("Details about the version difference");
+  await noticeDetails.click();
   assert((await notice.innerText()).includes("check again shortly"));
+  await expect(worker.getByTestId("node-update-details").locator("summary")).toHaveAccessibleName(
+    "Details about Amish_Station",
+  );
   await page.getByTestId("issues-badge").click();
   const popover = page.getByTestId("issues-popover");
   await expect(popover).toContainText("Machines run different versions");
   await expect(popover).toContainText("No update is offered yet.");
   assert(!(await popover.innerText()).includes("check again shortly"));
-  await popover.getByText("Details", { exact: true }).click();
+  const rowDetails = popover.getByTestId("issue-details").locator("summary");
+  await expect(rowDetails).toHaveAccessibleName("Details about Machines run different versions");
+  await rowDetails.click();
   assert((await popover.innerText()).includes("check again shortly"));
   checks.push("A stale worker is checked automatically; pending Edge is explained in both places");
 
