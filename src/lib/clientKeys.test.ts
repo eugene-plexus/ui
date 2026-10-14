@@ -246,6 +246,14 @@ describe("recipes", () => {
     }
   });
 
+  it("offers the agents people name most", () => {
+    // Hermes Agent was the harness named most in the saved threads
+    // (gap analysis, 2026-10-13); OpenClaw by Troy's call the same day.
+    const names = made.map((r) => r.name);
+    expect(names).toContain("Hermes Agent");
+    expect(names).toContain("OpenClaw");
+  });
+
   it("tells Claude Code's reader to use AUTH_TOKEN rather than API_KEY", () => {
     // Measured, not preference. ANTHROPIC_API_KEY needs a one-off
     // approval prompt before Claude Code will use it at all, and an
@@ -347,6 +355,109 @@ describe("recipes", () => {
         (r) => r.name === "Codex",
       )!;
       expect(JSON.parse(topLevel(one.snippet).get("model")!)).toBe('odd"id\\x');
+    });
+  });
+
+  describe("Hermes Agent", () => {
+    // Keys read in Hermes Agent v0.21.7's source: the `model:` block's
+    // `default`, `provider`, `base_url`, `api_key` and `context_length`,
+    // and its 64,000-token floor in `_enforce_minimum_context`.
+    const hermes = (window: number | null = 131_072, model = STRINGS.model) =>
+      recipes({ ...STRINGS, model, contextWindow: window }).find((r) => r.name === "Hermes Agent")!;
+
+    /** `key: value` lines under `model:`, two-space indented. */
+    function modelBlock(yaml: string): Map<string, string> {
+      const lines = yaml.split("\n");
+      expect(lines[0]).toBe("model:");
+      const out = new Map<string, string>();
+      for (const line of lines.slice(1)) {
+        const m = line.match(/^ {2}([a-z_]+): (.+)$/);
+        expect(m, `not a model: field: ${line}`).not.toBeNull();
+        out.set(m![1]!, m![2]!);
+      }
+      return out;
+    }
+
+    it("is offered, and names the file on Windows too", () => {
+      const one = hermes();
+      expect(one.where).toContain("~/.hermes/config.yaml");
+      expect(one.where).toContain("%LOCALAPPDATA%\\hermes\\config.yaml");
+    });
+
+    it("declares a custom endpoint with the three strings", () => {
+      const block = modelBlock(hermes().snippet);
+      expect(block.get("provider")).toBe("custom");
+      expect(JSON.parse(block.get("default")!)).toBe(STRINGS.model);
+      expect(JSON.parse(block.get("base_url")!)).toBe(STRINGS.baseUrl);
+      expect(JSON.parse(block.get("api_key")!)).toBe(STRINGS.key);
+      expect(block.get("context_length")).toBe("131072");
+    });
+
+    it("says an unknown window is unknown instead of writing a number", () => {
+      for (const window of [null, 0]) {
+        const one = hermes(window);
+        expect(modelBlock(one.snippet).has("context_length")).toBe(false);
+        expect(one.note).toContain("context_length");
+        expect(one.note).toMatch(/not known/);
+      }
+    });
+
+    it("writes the real window under Hermes's floor, and says Hermes refuses it", () => {
+      // A bigger number would get past Hermes's check and then overflow
+      // the model: the recipe tells the truth and names the way out.
+      const one = hermes(32_768);
+      expect(modelBlock(one.snippet).get("context_length")).toBe("32768");
+      expect(one.note).toContain("64,000");
+      expect(one.note).toContain("32,768");
+      expect(hermes(64_000).note).not.toMatch(/refuses/);
+    });
+
+    it("keeps a model id with YAML's special characters one string", () => {
+      const odd = 'org/model: v2 #q"x';
+      expect(JSON.parse(modelBlock(hermes(131_072, odd).snippet).get("default")!)).toBe(odd);
+    });
+  });
+
+  describe("OpenClaw", () => {
+    // Keys read in OpenClaw v2026.10.3's schema (`zod-schema.core.ts`,
+    // strict objects, so a misspelt key is a config OpenClaw refuses).
+    const openClaw = (window: number | null = 32_768) =>
+      recipes({ ...STRINGS, contextWindow: window }).find((r) => r.name === "OpenClaw")!;
+
+    it("is offered, and says which file it goes in", () => {
+      expect(openClaw().where).toBe("~/.openclaw/openclaw.json");
+    });
+
+    it("declares the provider and points the default agent at its model", () => {
+      const parsed = JSON.parse(openClaw().snippet);
+      expect(parsed.agents.defaults.model.primary).toBe(`eugene-plexus/${STRINGS.model}`);
+      expect(parsed.models.mode).toBe("merge");
+      const provider = parsed.models.providers["eugene-plexus"];
+      expect(Object.keys(provider).sort()).toEqual(["api", "apiKey", "baseUrl", "models"]);
+      expect(provider.baseUrl).toBe(STRINGS.baseUrl);
+      expect(provider.apiKey).toBe(STRINGS.key);
+      expect(provider.api).toBe("openai-completions");
+      expect(provider.models[0].id).toBe(STRINGS.model);
+    });
+
+    it("tells OpenClaw the window, and keeps a reply to a part of it", () => {
+      const at = (window: number) =>
+        JSON.parse(openClaw(window).snippet).models.providers["eugene-plexus"].models[0];
+      expect(at(32_768)).toMatchObject({ contextWindow: 32_768, maxTokens: 8_192 });
+      expect(at(131_072)).toMatchObject({ contextWindow: 131_072, maxTokens: 8_192 });
+      expect(at(16_384)).toMatchObject({ contextWindow: 16_384, maxTokens: 4_096 });
+    });
+
+    it("says an unknown window is unknown instead of writing a number", () => {
+      // Without these two OpenClaw takes 200,000 for both.
+      for (const window of [null, 0]) {
+        const one = openClaw(window);
+        const model = JSON.parse(one.snippet).models.providers["eugene-plexus"].models[0];
+        expect(model).not.toHaveProperty("contextWindow");
+        expect(model).not.toHaveProperty("maxTokens");
+        expect(one.note).toContain("contextWindow");
+        expect(one.note).toMatch(/not known/);
+      }
     });
   });
 

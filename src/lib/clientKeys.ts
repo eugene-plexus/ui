@@ -355,6 +355,8 @@ function openAiRecipes(s: Strings): Recipe[] {
         2,
       ),
     },
+    hermesAgent(s),
+    openClaw(s),
     {
       name: "Any OpenAI SDK",
       where: "Environment variables",
@@ -369,7 +371,134 @@ function openAiRecipes(s: Strings): Recipe[] {
   ];
 }
 
-/** The one-liner that proves the other six should work. */
+/**
+ * A YAML double-quoted string. YAML's double-quoted escapes include every
+ * one `JSON.stringify` emits, so a model id holding `: ` or `#` stays one
+ * string instead of becoming a map or a comment.
+ */
+function yamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+/** Hermes refuses a smaller window at startup (`MINIMUM_CONTEXT_LENGTH`). */
+export const HERMES_MINIMUM_WINDOW = 64_000;
+
+/**
+ * Hermes Agent, as of v0.21.7 (read in its source, 2026-10-13).
+ *
+ * - `provider: custom` with `base_url` (the `/v1` included) is its
+ *   documented self-hosted path, and it speaks Chat Completions there by
+ *   default. The key goes in the file: `OPENAI_API_KEY` is read only when
+ *   the base URL is OpenAI's or equals `OPENAI_BASE_URL`
+ *   (`hermes_cli/runtime_provider.py`).
+ * - **`context_length`**: Hermes reads a window from `/models` only under
+ *   top-level keys such as `context_length`, and the gateway reports it
+ *   under `x_eugene_plexus`, so without the line Hermes falls back to its
+ *   own default. Written only when the gateway knows the window.
+ * - **It rejects a window under 64,000 tokens at startup**
+ *   (`agent/agent_init.py`, `_enforce_minimum_context`). The recipe still
+ *   writes the real window and says so; a larger number would get past
+ *   the check and then overflow the model.
+ * - The Hermes home is `%LOCALAPPDATA%\hermes` on Windows and `~/.hermes`
+ *   elsewhere (`hermes_constants.py`).
+ */
+function hermesAgent(s: Strings): Recipe {
+  const window = knownWindow(s);
+  const lines = [
+    "model:",
+    `  default: ${yamlString(s.model)}`,
+    "  provider: custom",
+    `  base_url: ${yamlString(s.baseUrl)}`,
+    `  api_key: ${yamlString(s.key)}`,
+  ];
+  if (window !== null) lines.push(`  context_length: ${window}`);
+  const floor = HERMES_MINIMUM_WINDOW.toLocaleString("en-US");
+  const size =
+    window === null
+      ? ` This model's window is not known yet: add context_length yourself (at least ${floor}), ` +
+        "or Hermes assumes its own default, which may be more than the model has."
+      : window < HERMES_MINIMUM_WINDOW
+        ? ` Hermes refuses a window under ${floor} tokens, and this model's is ` +
+          `${window.toLocaleString("en-US")}. Give the model a larger context in its profile, ` +
+          "or choose another model."
+        : " context_length is this model's window, so Hermes compacts before it fills.";
+  return {
+    name: "Hermes Agent",
+    where: "~/.hermes/config.yaml (Windows: %LOCALAPPDATA%\\hermes\\config.yaml)",
+    snippet: lines.join("\n"),
+    note: "Or run hermes model, choose Custom endpoint and enter the same three values." + size,
+  };
+}
+
+/** OpenClaw's own reply cap for self-hosted models it discovers. */
+export const OPENCLAW_SELF_HOSTED_MAX_TOKENS = 8_192;
+
+/**
+ * `maxTokens` for a window: OpenClaw's self-hosted default, or a quarter
+ * of a smaller window so the reply never takes the whole of it. A choice,
+ * like Claude Code's quarter, not a measurement.
+ */
+export function openClawMaxTokens(window: number): number {
+  return Math.min(OPENCLAW_SELF_HOSTED_MAX_TOKENS, Math.floor(window / 4));
+}
+
+/**
+ * OpenClaw, as of v2026.10.3 (read in its source, 2026-10-13).
+ *
+ * - A custom provider under `models.providers`, `api: "openai-completions"`,
+ *   which its docs use for llama.cpp, vLLM and MLX. `mode: "merge"` keeps
+ *   OpenClaw's built-in providers (it is the default; written so a reader
+ *   merging by hand sees it).
+ * - The model is referred to as `<provider>/<id>`; OpenClaw splits at the
+ *   first `/`, so a model id with slashes in it still works.
+ * - **`contextWindow` and `maxTokens`**: a model declared inline without
+ *   them gets 200,000 for both (`DEFAULT_CONTEXT_TOKENS`,
+ *   `model.inline-provider.ts`), so OpenClaw compacts too late and asks for
+ *   replies longer than the window. Written only when the gateway knows
+ *   the window.
+ * - Tools are on unless `compat.supportsTools` is `false`, and a LAN
+ *   `baseUrl` is trusted as configured, so neither needs a line.
+ * - JSON is valid JSON5, so the snippet parses in OpenClaw's file.
+ */
+function openClaw(s: Strings): Recipe {
+  const window = knownWindow(s);
+  const model: Record<string, unknown> = { id: s.model, name: s.model };
+  if (window !== null) {
+    model.contextWindow = window;
+    model.maxTokens = openClawMaxTokens(window);
+  }
+  const config = {
+    agents: { defaults: { model: { primary: `eugene-plexus/${s.model}` } } },
+    models: {
+      mode: "merge",
+      providers: {
+        "eugene-plexus": {
+          baseUrl: s.baseUrl,
+          apiKey: s.key,
+          api: "openai-completions",
+          models: [model],
+        },
+      },
+    },
+  };
+  const size =
+    window === null
+      ? " This model's window is not known yet: add contextWindow and maxTokens yourself, or " +
+        "OpenClaw assumes 200,000 tokens for both and the model runs out first."
+      : " contextWindow is this model's window, so OpenClaw compacts before it fills; maxTokens " +
+        "keeps each reply to a part of it.";
+  return {
+    name: "OpenClaw",
+    where: "~/.openclaw/openclaw.json",
+    snippet: JSON.stringify(config, null, 2),
+    note:
+      "Merge these keys into your file rather than replacing it. OpenClaw names the model " +
+      `eugene-plexus/${s.model}.` +
+      size,
+  };
+}
+
+/** The one-liner that proves the others should work. */
 export function curlLine(s: Strings): string {
   const body = JSON.stringify({
     model: s.model,
