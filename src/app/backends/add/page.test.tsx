@@ -210,7 +210,7 @@ describe("/backends/add", () => {
     expect(configured?.body).toEqual({ provider: "ollama_local" });
   });
 
-  it("saves the chosen model, restarts, and points at Inference", async () => {
+  it("saves the chosen model, restarts, and points at Backends", async () => {
     const user = userEvent.setup({ delay: null });
     render(<AddBackendPage />);
     await user.selectOptions(
@@ -230,7 +230,7 @@ describe("/backends/add", () => {
 
     const done = await screen.findByTestId("backend-added");
     expect(done).toHaveTextContent("ollama is added and answers for qwen3-coder:30b");
-    expect(within(done).getByRole("link", { name: "See it on Inference" })).toHaveAttribute(
+    expect(within(done).getByRole("link", { name: "See it on Backends" })).toHaveAttribute(
       "href",
       "/inference",
     );

@@ -322,7 +322,7 @@ export default function AddBackendPage() {
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <Link href="/inference" className={primary}>
-                  See it on Inference
+                  See it on Backends
                 </Link>
                 <button type="button" onClick={reset} className={secondary}>
                   Add another

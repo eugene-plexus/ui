@@ -121,11 +121,11 @@ export function RunStatus({ task, onRetry }: { task: RunTask; onRetry: () => voi
               Try it on Home
             </Link>
           )}
-          {/* A search model is not chatted with: it is used by apps, and Inference is
+          {/* A search model is not chatted with: it is used by apps, and Backends is
               where it is seen. */}
           {(task.step !== "ready" || runsSearchModel(task.model)) && (
             <Link href="/inference" className="underline">
-              See it on Inference
+              See it on Backends
             </Link>
           )}
           {task.step === "failed" && (

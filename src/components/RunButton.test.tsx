@@ -67,7 +67,7 @@ describe("RunStatus", () => {
       "ready — it keeps running for apps to use",
     );
     expect(screen.queryByTestId("run-try-it")).toBeNull();
-    expect(screen.getByRole("link", { name: "See it on Inference" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "See it on Backends" })).toHaveAttribute(
       "href",
       "/inference",
     );

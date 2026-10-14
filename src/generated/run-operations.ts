@@ -1681,6 +1681,13 @@ export interface components {
             engine: string;
             /** Contextsize */
             contextSize?: number | null;
+            /**
+             * Flags
+             * @description Engine-owned launch flags chosen by the assigned agent. When supplied, these replace the legacy contextSize suggestion. Existing profiles are preserved.
+             */
+            flags?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * RecommendedSampling

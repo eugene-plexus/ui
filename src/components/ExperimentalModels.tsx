@@ -41,8 +41,8 @@ export function ExperimentalModels({ node, rows }: { node: string | null; rows: 
   return (
     <div className="mt-3 space-y-2 text-sm">
       <p>
-        <strong>Strata · Experimental</strong> — text chat with prepared models; no tools or media
-        yet. Prepare one from a model&apos;s{" "}
+        <strong>Strata · Experimental</strong> — text chat with prepared models. Tools and
+        structured output work; media is not supported. Prepare one from a model&apos;s{" "}
         <Link href="/library" className="underline">
           Library
         </Link>{" "}

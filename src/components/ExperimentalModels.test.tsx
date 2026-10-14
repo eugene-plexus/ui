@@ -12,6 +12,9 @@ afterEach(() => {
 
 it("sends prepared models to the Library instead of posting a runtime (LS3)", () => {
   render(<ExperimentalModels node="worker" rows={[]} />);
+  expect(screen.getByText(/Tools and structured output work/)).toHaveTextContent(
+    "media is not supported",
+  );
   expect(screen.queryByRole("button", { name: "Add prepared Strata model" })).toBeNull();
   expect(screen.queryByLabelText("Prepared config path")).toBeNull();
   expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
