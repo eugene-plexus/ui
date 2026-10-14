@@ -1,3 +1,0 @@
-# GitHub source archives -- what every install is built from -- stamp the
-# commit into this file. See the file for why.
-python/eugene_plexus_ui/_build.py export-subst

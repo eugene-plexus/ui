@@ -1,0 +1,16 @@
+# Pre-commit hooks — mirror the CI `prettier --check` gate so unformatted
+# code never reaches CI (the cause of the chronic CI-red runs).
+#
+# One-time setup per clone (after `npm install`):
+#   pip install pre-commit && pre-commit install
+#
+# After that, `git commit` auto-runs Prettier on staged files. If it
+# reformats anything, re-stage and commit again.
+repos:
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier (write)
+        entry: npx prettier --write --ignore-unknown
+        language: system
+        files: \.(ts|tsx|js|jsx|mjs|cjs|css|scss|json|md|yaml|yml)$

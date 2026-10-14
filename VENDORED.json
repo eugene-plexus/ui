@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "source": "eugene-plexus/specs/platform",
+  "version": "1.0.0",
+  "files": {
+    "contracts/run-operations.json": {
+      "sha256": "f676ad8b19cbaea58803a094db70f4e3358e5f93058cbdd3d64a6a64d598af37"
+    },
+    "scripts/check-vendored.py": {
+      "sha256": "e9427b74fb4194ecd1df1abf1d510a3df18606e3c07a2a60043e74bba7422d11"
+    }
+  }
+}
