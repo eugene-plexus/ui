@@ -1,0 +1,2 @@
+# GitHub source archives stamp the installed distribution's commit.
+python/eugene_plexus_ui/_build.py export-subst
