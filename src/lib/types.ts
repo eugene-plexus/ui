@@ -143,6 +143,8 @@ export type NodeIdentity = AgentComponents["schemas"]["NodeIdentity"];
 // 2026-09-27; specs docs/design/in-app-updates.md).
 export type NodeInstall = AgentComponents["schemas"]["NodeInstall"];
 export type NodeUpdate = AgentComponents["schemas"]["NodeUpdate"];
+export type UpdateAllRun = AgentComponents["schemas"]["UpdateAllRun"];
+export type UpdateAllStatus = AgentComponents["schemas"]["UpdateAllStatus"];
 export type UpdateRun = AgentComponents["schemas"]["UpdateRun"];
 export type UpdateStep = AgentComponents["schemas"]["UpdateStep"];
 export type ComputeDevice = AgentComponents["schemas"]["ComputeDevice"];

@@ -1922,6 +1922,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/updates/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read this console's latest install-wide update job.
+         * @description Operator-only. Retained across agent restarts; no update starts on a read.
+         */
+        get: operations["getUpdateAll"];
+        put?: never;
+        /**
+         * Update enrolled machines and their installed catalogue apps.
+         * @description Operator-only, using a session signed in on this console's agent.
+         *     Snapshots the enrolled machines, updates the control root first, then
+         *     workers one at a time, each on its own channel. After each machine
+         *     returns, updates its already installed shipped catalogue apps (including
+         *     Workbench) from the new catalogue. Does not install absent or custom apps.
+         *     Existing target verification, anti-downgrade and app isolation guards apply.
+         *     A root that fails or needs a manual container update blocks worker updates.
+         *     Other failures are reported per item and remaining machines continue.
+         *     The job survives closing the browser and restarting its hosting agent.
+         *     It temporarily retains the initiating session in an owner-only file;
+         *     expiry or sign-out stops further work, and completion removes it.
+         *     A job lasts at most two hours. No uncertain write is automatically retried.
+         *     One job may run per console agent; a repeat request while running returns
+         *     that job. An enrolled machine with an update already running is observed,
+         *     never started twice. Containers still require their host's update action.
+         */
+        post: operations["startUpdateAll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node/trust-bundle": {
         parameters: {
             query?: never;
@@ -2987,6 +3025,72 @@ export interface components {
             sources: string[];
             /** @description Older matching lines exist beyond `tail`. */
             truncated: boolean;
+        };
+        /** @description The latest install-wide update started from this console. */
+        UpdateAllStatus: {
+            run?: components["schemas"]["UpdateAllRun"];
+        };
+        /**
+         * @description Complete means every item updated or was current; attention includes manual or failed items.
+         * @enum {string}
+         */
+        UpdateAllRunState: "running" | "complete" | "attention";
+        /**
+         * @description Per-machine or per-app progress, retained through restarts.
+         * @enum {string}
+         */
+        UpdateAllItemState: "pending" | "checking" | "updating" | "updated" | "current" | "manual" | "failed" | "skipped";
+        /**
+         * @description A machine's Eugene installation or an installed catalogue app.
+         * @enum {string}
+         */
+        UpdateAllItemKind: "node" | "app";
+        /** @description One machine or installed app in the update job. */
+        UpdateAllItem: {
+            /** @description Enrolled machine name. */
+            node: string;
+            kind: components["schemas"]["UpdateAllItemKind"];
+            /** @description Catalogue app id for an app item. */
+            app?: string;
+            state: components["schemas"]["UpdateAllItemState"];
+            /** @description What happened or what to do next. */
+            detail: string;
+            /** @description Verified node ref or app version being installed. */
+            target?: string;
+            /**
+             * Format: date-time
+             * @description When this item began applying.
+             */
+            startedAt?: string;
+            /** @description Expected installed component stamps used to verify a node's return. */
+            components?: {
+                [key: string]: string;
+            };
+        };
+        /** @description Durable progress of one operator-requested Update all job. */
+        UpdateAllRun: {
+            /** @description Unique job identifier. */
+            id: string;
+            /** @description Control root machine updated first. */
+            root: string;
+            /**
+             * Format: date-time
+             * @description When the job was accepted.
+             */
+            startedAt: string;
+            /**
+             * Format: date-time
+             * @description Latest time further work may start.
+             */
+            expiresAt: string;
+            /**
+             * Format: date-time
+             * @description When all work stopped.
+             */
+            finishedAt?: string;
+            state: components["schemas"]["UpdateAllRunState"];
+            /** @description Root first, then workers, with installed apps added after each node returns. */
+            items: components["schemas"]["UpdateAllItem"][];
         };
         UpdateRequest: {
             /**
@@ -9453,6 +9557,49 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getUpdateAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The latest job, or no run before the first Update all. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateAllStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    startUpdateAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job is running, or the existing active job was returned. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateAllRun"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
         };
     };
     pushTrustBundle: {

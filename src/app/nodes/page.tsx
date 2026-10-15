@@ -37,6 +37,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { More } from "@/components/Help";
 import { NodeUpdateCard } from "@/components/NodeUpdateCard";
 import { StandbyPanel } from "@/components/StandbyPanel";
+import { UpdateAllPanel } from "@/components/UpdateAllPanel";
 import { ApiError, api } from "@/lib/api";
 import { isLockedError } from "@/lib/controlUnlock";
 import {
@@ -709,6 +710,7 @@ export default function NodesPage() {
           {!locked && nodes && nodes.length > 0 && (
             <section className="section-panel mb-6" data-testid="node-versions">
               <h2 className="section-heading font-ui text-base font-semibold">Versions</h2>
+              <UpdateAllPanel onChanged={refreshVersions} />
               {difference && (
                 <div
                   data-testid="version-difference"
