@@ -54,6 +54,11 @@ export interface paths {
          *       took every healthy replica of an 8B out as "cooling down"
          *       (gateway#8). A request bigger than the whole pool is
          *       llama-server's 400 and stays the caller's.
+         *     * **A backend still loading its model is 502, `type` ending
+         *       `#backend-loading`**: the measured llama-server 503 whose whole
+         *       message is `Loading model`. `retryDisposition` is `safe`; another
+         *       replica may serve the request before output, and this refusal
+         *       does not count against the loading replica's circuit.
          *     * A backend 4xx that is worth trying elsewhere — `408`, `409`,
          *       `425`, `429` — stays **502**, so the priority-list cascade
          *       still fires. A rate-limited cloud provider falling through to
@@ -471,6 +476,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/rerank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Score passages against a question on the configured backend.
+         * @description The result sorter's counterpart to `POST /v1/embed` (MR6,
+         *     2026-10-12): a question and the passages a search found, each
+         *     scored for how well it answers the question, best first. The
+         *     gateway's `POST /v1/rerank` speaks the three public shapes; this
+         *     surface speaks one.
+         *
+         *     **Scores are 0 to 1, whatever scale the backend answers in.**
+         *     Measured on `llama-server` b10948 and b11552 with `--reranking`:
+         *     `ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF` answers probabilities
+         *     (0.996 for a passage that answers, 0.00001 for one that does not),
+         *     and `bge-reranker-v2-m3` Q8_0 answers logits (8.19 down to -11.04)
+         *     for the same four passages. A threshold a caller sets means nothing
+         *     across the two (Open WebUI's `RAG_RELEVANCE_THRESHOLD` of 0.0 keeps
+         *     every probability and drops every negative logit), so `score` is
+         *     on one scale: the backend's number where it answers probabilities,
+         *     and `1 / (1 + e^-x)` of it where it answers logits. Which one a
+         *     backend answers is learned with the capability (below) and named
+         *     on each response (`scale`); `rawScore` is always the backend's own
+         *     number.
+         *
+         *     **Determined by trying, like `embeddings`, and asked first.** A
+         *     backend reranks when a rerank of two passages, one that answers
+         *     the question and one that does not, comes back with scores. If
+         *     either score is outside 0 to 1 the backend answers logits;
+         *     otherwise probabilities. A backend taken for probabilities that
+         *     later answers a score outside 0 to 1 is taken for logits from
+         *     then on, and the log says so once. Reported as the model's
+         *     `rerank` surface on `/v1/info`.
+         *
+         *     **No cross-model failover**, for the reason `POST /v1/embed`
+         *     gives: the gateway sends this to replicas of one model only.
+         */
+        post: operations["rerank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/decide": {
         parameters: {
             query?: never;
@@ -724,8 +779,12 @@ export interface components {
              *     rides with `logprobs`. The hints (`promptCacheKey`,
              *     `promptCacheRetention`, `serviceTier`, `safetyIdentifier`) are never
              *     listed: a backend that cannot carry a hint drops it. The gateway preserves this
-             *     list on each fallback attempt. An adapter must refuse a known unsupported
-             *     explicit setting with 400, rather than silently dropping it. Settings
+             *     list on each fallback attempt, except `reasoningEffort` when the selected
+             *     backend does not support it: effort is a preference, omitted and named
+             *     in the gateway's ignored-settings header. Drivers also omit unsupported
+             *     effort without refusing a direct request, even when this list names it.
+             *     An adapter must refuse other known unsupported explicit settings with 400,
+             *     rather than silently dropping them. Settings
              *     supplied only by profiles/defaults retain the adapter's default behavior.
              *     This field is internal and is not forwarded to upstream providers.
              */
@@ -1597,6 +1656,81 @@ export interface components {
             requestId?: string;
         };
         /**
+         * @description A question and the passages to score against it (MR6). The
+         *     gateway has already turned Jina's, Cohere's and TEI's shapes into
+         *     this one, and objects into their text.
+         */
+        RerankPassagesRequest: {
+            model?: components["schemas"]["RequestModel"];
+            /**
+             * @description Internal policy; require a local active engine before forwarding any input.
+             * @default false
+             */
+            localOnly: boolean;
+            query: string;
+            /**
+             * @description The passages, as text. A result's `index` is a position in this
+             *     list, which is the only way a caller matches a score to its
+             *     passage. At most 1,000 (Cohere's limit).
+             */
+            documents: string[];
+            /**
+             * @description How many of the best to return. Absent, or more than there are:
+             *     all of them.
+             */
+            topN?: number;
+            /** @description Correlation id, echoed back. Same role as on `GenerateRequest`. */
+            requestId?: string;
+        };
+        RerankPassagesResponse: {
+            /**
+             * @description Best first: by `score`, highest first, and by `index` where two
+             *     are equal. `topN` long when it was given and smaller than the
+             *     number of passages.
+             */
+            results: components["schemas"]["RerankedPassage"][];
+            scale: components["schemas"]["RerankScale"];
+            /**
+             * @description The model that scored these, as the public identifier, the way
+             *     `EmbedResponse.modelId` is.
+             */
+            modelId?: string;
+            backend?: components["schemas"]["BackendKind"];
+            usage?: components["schemas"]["Usage"];
+            latencyMs?: number;
+            requestId?: string;
+        };
+        RerankedPassage: {
+            /** @description Position of the passage in the request's `documents`. */
+            index: number;
+            /**
+             * @description How well the passage answers the question, 0 to 1: the
+             *     backend's own number for a `probability` backend, its logistic
+             *     for a `logit` one.
+             */
+            score: number;
+            /** @description The backend's own number, unchanged. */
+            rawScore: number;
+        };
+        /**
+         * @description One request field, in this contract's spelling, and the values of
+         *     it the backend is sent and does not honour. For `toolChoice` the
+         *     values are its modes: `auto`, `none`, `required`, and `function`
+         *     for a named function. A boolean setting lists `true` or `false`.
+         */
+        SettingNotHonoured: {
+            setting: string;
+            values: (string | boolean)[];
+        };
+        /**
+         * @description What a backend's rerank scores are. `probability`: already 0 to 1
+         *     (Qwen3-Reranker, which scores "yes" against "no"), passed through.
+         *     `logit`: unbounded (bge-reranker-v2-m3, a one-label classifier),
+         *     mapped through `1 / (1 + e^-x)`, which keeps their order.
+         * @enum {string}
+         */
+        RerankScale: "probability" | "logit";
+        /**
          * @description One state, several named typed questions, answered together.
          *     Question names are the caller's own keys and come back verbatim
          *     on the response's `answers`. Question independence is the
@@ -1795,9 +1929,17 @@ export interface components {
              *       `transcription` (`/v1/transcribe`, P3b), `translation`
              *       (`/v1/transcribe` with `translate`, P3-4), `image`
              *       (`/v1/image`, P4), `video` (`/v1/video`, P5),
-             *       `moderation` (`/v1/moderate`, P6) and `completion`
-             *       (`/v1/generate` with `completion`, P6), which have doors;
-             *     * `rerank`, which names a door Eugene has not built yet.
+             *       `moderation` (`/v1/moderate`, P6), `completion`
+             *       (`/v1/generate` with `completion`, P6) and `rerank`
+             *       (`/v1/rerank`, MR6), which have doors.
+             *
+             *     `rerank` is reported for a backend that answers a rerank: a
+             *     `llama-server` started with `--reranking`, found by asking it
+             *     (`/v1/rerank`). An account does not report it, whatever its
+             *     catalogue says, because no account engine sorts yet: a model
+             *     an account lists only for reranking serves nothing here, as it
+             *     did before the door. Until 2026-10-12 this named `rerank` as a
+             *     door Eugene had not built.
              *
              *     `completion` is reported for a local `llama-server`, a vLLM,
              *     and an Ollama account's models with its `completion`
@@ -1968,6 +2110,25 @@ export interface components {
              *     execution, including after a configuration change.
              */
             supportedSettings?: string[];
+            /**
+             * @description Settings, by value, that this backend does not honour though
+             *     the request is served (2026-10-12, `docs/design/tools-assumed.md`).
+             *     Either sent and known to be ignored (Strata: measured; Ollama:
+             *     read from its source), or not delivered because the provider
+             *     cannot take it: Gemini's API has
+             *     no field for `parallelToolCalls` `false`, and OpenRouter, asked
+             *     only for providers that take every parameter sent
+             *     (`require_parameters`), lists no provider of the model taking
+             *     it. A gap is named, not refused, so these are in
+             *     `supportedSettings` too. Static per backend, so the gateway
+             *     names them on its own `x-eugene-plexus-ignored-settings`
+             *     before a stream opens, without waiting for this driver's
+             *     per-request header. Absent or empty: everything carried is
+             *     honoured. Strata lists `toolChoice` with `required` and
+             *     `function` (it honours `auto`; `none` this driver honours by
+             *     sending no tools) and `parallelToolCalls` with `false`.
+             */
+            settingsNotHonoured?: components["schemas"]["SettingNotHonoured"][];
             /** @description Whether `/v1/generate/stream` emits true incremental tokens. */
             streaming?: boolean;
             /**
@@ -2031,6 +2192,27 @@ export interface components {
              *     or the backend never saw the tools. A driver that says
              *     `false` here is failed at the front door with a reason
              *     instead.
+             *
+             *     **True unless there is evidence** (Troy, 2026-10-12;
+             *     `docs/design/tools-assumed.md`): a chat model on any engine
+             *     is taken to use tools. `false` only when:
+             *     * the backend refused a request for its tools, in its own
+             *       words. The words matched are measured ones only:
+             *       llama-server's "tools param requires --jinja flag" (a 500
+             *       from a `--no-jinja` engine, b10948). While `false` for that,
+             *       the driver asks the backend again every 10 minutes with the
+             *       smallest request carrying a tool, and an answer clears it,
+             *       so a backend fixed in place gets its tools back without the
+             *       driver restarting;
+             *     * a provider's own listing says so (a listing that says
+             *       nothing is not a no);
+             *     * this driver has no way to carry tools to the engine (a CLI
+             *       subscription), which is this driver's limit, not the
+             *       model's.
+             *
+             *     Never because a configuration is untested: until 2026-10-12
+             *     Strata was reported `false` for that reason alone, and
+             *     measured, it calls tools correctly.
              */
             toolCalling?: boolean;
             /**
@@ -2433,8 +2615,13 @@ export interface components {
          * @description How much a reasoning model thinks before it answers: OpenAI's
          *     `reasoning_effort` (P2c, 2026-09-28). Measured on
          *     `openai/gpt-oss-20b` through OpenRouter: 17 reasoning tokens at
-         *     `low`, 275 at `high`. A setting, so it routes only to a model
-         *     that lists it (A2). `max` was added 2026-10-03: GPT-6 and
+         *     `low`, 275 at `high`. Since 2026-10-15 this is a best-effort
+         *     preference, not a routing constraint: forwarded where supported,
+         *     otherwise omitted and named in the ignored-settings header, without
+         *     refusing the request. An omitted value leaves the backend's default
+         *     in effect, including when the caller requested `none`.
+         *     Strata supports it through its template effort controls.
+         *     `max` was added 2026-10-03: GPT-6 and
          *     OpenRouter accept it, and a caller sending it was refused here.
          * @enum {string}
          */
@@ -3213,9 +3400,21 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Generation completed. */
+            /**
+             * @description Generation completed. `x-eugene-plexus-ignored-settings` names
+             *     the request's fields, in this contract's spelling (`toolChoice`),
+             *     that `callerSettings` lists and that the backend does not honour
+             *     (`settingsNotHonoured`), and is absent otherwise
+             *     (`docs/design/tools-assumed.md`, 2026-10-12). A direct caller
+             *     gets it only for the settings it lists in `callerSettings`.
+             *     Strata ignores `toolChoice` `required` and a named function
+             *     (measured), so those are sent as it takes them and named here;
+             *     `none` it is given as no tools.
+             */
             200: {
                 headers: {
+                    /** @description Comma-separated request fields the backend does not honour. */
+                    "x-eugene-plexus-ignored-settings"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3314,9 +3513,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description SSE stream opened. */
+            /**
+             * @description SSE stream opened. `x-eugene-plexus-ignored-settings` as on
+             *     `POST /v1/generate`, known before the first frame.
+             */
             200: {
                 headers: {
+                    /** @description Comma-separated request fields the backend does not honour. */
+                    "x-eugene-plexus-ignored-settings"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -4001,6 +4205,79 @@ export interface operations {
              * @description `requestTimeoutSeconds` passed with no answer. Does not
              *     cascade: a replica would take the same time on the same
              *     input.
+             */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    rerank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RerankPassagesRequest"];
+            };
+        };
+        responses: {
+            /** @description The passages, scored, best first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RerankPassagesResponse"];
+                };
+            };
+            /**
+             * @description This backend does not rerank, or rejected the request in a way
+             *     another backend would reject identically (a passage longer than
+             *     the backend takes). Does not cascade.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["ModelNotServed"];
+            /** @description The caller went away; the backend call was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            500: components["responses"]["Problem"];
+            /**
+             * @description Upstream backend error, or a refusal worth retrying elsewhere
+             *     (`408`, `409`, `425`, `429`). Cascades, across replicas of the
+             *     SAME model only. `#backend-credential-refused` does not.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `requestTimeoutSeconds` passed with no answer. Does not
+             *     cascade: a replica would take the same time on the same input.
              */
             504: {
                 headers: {

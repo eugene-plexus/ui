@@ -881,6 +881,16 @@ export interface paths {
          *     revoked there. An app that signs people in is registered at the
          *     root the same way.
          *
+         *     **An app's key has limits for an app, not for one person's
+         *     client** (MR6, 2026-10-12): 8 requests at once and 600 a minute,
+         *     with `writeLogs`. Everyone using the app shares its key, so the
+         *     defaults of 2 at once and 60 a minute meant two people chatting in
+         *     it filled it. Open WebUI's document upload failed on them outright:
+         *     it sends its embeddings requests together and fails the whole file
+         *     on the first 429. Measured in MR6's acceptance: a 10-passage file,
+         *     2 of 10 requests served. The owner changes them on the keys page.
+         *     A key minted before this keeps its limits.
+         *
          *     **On the caller's authority, not always with the caller's token**
          *     (2026-10-01). A session made by signing in on this machine is
          *     addressed to the root as well and goes on unchanged. A console on
@@ -5547,9 +5557,39 @@ export interface components {
              *     * `{gatewayUrl}` — the gateway, as `EUGENE_PLEXUS_APP_GATEWAY_URL`;
              *     * `{appUrl}` — the address the console opens it at;
              *     * `{oidcIssuer}`, `{oidcClientId}` — with `signIn`;
+             *     * `{embeddingModel}`, `{rerankModel}` — the install's search
+             *       model and result sorter as the app's own key sees them (MR6):
+             *       the first model `GET /v1/models` lists, with that key, whose
+             *       `x_eugene_plexus.surfaces` include `embeddings` (or `rerank`)
+             *       and whose `x_eugene_plexus.locality` is `local`, the field
+             *       Workbench's own chooser reads. Never an outside model, nor
+             *       one whose locality is `unknown` or absent: documents would
+             *       leave the install unasked. (Until 2026-10-12 this said
+             *       `owned_by` is `local`; the gateway lists a runtime's model
+             *       with its driver's provider there, `openai_compat_custom`,
+             *       so that rule matched no local model.) A running one
+             *       (`x_eugene_plexus.ready_backends` above 0, or the field
+             *       absent) before one that is listed and stopped; a stopped one
+             *       is still chosen when it is all there is, and the start's
+             *       notes say it is not running, because an app that keeps what
+             *       its first start saw is better off with the install's model
+             *       than with its own default. Read by the launcher at every
+             *       start; when the gateway lists none, or does not answer
+             *       within a few seconds, the variable is left unset and the
+             *       notes say which. A change of model is not a change of
+             *       connection (`resetOnConnectionChange`): an app's stored
+             *       vectors belong to the model that made them;
              *     * `{clientKey}`, `{oidcClientSecret}`, `{appSecret}` — secrets.
              *       `{appSecret}` is a random value made at its first start and
              *       kept in its data directory.
+             *
+             *     **A manifest that names `{gatewayUrl}` is not started while
+             *     the gateway's address is unknown** (MR6, 2026-10-12). Every
+             *     other placeholder with no value leaves its variable unset, but
+             *     an app without the gateway's address uses its own default, and
+             *     Open WebUI's is `https://api.openai.com/v1`: documents and
+             *     speech would go there. The start is refused, naming why, and
+             *     is tried again as any refused start is.
              *
              *     **Secrets are filled in by the launcher inside the app's own
              *     account**, from the files it is given, so they never appear in
@@ -5568,12 +5608,23 @@ export interface components {
             healthPath: string;
             /**
              * @description A variable set to `true` for one start, when the gateway's
-             *     address or the app's key differs from the last start's. For an
-             *     app that copies its settings into its own database at its first
-             *     start and ignores the environment afterwards (Open WebUI's
-             *     `RESET_CONFIG_ON_START`), so a rotated key is not silently
+             *     address, the app's key, or the manifest's `environment` as
+             *     written (its placeholders unfilled) differs from the last
+             *     start's. For an app that copies its settings into its own
+             *     database at its first start and ignores the environment
+             *     afterwards (Open WebUI's `RESET_CONFIG_ON_START`), so a
+             *     rotated key, or a setting Eugene corrects, is not silently
              *     ignored. That start also clears what its admin set in it, and
-             *     the agent's log says why.
+             *     the agent's log says why. A filled-in value that changes
+             *     (`{embeddingModel}`) is not a change.
+             *
+             *     The environment joined on 2026-10-12 (MR6): Open WebUI 0.11.4
+             *     points every address it does not get (documents' embeddings,
+             *     speech, images) at `https://api.openai.com/v1`, so since C4
+             *     an uploaded document's text was sent there (and refused, for
+             *     want of a key). The corrected entry names the gateway for
+             *     each, and reaches an install that already started by this
+             *     reset, once.
              */
             resetOnConnectionChange?: string;
             /**

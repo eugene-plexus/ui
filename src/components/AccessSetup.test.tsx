@@ -62,6 +62,7 @@ it("adds the inference and node names only when asked", async () => {
   const user = await fillCommon();
   await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
   await user.click(screen.getByLabelText(/Also an inference name/));
+  expect(screen.getByLabelText(/Allow inference from any network/)).not.toBeChecked();
   await user.click(screen.getByLabelText(/Also a name for other machines/));
   await user.click(screen.getByRole("button", { name: "Prepare setup" }));
   await screen.findByRole("region", { name: "Prepared setup" });
@@ -74,6 +75,58 @@ it("adds the inference and node names only when asked", async () => {
     origin: "https://nodes.example.org",
     networks: ["192.168.16.0/24"],
   });
+});
+
+it("opens inference independently and restores private access when switched off", async () => {
+  vi.mocked(api.post).mockResolvedValue(PREVIEW);
+  render(<AccessSetup />);
+  const user = await fillCommon();
+  await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
+  expect(screen.queryByLabelText(/Allow inference from any network/)).not.toBeInTheDocument();
+  await user.click(screen.getByLabelText(/Also an inference name/));
+  await user.click(screen.getByLabelText(/Also a name for other machines/));
+  await user.click(screen.getByLabelText(/Allow inference from any network/));
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  await screen.findByRole("region", { name: "Prepared setup" });
+  const body = vi.mocked(api.post).mock.calls[0]![2] as { configuration: Record<string, unknown> };
+  expect(body.configuration.inference).toEqual({
+    origin: "https://inference.example.org",
+    networks: ["0.0.0.0/0", "::/0"],
+  });
+  for (const name of ["console", "workbench", "nodes"]) {
+    expect(body.configuration[name]).toMatchObject({ networks: ["192.168.16.0/24"] });
+  }
+  expect(body.configuration.proxy).toEqual({ addresses: ["172.30.0.2"], transport: "http" });
+  await user.click(screen.getByLabelText(/Allow inference from any network/));
+  expect(screen.queryByRole("region", { name: "Prepared setup" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  await screen.findByRole("region", { name: "Prepared setup" });
+  const privateBody = vi.mocked(api.post).mock.calls[1]![2] as {
+    configuration: Record<string, unknown>;
+  };
+  expect(privateBody.configuration.inference).toMatchObject({ networks: ["192.168.16.0/24"] });
+});
+
+it("preserves public inference when reopening setup and needs no private networks for it", async () => {
+  const configuration = {
+    listen_port: 8088,
+    proxy: { addresses: ["172.18.0.4"], transport: "http" },
+    console_direct: true,
+    console: { origin: "https://eugene.example.org", networks: [] },
+    workbench: { origin: "https://workbench.example.org", networks: ["0.0.0.0/0", "::/0"] },
+    inference: { origin: "https://inference.example.org", networks: ["0.0.0.0/0", "::/0"] },
+  };
+  vi.mocked(api.get).mockResolvedValue({ ...DIRECT, active: true, configuration });
+  vi.mocked(api.post).mockResolvedValue(PREVIEW);
+  render(<AccessSetup />);
+  expect(await screen.findByLabelText(/Allow inference from any network/)).toBeChecked();
+  expect(screen.getByLabelText(/Allowed private networks/)).not.toBeRequired();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  await screen.findByRole("region", { name: "Prepared setup" });
+  expect(api.post).toHaveBeenCalledWith("agent", "/v1/entrypoint/preview", { configuration });
+  await user.click(screen.getByLabelText(/Allow inference from any network/));
+  expect(screen.getByLabelText(/Allowed private networks/)).toBeRequired();
 });
 
 it("writes public_sites, worded as job sites connecting from anywhere", async () => {

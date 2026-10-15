@@ -384,7 +384,7 @@ function yamlString(value: string): string {
 export const HERMES_MINIMUM_WINDOW = 64_000;
 
 /**
- * Hermes Agent, as of v0.21.7 (read in its source, 2026-10-13).
+ * Hermes Agent, measured with v0.22.2 on 2026-10-15.
  *
  * - `provider: custom` with `base_url` (the `/v1` included) is its
  *   documented self-hosted path, and it speaks Chat Completions there by
@@ -462,7 +462,11 @@ export function openClawMaxTokens(window: number): number {
  */
 function openClaw(s: Strings): Recipe {
   const window = knownWindow(s);
-  const model: Record<string, unknown> = { id: s.model, name: s.model };
+  const model: Record<string, unknown> = {
+    id: s.model,
+    name: s.model,
+    compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true },
+  };
   if (window !== null) {
     model.contextWindow = window;
     model.maxTokens = openClawMaxTokens(window);
@@ -494,7 +498,8 @@ function openClaw(s: Strings): Recipe {
     note:
       "Merge these keys into your file rather than replacing it. OpenClaw names the model " +
       `eugene-plexus/${s.model}.` +
-      size,
+      size +
+      " For a reasoning model, add reasoning: true to its model entry to enable thinking controls.",
   };
 }
 

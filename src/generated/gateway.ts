@@ -123,6 +123,25 @@ export interface paths {
          * Generate a chat completion, routed to a backend that serves the model.
          * @description The one endpoint everything else exists to support.
          *
+         *     **What the chosen backend does not honour is named**
+         *     (2026-10-12, `docs/design/tools-assumed.md`): a setting the
+         *     caller sent, with a value the backend's
+         *     `capabilities.settingsNotHonoured` lists, is named on this door's
+         *     `x-eugene-plexus-ignored-settings` in this door's spelling
+         *     (`tool_choice`, `parallel_tool_calls`), on both response modes,
+         *     and the header is absent when there is nothing to name.
+         *     `/v1/messages` and `/v1/responses` add it to theirs. A stream's
+         *     is read from the backend chosen for the first attempt, before
+         *     anything is sent, so **a stream opens as it always has**: the
+         *     head never waits for the backend's first frame, and a failover
+         *     after the head cannot change it. A whole answer's is read after
+         *     the call, from the backend that served it. Only what the caller sent
+         *     is named; the gateway's own settings (a search loop's forced
+         *     first turn) are not. Strata ignores `tool_choice` `required`
+         *     and a named function, and `parallel_tool_calls: false`
+         *     (measured), so a request carrying one is answered, with the
+         *     header, rather than refused.
+         *
          *     Routing: `model` is resolved to its slot — the drivers serving
          *     it, then the drivers serving each configured target in order
          *     (see `modelSlots`). Within a tier the least-busy eligible driver
@@ -363,12 +382,11 @@ export interface paths {
          *
          *     ### Compatibility hints and explicit refusals (A2)
          *
-         *     `cache_control`, `context_management` and `output_config.effort`
-         *     remain accepted for measured Claude Code compatibility, but are not
-         *     enforced (`output_config` was added 2026-09-23, when a newer Claude
-         *     Code began sending it and this door refused every request). `thinking`
-         *     decides whether the model's reasoning is returned as `thinking`
-         *     blocks (see below) and nothing more. Ignored hints are named in
+         *     `cache_control` and `context_management` remain accepted for Claude Code
+         *     compatibility but are not enforced. `output_config.effort` is carried as
+         *     the shared reasoning-effort preference to supporting backends.
+         *     `thinking` decides whether reasoning is returned as `thinking` blocks,
+         *     and `disabled` also requests effort `none` where supported. Ignored hints are named in
          *     `x-eugene-plexus-ignored-settings` on both response modes.
          *     `metadata` is discarded as an opaque annotation.
          *
@@ -665,7 +683,12 @@ export interface paths {
          *     by measurement:** answered 400, 403 or 404, `/context` tried each
          *     count once and fell back; answered 501 or 503, it retried every
          *     one first. A stopped model is never woken to count: a caller who
-         *     wants that pays for it knowingly, through the fallback.
+         *     wants that pays for it knowingly, through the fallback. Since
+         *     2026-10-12 the same 400 also answers a count whose key or whose
+         *     backends' listings cannot be checked right now (the admission
+         *     authority or a driver did not answer). It fails closed: nothing
+         *     is counted, and nothing is forwarded or woken. A rejected key is
+         *     still its 401 or 403.
          *
          *     ### What it shares with the Messages door, and what it does not
          *
@@ -797,8 +820,8 @@ export interface paths {
          *     model's own reasoning, which is what a local engine reports.
          *     `summary` is empty: there is nothing here to summarize with, so
          *     a requested `reasoning.summary` is named on the ignored-settings
-         *     header, as is `reasoning.effort` (the model's settings profile
-         *     governs how it thinks).
+         *     header. `reasoning.effort` is carried to supporting backends; when
+         *     unsupported it is omitted and named on that header without refusing the request.
          *
          *     When `include` asks for `reasoning.encrypted_content`, the item
          *     also carries `encrypted_content`:
@@ -951,7 +974,10 @@ export interface paths {
          *     **A count this door cannot give is a 400 saying why**: a backend
          *     that cannot count without generating (every hosted provider;
          *     OpenRouter has no such endpoint, measured), an attachment, whose
-         *     cost is the encoder's, or nothing running.
+         *     cost is the encoder's, or nothing running. A key or a listing that
+         *     cannot be checked right now is the same 400 (fail-closed), never a
+         *     5xx. It is admitted as `/v1/responses` is: the same key scope and
+         *     `localOnly` rule, and the same body limit (2026-10-12).
          */
         post: operations["countResponseInputTokens"];
         delete?: never;
@@ -1486,6 +1512,74 @@ export interface paths {
          *     dropped both without a word.
          */
         post: operations["createEmbedding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rerank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sort passages by how well they answer a question.
+         * @description A result sorter (reranker) scores each passage a search found
+         *     against the question, and the best come first (MR6, 2026-10-12).
+         *     Document search sends a model its top few passages: a sorter picks
+         *     them better than the search's own order. Open WebUI calls this as
+         *     its external reranker; any client of Jina's, Cohere's or Hugging
+         *     Face TEI's rerank API can.
+         *
+         *     **Three request shapes, one door.** `documents` (Jina, Cohere):
+         *     strings, or objects with a string `text`, answered as
+         *     `RerankResponse` (`results`). `texts` (TEI): strings, answered as
+         *     TEI answers, a bare array of `{index, score}`. Exactly one of the
+         *     two. The answer's shape follows the request's.
+         *
+         *     **Scores are 0 to 1, best first.** The engine's own scale is not
+         *     the same from model to model (measured: Qwen3-Reranker answers
+         *     probabilities, bge-reranker-v2-m3 logits from 8.19 to -11.04), so
+         *     a threshold would mean nothing across them; the driver puts every
+         *     score on one scale (`inference-driver.yaml` `POST /v1/rerank`).
+         *     `raw_scores: true` asks for the engine's own numbers instead.
+         *
+         *     **Failover does not cross models**, as on `POST /v1/embeddings`:
+         *     replicas of the named model balance and fail over; a `modelSlots`
+         *     cascade to a different target does not run, because two sorters'
+         *     scores are not comparable and a caller sorting by them would mix
+         *     scales with a 200.
+         *
+         *     **`model` may be left out**, as TEI's clients do: the request
+         *     goes to the one model this key may use whose surfaces include
+         *     `rerank`. None is a 404 that says so; two or more is a 400 naming
+         *     them.
+         *
+         *     **What `llama-server` does not do is done here.** It answers
+         *     `return_documents` with no documents and refuses objects
+         *     (measured on b10948 and b11552); this door sends it the text and
+         *     puts the passage back on each result when `return_documents` or
+         *     `return_text` asks. An empty list is answered with no results and
+         *     reaches no model.
+         *
+         *     **Accepted and ignored, and the answer says so:** `truncate: true`
+         *     (and its `truncation_direction`), `max_chunks_per_doc`,
+         *     `max_tokens_per_doc` and `rank_fields`, named in
+         *     `x-eugene-plexus-ignored-settings` in that order when the request
+         *     carries them, as the other doors name what they do not honour. A
+         *     passage longer than the model takes is a 400 naming the limit,
+         *     not cut, which is what TEI's default `truncate: false` asks for,
+         *     so that is not named.
+         *
+         *     At most 1,000 passages a request (Cohere's limit). The body limit
+         *     is the embeddings door's.
+         */
+        post: operations["createRerank"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2162,9 +2256,10 @@ export interface components {
             /** @description Unix timestamp. Model file mtime for local models. */
             created?: number;
             /**
-             * @description OpenAI sends an organisation here. We send the provider —
-             *     `local`, or the cloud provider key for a subscription
-             *     backend.
+             * @description OpenAI sends an organisation here. We send `local` only when
+             *     every backend reports local inference, otherwise the provider
+             *     key when there is one, `mixed` for multiple providers, or
+             *     `unknown` when no provider or local inference is confirmed.
              */
             owned_by?: string;
             x_eugene_plexus?: components["schemas"]["ModelRoutingInfo"];
@@ -2194,7 +2289,8 @@ export interface components {
              *     `translation` `POST /v1/audio/translations` (P3-4), `image`
              *     `POST /v1/images/generations` and `/edits` (P4), `video`
              *     `POST /v1/videos` (P5), `moderation` `POST /v1/moderations`
-             *     (P6), `completion` `POST /v1/completions` (P6).
+             *     (P6), `completion` `POST /v1/completions` (P6), `rerank`
+             *     `POST /v1/rerank` (MR6).
              *
              *     OpenAI's own `/v1/models` does not say, which is why every
              *     RAG front-end makes you pick an embedding model from a
@@ -2228,17 +2324,19 @@ export interface components {
              *     alias, the profile's curated flags and its extra arguments,
              *     and an embedding model answered neither surface (501 on
              *     `/v1/embeddings`, 500 on chat, both measured on b10948 and
-             *     b11552) and was listed here as `chat`. **A reranker still is**:
-             *     there is no `rerank` surface or door yet, and its driver
-             *     finds nothing it recognises (the engine answers
-             *     `/v1/embeddings` with zeros and gaps, which the driver
-             *     cannot read as a vector), so it lists as `chat`.
+             *     b11552) and was listed here as `chat`.
+             *
+             *     **A reranker is listed as `rerank` (MR6, 2026-10-12)**, and
+             *     nothing else: its driver asks it to rerank before it asks
+             *     anything else, and a reranker answers neither chat nor
+             *     embeddings. Until then there was no `rerank` surface or door,
+             *     and a reranker was listed as `chat`.
              *
              *     Empty means nothing serving this model would admit to either
              *     surface, which is a backend that could not be reached rather
              *     than a model that does nothing.
              */
-            surfaces?: ("chat" | "embeddings" | "decisions" | "speech" | "transcription" | "translation" | "image" | "video" | "moderation" | "completion")[];
+            surfaces?: ("chat" | "embeddings" | "decisions" | "speech" | "transcription" | "translation" | "image" | "video" | "moderation" | "completion" | "rerank")[];
             /**
              * @description At least one backend confirms image input for its loaded model.
              *     Image requests route only to those backends, including fallback.
@@ -2384,6 +2482,18 @@ export interface components {
              *     any of them, so the honest answer is the weakest one. A
              *     harness can read this and pick a model rather than discover
              *     the limit as a 400 halfway through a task.
+             *
+             *     A chat model's backend whose driver does not say counts as
+             *     one that can (2026-10-12, `docs/design/tools-assumed.md`):
+             *     tools are assumed, and turned off only on evidence the
+             *     driver reports (`capabilities.toolCalling: false`). A model
+             *     that does not chat (embeddings, rerank, speech) is not one
+             *     that calls tools, and a request sending it tools is refused
+             *     for what it is, in the door's words for a model on the wrong
+             *     door. The tools that come with a request that carries tools
+             *     (`tool_choice`, `parallel_tool_calls`) are admitted for such a
+             *     backend whatever its `supportedSettings` says, since a driver
+             *     that reports nothing is not a no.
              */
             tool_calling?: boolean;
             /**
@@ -2393,6 +2503,8 @@ export interface components {
              *     search for it. Says nothing about the caller's key or whether
              *     the install has a search account; that is
              *     `ModelList.x_eugene_plexus.web_search`. Added 2026-10-01 (C3).
+             *     A backend whose driver does not say whether it calls tools
+             *     counts as one that does (2026-10-12).
              */
             web_search?: boolean;
             /**
@@ -3242,6 +3354,14 @@ export interface components {
             role: "system" | "developer" | "user" | "assistant" | "tool" | "function";
             content?: components["schemas"]["MessageContent"];
             /**
+             * @description Request alias for `reasoning_content`, used by Hermes Agent and
+             *     OpenRouter-compatible clients when replaying assistant turns.
+             *     Preserved as reasoning, never merged into visible content. If both
+             *     fields contain non-null values, they must match. Responses use
+             *     `reasoning_content`.
+             */
+            reasoning?: string | null;
+            /**
              * @description **On a response:** the model's reasoning for this turn, when
              *     the backend reported it separately from `content`. The name
              *     is DeepSeek's and llama.cpp's, and the one OpenAI-compatible
@@ -3884,6 +4004,136 @@ export interface components {
             total_tokens?: number;
         };
         /**
+         * @description Jina's and Cohere's rerank body (`documents`), or TEI's (`texts`):
+         *     exactly one of the two (MR6). Fields this door does not know are
+         *     ignored, as other OpenAI-shaped bodies' are.
+         */
+        RerankRequest: {
+            /**
+             * @description A model whose `x_eugene_plexus.surfaces` include `rerank`.
+             *     Left out: the one such model this key may use (see the
+             *     operation).
+             */
+            model?: string;
+            /**
+             * @description The question the passages are scored against. At most 1,048,576
+             *     characters, as one passage.
+             */
+            query: string;
+            /**
+             * @description The passages (Jina, Cohere): strings, or objects whose `text`
+             *     is the passage. Answered as `RerankResponse`. At most 1,048,576
+             *     characters a passage (the driver's limit); a longer one is a 400
+             *     naming its position. A passage longer than the model reads is a
+             *     400 naming the model's limit.
+             */
+            documents?: (string | components["schemas"]["RerankDocument"])[];
+            /**
+             * @description The passages (TEI). Answered as `TeiRerankResponse`. The same
+             *     limits as `documents`.
+             */
+            texts?: string[];
+            /**
+             * @description How many of the best to return. Left out, or more than there
+             *     are: all of them, which is what Open WebUI asks for.
+             */
+            top_n?: number;
+            /**
+             * @description Put each passage on its result (`document.text`, or `text` in
+             *     TEI's shape). Cohere's default, false; Jina's is true, so a
+             *     Jina client that wants the text asks.
+             * @default false
+             */
+            return_documents: boolean;
+            /**
+             * @description TEI's name for `return_documents`; either one asks.
+             * @default false
+             */
+            return_text: boolean;
+            /**
+             * @description TEI's: the engine's own numbers, unchanged, instead of 0 to 1.
+             *     Honoured in either shape.
+             * @default false
+             */
+            raw_scores: boolean;
+            /**
+             * @description TEI's. `false`, its default, is what this door does: a passage
+             *     longer than the model reads is refused, not cut. `true` is
+             *     **accepted and ignored**, and named in
+             *     `x-eugene-plexus-ignored-settings`.
+             */
+            truncate?: boolean;
+            /**
+             * @description TEI's, and only meaningful with `truncate: true`: named with it
+             *     then, and not otherwise, as nothing is cut.
+             */
+            truncation_direction?: string;
+            /** @description Cohere's. **Accepted and ignored**, and named. */
+            max_chunks_per_doc?: number;
+            /** @description Cohere's. **Accepted and ignored**, and named. */
+            max_tokens_per_doc?: number;
+            /**
+             * @description Cohere's. **Accepted and ignored**, and named: an object's
+             *     `text` is the passage.
+             */
+            rank_fields?: string[];
+        };
+        RerankDocument: {
+            /** @description The passage. Other fields are kept by the caller, not read here. */
+            text: string;
+        } & {
+            [key: string]: unknown;
+        };
+        RerankResponse: {
+            /** @description This answer's own id, as Cohere's carry one. */
+            id?: string;
+            object: components["schemas"]["RerankObject"];
+            /**
+             * @description The model that scored these. After a same-model failover it
+             *     still names that model; by the rule above it can never name a
+             *     different one.
+             */
+            model: string;
+            /**
+             * @description Best first, by `relevance_score` and then by `index`; `top_n`
+             *     long when it was given and smaller than the number of passages.
+             */
+            results: components["schemas"]["RerankResult"][];
+            usage?: components["schemas"]["EmbeddingUsage"];
+            x_eugene_plexus?: components["schemas"]["CompletionRoutingInfo"];
+        };
+        /**
+         * @description Named, not inline: an inline enum here made the Python generator
+         *     number it `Object2` and rename the Responses door's `Object2` to
+         *     `Object3` in every consumer (MR6, 2026-10-12).
+         * @enum {string}
+         */
+        RerankObject: "list";
+        RerankResult: {
+            /** @description Position of the passage in the request's `documents`. */
+            index: number;
+            /**
+             * @description 0 to 1, higher answers the question better; the engine's own
+             *     number with `raw_scores`.
+             */
+            relevance_score: number;
+            document?: components["schemas"]["RerankResultDocument"];
+        };
+        RerankResultDocument: {
+            /** @description The passage, when `return_documents` or `return_text` asked. */
+            text: string;
+        };
+        /** @description TEI's answer, one entry a passage, best first. */
+        TeiRerankResponse: components["schemas"]["TeiRerankResult"][];
+        TeiRerankResult: {
+            /** @description Position of the passage in the request's `texts`. */
+            index: number;
+            /** @description 0 to 1, or the engine's own number with `raw_scores`. */
+            score: number;
+            /** @description The passage, when `return_text` or `return_documents` asked. */
+            text?: string;
+        };
+        /**
          * @description The gateway's resolved routing table, as of the last refresh.
          *     The same snapshot requests are routed from, opened up so an
          *     operator can see why a request went where it did.
@@ -4167,26 +4417,25 @@ export interface components {
              *     `content[0].text` pointing at the answer for every client
              *     that never asked.
              *
-             *     What it does not decide: a `budget_tokens` is not enforced,
-             *     and `disabled` hides the blocks without stopping the model
-             *     thinking. Either is named on the ignored-settings response
-             *     header. The operator's `thinkingMode` governs what a local
-             *     model actually does.
+             *     A `budget_tokens` is not enforced and is named on the ignored-settings
+             *     header. Since 2026-10-15, `disabled` also requests effort `none`, taking
+             *     precedence over `output_config.effort`. Supporting backends receive
+             *     the control; others omit it and name `thinking` on that header.
              */
             thinking?: {
                 [key: string]: unknown;
             } | null;
             /**
-             * @description **Accepted for `effort` only, and not enforced.** Claude Code
+             * @description **`effort` is carried to supporting backends.** Claude Code
              *     sends `{"effort": "high"}` on every request -- measured
              *     2026-09-23 (2.1.207 with agent-sdk 0.3.280, beta header
              *     `effort-2025-11-24`), absent from the 2026-09-19 capture --
              *     and the unknown-field refusal A2 added turned that into a
              *     400 on the first request of every session: **Claude Code
              *     could not use this door at all** until this field was named.
-             *     How hard a local model thinks is the operator's
-             *     `thinkingMode`, exactly as for `thinking.budget_tokens`, so a
-             *     non-null value is named on the ignored-settings header.
+             *     Since 2026-10-15 it uses the shared reasoning-effort preference.
+             *     Unsupported effort is omitted and named as `output_config.effort`
+             *     on the ignored-settings header, without refusing the request.
              *
              *     **`format` is honoured** (2026-10-03): `{"type":
              *     "json_schema", "schema": {...}}` becomes the chat path's
@@ -4651,9 +4900,10 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /**
-             * @description `effort` and `summary` are accepted and not honoured, and are
-             *     named on the ignored-settings header when set. Codex sends
-             *     null for a model id it does not know.
+             * @description `effort` is carried to supporting backends, otherwise omitted and
+             *     named as `reasoning.effort` on the ignored-settings header. `summary`
+             *     is accepted and not honoured, and named when set. Codex sends null
+             *     for a model id it does not know.
              */
             reasoning?: {
                 [key: string]: unknown;
@@ -5671,8 +5921,13 @@ export interface components {
          * @description How much a reasoning model thinks before it answers: OpenAI's
          *     `reasoning_effort` (P2c, 2026-09-28). Measured on
          *     `openai/gpt-oss-20b` through OpenRouter: 17 reasoning tokens at
-         *     `low`, 275 at `high`. A setting, so it routes only to a model
-         *     that lists it (A2). `max` was added 2026-10-03: GPT-6 and
+         *     `low`, 275 at `high`. Since 2026-10-15 this is a best-effort
+         *     preference, not a routing constraint: forwarded where supported,
+         *     otherwise omitted and named in the ignored-settings header, without
+         *     refusing the request. An omitted value leaves the backend's default
+         *     in effect, including when the caller requested `none`.
+         *     Strata supports it through its template effort controls.
+         *     `max` was added 2026-10-03: GPT-6 and
          *     OpenRouter accept it, and a caller sending it was refused here.
          * @enum {string}
          */
@@ -6573,6 +6828,16 @@ export interface operations {
              *     URL and the provider's own words, and says to set a working
              *     API key on that driver. Neither case cascades; that rule is
              *     older than both and unchanged.
+             *
+             *     **Since 2026-10-12 a 502 also answers a request the gateway
+             *     could not admit because a driver's listing could not be read
+             *     for a cause that waiting cannot clear:** the driver refused
+             *     the gateway's credential, answered 404 or a body that is not
+             *     a listing, or says it is degraded (in its own words). The
+             *     message names the driver and what to look at, with no
+             *     `Retry-After`. Causes that can clear (a timeout, a refused
+             *     connection, a 5xx, a listing that lacks the model for now)
+             *     are the 503 below.
              */
             502: {
                 headers: {
@@ -6588,7 +6853,11 @@ export interface operations {
              *     not reach `ready` within `swapWaitSeconds`, or the gateway
              *     is in safe mode. Retryable, so it is deliberately not folded
              *     into 502. The message names the runtime when one is being
-             *     woken.
+             *     woken. Since 2026-10-12 it also answers a request whose
+             *     backends' listings could not be read for a cause that can
+             *     clear (a timeout, a refused connection, a 5xx, a listing
+             *     that lacks the model for now): it names each driver and what
+             *     was observed, with `Retry-After`.
              */
             503: {
                 headers: {
@@ -7903,6 +8172,109 @@ export interface operations {
              * @description No backend answered within `requestTimeoutSeconds`. Not
              *     retried on a replica: a replica would take the same time on
              *     the same input.
+             */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    createRerank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RerankRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The passages, scored, best first: `RerankResponse` for a
+             *     `documents` request, `TeiRerankResponse` for a `texts` one.
+             *     `x-eugene-plexus-ignored-settings` names what was accepted and
+             *     not honoured, and is absent otherwise.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RerankResponse"] | components["schemas"]["TeiRerankResponse"];
+                };
+            };
+            /**
+             * @description Malformed request (neither or both of `documents` and `texts`,
+             *     more than 1,000 passages, a passage that is neither text nor an
+             *     object with a string `text`, which the message names by
+             *     position), a model that does not serve `rerank`, `model` left
+             *     out where two or more sorters are served, or a passage longer
+             *     than the model takes.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description No reachable driver serves the requested model, or `model` was
+             *     left out and no result sorter is served to this key.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The client disconnected; the backend call was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description Every eligible backend for this model failed, without reaching
+             *     a different model; `upstream_auth_error` as on
+             *     `POST /v1/chat/completions`.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description Something serves this model and none of it can take a request
+             *     right now, usually an engine still loading. Retryable.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description No backend answered within `requestTimeoutSeconds`. Not retried
+             *     on a replica.
              */
             504: {
                 headers: {
