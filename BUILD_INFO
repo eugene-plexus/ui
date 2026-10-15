@@ -1,4 +1,3 @@
-eugene-plexus-ui static export
-built-from: eugene-plexus/ui@09ac39a67dbcfe893a833763021d5d53b59aa37c
-built-on:   2026-10-15
-installer-ref: main (Edge)
+UI source: 09ac39a67dbcfe893a833763021d5d53b59aa37c
+Built: 2026-10-15
+installer-ref: v0.2.2
