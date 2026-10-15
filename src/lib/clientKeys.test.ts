@@ -438,6 +438,11 @@ describe("recipes", () => {
       expect(provider.apiKey).toBe(STRINGS.key);
       expect(provider.api).toBe("openai-completions");
       expect(provider.models[0].id).toBe(STRINGS.model);
+      expect(provider.models[0].compat).toEqual({
+        supportsUsageInStreaming: true,
+        supportsReasoningEffort: true,
+      });
+      expect(openClaw().note).toContain("reasoning: true");
     });
 
     it("tells OpenClaw the window, and keeps a reply to a part of it", () => {

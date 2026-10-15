@@ -42,8 +42,10 @@
    this replaces. Ice blue is the ONLY action color (primary buttons,
    focus rings, active rails): trust, never urgency. Apricot carries the
    `right` roles and the LCARS segment strip closing the install tree,
-   and nothing else. Nothing glows; the status palette is desaturated so
-   a failure reads as information rather than an alarm. */
+   and nothing else. Nothing glows; restrained status fills keep a failure
+   readable as information. Accents gained a little saturation on 2026-10-14;
+   keep their copies in website/src/styles/global.css and
+   workbench/web/src/styles.css aligned. */
 :root,
 [data-theme="plexus"] {
   --background: #141619;
@@ -55,8 +57,8 @@
      own kind of illegibility (legibility handoff, 2026-09-21). */
   --border: #3a4048;
   --border-hover: #5c646e;
-  --accent-left: #7fb0cf;
-  --accent-right: #cf9a72;
+  --accent-left: #70b8e0;
+  --accent-right: #e2a16d;
   --on-accent-left: #0c1216;
   --on-accent-right: #1a1009;
   /* Controls have their own edge and surface; panel borders stay quiet. */
@@ -64,11 +66,11 @@
   --action-hover: #344450;
   --action-active: #202c35;
   --action-border: #758695;
-  --action-primary-hover: #9cc5df;
-  --action-primary-active: #6e9cbb;
+  --action-primary-hover: #91cced;
+  --action-primary-active: #5da3cc;
   --action-danger-bg: #33292b;
   --action-danger-hover: #483235;
-  --action-danger-border: #aa766f;
+  --action-danger-border: #bd7d72;
   /* 8.45:1 on --panel (was #8f959b at 5.5:1). Muted means quieter than
      the foreground, never a strain to read — most of this UI's copy is
      set in it. */
@@ -80,14 +82,14 @@
      clears the ice-blue `--accent-left` without competing with it, and a
      cool grey that reads on #141619 where the site's #8a8a93 would sit
      too close to `--muted`. */
-  --accent-engine: #7fb094;
+  --accent-engine: #72be95;
   /* 8.92:1 on --panel (was #9aa0a6) — the same too-quiet grey as the
      old --muted, for the same reason. */
   --accent-hardware: #b8bec4;
 
   /* Follows --border-hover. */
   --scrollbar-thumb: rgb(92 100 110 / 0.55);
-  --scrollbar-thumb-hover: rgb(127 176 207 / 0.6);
+  --scrollbar-thumb-hover: rgb(112 184 224 / 0.6);
 
   /* Solid bubbles. The letterform sits at 0.04 behind the primary
      display — present, never legible, so no blur is needed to keep text
@@ -241,15 +243,15 @@
 [data-theme="plexus"] {
   /* Sage / amber / brick rather than alert-red and warning-yellow: a
      failure here is information about a machine, not an emergency. */
-  --status-success-fg: #93c6a6;
-  --status-success-bg: rgb(58 117 81 / 0.18);
-  --status-success-border: #3a7551;
-  --status-warn-fg: #dcb079;
-  --status-warn-bg: rgb(131 96 41 / 0.18);
-  --status-warn-border: #836029;
-  --status-error-fg: #dd9a93;
-  --status-error-bg: rgb(143 70 61 / 0.2);
-  --status-error-border: #8f463d;
+  --status-success-fg: #86cda4;
+  --status-success-bg: rgb(56 134 90 / 0.18);
+  --status-success-border: #38865a;
+  --status-warn-fg: #e8b565;
+  --status-warn-bg: rgb(151 106 37 / 0.18);
+  --status-warn-border: #976a25;
+  --status-error-fg: #eb988e;
+  --status-error-bg: rgb(164 79 67 / 0.2);
+  --status-error-border: #a44f43;
 }
 [data-theme="modern"] {
   /* Banner palette per Claude Design's Modern preset. Design

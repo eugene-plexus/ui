@@ -67,7 +67,7 @@ export type PlaygroundMessage = ChatCompletionMessage & {
   /** The model's thinking before this answer, for display; never sent back. It
    * rides the wire as `reasoning_content`, and a playground that replayed it
    * would send a model its own earlier thinking where no harness does. */
-  reasoning?: string;
+  reasoning?: string | null;
   /** How long it thought, from its first thought to its first word. */
   thoughtMs?: number;
   /** A spoken reply's audio, for the player; never sent back. The

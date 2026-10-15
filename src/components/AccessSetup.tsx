@@ -56,6 +56,7 @@ interface Fields {
   publicConsole: boolean;
   consoleDirect: boolean;
   inference: boolean;
+  publicInference: boolean;
   nodes: boolean;
   publicSites: boolean;
   proxies: string;
@@ -81,6 +82,7 @@ const EMPTY: Fields = {
   // and node names are for setups that need them, each a DNS entry, a proxy
   // host and a certificate more.
   inference: false,
+  publicInference: false,
   nodes: false,
   publicSites: false,
   proxies: "",
@@ -108,6 +110,7 @@ export function fieldsFrom(configuration: Record<string, unknown> | undefined): 
   const proxy = configuration?.proxy as { addresses?: string[]; transport?: string } | undefined;
   const acme = configuration?.acme as { email?: string } | undefined;
   const workbench = configuration?.workbench as Service | undefined;
+  const inference = configuration?.inference as Service | undefined;
   const mode: Mode = proxy
     ? "proxy"
     : acme
@@ -125,6 +128,7 @@ export function fieldsFrom(configuration: Record<string, unknown> | undefined): 
     publicConsole: configuration?.public_console === true,
     consoleDirect: configuration?.console_direct === true,
     inference: Boolean(configuration?.inference),
+    publicInference: PUBLIC.every((n) => inference?.networks?.includes(n)),
     nodes: Boolean(configuration?.nodes),
     // The entry point's key was `public_nodes` before job sites became their
     // own enrollment; an existing file may still carry it, so either shows.
@@ -219,6 +223,7 @@ export function AccessSetup() {
     publicConsole,
     consoleDirect,
     inference,
+    publicInference,
     nodes,
     publicSites,
     proxies,
@@ -308,7 +313,9 @@ export function AccessSetup() {
       ...(consoleDirect ? { console_direct: true } : {}),
       ...(publicConsole && !consoleDirect ? { public_console: true } : {}),
       workbench: service("workbench", publicWorkbench ? PUBLIC : privateAccess),
-      ...(inference ? { inference: service("inference", privateAccess) } : {}),
+      ...(inference
+        ? { inference: service("inference", publicInference ? PUBLIC : privateAccess) }
+        : {}),
       ...(nodes ? { nodes: service("nodes", privateAccess) } : {}),
       ...(nodes && publicSites ? { public_sites: true } : {}),
       ...(mode === "local" ? { internal_ca: true } : {}),
@@ -578,7 +585,7 @@ export function AccessSetup() {
             Allowed private networks
             <input
               className={inputClass}
-              required={!consoleDirect || inference || nodes}
+              required={!consoleDirect || (inference && !publicInference) || nodes}
               placeholder="192.168.16.0/24, 10.20.0.0/24"
               value={privateNetworks}
               onChange={(e) => set("privateNetworks", e.target.value)}
@@ -676,10 +683,28 @@ export function AccessSetup() {
             Also an inference name (inference.{domain || "your-domain"})
             <span className={hintClass}>
               For apps on other machines, such as Claude Code or Open WebUI. Apps on this machine
-              need nothing.
+              need nothing. By default, only the private networks above can connect.
             </span>
           </span>
         </label>
+        {inference && (
+          <label className="flex items-start gap-2">
+            <input
+              className="mt-1.5"
+              type="checkbox"
+              checked={publicInference}
+              onChange={(e) => set("publicInference", e.target.checked)}
+            />
+            <span>
+              Allow inference from any network, with an API key
+              <span className={hintClass}>
+                For apps connecting remotely or through Cloudflare. Requests still need a valid
+                Eugene API key and follow its model permissions and limits. Console and node access
+                keep their own settings.
+              </span>
+            </span>
+          </label>
+        )}
         <label className="flex items-start gap-2">
           <input
             className="mt-1.5"
