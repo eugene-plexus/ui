@@ -341,11 +341,17 @@ export const SCREENS: readonly Screen[] = [
  * `/login` and `/setup` have no session, so every link in the bar would
  * 401 — and the wizard is a linear transaction that a stray click out of
  * would abandon.
+ * `/administration` has its own named session and capability-limited tools;
+ * the owner's infrastructure navigation does not belong on that page.
  *
  * A route that is in neither this set nor `SCREENS` fails a test. That is
  * the point: the design's §0 defect is a screen nobody can reach.
  */
-export const ROUTES_WITHOUT_NAV: readonly string[] = ["/login", "/setup"] as const;
+export const ROUTES_WITHOUT_NAV: readonly string[] = [
+  "/login",
+  "/setup",
+  "/administration",
+] as const;
 
 /**
  * Routes that render inside the shell as pages **of one object** without
