@@ -56,6 +56,8 @@ interface Fields {
   publicConsole: boolean;
   consoleDirect: boolean;
   inference: boolean;
+  inferenceAddress: "shared" | "separate";
+  keepInferenceAlias: boolean;
   publicInference: boolean;
   nodes: boolean;
   publicSites: boolean;
@@ -74,14 +76,12 @@ const EMPTY: Fields = {
   privateNetworks: "",
   publicWorkbench: false,
   publicConsole: false,
-  // The console on its own port by default (Troy, 2026-10-05): Workbench through
-  // the proxy and the console at home is the safest setup, and it needs no
-  // local DNS entry. The console's name then serves Workbench's sign-in only.
-  consoleDirect: true,
-  // Two names by default (2026-10-05): the console and Workbench. Inference
-  // and node names are for setups that need them, each a DNS entry, a proxy
-  // host and a certificate more.
+  // New setups use two HTTPS names. Existing direct-console setups retain
+  // their saved choice in fieldsFrom; nothing migrates just by opening this form.
+  consoleDirect: false,
   inference: false,
+  inferenceAddress: "shared",
+  keepInferenceAlias: true,
   publicInference: false,
   nodes: false,
   publicSites: false,
@@ -111,6 +111,7 @@ export function fieldsFrom(configuration: Record<string, unknown> | undefined): 
   const acme = configuration?.acme as { email?: string } | undefined;
   const workbench = configuration?.workbench as Service | undefined;
   const inference = configuration?.inference as Service | undefined;
+  const sharedInference = configuration?.inference_on_console as Service | undefined;
   const mode: Mode = proxy
     ? "proxy"
     : acme
@@ -124,11 +125,13 @@ export function fieldsFrom(configuration: Record<string, unknown> | undefined): 
     domain: rest.join("."),
     port: url.port || "443",
     privateNetworks: (console_.networks ?? []).join(", "),
-    publicWorkbench: PUBLIC.every((n) => workbench?.networks?.includes(n)),
+    publicWorkbench: PUBLIC.some((n) => workbench?.networks?.includes(n)),
     publicConsole: configuration?.public_console === true,
     consoleDirect: configuration?.console_direct === true,
-    inference: Boolean(configuration?.inference),
-    publicInference: PUBLIC.every((n) => inference?.networks?.includes(n)),
+    inference: Boolean(sharedInference || inference),
+    inferenceAddress: sharedInference || !inference ? "shared" : "separate",
+    keepInferenceAlias: Boolean(inference),
+    publicInference: PUBLIC.some((n) => (sharedInference ?? inference)?.networks?.includes(n)),
     nodes: Boolean(configuration?.nodes),
     // The entry point's key was `public_nodes` before job sites became their
     // own enrollment; an existing file may still carry it, so either shows.
@@ -223,6 +226,8 @@ export function AccessSetup() {
     publicConsole,
     consoleDirect,
     inference,
+    inferenceAddress,
+    keepInferenceAlias,
     publicInference,
     nodes,
     publicSites,
@@ -302,20 +307,51 @@ export function AccessSetup() {
     setPreview(null);
     const base = domain.trim().toLowerCase();
     const suffix = Number(port) === 443 ? "" : `:${port}`;
-    const service = (name: string, access: string[]) => ({
-      origin: `https://${name}.${base}${suffix}`,
-      networks: access,
-    });
+    const saved = status?.configuration;
+    const previous = fieldsFrom(saved);
+    const sameDomain = previous?.domain === base;
+    const samePrivateNetworks = previous?.privateNetworks === privateNetworks;
+    const service = (name: string, access: string[]) => {
+      const old = saved?.[name === "eugene" ? "console" : name] as Service | undefined;
+      const origin = sameDomain && old?.origin ? new URL(old.origin) : null;
+      if (origin) origin.port = Number(port) === 443 ? "" : port;
+      const samePolicy =
+        name === "workbench"
+          ? previous?.publicWorkbench === publicWorkbench
+          : name === "eugene"
+            ? previous?.publicConsole === publicConsole && previous?.consoleDirect === consoleDirect
+            : name === "nodes";
+      return {
+        origin: origin?.origin ?? `https://${name}.${base}${suffix}`,
+        networks:
+          sameDomain && samePrivateNetworks && samePolicy && old?.networks ? old.networks : access,
+      };
+    };
     const privateAccess = networks(privateNetworks);
+    const oldInference = (saved?.inference_on_console ?? saved?.inference) as Service | undefined;
+    const inferenceAccess =
+      sameDomain &&
+      samePrivateNetworks &&
+      previous?.publicInference === publicInference &&
+      oldInference?.networks
+        ? oldInference.networks
+        : publicInference
+          ? PUBLIC
+          : privateAccess;
     const configuration = {
       listen_port: mode === "proxy" && !proxyTls ? 8088 : 8443,
       console: service("eugene", publicConsole && !consoleDirect ? PUBLIC : privateAccess),
       ...(consoleDirect ? { console_direct: true } : {}),
       ...(publicConsole && !consoleDirect ? { public_console: true } : {}),
       workbench: service("workbench", publicWorkbench ? PUBLIC : privateAccess),
-      ...(inference
-        ? { inference: service("inference", publicInference ? PUBLIC : privateAccess) }
+      ...(inference && inferenceAddress === "shared"
+        ? { inference_on_console: { networks: inferenceAccess } }
         : {}),
+      ...(inference && inferenceAddress === "separate"
+        ? { inference: service("inference", inferenceAccess) }
+        : inference && keepInferenceAlias && saved?.inference
+          ? { inference: saved.inference }
+          : {}),
       ...(nodes ? { nodes: service("nodes", privateAccess) } : {}),
       ...(nodes && publicSites ? { public_sites: true } : {}),
       ...(mode === "local" ? { internal_ca: true } : {}),
@@ -434,8 +470,8 @@ export function AccessSetup() {
     <main className="mx-auto w-full max-w-3xl px-6 py-8">
       <h1 className="font-ui text-2xl font-semibold">Container access setup</h1>
       <p className="mt-2 text-[color:var(--muted)]">
-        Serve Workbench, and the console if you like, on one HTTPS port. Nothing changes until you
-        apply it.
+        Two addresses, one HTTPS port: Eugene for administration, sign-in and the model API;
+        Workbench for chats. Nothing changes until you apply it.
       </p>
       {status && <StatusCard status={status} />}
       {status?.active && (
@@ -557,10 +593,10 @@ export function AccessSetup() {
               }}
             />
             <span>
-              On its own port, as now (recommended)
+              On its own port, as now
               <span className={hintClass}>
-                Only Workbench goes through this setup. The console keeps its own address, with no
-                DNS entry. Workbench sign-in still uses eugene.{domain || "your-domain"}.
+                The console keeps its current address. Sign-in and the optional model API still use
+                eugene.{domain || "your-domain"} through this setup.
               </span>
             </span>
           </label>
@@ -573,7 +609,7 @@ export function AccessSetup() {
               onChange={() => set("consoleDirect", false)}
             />
             <span>
-              Through this setup too, at eugene.{domain || "your-domain"}
+              Through this setup too, at eugene.{domain || "your-domain"} (recommended)
               <span className={hintClass}>
                 The console moves to its HTTPS name and leaves its own port.
               </span>
@@ -680,13 +716,63 @@ export function AccessSetup() {
             onChange={(e) => set("inference", e.target.checked)}
           />
           <span>
-            Also an inference name (inference.{domain || "your-domain"})
+            Enable the model API for other apps
             <span className={hintClass}>
               For apps on other machines, such as Claude Code or Open WebUI. Apps on this machine
               need nothing. By default, only the private networks above can connect.
             </span>
           </span>
         </label>
+        {inference && (
+          <fieldset className="space-y-2 rounded-[var(--radius)] border border-[color:var(--border)] p-4">
+            <legend className="px-1">Model API address</legend>
+            <label className="flex items-start gap-2">
+              <input
+                type="radio"
+                name="inference-address"
+                checked={inferenceAddress === "shared"}
+                onChange={() => set("inferenceAddress", "shared")}
+              />
+              <span>
+                Use Eugene’s address (recommended)
+                <span className={hintClass}>
+                  https://eugene.{domain || "your-domain"}
+                  {Number(port) === 443 ? "" : `:${port}`}/inference/v1 — no extra proxy host.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2">
+              <input
+                type="radio"
+                name="inference-address"
+                checked={inferenceAddress === "separate"}
+                onChange={() => set("inferenceAddress", "separate")}
+              />
+              <span>
+                Use a separate inference hostname
+                <span className={hintClass}>
+                  Keep a dedicated address for existing clients or separate proxy rules.
+                </span>
+              </span>
+            </label>
+            {inferenceAddress === "shared" && Boolean(status?.configuration?.inference) && (
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={keepInferenceAlias}
+                  onChange={(e) => set("keepInferenceAlias", e.target.checked)}
+                />
+                <span>
+                  Keep the existing inference address working during migration
+                  <span className={hintClass}>
+                    Its existing network rules remain in effect. Remove it after updating your
+                    clients.
+                  </span>
+                </span>
+              </label>
+            )}
+          </fieldset>
+        )}
         {inference && (
           <label className="flex items-start gap-2">
             <input

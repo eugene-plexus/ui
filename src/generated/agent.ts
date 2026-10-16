@@ -5513,7 +5513,10 @@ export interface components {
             consoleUrl: string;
             /** Format: uri */
             workbenchUrl: string;
-            /** Format: uri */
+            /**
+             * Format: uri
+             * @description Model API root, before /v1. May include /inference on the console origin; otherwise the separate inference origin.
+             */
             inferenceUrl?: string;
             /** Format: uri */
             nodesUrl?: string;

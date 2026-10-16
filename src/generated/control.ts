@@ -2611,6 +2611,10 @@ export interface components {
             sealedSecret: string;
         };
         ExternalProviderList: {
+            /** @description Effective canonical sign-in address from an explicit setting or managed console origin. Absent until either is configured; never inferred from request headers. */
+            signInAddress?: string | null;
+            /** @description Sign-in address derived from the root's managed console origin. An explicit oidcIssuer overrides it. */
+            managedSignInAddress?: string | null;
             providers: components["schemas"]["ExternalProvider"][];
         };
         ExternalIdentity: {
@@ -4237,7 +4241,7 @@ export interface components {
         };
         OidcClientList: {
             clients: components["schemas"]["OidcClient"][];
-            /** @description `oidcIssuer` when the operator set one; otherwise absent, and an app uses the address it reaches Eugene at, with `/oidc`. */
+            /** @description Explicit oidcIssuer or the managed console origin with /oidc. Otherwise absent, and an app uses the address it reaches Eugene at with /oidc. */
             issuer?: string;
         };
         OidcClientCreateRequest: {

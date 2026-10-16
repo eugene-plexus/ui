@@ -40,6 +40,8 @@ export function ExternalSignIn() {
 function Providers() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [issuer, setIssuer] = useState("");
+  const [managedIssuer, setManagedIssuer] = useState("");
+  const [explicitIssuer, setExplicitIssuer] = useState("");
   const [address, setAddress] = useState<string | null>(null);
   const [editing, setEditing] = useState<Provider | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,11 +49,13 @@ function Providers() {
   const load = useCallback(async () => {
     try {
       const [list, config] = await Promise.all([
-        api.get<{ providers: Provider[] }>("control", "/v1/auth/providers"),
+        api.get<components["schemas"]["ExternalProviderList"]>("control", "/v1/auth/providers"),
         api.get<{ oidcIssuer?: string | null }>("control", "/v1/config"),
       ]);
       setProviders(list.providers);
-      setIssuer(config.oidcIssuer || "");
+      setIssuer(list.signInAddress || config.oidcIssuer || "");
+      setManagedIssuer(list.managedSignInAddress || "");
+      setExplicitIssuer(config.oidcIssuer || "");
       setError(null);
     } catch (e) {
       setError(describeError(e));
@@ -61,47 +65,84 @@ function Providers() {
   return (
     <div className="mt-5 flex flex-col gap-5 text-sm">
       <div className="rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-4">
-        <h3 className="font-semibold">1. Choose Eugene’s sign-in address</h3>
+        <h3 className="font-semibold">1. Eugene’s sign-in address</h3>
         <p className="my-2 text-[color:var(--muted)]">
-          Use the stable HTTPS address people and apps use for Eugene, ending in /oidc. Changing an
-          existing address also requires updating apps that use it.
+          {managedIssuer && !explicitIssuer
+            ? "Set automatically from Container access setup. There is no extra port or proxy host to configure."
+            : "Use the Eugene console’s HTTPS hostname with /oidc. With Nginx Proxy Manager this normally uses port 443, without a port number in the address. Workbench has its own hostname."}
         </p>
-        <label>
-          Eugene sign-in address
-          <input
-            type="url"
-            className={input}
-            placeholder="https://eugene.example.com/oidc"
-            value={address ?? issuer}
-            onChange={(e) => setAddress(e.target.value)}
-          />
-        </label>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            className={button}
-            disabled={busy || !(address ?? issuer).trim()}
-            onClick={async () => {
-              setBusy(true);
-              setError(null);
-              try {
-                await api.patch("control", "/v1/config", {
-                  oidcIssuer: (address ?? issuer).trim().replace(/\/$/, ""),
-                });
-                await load();
-                setAddress(null);
-              } catch (e) {
-                setError(describeError(e));
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Save sign-in address
-          </button>
-          <button className={button} onClick={() => setAddress(window.location.origin + "/oidc")}>
-            Use this address
-          </button>
-        </div>
+        {managedIssuer && <code className="block break-all">{issuer}</code>}
+        {managedIssuer && explicitIssuer && issuer !== managedIssuer && (
+          <p className="mt-2 text-[color:var(--muted)]">
+            Your saved address is kept. Access setup suggests {managedIssuer}.
+          </p>
+        )}
+        <details open={managedIssuer ? undefined : true} className="mt-3">
+          <summary className="cursor-pointer">
+            {managedIssuer ? "Advanced: override the sign-in address" : "Set the sign-in address"}
+          </summary>
+          <p className="my-2 text-[color:var(--muted)]">
+            Changing an existing address requires updating apps and provider callback registrations
+            that use it.
+          </p>
+          <label>
+            Eugene sign-in address
+            <input
+              type="url"
+              className={input}
+              placeholder="https://eugene.example.com/oidc"
+              value={address ?? issuer}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+          </label>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              className={button}
+              disabled={busy || !(address ?? issuer).trim()}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  await api.patch("control", "/v1/config", {
+                    oidcIssuer: (address ?? issuer).trim().replace(/\/$/, ""),
+                  });
+                  await load();
+                  setAddress(null);
+                } catch (e) {
+                  setError(describeError(e));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Save sign-in address
+            </button>
+            <button className={button} onClick={() => setAddress(window.location.origin + "/oidc")}>
+              Use this address
+            </button>
+            {managedIssuer && explicitIssuer && (
+              <button
+                className={button}
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    await api.patch("control", "/v1/config", { oidcIssuer: null });
+                    await load();
+                    setAddress(null);
+                  } catch (e) {
+                    setError(describeError(e));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Use access setup address
+              </button>
+            )}
+          </div>
+        </details>
         {issuer && (
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <span>Callback URL:</span>

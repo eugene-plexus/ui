@@ -24,6 +24,55 @@ beforeEach(() => {
   vi.mocked(api.get).mockResolvedValue(DIRECT);
 });
 
+it("uses two proxy names for new setups and puts inference under Eugene", async () => {
+  vi.mocked(api.post).mockResolvedValue(PREVIEW);
+  render(<AccessSetup />);
+  const user = await fillCommon();
+  await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
+  await user.click(screen.getByLabelText(/Enable the model API/));
+  expect(screen.getByLabelText(/Use Eugene’s address/)).toBeChecked();
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  await screen.findByRole("region", { name: "Prepared setup" });
+  const { configuration } = vi.mocked(api.post).mock.calls[0]![2] as {
+    configuration: Record<string, unknown>;
+  };
+  expect(configuration.inference_on_console).toEqual({ networks: ["192.168.16.0/24"] });
+  expect(configuration).not.toHaveProperty("inference");
+  expect(configuration).not.toHaveProperty("console_direct");
+});
+
+it("retains a custom legacy inference address and its rules until migration is explicit", async () => {
+  const legacy = { origin: "https://models.example.org", networks: ["10.20.0.0/16"] };
+  const configuration = {
+    listen_port: 8088,
+    proxy: { addresses: ["172.30.0.2"], transport: "http" },
+    console: { origin: "https://eugene.example.org", networks: ["192.168.16.0/24"] },
+    workbench: { origin: "https://chat.example.org", networks: ["192.168.16.0/24"] },
+    inference: legacy,
+  };
+  vi.mocked(api.get).mockResolvedValue({ ...DIRECT, active: true, configuration });
+  vi.mocked(api.post).mockResolvedValue(PREVIEW);
+  render(<AccessSetup />);
+  expect(await screen.findByLabelText(/Use a separate inference hostname/)).toBeChecked();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  await screen.findByRole("region", { name: "Prepared setup" });
+  expect(api.post).toHaveBeenLastCalledWith("agent", "/v1/entrypoint/preview", { configuration });
+  await user.click(screen.getByLabelText(/Use Eugene’s address/));
+  expect(screen.getByLabelText(/Keep the existing inference address/)).toBeChecked();
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  await screen.findByRole("region", { name: "Prepared setup" });
+  expect(api.post).toHaveBeenLastCalledWith("agent", "/v1/entrypoint/preview", {
+    configuration: { ...configuration, inference_on_console: { networks: legacy.networks } },
+  });
+  await user.click(screen.getByLabelText(/Keep the existing inference address/));
+  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+  await screen.findByRole("region", { name: "Prepared setup" });
+  expect(
+    (vi.mocked(api.post).mock.calls.at(-1)![2] as { configuration: object }).configuration,
+  ).not.toHaveProperty("inference");
+});
+
 async function fillCommon() {
   const user = userEvent.setup();
   await user.type(screen.getByLabelText(/Base domain/), "example.org");
@@ -61,7 +110,8 @@ it("adds the inference and node names only when asked", async () => {
   render(<AccessSetup />);
   const user = await fillCommon();
   await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
-  await user.click(screen.getByLabelText(/Also an inference name/));
+  await user.click(screen.getByLabelText(/Enable the model API/));
+  await user.click(screen.getByLabelText(/Use a separate inference hostname/));
   expect(screen.getByLabelText(/Allow inference from any network/)).not.toBeChecked();
   await user.click(screen.getByLabelText(/Also a name for other machines/));
   await user.click(screen.getByRole("button", { name: "Prepare setup" }));
@@ -83,7 +133,8 @@ it("opens inference independently and restores private access when switched off"
   const user = await fillCommon();
   await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
   expect(screen.queryByLabelText(/Allow inference from any network/)).not.toBeInTheDocument();
-  await user.click(screen.getByLabelText(/Also an inference name/));
+  await user.click(screen.getByLabelText(/Enable the model API/));
+  await user.click(screen.getByLabelText(/Use a separate inference hostname/));
   await user.click(screen.getByLabelText(/Also a name for other machines/));
   await user.click(screen.getByLabelText(/Allow inference from any network/));
   await user.click(screen.getByRole("button", { name: "Prepare setup" }));
@@ -107,27 +158,30 @@ it("opens inference independently and restores private access when switched off"
   expect(privateBody.configuration.inference).toMatchObject({ networks: ["192.168.16.0/24"] });
 });
 
-it("preserves public inference when reopening setup and needs no private networks for it", async () => {
-  const configuration = {
-    listen_port: 8088,
-    proxy: { addresses: ["172.18.0.4"], transport: "http" },
-    console_direct: true,
-    console: { origin: "https://eugene.example.org", networks: [] },
-    workbench: { origin: "https://workbench.example.org", networks: ["0.0.0.0/0", "::/0"] },
-    inference: { origin: "https://inference.example.org", networks: ["0.0.0.0/0", "::/0"] },
-  };
-  vi.mocked(api.get).mockResolvedValue({ ...DIRECT, active: true, configuration });
-  vi.mocked(api.post).mockResolvedValue(PREVIEW);
-  render(<AccessSetup />);
-  expect(await screen.findByLabelText(/Allow inference from any network/)).toBeChecked();
-  expect(screen.getByLabelText(/Allowed private networks/)).not.toBeRequired();
-  const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "Prepare setup" }));
-  await screen.findByRole("region", { name: "Prepared setup" });
-  expect(api.post).toHaveBeenCalledWith("agent", "/v1/entrypoint/preview", { configuration });
-  await user.click(screen.getByLabelText(/Allow inference from any network/));
-  expect(screen.getByLabelText(/Allowed private networks/)).toBeRequired();
-});
+it.each([["0.0.0.0/0", "::/0"], ["0.0.0.0/0"]])(
+  "preserves public inference networks %j when reopening setup",
+  async (...allowed) => {
+    const configuration = {
+      listen_port: 8088,
+      proxy: { addresses: ["172.18.0.4"], transport: "http" },
+      console_direct: true,
+      console: { origin: "https://eugene.example.org", networks: [] },
+      workbench: { origin: "https://workbench.example.org", networks: ["0.0.0.0/0", "::/0"] },
+      inference: { origin: "https://inference.example.org", networks: allowed },
+    };
+    vi.mocked(api.get).mockResolvedValue({ ...DIRECT, active: true, configuration });
+    vi.mocked(api.post).mockResolvedValue(PREVIEW);
+    render(<AccessSetup />);
+    expect(await screen.findByLabelText(/Allow inference from any network/)).toBeChecked();
+    expect(screen.getByLabelText(/Allowed private networks/)).not.toBeRequired();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Prepare setup" }));
+    await screen.findByRole("region", { name: "Prepared setup" });
+    expect(api.post).toHaveBeenCalledWith("agent", "/v1/entrypoint/preview", { configuration });
+    await user.click(screen.getByLabelText(/Allow inference from any network/));
+    expect(screen.getByLabelText(/Allowed private networks/)).toBeRequired();
+  },
+);
 
 it("writes public_sites, worded as job sites connecting from anywhere", async () => {
   vi.mocked(api.post).mockResolvedValue(PREVIEW);
@@ -322,6 +376,7 @@ it("opens the console to any network only after its risks are acknowledged", asy
   await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
   expect(screen.queryByRole("group", { name: /Risks of a console/ })).not.toBeInTheDocument();
   // Only a console served through this setup can be opened to any network.
+  await user.click(screen.getByRole("radio", { name: /On its own port, as now/ }));
   expect(
     screen.queryByRole("checkbox", { name: /Allow the console from any network/ }),
   ).not.toBeInTheDocument();
@@ -359,11 +414,12 @@ it("reads back a console open to any network", () => {
   expect(read).toMatchObject({ publicConsole: true, mode: "proxy" });
 });
 
-it("keeps the console on its own port by default, with its name for sign-in only", async () => {
+it("can retain the console on its own port with its name for sign-in and inference", async () => {
   vi.mocked(api.post).mockResolvedValue(PREVIEW);
   render(<AccessSetup />);
   const user = userEvent.setup();
-  expect(screen.getByRole("radio", { name: /On its own port, as now/ })).toBeChecked();
+  expect(screen.getByRole("radio", { name: /Through this setup too/ })).toBeChecked();
+  await user.click(screen.getByRole("radio", { name: /On its own port, as now/ }));
   await user.type(screen.getByLabelText(/Base domain/), "example.org");
   await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
   // No networks needed: nothing it serves is for the console's own network.
@@ -381,7 +437,8 @@ it("keeps the console on its own port by default, with its name for sign-in only
     "Console: on its own port, as now",
   );
   // The node and inference names still need your networks.
-  await user.click(screen.getByLabelText(/Also an inference name/));
+  await user.click(screen.getByLabelText(/Enable the model API/));
+  await user.click(screen.getByLabelText(/Use a separate inference hostname/));
   expect(screen.getByLabelText(/Allowed private networks/)).toBeRequired();
 });
 
@@ -401,6 +458,7 @@ it("comes back by itself after applying a setup that keeps the console here", as
     );
     render(<AccessSetup />);
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByRole("radio", { name: /On its own port, as now/ }));
     await user.type(screen.getByLabelText(/Base domain/), "example.org");
     await user.type(screen.getByLabelText(/Trusted proxy IP addresses/), "172.30.0.2");
     await user.click(screen.getByRole("button", { name: "Prepare setup" }));

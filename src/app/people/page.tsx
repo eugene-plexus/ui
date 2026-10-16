@@ -880,11 +880,11 @@ function AppsSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () => P
         </div>
         <p className="text-sm text-[color:var(--muted)]">
           {address.configured
-            ? "Set on the control root's Settings. "
+            ? "Eugene’s configured sign-in address. "
             : "This is the address this page was opened at. "}
           {address.loopback &&
             "Only this computer can open it, so an app on another machine needs another address. "}
-          You can set one address for every app under{" "}
+          Container access setup chooses it automatically. An explicit override is available under{" "}
           <Link href={ROOT_SETTINGS} className="underline">
             the control root&rsquo;s Settings
           </Link>
