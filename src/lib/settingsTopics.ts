@@ -353,7 +353,7 @@ export interface SettingsCard {
  * search. A card with no matching field is not returned at all, which
  * is what makes the page shrink to the answer as a person types.
  *
- * `moreKeys` says which keys the editor folds under *Show more* for an
+ * `moreKeys` says which keys the editor folds under *Customize* for an
  * owner, so a match behind the fold can be opened for the person who
  * searched for it.
  */
@@ -531,9 +531,9 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
   },
   {
     id: "people-permissions",
-    label: "Each person's job-site permissions",
+    label: "People and access",
     description:
-      "Whether one person may add machines or use job sites as themselves, beyond the defaults here: on the People page.",
+      "Share Eugene: manage people, permission groups, app access and job-site permissions.",
     href: "/people",
     keywords: [
       "job sites",
@@ -541,6 +541,9 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
       "add job sites",
       "use job sites",
       "people",
+      "sharing",
+      "groups",
+      "accounts",
       "workspaces",
     ],
     topic: "access",

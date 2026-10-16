@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { CopyButton } from "@/components/CopyButton";
+import { DownloadProgress } from "@/components/DownloadProgress";
 import { formatBytes } from "@/components/FitBadge";
 import { RunButton } from "@/components/RunButton";
 import { ApiError, api, describeError } from "@/lib/api";
+import { downloadTarget, modelLibraryHref } from "@/lib/downloadHandoff";
 import {
   betterAfterPreparing,
   eligibilityEngines,
@@ -17,7 +19,7 @@ import {
 import { engineName } from "@/lib/issues";
 import { fitQuestion, type TargetNode } from "@/lib/nodeBudget";
 import { formatBytesShort, formatDuration } from "@/lib/tasks";
-import type { Download, DownloadList, DownloadState, LibraryModel } from "@/lib/types";
+import type { Download, DownloadList, DownloadState, LibraryModel, Scan } from "@/lib/types";
 import { postEligibility, useNodeEngines } from "@/lib/useEligibility";
 
 /**
@@ -47,6 +49,7 @@ import { postEligibility, useNodeEngines } from "@/lib/useEligibility";
  */
 
 const POLL_MS = 800;
+const NO_NODES: readonly TargetNode[] = [];
 
 const ACTIVE: DownloadState[] = ["queued", "resolving", "downloading", "verifying"];
 
@@ -66,12 +69,14 @@ export function DownloadsPanel({
   onChanged,
   emptyHint,
   node = null,
+  nodes = NO_NODES,
 }: {
   downloads: Download[];
   onChanged: () => void;
   emptyHint?: React.ReactNode;
   /** Where Run goes for a finished download. Absent: no Run is offered. */
   node?: TargetNode | null;
+  nodes?: readonly TargetNode[];
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +127,8 @@ export function DownloadsPanel({
           key={download.id}
           download={download}
           node={node}
+          nodes={nodes}
+          onChanged={onChanged}
           busy={busy === download.id}
           confirming={confirmCancel === download.id}
           onPause={() => void act(download.id, "pause")}
@@ -138,6 +145,8 @@ export function DownloadsPanel({
 function DownloadRow({
   download,
   node,
+  nodes,
+  onChanged,
   busy,
   confirming,
   onPause,
@@ -148,6 +157,8 @@ function DownloadRow({
 }: {
   download: Download;
   node: TargetNode | null;
+  nodes: readonly TargetNode[];
+  onChanged: () => void;
   busy: boolean;
   confirming: boolean;
   onPause: () => void;
@@ -337,24 +348,7 @@ function DownloadRow({
       )}
 
       {download.state === "done" && (
-        <div className="flex flex-wrap items-start gap-3 text-[0.6875rem]">
-          {download.modelId ? (
-            <>
-              {node && <FinishedRun modelId={download.modelId} node={node} />}
-              <Link
-                href={`/library?model=${download.modelId}`}
-                className="self-center underline"
-                data-testid="download-open-library"
-              >
-                Open in the Library
-              </Link>
-            </>
-          ) : (
-            <span className="text-[color:var(--muted)]">
-              on disk — it will appear in the library on the next scan
-            </span>
-          )}
-        </div>
+        <DownloadNextStep download={download} node={node} nodes={nodes} onChanged={onChanged} />
       )}
     </div>
   );
@@ -365,13 +359,17 @@ function DownloadRow({
  * the download record carries; a read that fails leaves the link to the
  * Library, which is where the same button lives.
  */
-function FinishedRun({ modelId, node }: { modelId: string; node: TargetNode }) {
+export function FinishedRun({ modelId, node }: { modelId: string; node: TargetNode }) {
   const [model, setModel] = useState<LibraryModel | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const { engines, error: enginesError } = useNodeEngines(node.target);
   const [verdicts, setVerdicts] = useState<EngineVerdict[] | null>(null);
   const [asked, setAsked] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    setModel(null);
+    setError(null);
     void (async () => {
       try {
         const entry = await api.get<LibraryModel>(
@@ -379,14 +377,14 @@ function FinishedRun({ modelId, node }: { modelId: string; node: TargetNode }) {
           `/v1/models/${encodeURIComponent(modelId)}`,
         );
         if (!cancelled) setModel(entry);
-      } catch {
-        // The link beside this button still leads to the model.
+      } catch (err) {
+        if (!cancelled) setError(describeError(err));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [modelId]);
+  }, [modelId, attempt]);
 
   // The Library's own question, as its page asks it (LS9): which engine
   // suits this machine, and does preparing first beat running as it is.
@@ -419,12 +417,27 @@ function FinishedRun({ modelId, node }: { modelId: string; node: TargetNode }) {
 
   // Run waits for the answer, so it never turns into a link under the
   // pointer; an engine list or judge that fails leaves Run as it was.
-  if (!model || (engines !== null && !asked) || (engines === null && !enginesError)) return null;
+  if (error)
+    return (
+      <div role="alert" className="text-status-error text-sm">
+        Could not load this model: {error}{" "}
+        <button type="button" className={smallButton} onClick={() => setAttempt((a) => a + 1)}>
+          Try again
+        </button>
+      </div>
+    );
+  if (!model || (engines !== null && !asked) || (engines === null && !enginesError)) {
+    return (
+      <p role="status" className="text-sm text-[color:var(--muted)]">
+        Checking how to run on {node.label}…
+      </p>
+    );
+  }
   const route = betterAfterPreparing(verdicts);
   if (route) {
     return (
       <Link
-        href={`/library?model=${encodeURIComponent(modelId)}`}
+        href={modelLibraryHref(modelId, node)}
         className="min-w-0 flex-1 self-center underline"
         data-testid="download-run-from-page"
       >
@@ -433,7 +446,122 @@ function FinishedRun({ modelId, node }: { modelId: string; node: TargetNode }) {
       </Link>
     );
   }
-  return <RunButton model={model} node={node} size="small" className="min-w-0 flex-1" />;
+  return (
+    <RunButton
+      model={model}
+      node={node}
+      label={node.local ? "Run" : `Run on ${node.label}`}
+      disabledReason={!node.reachable ? (node.lastError ?? "This machine is unavailable.") : null}
+      className="min-w-0 flex-1"
+    />
+  );
+}
+
+/** Visible both beside the selected model and in Downloads. */
+export function DownloadNextStep({
+  download,
+  node,
+  nodes,
+  onChanged,
+}: {
+  download: Download;
+  node: TargetNode | null;
+  nodes: readonly TargetNode[];
+  onChanged: () => void;
+}) {
+  const [destination, setDestination] = useState<TargetNode | null>(null);
+  const [scan, setScan] = useState<Scan | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  useEffect(() => {
+    setDestination(downloadTarget(download.id, nodes.length ? nodes : node ? [node] : [], node));
+  }, [download.id, node, nodes]);
+  useEffect(() => {
+    if (scan?.state !== "scanning") return;
+    let cancelled = false;
+    const id = setInterval(() => {
+      void api
+        .get<Scan>("library", "/v1/scan")
+        .then((next) => {
+          if (cancelled) return;
+          setScan(next);
+          if (next.state !== "scanning") onChanged();
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setError(describeError(err));
+            setScan(null);
+          }
+        });
+    }, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [scan?.state, onChanged]);
+  async function rescan() {
+    setStarting(true);
+    setError(null);
+    try {
+      const next = await api.post<Scan>("library", "/v1/scan", { full: false });
+      setScan(next);
+      onChanged();
+    } catch (err) {
+      setError(describeError(err));
+    } finally {
+      setStarting(false);
+    }
+  }
+  if (download.state !== "done") return <DownloadProgress download={download} />;
+  return (
+    <div className="space-y-2 text-sm" data-testid="download-next-step">
+      {download.modelId ? (
+        <>
+          <p className="text-status-success">
+            Downloaded{destination ? ` · Run on ${destination.label}` : ""}
+          </p>
+          {destination && <FinishedRun modelId={download.modelId} node={destination} />}
+          {destination && !destination.reachable && <p role="alert">{destination.lastError}</p>}
+          <Link
+            href={modelLibraryHref(download.modelId, destination)}
+            className="inline-block underline"
+            data-testid="download-open-library"
+          >
+            Open in the Library
+          </Link>
+        </>
+      ) : (
+        <>
+          <p>
+            {download.message && download.message !== "complete"
+              ? download.message
+              : "Downloaded. Adding to your Library; if this does not finish, scan again."}
+          </p>
+          <button
+            type="button"
+            className={smallButton}
+            disabled={starting || scan?.state === "scanning"}
+            onClick={() => void rescan()}
+          >
+            {starting || scan?.state === "scanning" ? "Scanning Library…" : "Scan Library again"}
+          </button>{" "}
+          <Link href="/library" className="underline">
+            Open the Library
+          </Link>
+          {scan?.state === "failed" && (
+            <p role="alert" className="text-status-error">
+              {scan.error ?? "The Library scan failed."}
+            </p>
+          )}
+        </>
+      )}
+      {error && (
+        <p role="alert" className="text-status-error">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }
 
 const smallButton =
@@ -469,12 +597,20 @@ export function useDownloads(): {
   }, [reload]);
 
   const active = downloads.filter((d) => ACTIVE.includes(d.state)).length;
+  // Older Libraries may mark a transfer done before their scan supplies modelId.
+  // Follow that handoff briefly as well; a permanent scan problem has a retry.
+  const [handoffPolls, setHandoffPolls] = useState(0);
+  const waiting = downloads.some((d) => d.state === "done" && !d.modelId);
 
   useEffect(() => {
-    if (active === 0) return;
-    const id = setInterval(() => void reload(), POLL_MS);
+    if (active === 0 && (!waiting || handoffPolls >= 30)) return;
+    const id = setInterval(() => {
+      if (active === 0) setHandoffPolls((n) => n + 1);
+      else setHandoffPolls(0);
+      void reload();
+    }, POLL_MS);
     return () => clearInterval(id);
-  }, [active, reload]);
+  }, [active, waiting, handoffPolls, reload]);
 
   return { downloads, reload, active };
 }

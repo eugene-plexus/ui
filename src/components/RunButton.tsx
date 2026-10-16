@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { RunReadyActions } from "./RunReadyActions";
 
 import type { TargetNode } from "@/lib/nodeBudget";
 import {
@@ -77,7 +78,15 @@ export function RunButton({
 }
 
 /** One line about a run, under the button that started it. */
-export function RunStatus({ task, onRetry }: { task: RunTask; onRetry: () => void }) {
+export function RunStatus({
+  task,
+  onRetry,
+  retryDisabled = false,
+}: {
+  task: RunTask;
+  onRetry: () => void;
+  retryDisabled?: boolean;
+}) {
   const { detail, progress } = describeRunDetail(task);
   const tone =
     task.step === "failed"
@@ -114,13 +123,9 @@ export function RunStatus({ task, onRetry }: { task: RunTask; onRetry: () => voi
           />
         </span>
       )}
+      {task.step === "ready" && <RunReadyActions task={task} />}
       {isTerminal(task.step) && (
         <p className="mt-1.5 flex flex-wrap items-center gap-2">
-          {task.step === "ready" && !runsSearchModel(task.model) && (
-            <Link href="/" className="underline" data-testid="run-try-it">
-              Try it on Home
-            </Link>
-          )}
           {/* A search model is not chatted with: it is used by apps, and Backends is
               where it is seen. */}
           {(task.step !== "ready" || runsSearchModel(task.model)) && (
@@ -129,7 +134,13 @@ export function RunStatus({ task, onRetry }: { task: RunTask; onRetry: () => voi
             </Link>
           )}
           {task.step === "failed" && (
-            <button type="button" onClick={onRetry} className={small} data-testid="run-retry">
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={retryDisabled}
+              className={small}
+              data-testid="run-retry"
+            >
               Try again
             </button>
           )}

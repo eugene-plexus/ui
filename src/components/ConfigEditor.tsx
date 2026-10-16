@@ -5,10 +5,16 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { api, describeError } from "@/lib/api";
-import { configGroups, isFieldVisible } from "@/lib/configPresentation";
+import {
+  configGroups,
+  isFieldVisible,
+  isCustomized,
+  needsAttention,
+  settingSummary,
+} from "@/lib/configPresentation";
 import { invalidateConfigTrio, loadConfigTrio } from "@/lib/configTrio";
 import { parseFolders } from "@/lib/libraryReach";
-import { HIDDEN_KEYS } from "@/lib/settingsTopics";
+import { HIDDEN_KEYS, matchesQuery, fieldSearchTexts } from "@/lib/settingsTopics";
 import { formatBytesShort } from "@/lib/tasks";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import type { ProxyTarget } from "@/lib/config";
@@ -91,6 +97,7 @@ function componentEndpoints(target: ProxyTarget): ConfigEndpoints {
  */
 export interface SectionHandle {
   dirty: number;
+  attention?: boolean;
   save: () => Promise<void>;
   discard: () => void;
 }
@@ -100,6 +107,8 @@ export function ConfigEditor({
   label,
   endpoints,
   only,
+  matchedKeys,
+  initialQuery = "",
   compact = false,
   hint,
   expandMore = false,
@@ -113,11 +122,14 @@ export function ConfigEditor({
   endpoints?: ConfigEndpoints;
   /**
    * Render only these keys (a topic's share of the component), in the
-   * schema's order. Absent, every field. The *Show more* fold is decided
+   * schema's order. Absent, every field. The *Customize* fold is decided
    * on the whole schema either way, so a field folds on the topic page
    * exactly when it folds on the component's own.
    */
   only?: readonly string[];
+  /** Search filters the view, never the mounted editor or the saved draft. */
+  matchedKeys?: readonly string[];
+  initialQuery?: string;
   /**
    * A section of the Settings page: no page header, the owner's name as
    * a heading, Save and Discard shown only while there is something to
@@ -140,6 +152,22 @@ export function ConfigEditor({
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [showMore, setShowMore] = useState(false);
+  const [query, setQuery] = useState(initialQuery);
+  useEffect(() => setQuery(initialQuery), [initialQuery]);
+  const [anchorKey, setAnchorKey] = useState<string | null>(null);
+  useEffect(() => {
+    const readAnchor = () => {
+      try {
+        setAnchorKey(decodeURIComponent(window.location.hash.slice(1)) || null);
+      } catch {
+        setAnchorKey(null);
+      }
+    };
+    readAnchor();
+    window.addEventListener("hashchange", readAnchor);
+    return () => window.removeEventListener("hashchange", readAnchor);
+  }, []);
+  focusKey = focusKey ?? anchorKey;
   const moreId = useId();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -289,16 +317,24 @@ export function ConfigEditor({
     save: async () => {},
     discard: () => {},
   });
+  const attention = Boolean(
+    saveError ||
+    readBackError ||
+    loadError ||
+    saveStatus?.rejected.length ||
+    schema?.fields.some((f) => (!only || only.includes(f.key)) && needsAttention(f, draft[f.key])),
+  );
   useEffect(() => {
     if (!sectionId || !onSection) return;
     const id = sectionId;
     onSection(id, {
       dirty: dirtyKeys.size,
+      attention,
       save: () => latest.current.save(),
       discard: () => latest.current.discard(),
     });
     return () => onSection(id, null);
-  }, [sectionId, onSection, dirtyKeys.size]);
+  }, [sectionId, onSection, dirtyKeys.size, attention]);
 
   const labels = useMemo(() => {
     const out: Record<string, string> = {};
@@ -587,7 +623,27 @@ export function ConfigEditor({
     schema.fields.filter((f) => !HIDDEN_KEYS.has(f.key) && isFieldVisible(f, draft, schema.fields)),
   );
   const inScope = (f: ConfigFieldDef) => !only || only.includes(f.key);
-  const groups = { common: all.common.filter(inScope), more: all.more.filter(inScope) };
+  const relevant = (f: ConfigFieldDef) =>
+    (matchedKeys === undefined || matchedKeys.includes(f.key)) &&
+    matchesQuery(
+      query,
+      fieldSearchTexts(f, {
+        topic: "",
+        owner: label,
+        categoryLabel: schema.categories?.[f.category ?? ""],
+      }),
+    );
+  const urgent = (f: ConfigFieldDef) =>
+    Boolean(refusedMessages[f.key]) ||
+    needsAttention(fieldForRender(f, draft, serverDoc), draft[f.key]);
+  const shown = (f: ConfigFieldDef) =>
+    inScope(f) && (relevant(f) || dirtyKeys.has(f.key) || urgent(f) || f.key === focusKey);
+  const groups = {
+    common: [...all.common, ...all.more.filter(urgent)].filter(shown),
+    more: all.more.filter((f) => !urgent(f) && shown(f)),
+  };
+  const searching = Boolean(query.trim() || matchedKeys);
+  const detailsOpen = showMore || searching;
   const categories = schema.categories ?? {};
   const hiddenChanges = groups.more.filter((f) => dirtyKeys.has(f.key)).length;
   const dirtyInScope = [...dirtyKeys].filter((k) => !only || only.includes(k)).length;
@@ -688,19 +744,41 @@ export function ConfigEditor({
         <div className="border-t border-[color:var(--border)] pt-3">
           <button
             type="button"
-            aria-expanded={showMore}
+            aria-expanded={detailsOpen}
             aria-controls={moreId}
-            onClick={() => setShowMore(!showMore)}
+            onClick={() => setShowMore(!detailsOpen)}
+            disabled={searching}
             className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm"
           >
-            {showMore ? "Show less" : "Show more"} · {groups.more.length}{" "}
+            {detailsOpen ? "Hide customization" : "Customize"} · {groups.more.length}{" "}
             {groups.more.length === 1 ? "setting" : "settings"}
             {hiddenChanges > 0 && ` · ${hiddenChanges} unsaved`}
           </button>
           <p className="my-2 text-sm text-[color:var(--muted)]">
-            These settings usually work with their defaults.
+            Fine-tune these settings when you need more control.
           </p>
-          <div id={moreId} hidden={!showMore}>
+          {!detailsOpen && (
+            <ul className="mb-3 space-y-2 text-sm" aria-label="Current custom settings">
+              {groups.more
+                .filter((f) => isCustomized(f, draft[f.key]) || dirtyKeys.has(f.key) || f.status)
+                .map((f) => (
+                  <li key={f.key} className="break-words">
+                    <span className="font-medium">{f.label}</span>
+                    {" — "}
+                    {settingSummary(f, draft[f.key])}
+                    <span className="text-[color:var(--muted)]">
+                      {dirtyKeys.has(f.key)
+                        ? " · Unsaved"
+                        : isCustomized(f, draft[f.key])
+                          ? " · Customized"
+                          : ""}
+                    </span>
+                    {f.status && <p className="text-[color:var(--muted)]">{f.status.text}</p>}
+                  </li>
+                ))}
+            </ul>
+          )}
+          <div id={moreId} hidden={!detailsOpen}>
             {renderCategories(groups.more)}
           </div>
         </div>
@@ -768,7 +846,22 @@ export function ConfigEditor({
 
       {banners}
 
-      <div className="flex-1 overflow-y-auto p-4">{body}</div>
+      <div className="flex-1 overflow-y-auto p-4">
+        <label className="mb-4 block text-sm">
+          Find a setting
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search names, descriptions or config keys"
+            className="mt-1 w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2"
+          />
+        </label>
+        {groups.common.length + groups.more.length === 0 && query.trim() && (
+          <p role="status">No settings match “{query}”.</p>
+        )}
+        {body}
+      </div>
 
       {/* v0.2.x: RestartRequiredModal removed — save() auto-triggers
           performRestart() when the patch requires it, and the progress

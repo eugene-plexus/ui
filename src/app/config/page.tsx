@@ -84,8 +84,16 @@ function ConfigPageInner() {
   // once the page is in a browser.
   const [focusKey, setFocusKey] = useState<string | null>(null);
   useEffect(() => {
-    const hash = window.location.hash.replace(/^#/, "");
-    setFocusKey(hash ? decodeURIComponent(hash) : null);
+    const read = () => {
+      try {
+        setFocusKey(decodeURIComponent(window.location.hash.slice(1)) || null);
+      } catch {
+        setFocusKey(null);
+      }
+    };
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
   }, []);
 
   // The body is a child of the shell, because the topology it reads is
@@ -245,6 +253,8 @@ function SettingsView({
     [owners, schemas, docs, query],
   );
   const shownTopics = new Set(cards.map((c) => c.topic));
+  // Keep each editor mounted while search changes. Removing one loses its draft.
+  const allCards = useMemo(() => buildCards(owners, schemas, ""), [owners, schemas]);
 
   const everything = selection.type === "install";
   const appearance =
@@ -291,6 +301,8 @@ function SettingsView({
     });
   }, []);
   const dirtySections = [...handles.values()].filter((h) => h.dirty > 0);
+  const sectionNeedsAttention = (id: string) =>
+    Boolean(handles.get(id)?.dirty || handles.get(id)?.attention);
   const dirtyTotal = dirtySections.reduce((n, h) => n + h.dirty, 0);
   const [savingAll, setSavingAll] = useState(false);
   async function saveAll() {
@@ -340,11 +352,26 @@ function SettingsView({
 
         <div className="flex-1 overflow-y-auto p-4" data-testid="settings-scroll">
           <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
-            {cards.map((card) => (
+            {query.trim() && dirtyTotal > 0 && (
+              <p className="text-sm text-[color:var(--muted)]">
+                Unsaved changes stay visible while you search.
+              </p>
+            )}
+            {allCards.map((card) => (
               <section
                 key={card.topic}
-                data-testid="settings-card"
+                data-testid={
+                  shownTopics.has(card.topic) ? "settings-card" : "settings-retained-card"
+                }
                 data-topic={card.topic}
+                hidden={
+                  !shownTopics.has(card.topic) &&
+                  !card.sections.some(
+                    (s) =>
+                      sectionNeedsAttention(`${s.owner.id}\n${card.topic}`) ||
+                      s.keys.includes(focusKey ?? ""),
+                  )
+                }
                 className="section-panel"
               >
                 <h2 className="section-heading font-ui text-base font-semibold">{card.label}</h2>
@@ -352,20 +379,36 @@ function SettingsView({
                   <p className="mt-0.5 mb-3 text-sm text-[color:var(--muted)]">{card.blurb}</p>
                 )}
                 <div className="flex flex-col gap-4">
-                  {card.sections.map((section) => (
-                    <ConfigEditor
-                      key={section.owner.id}
-                      target={section.owner.target}
-                      label={section.owner.label}
-                      hint={section.owner.hint}
-                      only={section.keys}
-                      compact
-                      expandMore={section.matchedHidden}
-                      focusKey={focusKey}
-                      sectionId={`${section.owner.id}\n${card.topic}`}
-                      onSection={onSection}
-                    />
-                  ))}
+                  {card.sections.map((section) => {
+                    const match = cards
+                      .find((c) => c.topic === card.topic)
+                      ?.sections.find((s) => s.owner.id === section.owner.id);
+                    const id = `${section.owner.id}\n${card.topic}`;
+                    return (
+                      <div
+                        key={section.owner.id}
+                        hidden={
+                          !match &&
+                          !sectionNeedsAttention(id) &&
+                          !section.keys.includes(focusKey ?? "")
+                        }
+                      >
+                        <ConfigEditor
+                          key={section.owner.id}
+                          target={section.owner.target}
+                          label={section.owner.label}
+                          hint={section.owner.hint}
+                          only={section.keys}
+                          matchedKeys={query.trim() ? (match?.keys ?? []) : undefined}
+                          compact
+                          expandMore={match?.matchedHidden}
+                          focusKey={focusKey}
+                          sectionId={`${section.owner.id}\n${card.topic}`}
+                          onSection={onSection}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
                 <SeeAlso entries={seeAlso(card.topic)} />
               </section>

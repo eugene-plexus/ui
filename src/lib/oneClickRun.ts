@@ -97,6 +97,7 @@ export interface RunTask {
   preparedFrom: RunModel | null;
   /** The transfer this run is waiting on, while it is waiting. */
   download: RunDownload | null;
+  downloadSpec?: RunOperation["intent"]["download"];
   /** The runtime's name once declared or found. */
   runtime: string | null;
   runtimeStatus: RuntimeStatus | null;
@@ -195,6 +196,7 @@ function observe(record: RunOperation): RunTask {
           state: record.download.state,
         }
       : null,
+    downloadSpec: record.intent.download,
     error: record.error,
     failedStep: record.failedStep,
     startedAt: record.startedAt,
@@ -227,14 +229,9 @@ export async function refreshRuns(): Promise<void> {
     if (!pending.has(id) && !unconfirmed.has(id) && !ids.has(id)) tasks.delete(id);
   for (const record of response.operations) {
     unconfirmed.delete(record.id);
-    // Successful rows settle out of the tray; their receipts remain on the server.
-    if (
-      ["ready", "skipped"].includes(record.step) &&
-      record.finishedAt !== null &&
-      Date.now() - record.finishedAt > 45_000
-    ) {
-      tasks.delete(record.id);
-    } else tasks.set(record.id, observe(record));
+    // Keep receipts available to the model card after navigation or refresh.
+    // The tray limits its own recent list, independently of this continuation.
+    tasks.set(record.id, observe(record));
   }
   emit();
 }
@@ -338,6 +335,7 @@ async function submit(
     preparation: null,
     preparedFrom: null,
     download: null,
+    downloadSpec: intent.download,
     error: null,
     failedStep: null,
     startedAt: Date.now(),
@@ -406,19 +404,35 @@ export function startRun(model: LibraryModel, node: TargetNode): string {
 export interface RunDownloadSpec {
   repo: string;
   file: string;
+  files?: string[];
+  revision?: string | null;
+  source?: string | null;
   label: string;
   sizeBytes?: number | null;
   format?: string;
 }
 export function startDownloadAndRun(spec: RunDownloadSpec, node: TargetNode): string {
   const id = `dl_${newRunId()}`;
-  void submit(id, { node: node.name, download: { repo: spec.repo, files: [spec.file] } }, node, {
-    id: "",
-    name: spec.label,
-    path: "",
-    format: spec.format ?? "gguf",
-    contextLength: null,
-  });
+  void submit(
+    id,
+    {
+      node: node.name,
+      download: {
+        repo: spec.repo,
+        files: spec.files ?? [spec.file],
+        ...(spec.revision ? { revision: spec.revision } : {}),
+        ...(spec.source ? { source: spec.source } : {}),
+      },
+    },
+    node,
+    {
+      id: "",
+      name: spec.label,
+      path: "",
+      format: spec.format ?? "gguf",
+      contextLength: null,
+    },
+  );
   return id;
 }
 /** A preparation in flight for this model on this node, if one is: Run and
@@ -656,9 +670,7 @@ export function describeRunDetail(task: RunTask): { detail: string; progress?: n
       };
     case "ready":
       return {
-        detail: runsSearchModel(task.model)
-          ? "ready — it keeps running for apps to use"
-          : "ready — try it on Home",
+        detail: `Launch completed on ${task.node.label}`,
       };
     case "skipped":
       return {
@@ -695,9 +707,15 @@ function describePreparation(task: RunTask): { detail: string; progress?: number
 
 /** Where a click on the task goes: the screen that can act on it. */
 export function runHref(task: RunTask): string {
+  if (task.downloadSpec) {
+    const params = new URLSearchParams({ repo: task.downloadSpec.repo });
+    if (task.downloadSpec.source) params.set("source", task.downloadSpec.source);
+    if (task.download?.id) params.set("download", task.download.id);
+    return `/discover?${params}`;
+  }
   switch (task.step) {
     case "ready":
-      return runsSearchModel(task.model) ? "/inference" : "/";
+      return `/library?model=${enc(task.model.id)}${task.node.name ? `&node=${enc(task.node.name)}` : ""}`;
     case "downloading":
       return "/discover";
     case "settings":
@@ -739,11 +757,12 @@ export function runTask(task: RunTask): Task {
     ...(progress !== undefined ? { progress } : {}),
     href: runHref(task),
     tone: task.step === "failed" ? "error" : task.step === "ready" ? "ok" : undefined,
+    completed: isTerminal(task.step),
     claims: {
       // Same for the transfer: §6.3 asks for ONE task-tray entry for
       // "download and run", and this is how it is one — the run's row
       // absorbs the download's for as long as it is waiting on it.
-      ...(task.step === "downloading" && task.download?.id ? { download: task.download.id } : {}),
+      ...(task.download?.id ? { download: task.download.id } : {}),
       // While this run installs the engine or starts the runtime, the
       // tray's own rows for the same install and load say the same thing
       // twice; the run's row is the one with the step in it.

@@ -138,7 +138,15 @@ export function useTasks(): { tasks: Task[]; loaded: boolean; reload: () => Prom
 
   usePolling(load, POLL_MS);
 
-  const tasks = useMemo(() => mergeTasks(polled, runs.map(runTask)), [polled, runs]);
+  const tasks = useMemo(() => {
+    const recent = runs.filter((run) => ["ready", "skipped"].includes(run.step)).slice(0, 5);
+    return mergeTasks(
+      polled,
+      runs
+        .filter((run) => !["ready", "skipped"].includes(run.step) || recent.includes(run))
+        .map(runTask),
+    );
+  }, [polled, runs]);
   // `reload` so a card that just started a download can pull the tray
   // forward instead of waiting out the poll.
   return { tasks, loaded, reload: load };

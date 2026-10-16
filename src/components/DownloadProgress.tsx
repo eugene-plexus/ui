@@ -38,7 +38,9 @@ export function DownloadProgress({ download }: { download: Download }) {
         <span>
           {download.state === "failed"
             ? `The download failed: ${download.error ?? download.message ?? "no reason given"}`
-            : phase[download.state]}
+            : download.state === "verifying" && download.message === "Adding to your Library"
+              ? download.message
+              : phase[download.state]}
         </span>
         {percent !== null && <span className="tabular-nums">{Math.round(percent)}%</span>}
       </p>

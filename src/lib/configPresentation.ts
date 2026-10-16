@@ -1,4 +1,4 @@
-import { effectiveValue } from "./configValue";
+import { effectiveValue, formatValue, readValue, unsetSentence } from "./configValue";
 import type { ConfigField } from "./types";
 
 /** Presentation only. Unknown/new fields stay visible; the API owns all defaults and validation. */
@@ -11,12 +11,17 @@ const MORE: Record<string, readonly string[]> = {
     "allowUnrestrictedEngineLaunch",
     "uvBinary",
     "allowedHosts",
+    "pathMappings",
+    "modelCopyMinFreeGb",
+    "shareCredentials",
   ],
   control: [
     "joinTokenTtlSeconds",
     "nodePollIntervalSeconds",
     "nodeRequestTimeoutSeconds",
     "logLevel",
+    "siteJoinUrl",
+    "oidcIssuer",
   ],
   gateway: [
     "profileCacheSeconds",
@@ -25,10 +30,67 @@ const MORE: Record<string, readonly string[]> = {
     "idleCheckSeconds",
     "controlUrl",
     "logLevel",
+    "requestTimeoutSeconds",
+    "swapWaitSeconds",
+    "decisionMaxQuestions",
+    "maxImagesPerRequest",
+    "metricsRetentionDays",
+    "metricsRollupEnabled",
   ],
-  library: ["scanOnStartup", "starterModelsFile", "logLevel"],
+  library: [
+    "scanOnStartup",
+    "starterModelsFile",
+    "logLevel",
+    "followSymlinks",
+    "downloadLayout",
+    "maxConcurrentDownloads",
+    "guidanceContextLength",
+  ],
   "inference-driver": ["logLevel"],
+  workbench: [
+    "memoryMaxNotes",
+    "documentsMaxFileMB",
+    "documentsWholeUpToTokens",
+    "documentsMaxPassagesPerPerson",
+    "documentsEmbeddingModel",
+    "documentsEmbedRequestsPerMinute",
+    "documentsSortModel",
+    "documentsSortSeconds",
+    "documentsFolderSyncMinutes",
+    "documentsFolderMaxFiles",
+    "documentsFolderMaxMB",
+    "documentsFolderMaxDepth",
+  ],
 };
+
+/** A disclosure is presentation only. Important state must remain outside it. */
+export function needsAttention(field: ConfigField, value: unknown): boolean {
+  const reading = readValue(field, value);
+  return Boolean(
+    field.pendingRestart ||
+    field.status?.level === "warning" ||
+    reading.kind === "unrepresentable" ||
+    (reading.kind === "value" && reading.warning),
+  );
+}
+
+export function isCustomized(field: ConfigField, value: unknown): boolean {
+  return (
+    value !== undefined && value !== null && JSON.stringify(value) !== JSON.stringify(field.default)
+  );
+}
+
+/** Summaries never serialize structured credentials or reveal a secret. */
+export function settingSummary(field: ConfigField, value: unknown): string {
+  if (field.sensitive || field.valueType === "secret") return value ? "Set" : "Not set";
+  if (value === undefined || value === null) return unsetSentence(field);
+  if (Array.isArray(value)) return `${value.length} ${value.length === 1 ? "entry" : "entries"}`;
+  if (typeof value === "object" || field.valueType === "url") return "Configured";
+  if (value === "auto") return "Automatic";
+  if (value === "off") return "Off";
+  const text = formatValue(field, value);
+  return text.length > 100 ? `${text.slice(0, 97)}...` : text;
+}
 
 // Common tasks first. Within a category the schema retains its field order.
 const ORDER: Record<string, readonly string[]> = {
@@ -54,7 +116,7 @@ export function configGroups(component: string, fields: ConfigField[]) {
 }
 
 /**
- * The keys the editor folds under *Show more* for this set of fields.
+ * The keys the editor folds under *Customize* for this set of fields.
  * Decided on the WHOLE list a component serves, so a page showing a
  * subset of it (Settings by topic) folds the same fields the component's
  * own page does.

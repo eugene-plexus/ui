@@ -21,6 +21,8 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { AdministrationGrants } from "@/components/AdministrationGrants";
+import { AccessAudit } from "@/components/AccessAudit";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { PermissionGroups, PersonGroups } from "@/components/PermissionGroups";
 import { CopyButton } from "@/components/CopyButton";
@@ -122,8 +124,12 @@ export default function PeoplePage() {
         <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-8">
           <p className="text-sm text-[color:var(--muted)]">
             One account directory for Eugene and its apps, including Workbench. Manage people, their
-            app access, and shared permission groups here. Members sign in to their apps; console
-            administration remains with the owner.
+            app access, shared permission groups, and delegated administration here. Named
+            administrators use{" "}
+            <Link href="/administration/" className="underline">
+              People and access sign-in
+            </Link>
+            .
           </p>
           {error && (
             <p className="status-error rounded-[var(--radius)] px-2 py-1 text-sm" role="alert">
@@ -143,6 +149,13 @@ export default function PeoplePage() {
                 onChanged={load}
               />
               <AppsSection loaded={loaded} onChanged={load} />
+              <AccessAudit
+                names={Object.fromEntries([
+                  ...loaded.people.map((person) => [person.id, person.displayName || person.name]),
+                  ...(loaded.groups ?? []).map((group) => [group.id, group.name]),
+                  ...loaded.clients.map((client) => [client.clientId, client.name]),
+                ])}
+              />
             </>
           )}
         </div>
@@ -294,6 +307,22 @@ function PersonRow({
         )}
       </p>
       <JobSitesLine person={person} />
+      {(person.administration?.managePeople ||
+        person.administration?.manageGroups ||
+        !!person.administration?.membershipGroups.length) && (
+        <p className="text-sm">
+          Administration:{" "}
+          {[
+            person.administration.managePeople ? "manage accounts" : null,
+            person.administration.manageGroups ? "define groups" : null,
+            person.administration.membershipGroups.length
+              ? `assign members to ${person.administration.membershipGroups.map((id) => groups?.find((g) => g.id === id)?.name ?? id).join(", ")}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join("; ")}
+        </p>
+      )}
       {person.groups != null && (
         <p className="text-sm text-[color:var(--muted)]">
           Access from groups:{" "}
@@ -302,6 +331,9 @@ function PersonRow({
         </p>
       )}
       <div className="flex flex-wrap gap-4">
+        {groups !== null && (
+          <AdministrationGrants person={person} groups={groups} onChanged={onChanged} />
+        )}
         {groups !== null && (
           <PersonGroups
             key={JSON.stringify(person.groups)}

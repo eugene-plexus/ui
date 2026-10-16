@@ -32,6 +32,20 @@ const LOAD: Task = {
 };
 
 describe("TasksTrayView", () => {
+  it("keeps a finished download reachable without adding to the active count", () => {
+    render(
+      <TasksTrayView
+        tasks={[{ ...DOWNLOAD, completed: true, progress: undefined, title: "Downloaded model" }]}
+      />,
+    );
+    expect(screen.queryByTestId("tasks-count")).toBeNull();
+    fireEvent.click(screen.getByTestId("tasks-tray"));
+    expect(screen.getByRole("link", { name: /Downloaded model/ })).toHaveAttribute(
+      "href",
+      "/discover",
+    );
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
   it("shows no count when nothing is running, and says so when opened", () => {
     render(<TasksTrayView tasks={[]} />);
     const button = screen.getByTestId("tasks-tray");

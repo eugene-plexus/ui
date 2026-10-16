@@ -103,7 +103,12 @@ function Inner() {
             </p>
           )}
           {app && app.configTrio && app.status === "running" && target && endpoints && (
-            <ConfigEditor target={target} label={app.name} endpoints={endpoints} />
+            <ConfigEditor
+              target={target}
+              label={app.name}
+              endpoints={endpoints}
+              initialQuery={searchParams.get("q") ?? ""}
+            />
           )}
         </div>
       </main>

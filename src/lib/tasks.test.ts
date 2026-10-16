@@ -75,7 +75,7 @@ describe("downloads", () => {
     expect(task?.title).toBe("Downloading unsloth/Qwen3-14B-GGUF Qwen3-14B-UD-Q6_K_XL.gguf");
     expect(task?.detail).toBe("42% · 38 MB/s · 3 min left");
     expect(task?.progress).toBeCloseTo(0.42, 2);
-    expect(task?.href).toBe("/discover");
+    expect(task?.href).toBe("/discover?repo=unsloth%2FQwen3-14B-GGUF&download=dl-1");
   });
 
   it("keeps a paused download in the list, marked paused, with no rate", () => {
@@ -100,7 +100,7 @@ describe("downloads", () => {
     expect(task?.detail).toBe("asking where the file is");
   });
 
-  it("drops finished, failed and cancelled downloads", () => {
+  it("keeps finished downloads as continuations without counting them as active", () => {
     const tasks = tasksFrom({
       ...NOTHING,
       downloads: {
@@ -112,8 +112,10 @@ describe("downloads", () => {
         ],
       },
     });
-    expect(tasks.map((t) => t.id)).toEqual(["download:d"]);
-    expect(tasks[0]?.detail).toBe("waiting its turn");
+    expect(tasks.map((t) => t.id).sort()).toEqual(["download:a", "download:d"]);
+    expect(tasks.find((t) => t.id === "download:a")).toMatchObject({ completed: true });
+    expect(tasks.find((t) => t.id === "download:a")?.progress).toBeUndefined();
+    expect(tasks.find((t) => t.id === "download:d")?.detail).toBe("waiting its turn");
   });
 
   it("says how many files a sharded download has rather than naming one", () => {

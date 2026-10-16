@@ -23,6 +23,7 @@
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Attribution } from "@/components/Attribution";
@@ -326,6 +327,11 @@ function LoginForm() {
             {submitting ? "Unlocking…" : "Unlock"}
           </button>
         </form>
+        <p className="mt-5 text-center text-sm">
+          <Link href="/administration/" className="text-[color:var(--accent-left)] underline">
+            Sign in as a named administrator
+          </Link>
+        </p>
         <p className="mt-6 text-center text-[0.625rem] text-[color:var(--muted)]">
           Sessions persist for the lifetime of this browser tab. Closing the tab signs you out.
         </p>

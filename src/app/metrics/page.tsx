@@ -152,6 +152,8 @@ interface MetricRequest {
   elapsedMs?: number | null;
   clientKeyId?: string | null;
   clientKeyName?: string | null;
+  personId?: string | null;
+  appClientId?: string | null;
   startedAt: string;
   requestedModel: string;
   servedModel?: string | null;
@@ -1163,6 +1165,11 @@ export default function MetricsPage() {
                         {r.clientKeyId && (
                           <span title={r.clientKeyId} className="mr-2">
                             {r.clientKeyName ?? r.clientKeyId}
+                          </span>
+                        )}
+                        {r.personId && (
+                          <span className="mr-2" title={`App: ${r.appClientId ?? "unknown"}`}>
+                            Person: {r.personId === "operator" ? "Owner" : r.personId}
                           </span>
                         )}
                         <ModelName

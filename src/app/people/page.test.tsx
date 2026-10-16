@@ -360,7 +360,7 @@ describe("shared permission groups", () => {
     await user.click(row.getByText("Access groups"));
     await user.click(row.getByLabelText("Use permission groups"));
     expect(row.getByText(/No groups selected/)).toBeVisible();
-    await user.click(row.getByLabelText("Builders"));
+    await user.click(row.getByRole("checkbox", { name: "Builders" }));
     await user.click(row.getByRole("button", { name: "Save access" }));
     await waitFor(() =>
       expect(sent("PATCH control/v1/people/p-ada")).toContainEqual({ groups: [group.id] }),

@@ -36,6 +36,7 @@
  */
 
 import { phaseLine } from "./profileBuild";
+import { downloadHref } from "./downloadHandoff";
 import type {
   Benchmark,
   Download,
@@ -64,6 +65,7 @@ export interface Task {
   href: string;
   /** A failed task reads red; a finished one green; in flight, neither. */
   tone?: "ok" | "error";
+  completed?: boolean;
   /**
    * Endpoint-reported work this task is the story of (S3's one-click run):
    * the tray drops its own `install:<engine>` row while a run installs
@@ -194,21 +196,38 @@ export function isActiveDownload(download: Download): boolean {
 }
 
 function downloadTasks(list: DownloadList | null): Task[] {
-  return (list?.downloads ?? []).filter(isActiveDownload).map((d) => {
-    const total = d.bytesTotal ?? 0;
-    const got = d.bytesDownloaded ?? 0;
-    const fraction = total > 0 ? Math.min(1, got / total) : undefined;
-    return {
-      id: `download:${d.id}`,
-      kind: "download",
-      title: `Downloading ${d.repo} ${downloadFileLabel(d)}`.trimEnd(),
-      detail: downloadDetail(d, fraction),
-      ...(fraction !== undefined ? { progress: fraction } : {}),
-      // Downloads are acted on (pause, resume, cancel) where they are
-      // started; the same panel is on Library too.
-      href: "/discover",
-    };
-  });
+  const downloads = list?.downloads ?? [];
+  const recent = downloads
+    .filter((d) => d.state === "done")
+    .sort((a, b) => (Date.parse(b.finishedAt ?? "") || 0) - (Date.parse(a.finishedAt ?? "") || 0))
+    .slice(0, 5);
+  return downloads
+    .filter((d) => isActiveDownload(d) || recent.includes(d))
+    .map((d) => {
+      const total = d.bytesTotal ?? 0;
+      const got = d.bytesDownloaded ?? 0;
+      const fraction = total > 0 ? Math.min(1, got / total) : undefined;
+      return {
+        id: `download:${d.id}`,
+        kind: "download",
+        title:
+          `${d.state === "done" ? "Downloaded" : "Downloading"} ${d.repo} ${downloadFileLabel(d)}`.trimEnd(),
+        detail:
+          d.state === "done"
+            ? d.modelId
+              ? "Ready to run · open to continue"
+              : "Finish adding to your Library"
+            : downloadDetail(d, fraction),
+        ...(d.state === "done"
+          ? { completed: true, tone: "ok" as const }
+          : fraction !== undefined
+            ? { progress: fraction }
+            : {}),
+        // Downloads are acted on (pause, resume, cancel) where they are
+        // started; the same panel is on Library too.
+        href: downloadHref(d),
+      };
+    });
 }
 
 /** The file a person recognises: the basename of a one-file download,
@@ -229,7 +248,7 @@ function downloadDetail(d: Download, fraction: number | undefined): string {
     case "resolving":
       return "asking where the file is";
     case "verifying":
-      return "checking the file";
+      return d.message === "Adding to your Library" ? d.message : "checking the file";
     case "paused":
       parts.push("paused");
       break;

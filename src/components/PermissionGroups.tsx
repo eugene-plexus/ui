@@ -17,12 +17,15 @@ export function PermissionGroups({
   people,
   error,
   onChanged,
+  bearer,
 }: {
   groups: PermissionGroup[] | null;
   clients: OidcClient[];
   people: Person[];
   error: string | null;
   onChanged: () => Promise<void>;
+  /** Explicit named administration credential; omitted in the owner's console. */
+  bearer?: string;
 }) {
   const [adding, setAdding] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -38,7 +41,7 @@ export function PermissionGroups({
       </div>
       <p className="text-sm text-[color:var(--muted)]">
         Manage app and job-site access together. People using groups receive the combined access of
-        their selected groups. Only the owner can manage accounts and groups currently.
+        their selected groups. Defining a group and assigning its members are separate permissions.
       </p>
       {error && (
         <p role="alert" className="status-error text-sm">
@@ -59,7 +62,7 @@ export function PermissionGroups({
         <GroupForm
           clients={clients}
           onSave={async (body) => {
-            await api.post("control", "/v1/permission-groups", body);
+            await api.post("control", "/v1/permission-groups", body, { bearer });
             await onChanged();
             setAdding(false);
           }}
@@ -89,6 +92,7 @@ export function PermissionGroups({
                   await api.delete(
                     "control",
                     `/v1/permission-groups/${encodeURIComponent(group.id)}`,
+                    { bearer },
                   );
                   await onChanged();
                 } catch (e) {
@@ -129,6 +133,7 @@ export function PermissionGroups({
                   "control",
                   `/v1/permission-groups/${encodeURIComponent(group.id)}`,
                   body,
+                  { bearer },
                 );
                 await onChanged();
               }}

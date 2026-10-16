@@ -391,6 +391,7 @@ function LibraryPageInner() {
               downloads={downloads}
               onChanged={reloadDownloads}
               node={picker.selected}
+              nodes={picker.nodes}
             />
           </div>
         )}

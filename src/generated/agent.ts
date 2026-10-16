@@ -3591,11 +3591,28 @@ export interface components {
             action: "check" | "acquire" | "renew" | "release";
             keyId: string;
             requestId: string;
+            /**
+             * @description Logs and catalog permit only a check without a model/person token; neither acquires or renews inference. Catalog is only GET /v1/models with X-Eugene-App-Operation set to catalog, for app settings.
+             * @default inference
+             * @enum {string}
+             */
+            purpose: "inference" | "logs" | "catalog";
             model?: string;
+            /**
+             * @description Root-issued OIDC access token carried alongside the app key in
+             *     X-Eugene-Person-Token. The root checks its signature, session,
+             *     current person access and exact registered app owner on every check,
+             *     acquisition and renewal. Required for app:workbench@ keys. Never
+             *     persist or log this token. A standalone authority refuses it.
+             */
+            personToken?: string;
         };
         ClientAdmissionResult: {
             keyId: string;
             keyName: string;
+            /** @description Stable subject verified by the root */
+            personId?: string;
+            appClientId?: string;
             limits?: components["schemas"]["ClientKeyLimits"];
             leaseSeconds?: number;
         };

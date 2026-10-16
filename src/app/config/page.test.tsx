@@ -101,6 +101,21 @@ let patches: { target: string; body: Record<string, unknown> }[];
 /** The backends the root lists: one, by default, on the other machine. */
 let backends: { node: string; name: string }[];
 
+it("preserves edits across searches and saves them even when another topic is being searched", async () => {
+  render(<ConfigPage />);
+  const temperature = await screen.findByLabelText("Default temperature");
+  fireEvent.change(temperature, { target: { value: "0.95" } });
+  fireEvent.change(screen.getByTestId("settings-search"), { target: { value: "vllm" } });
+  expect(screen.getByLabelText("Default temperature")).toHaveValue("0.95");
+  expect(screen.getByTestId("save-all-bar")).toHaveTextContent("1 unsaved change");
+  fireEvent.click(screen.getByTestId("save-all"));
+  await waitFor(() =>
+    expect(patches).toEqual([{ target: "gateway", body: { defaultTemperature: "0.95" } }]),
+  );
+  fireEvent.change(screen.getByTestId("settings-search"), { target: { value: "" } });
+  expect(screen.getByLabelText("Default temperature")).toHaveValue("0.95");
+});
+
 beforeEach(() => {
   query = "";
   calls = [];
@@ -303,8 +318,8 @@ describe("the Settings page", () => {
     render(<ConfigPage />);
     await card("access");
     // The fold: five engine fields are candidates, so on each machine
-    // vLLM binary is behind Show more, in the document and not visible.
-    await waitFor(() => expect(screen.getAllByText("Show more · 5 settings").length).toBe(2));
+    // vLLM binary is behind Customize, in the document and not visible.
+    await waitFor(() => expect(screen.getAllByText("Customize · 5 settings").length).toBe(2));
     for (const box of screen.getAllByLabelText("vLLM binary")) expect(box).not.toBeVisible();
     fireEvent.change(screen.getByTestId("settings-search"), { target: { value: "vllm" } });
     await waitFor(() =>
@@ -444,7 +459,7 @@ describe("the Settings page", () => {
     render(<ConfigPage />);
     const access = await card("access");
     await waitFor(() =>
-      expect(within(access).getAllByText("Show more · 1 setting")).toHaveLength(2),
+      expect(within(access).getAllByText("Customize · 1 setting")).toHaveLength(2),
     );
     for (const box of screen.getAllByLabelText("Allowed host names")) expect(box).not.toBeVisible();
   });
