@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { stripVTControlCharacters } from "node:util";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const web = root;
 const cases = [
@@ -77,10 +78,8 @@ try {
     try {
       writeFileSync(path, original.replace(anchor, replacement));
       const result = run();
-      if (
-        result.status !== 1 ||
-        !/AssertionError|Error: expect\(element\)/.test(result.stdout + result.stderr)
-      )
+      const output = stripVTControlCharacters(result.stdout + result.stderr);
+      if (result.status !== 1 || !/AssertionError|Error: expect\(element\)/.test(output))
         throw new Error(`Missed ${label}:\n${result.stdout}\n${result.stderr}`);
       console.log(`PASS caught ${label}`);
     } finally {
