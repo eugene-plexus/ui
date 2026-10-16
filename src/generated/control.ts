@@ -271,6 +271,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent committed access changes (owner only)
+         * @description Up to 1000 durable events, newest first. No tokens, passwords, prompts or document content.
+         */
+        get: operations["readAccessAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/administration/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in to delegated directory administration with a named account
+         * @description Requires an unlocked active root and current administration grants. Does not unlock the root or issue an owner, app or machine credential. Rate limited like owner login.
+         */
+        post: operations["loginAdministration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/administration/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current owner or delegated directory authority */
+        get: operations["getAdministrationSession"];
+        put?: never;
+        post?: never;
+        /** Revoke the presented administration session */
+        delete: operations["logoutAdministration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/people/{id}/administration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Owner-only delegation of directory administration
+         * @description Replaces the person's explicit administration grants and invalidates their existing administration sessions. Groups never confer these grants. Password recovery and app registration remain owner-only.
+         */
+        put: operations["setPersonAdministration"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/permission-groups": {
         parameters: {
             query?: never;
@@ -280,13 +360,13 @@ export interface paths {
         };
         /**
          * Permission groups shared by Eugene and its apps
-         * @description Operator only. Group grants are enforced at app sign-in/refresh and job-site authorization.
+         * @description Owner or named directory administrator. Group grants are enforced at app sign-in/refresh and job-site authorization.
          */
         get: operations["listPermissionGroups"];
         put?: never;
         /**
          * Create a permission group
-         * @description Operator only; active root. New groups grant nothing unless explicitly configured.
+         * @description Owner or manageGroups administrator; active root. New groups grant nothing unless explicitly configured.
          */
         post: operations["createPermissionGroup"];
         delete?: never;
@@ -307,13 +387,13 @@ export interface paths {
         get?: never;
         /**
          * Replace a group's name and grants
-         * @description Operator only. Existing member IDs stay assigned; new authorizations and refreshes use the new grants.
+         * @description Owner or manageGroups administrator. Existing member IDs stay assigned; new authorizations and refreshes use the new grants.
          */
         put: operations["replacePermissionGroup"];
         post?: never;
         /**
          * Delete a group and its memberships
-         * @description Operator only. Empty memberships remain group-based with no access; individual defaults are not restored.
+         * @description Owner or manageGroups administrator. Empty memberships remain group-based with no access; individual defaults are not restored.
          */
         delete: operations["deletePermissionGroup"];
         options?: never;
@@ -330,13 +410,13 @@ export interface paths {
         };
         /**
          * The people who may sign in to apps
-         * @description Operator only. Never a password or its verifier.
+         * @description Owner or named directory administrator. Never a password or its verifier.
          */
         get: operations["listPeople"];
         put?: never;
         /**
          * Add a person
-         * @description Operator only; active, unlocked root. A name is unique, compared case-folded, and `operator` is the owner's.
+         * @description Owner or managePeople administrator; active, unlocked root. Delegated creation requires no apps, permissions, groups or email in the request and starts in empty group mode. A name is unique, compared case-folded, and operator is reserved.
          */
         post: operations["createPerson"];
         delete?: never;
@@ -359,14 +439,14 @@ export interface paths {
         post?: never;
         /**
          * Remove a person
-         * @description Operator only. Their sign-ins stop at their apps' next refresh.
+         * @description Owner, or managePeople for an ordinary account. Administrators cannot delete themselves or other administrators. Administration sessions end immediately; app sign-ins stop at the next refresh.
          */
         delete: operations["deletePerson"];
         options?: never;
         head?: never;
         /**
          * Change a person's name, apps, permissions, or whether they are disabled
-         * @description Operator only. Disabling refuses their next sign-in and their apps' next refresh.
+         * @description Owner, or a directory administrator within their grants. managePeople permits display-name and enabled-state changes on ordinary accounts; membershipGroups permits only additions/removals in scope while retaining group mode and other memberships. Email and individual grants remain owner-only. Disabling ends administration sessions immediately and refuses the next app refresh.
          */
         patch: operations["updatePerson"];
         trace?: never;
@@ -404,7 +484,7 @@ export interface paths {
         };
         /**
          * The apps that sign in with Eugene
-         * @description Operator only. Never a secret.
+         * @description Owner or named directory administrator. Never a secret; registering and changing apps remain owner-only.
          */
         get: operations["listOidcClients"];
         put?: never;
@@ -2823,11 +2903,28 @@ export interface components {
             action: "check" | "acquire" | "renew" | "release";
             keyId: string;
             requestId: string;
+            /**
+             * @description Logs and catalog permit only a check without a model/person token; neither acquires or renews inference. Catalog is only GET /v1/models with X-Eugene-App-Operation set to catalog, for app settings.
+             * @default inference
+             * @enum {string}
+             */
+            purpose: "inference" | "logs" | "catalog";
             model?: string;
+            /**
+             * @description Root-issued OIDC access token carried alongside the app key in
+             *     X-Eugene-Person-Token. The root checks its signature, session,
+             *     current person access and exact registered app owner on every check,
+             *     acquisition and renewal. Required for app:workbench@ keys. Never
+             *     persist or log this token. A standalone authority refuses it.
+             */
+            personToken?: string;
         };
         ClientAdmissionResult: {
             keyId: string;
             keyName: string;
+            /** @description Stable subject verified by the root */
+            personId?: string;
+            appClientId?: string;
             limits?: components["schemas"]["ClientKeyLimits"];
             leaseSeconds?: number;
         };
@@ -3355,6 +3452,16 @@ export interface components {
              */
             firstAvailableIndex?: number;
         };
+        AccessAuditEvent: {
+            index: number;
+            at: string;
+            actor: string;
+            action: string;
+            target: string;
+        };
+        AccessAudit: {
+            events: components["schemas"]["AccessAuditEvent"][];
+        };
         /**
          * @description One control-state change. Applied state is a deterministic
          *     function of the entries applied so far, which is the property
@@ -3377,6 +3484,8 @@ export interface components {
              */
             epoch: number;
             op: components["schemas"]["LogOp"];
+            /** @description Verified actor of an access change. Absent on legacy records; never inferred as owner. */
+            actor?: string;
             /** @description Operation-specific. Shape follows `op`. */
             payload?: {
                 [key: string]: unknown;
@@ -3470,6 +3579,7 @@ export interface components {
             clientAdmission?: {
                 [key: string]: unknown;
             };
+            accessAudit?: components["schemas"]["AccessAuditEvent"][];
             clientKeys?: components["schemas"]["ClientKey"][];
             /** Format: int64 */
             index: number;
@@ -3610,6 +3720,9 @@ export interface components {
             devGrants?: components["schemas"]["SiteDevGrant"][];
         };
         SnapshotPerson: {
+            administration?: components["schemas"]["AdministrationGrants"];
+            /** @description Absent is zero. Increased on delegation, disable/enable and password changes to invalidate administration sessions. */
+            administrationVersion?: number;
             /** @description Null or absent keeps individual access. A list uses only the union of these groups; an empty list grants no access. Individual app/permission settings are retained but inactive in group mode. */
             groups?: string[] | null;
             /**
@@ -3654,10 +3767,11 @@ export interface components {
             createdAt: string;
         };
         /**
-         * @description Someone the operator lets sign in to apps (C2). Not an operator:
-         *     a person's sign-in opens their apps and nothing in the hub.
+         * @description A stable account for apps. Explicit owner-granted administration may also
+         *     open directory management; it never grants owner or private-chat access.
          */
         Person: {
+            administration?: components["schemas"]["AdministrationGrants"];
             /** @description Null or absent keeps individual access. A list uses only the union of these groups; an empty list grants no access. Individual app/permission settings are retained but inactive in group mode. */
             groups?: string[] | null;
             /** @description Stable; the `sub` in their ID tokens. */
@@ -3690,6 +3804,40 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             passwordChangedAt: string;
+        };
+        AdministrationGrants: {
+            /**
+             * @description Create accounts with no access, edit display names, disable/enable or delete ordinary accounts. No password resets, email changes, individual access edits, self edits or changes to other administrators.
+             * @default false
+             */
+            managePeople: boolean;
+            /**
+             * @description Define groups and their app/job-site grants. Does not assign memberships or administration rights. May change access for existing members of these groups.
+             * @default false
+             */
+            manageGroups: boolean;
+            /**
+             * @description May add/remove ordinary accounts in exactly these groups. Preserve memberships outside this scope. May not change individual-access mode, self or other administrators.
+             * @default []
+             */
+            membershipGroups: string[];
+        };
+        AdministrationLoginRequest: {
+            name: string;
+            password: string;
+        };
+        /** @description When owner is true, authority is unrestricted and the membershipGroups scope is not applicable. The owner's session uses the existing owner logout endpoint. */
+        AdministrationSession: {
+            personId: string;
+            name: string;
+            owner: boolean;
+            grants: components["schemas"]["AdministrationGrants"];
+        };
+        AdministrationLoginResponse: {
+            sessionToken: string;
+            /** Format: date-time */
+            expiresAt: string;
+            session: components["schemas"]["AdministrationSession"];
         };
         /**
          * @description What a person may do with job sites (J77, `job-sites-own-enrollment.md`
@@ -5932,6 +6080,118 @@ export interface operations {
                     "application/json": components["schemas"]["OAuthError"];
                 };
             };
+        };
+    };
+    readAccessAudit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent changes retained through compaction and restart. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessAudit"];
+                };
+            };
+        };
+    };
+    loginAdministration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdministrationLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description One-hour administration session, addressed only to control */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdministrationLoginResponse"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    getAdministrationSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read from current root state on every request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdministrationSession"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    logoutAdministration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    setPersonAdministration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdministrationGrants"];
+            };
+        };
+        responses: {
+            /** @description Updated person */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            401: components["responses"]["Problem"];
         };
     };
     listPermissionGroups: {

@@ -55,7 +55,7 @@ export function TasksTrayView({ tasks }: { tasks: Task[] }) {
     };
   }, [open]);
 
-  const count = tasks.length;
+  const count = tasks.filter((task) => !task.completed).length;
   return (
     <div ref={root} className="relative">
       <button
@@ -89,12 +89,12 @@ export function TasksTrayView({ tasks }: { tasks: Task[] }) {
           data-testid="tasks-popover"
           className="absolute right-0 z-30 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-2 shadow-lg"
         >
-          {count === 0 ? (
+          {tasks.length === 0 ? (
             <p className="font-ui px-1 py-1.5 text-sm text-[color:var(--muted)]">
               Nothing is running in the background.
             </p>
           ) : (
-            <ul className="flex flex-col gap-1">
+            <ul className="flex max-h-[70vh] flex-col gap-1 overflow-y-auto">
               {tasks.map((task) => (
                 <li key={task.id}>
                   <TaskRow task={task} onFollow={() => setOpen(false)} />

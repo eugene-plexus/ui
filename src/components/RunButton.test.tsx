@@ -46,7 +46,7 @@ describe("RunStatus", () => {
 
   it("sends a chat model's person to Home when it is ready, as it always has", () => {
     render(<RunStatus task={task({ step: "ready" })} onRetry={vi.fn()} />);
-    expect(screen.getByRole("status")).toHaveTextContent("ready — try it on Home");
+    expect(screen.getByRole("status")).toHaveTextContent("Launch completed on this machine");
     expect(screen.getByTestId("run-try-it")).toHaveAttribute("href", "/");
   });
 
@@ -63,9 +63,7 @@ describe("RunStatus", () => {
       },
     });
     render(<RunStatus task={search} onRetry={vi.fn()} />);
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "ready — it keeps running for apps to use",
-    );
+    expect(screen.getByRole("status")).toHaveTextContent("Launch completed on this machine");
     expect(screen.queryByTestId("run-try-it")).toBeNull();
     expect(screen.getByRole("link", { name: "See it on Backends" })).toHaveAttribute(
       "href",
@@ -87,7 +85,7 @@ describe("RunStatus", () => {
     });
     render(<RunStatus task={sorter} onRetry={vi.fn()} />);
     expect(screen.queryByTestId("run-try-it")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent("keeps running for apps to use");
+    expect(screen.getByRole("status")).toHaveTextContent("Launch completed on");
   });
 
   it("announces a failure as an alert", () => {

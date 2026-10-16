@@ -231,6 +231,10 @@ export type RuntimePlacementList = ControlComponents["schemas"]["RuntimePlacemen
 export type PermissionGroup = ControlComponents["schemas"]["PermissionGroup"];
 export type PermissionGroupWrite = ControlComponents["schemas"]["PermissionGroupWrite"];
 export type PermissionGroupList = ControlComponents["schemas"]["PermissionGroupList"];
+export type AdministrationGrants = ControlComponents["schemas"]["AdministrationGrants"];
+export type AdministrationSession = ControlComponents["schemas"]["AdministrationSession"];
+export type AdministrationLoginResponse =
+  ControlComponents["schemas"]["AdministrationLoginResponse"];
 export type Person = ControlComponents["schemas"]["Person"];
 export type PersonList = ControlComponents["schemas"]["PersonList"];
 export type PersonCreateRequest = ControlComponents["schemas"]["PersonCreateRequest"];

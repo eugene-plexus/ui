@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
@@ -9,6 +9,8 @@ import { EligibilityDot } from "@/components/EligibilityDot";
 import { EngineFitBadge, FitBadge, formatBytes, formatMemory } from "@/components/FitBadge";
 import { More } from "@/components/Help";
 import { ModelCard } from "@/components/ModelCard";
+import { ModelDownloadAction } from "@/components/ModelDownloadAction";
+import { rememberDownloadTarget } from "@/lib/downloadHandoff";
 import { QuantReference } from "@/components/QuantReference";
 import { ApiError, api, describeError } from "@/lib/api";
 import { NodePicker } from "@/components/NodePicker";
@@ -205,6 +207,7 @@ export default function DiscoverPage() {
 
 function DiscoverPageInner() {
   const router = useRouter();
+  const replace = router.replace;
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -222,6 +225,22 @@ function DiscoverPageInner() {
   // tree already follows, applied to this screen's own subject.
   const [selection, setSelection] = useState<Selection | null>(() =>
     selectionFromParams(new URLSearchParams(searchParams.toString())),
+  );
+  const queryString = searchParams.toString();
+  useEffect(() => {
+    setSelection(selectionFromParams(new URLSearchParams(queryString)));
+  }, [queryString]);
+  const chooseSelection = useCallback(
+    (next: Selection) => {
+      setSelection(next);
+      const params = new URLSearchParams(window.location.search);
+      for (const name of ["repo", "source", "listed", "download"]) params.delete(name);
+      params.set("repo", next.repo);
+      if (next.source) params.set("source", next.source);
+      if (next.listed) params.set("listed", `${next.listed.engine}:${next.listed.id}`);
+      replace(`/discover?${params}`, { scroll: false });
+    },
+    [replace],
   );
   const [contextLength, setContextLength] = useState(8192);
   // What the library made of the query: `repo` means it parsed as a
@@ -262,7 +281,15 @@ function DiscoverPageInner() {
       ),
     [downloads],
   );
-  const [showDownloads, setShowDownloads] = useState(true);
+  const [showDownloads, setShowDownloads] = useState(false);
+  useEffect(() => {
+    const revealDownloads = () => {
+      if (window.location.hash === "#downloads") setShowDownloads(true);
+    };
+    revealDownloads();
+    window.addEventListener("hashchange", revealDownloads);
+    return () => window.removeEventListener("hashchange", revealDownloads);
+  }, []);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
@@ -315,28 +342,6 @@ function DiscoverPageInner() {
     }
   }, [prefsLoaded, contextLength, chosenLevel, sort]);
 
-  // The URL mirrors the selection; state drives. `replace` rather than
-  // `push` so paging through repos does not bury Back under every
-  // click. The other params are preserved — `?sel=` is the tree's and
-  // clobbering it would deselect the tree on every repo click — and
-  // read off `window.location` rather than `useSearchParams`, whose
-  // object in the dependency list would re-fire this effect on its own
-  // replace.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const current = selectionFromParams(params);
-    if (current === null ? selection === null : sameSelection(current, selection)) return;
-    for (const name of ["repo", "source", "listed"]) params.delete(name);
-    if (selection) {
-      params.set("repo", selection.repo);
-      if (selection.source) params.set("source", selection.source);
-      if (selection.listed)
-        params.set("listed", `${selection.listed.engine}:${selection.listed.id}`);
-    }
-    const qs = params.toString();
-    router.replace(qs ? `/discover?${qs}` : "/discover", { scroll: false });
-  }, [router, selection]);
-
   useEffect(() => {
     void (async () => {
       try {
@@ -381,7 +386,7 @@ function DiscoverPageInner() {
       // making someone click the only row is the click this removes.
       if (page.interpretedAs === "repo" && page.interpretedFrom) {
         const row = (page.results ?? [])[0];
-        setSelection({
+        chooseSelection({
           repo: page.interpretedFrom,
           source: row?.hubSource ?? null,
           listed: null,
@@ -397,7 +402,7 @@ function DiscoverPageInner() {
     } finally {
       if (current()) setSearching(false);
     }
-  }, [debouncedQuery, hubFormat, sort, lists]);
+  }, [debouncedQuery, hubFormat, sort, lists, chooseSelection]);
 
   // Every row's facts, judged in one call; a row is as good as its best format.
   const rowFacts = useMemo(() => (results ?? []).flatMap((r) => r.facts ?? []), [results]);
@@ -411,12 +416,13 @@ function DiscoverPageInner() {
       setStarterBusy(model.repo);
       setStarterError(null);
       try {
-        await api.post("library", "/v1/downloads", {
+        const created = await api.post<Download>("library", "/v1/downloads", {
           repo: model.repo,
           revision: "main",
           files: [model.file],
         });
-        setShowDownloads(true);
+        rememberDownloadTarget(created.id, selected);
+        chooseSelection({ repo: model.repo, source: null, listed: null });
         // Waited for, so the button stays busy until the list carries the
         // transfer and the card can say it is downloading: clearing busy
         // first left "Download 9.1 GB" pressable, and a second press met
@@ -428,7 +434,7 @@ function DiscoverPageInner() {
         setStarterBusy(null);
       }
     },
-    [reloadDownloads],
+    [reloadDownloads, selected, chooseSelection],
   );
 
   // Not before the node's engines are known: the filter's default and the
@@ -492,7 +498,7 @@ function DiscoverPageInner() {
             error={searchError}
             interpreted={interpreted}
             selected={selection}
-            onSelect={(result) => setSelection(selectionOf(result))}
+            onSelect={(result) => chooseSelection(selectionOf(result))}
             level={level}
             onEverything={() => setChosenLevel("")}
             verdicts={rowVerdicts}
@@ -508,6 +514,34 @@ function DiscoverPageInner() {
 
           <div className="px-5 py-4 sm:min-h-0 sm:overflow-y-auto">
             <ContextControl value={contextLength} onChange={setContextLength} />
+            {downloads
+              .filter((d) => d.id === searchParams.get("download") && d.repo === selection?.repo)
+              .map((d) => (
+                <section
+                  key={d.id}
+                  aria-label="Selected download"
+                  className="mb-4 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-4"
+                >
+                  <h2 className="mb-2 font-semibold">Continue with {d.files[0]?.path ?? d.repo}</h2>
+                  <ModelDownloadAction
+                    spec={{
+                      repo: d.repo,
+                      file: d.files[0]?.path ?? "",
+                      files: d.files.map((f) => f.path),
+                      source: d.source,
+                      revision: d.revision,
+                      label: d.repo,
+                    }}
+                    downloads={[d]}
+                    node={selected}
+                    nodes={nodes}
+                    busy={false}
+                    downloadLabel="Download only"
+                    onDownload={() => undefined}
+                    onChanged={reloadDownloads}
+                  />
+                </section>
+              ))}
             {selection ? (
               <RepoDetail
                 key={selectionKey(selection)}
@@ -519,10 +553,10 @@ function DiscoverPageInner() {
                 budget={budget}
                 engines={engines}
                 node={selected}
+                nodes={nodes}
                 where={where}
                 downloads={downloads}
                 onDownloadStarted={() => {
-                  setShowDownloads(true);
                   reloadDownloads();
                 }}
               />
@@ -537,13 +571,16 @@ function DiscoverPageInner() {
                 inFlight={inFlightFiles}
                 error={starterError}
                 onDownload={downloadStarter}
-                onOpenRepo={(repo) => setSelection({ repo, source: null, listed: null })}
+                onOpenRepo={(repo) => chooseSelection({ repo, source: null, listed: null })}
               />
             )}
           </div>
         </div>
 
-        <section className="border-t border-[color:var(--border)] bg-[color:var(--panel)]">
+        <section
+          id="downloads"
+          className="border-t border-[color:var(--border)] bg-[color:var(--panel)]"
+        >
           <button
             type="button"
             onClick={() => setShowDownloads((v) => !v)}
@@ -566,6 +603,7 @@ function DiscoverPageInner() {
                 downloads={downloads}
                 onChanged={reloadDownloads}
                 node={selected}
+                nodes={nodes}
                 emptyHint={
                   <>
                     Nothing downloading. Files land in the first of your configured model
@@ -959,6 +997,7 @@ function RepoDetail({
   budget,
   engines,
   node,
+  nodes,
   where,
   downloads,
   onDownloadStarted,
@@ -975,6 +1014,7 @@ function RepoDetail({
   engines: EngineDescriptor[] | null;
   /** The picked node: where a preparation runs (LS5). */
   node: TargetNode | null;
+  nodes: readonly TargetNode[];
   where: string;
   downloads: Download[];
   onDownloadStarted: () => void;
@@ -1109,13 +1149,14 @@ function RepoDetail({
       // directory — which is what pairs it: the scan finds a projector
       // beside its model and the launch line picks it up unaided.
       if (withVision && projector) files.push(projector);
-      await api.post("library", "/v1/downloads", {
+      const created = await api.post<Download>("library", "/v1/downloads", {
         repo,
         // Named only when it is not the default hub.
         ...hubParam,
         revision: detail?.resolvedCommit ?? detail?.revision ?? "main",
         files,
       });
+      rememberDownloadTarget(created.id, node);
       onDownloadStarted();
     } catch (err) {
       setActionError(describeError(err));
@@ -1135,12 +1176,6 @@ function RepoDetail({
     return <p className="text-sm text-[color:var(--muted)]">loading {repo}…</p>;
   }
 
-  const activeDestinations = new Set(
-    downloads
-      .filter((d) => !["done", "failed", "cancelled"].includes(d.state))
-      .flatMap((d) => d.files.map((f) => f.path)),
-  );
-
   // The library suggests by memory alone; the judge says whether anything
   // here runs it. A version no engine here loads is never suggested, and a
   // fit is not quoted for it (Troy, 2026-10-09: a ComfyUI VAE was
@@ -1154,8 +1189,6 @@ function RepoDetail({
   const recommendedPreflight = recommendedCandidate
     ? preflights[recommendedCandidate.label]
     : undefined;
-  const recommendedDownloading =
-    recommendedCandidate?.files.some((f) => activeDestinations.has(f.path)) ?? false;
 
   const projectors = detail.projectors ?? [];
   const projectorFile = projectors.find((p) => p.path === projector) ?? null;
@@ -1171,6 +1204,32 @@ function RepoDetail({
     withVision && projectorFile
       ? `Download ${formatBytes(candidate.sizeBytes)} + ${formatBytes(projectorFile.sizeBytes)} vision`
       : `Download ${formatBytes(candidate.sizeBytes)}`;
+
+  const downloadAction = (candidate: CatalogueCandidate, testId?: string) => (
+    <ModelDownloadAction
+      spec={{
+        repo,
+        source,
+        revision: detail.resolvedCommit ?? detail.revision ?? "main",
+        file: candidate.files[0]?.path ?? "",
+        files: [
+          ...candidate.files.map((file) => file.path),
+          ...(withVision && projector ? [projector] : []),
+        ],
+        label: candidate.files[0]?.path.split("/").pop() ?? repo,
+      }}
+      ownedModelId={candidate.alreadyOwned?.modelId}
+      downloads={downloads}
+      node={node}
+      nodes={nodes}
+      busy={busy !== null}
+      downloadLabel={downloadLabel(candidate)}
+      onDownload={() => void download(candidate)}
+      onChanged={onDownloadStarted}
+      testId={testId}
+      runnable={!red(candidate)}
+    />
+  );
 
   return (
     <div className={`max-w-4xl space-y-4 ${loading ? "opacity-60 transition-opacity" : ""}`}>
@@ -1310,23 +1369,7 @@ function RepoDetail({
             <p className="mt-1 font-semibold">{detail.recommended.lowQualityWarning}</p>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => download(recommendedCandidate)}
-              disabled={
-                busy !== null || !!recommendedCandidate.alreadyOwned || recommendedDownloading
-              }
-              className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-              data-testid="repo-recommended-download"
-            >
-              {recommendedCandidate.alreadyOwned
-                ? "Already on disk"
-                : recommendedDownloading
-                  ? "downloading"
-                  : busy === recommendedCandidate.label
-                    ? "starting…"
-                    : downloadLabel(recommendedCandidate)}
-            </button>
+            {downloadAction(recommendedCandidate, "repo-recommended-download")}
             <button
               type="button"
               onClick={() => void preflight(recommendedCandidate)}
@@ -1395,9 +1438,8 @@ function RepoDetail({
               ? `The chosen vision part (${formatBytes(projectorFile.sizeBytes)}) is fetched with it`
               : undefined
           }
-          activeDestinations={activeDestinations}
           onPreflight={preflight}
-          onDownload={download}
+          renderDownload={downloadAction}
           answerFor={answerFor}
           listedBy={listedBy}
           highlight={entry?.source.file ?? null}
@@ -1497,9 +1539,8 @@ function CandidateTable({
   preflights,
   busy,
   downloadTitle,
-  activeDestinations,
   onPreflight,
-  onDownload,
+  renderDownload,
   answerFor,
   listedBy,
   highlight,
@@ -1520,9 +1561,8 @@ function CandidateTable({
   /** Set when the vision part rides along, so every download button in
    * the table says so on hover. */
   downloadTitle?: string;
-  activeDestinations: Set<string>;
   onPreflight: (candidate: CatalogueCandidate) => void;
-  onDownload: (candidate: CatalogueCandidate) => void;
+  renderDownload: (candidate: CatalogueCandidate) => ReactNode;
 }) {
   // Largest first: the operator is usually looking for the best thing
   // that fits, and the recommendation is near the top of that order.
@@ -1561,7 +1601,6 @@ function CandidateTable({
           {ordered.map((candidate) => {
             const preflighted = preflights[candidate.label];
             const fit = preflighted?.fit ?? candidate.fit;
-            const downloading = candidate.files.some((f) => activeDestinations.has(f.path));
             const answer = answerFor(candidate);
             // Whose fit the column shows (LS6): the engine the dot is about.
             // The catalogue's own arithmetic is llama.cpp's, so it stands only
@@ -1665,15 +1704,9 @@ function CandidateTable({
                   >
                     {preflighted ? "checked" : busy === candidate.label ? "checking…" : "check"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onDownload(candidate)}
-                    disabled={busy !== null || downloading}
-                    className={`${smallButton} ml-1`}
-                    title={downloadTitle}
-                  >
-                    {downloading ? "downloading" : "download"}
-                  </button>
+                  <div className="mt-2 whitespace-normal" title={downloadTitle}>
+                    {renderDownload(candidate)}
+                  </div>
                 </td>
               </tr>
             );

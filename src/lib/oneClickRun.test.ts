@@ -225,24 +225,24 @@ describe("a run of a search model (MR3)", () => {
     return getRuns()[0]!;
   }
 
-  it("says a chat model is ready to try on Home, and links there", async () => {
+  it("keeps a completed launch linked to its model and machine", async () => {
     const task = await ready({ ...MODEL, capabilities: { chat: true, embedding: false } });
-    expect(describeRunDetail(task).detail).toBe("ready — try it on Home");
-    expect(runHref(task)).toBe("/");
+    expect(describeRunDetail(task).detail).toBe("Launch completed on desktop");
+    expect(runHref(task)).toBe("/library?model=m&node=desktop");
     expect(runsSearchModel(task.model)).toBe(false);
   });
 
   it("says a search model keeps running for apps, and links to Inference", async () => {
     const task = await ready({ ...MODEL, capabilities: { chat: false, embedding: true } });
-    expect(describeRunDetail(task).detail).toBe("ready — it keeps running for apps to use");
-    expect(runHref(task)).toBe("/inference");
+    expect(describeRunDetail(task).detail).toBe("Launch completed on desktop");
+    expect(runHref(task)).toBe("/library?model=m&node=desktop");
     expect(runsSearchModel(task.model)).toBe(true);
   });
 
   it("says it of a result sorter too", async () => {
     const task = await ready({ ...MODEL, capabilities: { chat: false, rerank: true } });
-    expect(describeRunDetail(task).detail).toBe("ready — it keeps running for apps to use");
-    expect(runHref(task)).toBe("/inference");
+    expect(describeRunDetail(task).detail).toBe("Launch completed on desktop");
+    expect(runHref(task)).toBe("/library?model=m&node=desktop");
   });
 
   it("carries the file's capabilities from the Library onto the run, so a recovered run reads true", () => {

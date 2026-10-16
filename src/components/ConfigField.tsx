@@ -121,6 +121,102 @@ function SecretInput({
 const buttonClass =
   "action-button font-ui shrink-0 rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 
+/** Native datalists filter by the current text: `auto` hides every model.
+ * Keep the complete discovered list visible, with an explicit manual override. */
+function SuggestedStringInput({
+  field,
+  value,
+  controlProps,
+  locked,
+  className,
+  onChange,
+}: {
+  field: ConfigFieldDef;
+  value: unknown;
+  controlProps: {
+    id: string;
+    "aria-describedby": string | undefined;
+    "aria-invalid"?: true;
+  };
+  locked: boolean;
+  className: string;
+  onChange: (value: unknown) => void;
+}) {
+  const [manual, setManual] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const suggestions = [...new Set(field.suggestions ?? [])];
+  const text =
+    typeof value === "string"
+      ? value
+      : typeof value === "number" || typeof value === "boolean"
+        ? String(value)
+        : "";
+  const index = value == null ? -1 : suggestions.indexOf(text);
+  const showManual = manual || (index < 0 && text !== "");
+  // Option values are UI-only tokens, so any model name can be entered safely.
+  const selected = showManual ? "manual" : index >= 0 ? `choice-${index}` : "unset";
+
+  useEffect(() => {
+    if (manual && document.activeElement !== inputRef.current) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [manual]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <select
+        {...controlProps}
+        value={selected}
+        onChange={(e) => {
+          if (e.target.value === "manual") {
+            // Opening the text box alone must not change the saved setting.
+            setManual(true);
+          } else {
+            setManual(false);
+            onChange(suggestions[Number(e.target.value.slice("choice-".length))]);
+          }
+        }}
+        disabled={locked}
+        className={className}
+      >
+        {selected === "unset" && (
+          <option value="unset" disabled>
+            {value == null || value === "" ? "Not set" : "Choose a value"}
+          </option>
+        )}
+        {suggestions.map((suggestion, i) => (
+          <option key={suggestion} value={`choice-${i}`}>
+            {suggestion === "auto" ? "Automatic (auto)" : suggestion === "off" ? "Off" : suggestion}
+          </option>
+        ))}
+        <option value="manual">Enter manually…</option>
+      </select>
+      {showManual && (
+        <input
+          ref={inputRef}
+          {...controlProps}
+          id={`${controlProps.id}-manual`}
+          aria-label={`${field.label}: manual value`}
+          type="text"
+          value={text}
+          placeholder={
+            typeof field.unsetResolvesTo === "string" ? field.unsetResolvesTo : undefined
+          }
+          pattern={field.pattern ?? undefined}
+          onChange={(e) => {
+            // Typing a discovered name must not remove the input mid-edit.
+            setManual(true);
+            onChange(e.target.value);
+          }}
+          disabled={locked}
+          className={className}
+        />
+      )}
+    </div>
+  );
+}
+
 export function ConfigFieldInput({
   field,
   value,
@@ -285,7 +381,7 @@ export function ConfigFieldInput({
       // unset. Only a number is put in it -- the line below says the rest.
       const shown = typeof value === "number" && Number.isFinite(value) ? value : "";
       const hint = field.unsetResolvesTo ?? field.default;
-      return (
+      const numberInput = (
         <input
           {...controlProps}
           type="number"
@@ -308,6 +404,54 @@ export function ConfigFieldInput({
           disabled={locked}
           className={baseInputClass}
         />
+      );
+      // Only bounded tuning controls benefit from a slider. Exact limits and
+      // counts keep their number box, and an invalid value is never clamped.
+      const sliderLabels: Record<string, [string, string]> = {
+        defaultTemperature: ["More focused", "More varied"],
+        documentsSortSeconds: ["Less time", "More time"],
+      };
+      const captions = sliderLabels[field.key];
+      const effective = reading.kind === "unset" ? hint : shown;
+      if (
+        !captions ||
+        typeof effective !== "number" ||
+        !Number.isFinite(effective) ||
+        field.minimum == null ||
+        field.maximum == null ||
+        field.minimum >= field.maximum ||
+        effective < field.minimum ||
+        effective > field.maximum
+      )
+        return numberInput;
+      return (
+        <div className="flex flex-col gap-2">
+          <input
+            type="range"
+            aria-label={`${field.label} slider`}
+            aria-describedby={describedBy}
+            min={field.minimum}
+            max={field.maximum}
+            step="any"
+            value={effective}
+            aria-valuetext={`${effective}${reading.kind === "unset" ? " (default)" : ""}`}
+            disabled={locked}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="h-8 w-full cursor-pointer accent-[color:var(--accent-left)] disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          <div
+            className="flex justify-between gap-2 text-xs text-[color:var(--muted)]"
+            aria-hidden="true"
+          >
+            <span>
+              {captions[0]} ({field.minimum})
+            </span>
+            <span>
+              {captions[1]} ({field.maximum})
+            </span>
+          </div>
+          {numberInput}
+        </div>
       );
     }
 
@@ -480,11 +624,21 @@ export function ConfigFieldInput({
       );
     }
 
-    // string, url, file_path. When the field carries `suggestions`,
-    // render a combobox (text input + native datalist dropdown) so the
-    // operator can either pick a discovered value or paste an
-    // arbitrary one. `modelId` uses this for live-discovered model
-    // ids that may not include something the operator just pulled.
+    if (field.valueType === "string" && field.suggestions != null) {
+      return (
+        <SuggestedStringInput
+          key={field.key}
+          field={field}
+          value={value}
+          controlProps={controlProps}
+          locked={locked}
+          className={baseInputClass}
+          onChange={onChange}
+        />
+      );
+    }
+
+    // Other text fields retain their path/URL autocomplete and Browse controls.
     const suggestions = field.suggestions ?? [];
     const datalistId = suggestions.length > 0 ? `cf-${field.key}-suggestions` : undefined;
     // A single `file_path` gets Browse for the same reason a `path_list`
@@ -568,7 +722,10 @@ export function ConfigFieldInput({
             {field.required && <span className="text-status-error ml-1">*</span>}
           </label>
         )}
-        <code className="font-mono text-[0.625rem] text-[color:var(--muted)]">{field.key}</code>
+        <details className="text-xs text-[color:var(--muted)]">
+          <summary className="cursor-pointer">Technical details</summary>
+          <code className="mt-1 block font-mono text-[0.625rem] break-all">{field.key}</code>
+        </details>
         {field.requiresRestart && (
           <span className="status-warn badge rounded-[var(--radius)] px-1.5 py-0.5 text-[0.5625rem] tracking-wider uppercase">
             restart required

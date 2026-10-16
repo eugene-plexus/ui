@@ -267,7 +267,7 @@ describe("a finished download's Run (ui#17)", () => {
     expect(link).toHaveTextContent(
       "Run from its page: Strata suits this machine better after preparing",
     );
-    expect(link).toHaveAttribute("href", "/library?model=m1");
+    expect(link).toHaveAttribute("href", "/library?model=m1&node=n1");
     expect(screen.queryByTestId("run-button")).toBeNull();
   });
 

@@ -430,9 +430,10 @@ describe("the recommended card", () => {
       }),
     );
     await openTheRepo();
-    const button = screen.getByTestId("repo-recommended-download") as HTMLButtonElement;
-    expect(button.textContent).toBe("downloading");
-    expect(button.disabled).toBe(true);
+    expect(screen.queryByTestId("repo-recommended-download")).toBeNull();
+    const card = screen.getByTestId("repo-recommended");
+    expect(card).toHaveTextContent(/downloading/i);
+    expect(within(card).queryByRole("button", { name: /Download and run/ })).toBeNull();
   });
 
   it("offers the exact-fit check, and the card's verdict follows the preflight", async () => {
@@ -1027,7 +1028,7 @@ describe("sources are a list (LS4)", () => {
     await screen.findByTestId("all-versions", {}, { timeout: 5000 });
     expect(lastQuery("library/v1/catalogue/model").get("source")).toBe("corp");
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "download" }));
+      fireEvent.click(screen.getAllByRole("button", { name: /^Download only/ })[0]!);
     });
     await waitFor(() => expect(asked("library/v1/downloads")).toBeGreaterThan(0));
     const posted = [...seen].reverse().find((r) => r.path === "library/v1/downloads" && r.body)!;

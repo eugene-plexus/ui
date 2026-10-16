@@ -193,13 +193,13 @@ it("asks before a link or a page close drops unsaved edits", async () => {
 
 it("keeps unknown fields visible and saves edits made behind a collapsed group", async () => {
   render(<ConfigEditor target="library" label="Library" />);
-  const more = await screen.findByRole("button", { name: /Show more/ });
+  const more = await screen.findByRole("button", { name: /Customize/ });
   expect(screen.getByDisplayValue("new")).toBeVisible();
   expect(screen.getByDisplayValue("hub")).not.toBeVisible();
   fireEvent.click(more);
   fireEvent.change(screen.getByDisplayValue("hub"), { target: { value: "another-hub" } });
-  fireEvent.click(screen.getByRole("button", { name: /Show less/ }));
-  expect(screen.getByRole("button", { name: /Show more.*1 unsaved/ })).toHaveAttribute(
+  fireEvent.click(screen.getByRole("button", { name: /Hide customization/ }));
+  expect(screen.getByRole("button", { name: /Customize.*1 unsaved/ })).toHaveAttribute(
     "aria-expanded",
     "false",
   );
@@ -211,13 +211,13 @@ it("keeps unknown fields visible and saves edits made behind a collapsed group",
 it("opens rejected hidden settings and preserves their draft", async () => {
   reject = true;
   render(<ConfigEditor target="library" label="Library" />);
-  fireEvent.click(await screen.findByRole("button", { name: /Show more/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /Customize/ }));
   fireEvent.change(screen.getByDisplayValue("hub"), { target: { value: "bad-address" } });
-  fireEvent.click(screen.getByRole("button", { name: /Show less/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Hide customization/ }));
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await screen.findByText(/Invalid address/, { selector: "li" });
   expect(screen.getByDisplayValue("bad-address")).toBeVisible();
-  expect(screen.getByRole("button", { name: /Show less/ })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: /Hide customization/ })).toHaveAttribute(
     "aria-expanded",
     "true",
   );
@@ -226,7 +226,7 @@ it("opens rejected hidden settings and preserves their draft", async () => {
 it("marks a refused setting at the field, and moves focus there", async () => {
   reject = true;
   render(<ConfigEditor target="library" label="Library" />);
-  fireEvent.click(await screen.findByRole("button", { name: /Show more/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /Customize/ }));
   fireEvent.change(screen.getByDisplayValue("hub"), { target: { value: "bad-address" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await screen.findByText(/Invalid address/, { selector: "li" });
@@ -283,7 +283,7 @@ it("does not make a disclosure when fewer than three applicable settings qualify
   fields[1]!.showWhen = { key: "futureSetting", equals: "not-selected" };
   render(<ConfigEditor target="library" label="Library" />);
   expect(await screen.findByDisplayValue("hub")).toBeVisible();
-  expect(screen.queryByRole("button", { name: /Show more/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Customize/ })).not.toBeInTheDocument();
   expect(screen.queryByDisplayValue("scan")).not.toBeInTheDocument();
 });
 

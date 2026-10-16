@@ -5482,6 +5482,10 @@ export interface components {
             clientKeyId?: string;
             /** @description Registry name captured for this request. */
             clientKeyName?: string;
+            /** @description Stable person subject verified by the control root */
+            personId?: string;
+            /** @description Registered app bound to the person's proof. */
+            appClientId?: string;
             /** Format: date-time */
             startedAt: string;
             requestedModel: string;
