@@ -282,69 +282,67 @@ export function PersonGroups({
   const [chosen, setChosen] = useState<string[]>(person.groups ?? []);
   const [busy, setBusy] = useState(false);
   return (
-    <details className="text-sm">
-      <summary className="cursor-pointer text-[color:var(--accent-left)]">Access groups</summary>
-      <fieldset disabled={busy} className="mt-3 flex max-w-md flex-col gap-2">
-        <label className="flex gap-2">
-          <input
-            type="radio"
-            name={`access-${person.id}`}
-            checked={individual}
-            onChange={() => setIndividual(true)}
-          />
-          Individual access
-        </label>
-        <label className="flex gap-2">
-          <input
-            type="radio"
-            name={`access-${person.id}`}
-            checked={!individual}
-            onChange={() => setIndividual(false)}
-          />
-          Use permission groups
-        </label>
-        {individual ? (
-          <p className="text-xs text-[color:var(--muted)]">
-            Use this person&rsquo;s individual app and job-site settings. Switching back restores
-            their saved settings.
-          </p>
-        ) : (
-          <>
-            {groups.map((g) => (
-              <label key={g.id} className="flex gap-2">
-                <input
-                  type="checkbox"
-                  checked={chosen.includes(g.id)}
-                  onChange={(e) =>
-                    setChosen(
-                      e.target.checked ? [...chosen, g.id] : chosen.filter((id) => id !== g.id),
-                    )
-                  }
-                />
-                {g.name}
-              </label>
-            ))}
-            {chosen.length === 0 && (
-              <p className="status-warn">
-                No groups selected. This person will have no app or job-site access through groups.
-              </p>
-            )}
-          </>
-        )}
-        <button
-          className={`${button} self-start`}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              await onSave(individual ? null : chosen);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {busy ? "Saving…" : "Save access"}
-        </button>
-      </fieldset>
-    </details>
+    <fieldset disabled={busy} className="flex min-w-0 flex-col gap-3 text-sm">
+      <legend className="font-ui mb-3 font-semibold">Access source</legend>
+      <label className="flex gap-2">
+        <input
+          type="radio"
+          name={`access-${person.id}`}
+          checked={individual}
+          onChange={() => setIndividual(true)}
+        />
+        Individual access
+      </label>
+      <label className="flex gap-2">
+        <input
+          type="radio"
+          name={`access-${person.id}`}
+          checked={!individual}
+          onChange={() => setIndividual(false)}
+        />
+        Use permission groups
+      </label>
+      {individual ? (
+        <p className="text-xs text-[color:var(--muted)]">
+          Use this person&rsquo;s individual app and job-site settings. Switching back restores
+          their saved settings.
+        </p>
+      ) : (
+        <>
+          {groups.map((g) => (
+            <label key={g.id} className="flex gap-2">
+              <input
+                type="checkbox"
+                checked={chosen.includes(g.id)}
+                onChange={(e) =>
+                  setChosen(
+                    e.target.checked ? [...chosen, g.id] : chosen.filter((id) => id !== g.id),
+                  )
+                }
+              />
+              {g.name}
+            </label>
+          ))}
+          {chosen.length === 0 && (
+            <p className="status-warn">
+              No groups selected. This person will have no app or job-site access through groups.
+            </p>
+          )}
+        </>
+      )}
+      <button
+        className={`${button} self-start`}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onSave(individual ? null : chosen);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Saving…" : "Save access"}
+      </button>
+    </fieldset>
   );
 }

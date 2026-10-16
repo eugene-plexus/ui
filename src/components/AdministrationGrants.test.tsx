@@ -25,7 +25,9 @@ it("delegates independent capabilities and an explicit membership scope", async 
       onChanged={changed}
     />,
   );
-  await user.click(screen.getByText("Administration access"));
+  expect(screen.getByRole("region", { name: "Administration permissions" })).toBeVisible();
+  expect(screen.getByLabelText("Allow assigning members to Builders")).toBeVisible();
+  expect(screen.getByText(/Grant only what/)).toHaveTextContent("Grant only what Ada needs.");
   await user.click(screen.getByRole("checkbox", { name: /^Manage accounts/ }));
   await user.click(screen.getByLabelText("Allow assigning members to Builders"));
   await user.click(screen.getByRole("button", { name: "Save administration access" }));

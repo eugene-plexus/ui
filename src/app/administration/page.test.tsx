@@ -18,6 +18,7 @@ const person: Person = {
 };
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/administration");
   sessionStorage.clear();
   // The directory must never silently spend a stored owner's authority.
   sessionStorage.setItem("eugene-session-token", "owner-token");
@@ -86,9 +87,15 @@ it("uses named credentials and keeps unassigned memberships while limiting the t
   const user = await signIn();
   expect(screen.queryByText("Add a person")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Add group" })).not.toBeInTheDocument();
-  await user.click(screen.getByText("Assign groups"));
+  await user.click(screen.getByRole("link", { name: "Manage Ada" }));
   const choices = screen.getByRole("group", { name: "Groups for Ada" });
   expect(within(choices).getAllByRole("checkbox")).toHaveLength(1);
+  expect(within(choices).getByLabelText("Builders")).toBeVisible();
+  expect(screen.queryByRole("region", { name: "Account actions" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("region", { name: "Administration permissions" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("New password for Ada")).not.toBeInTheDocument();
   await user.click(within(choices).getByLabelText("Builders"));
   await user.click(within(choices).getByRole("button", { name: "Save memberships" }));
   await waitFor(() =>
@@ -114,13 +121,17 @@ it("creates an account without implicitly assigning access", async () => {
   await user.type(screen.getByLabelText("Account name"), "Tom");
   await user.type(screen.getByLabelText("First password"), "a password long enough");
   await user.click(screen.getByRole("button", { name: "Create account" }));
-  await screen.findByText("Account created. Assign group access below.");
+  await screen.findByText(
+    "Account created. Find and select the person below to assign group access.",
+  );
   expect(calls.find((c) => c.method === "POST" && c.path === "/v1/people")?.body).toEqual({
     name: "Tom",
     password: "a password long enough",
   });
-  expect(screen.queryByText("Set a new password")).not.toBeInTheDocument();
-  expect(screen.queryByText("Administration access")).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Reset password" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("region", { name: "Administration permissions" }),
+  ).not.toBeInTheDocument();
 });
 
 it("restores only the named session and returns to sign-in after revocation", async () => {
@@ -130,7 +141,7 @@ it("restores only the named session and returns to sign-in after revocation", as
   await screen.findByText("Your administration session ended. Sign in again.");
   expect(sessionStorage.getItem("eugene-administration-token")).toBeNull();
   expect(sessionStorage.getItem("eugene-session-token")).toBe("owner-token");
-  expect(screen.queryByText("Assign groups")).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "Groups for Ada" })).not.toBeInTheDocument();
 });
 
 it("does not offer changes to other administrators or individual-access memberships", async () => {
@@ -142,8 +153,35 @@ it("does not offer changes to other administrators or individual-access membersh
     },
     { ...person, id: "tom", name: "Tom", groups: null },
   ];
-  await signIn();
+  const user = await signIn();
+  await user.click(screen.getByRole("link", { name: "Manage Ada" }));
   expect(screen.getByText("Protected administrator")).toBeInTheDocument();
-  expect(screen.queryByText("Assign groups")).not.toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "Disable account" })).toHaveLength(1);
+  expect(screen.queryByRole("group", { name: "Groups for Ada" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Disable account" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /Back to people/ }));
+  await user.click(screen.getByRole("link", { name: "Manage Tom" }));
+  expect(screen.queryByRole("group", { name: "Groups for Ada" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Disable account" })).toBeInTheDocument();
+});
+
+it("shows permitted account editors without disclosures and keeps destructive actions separate", async () => {
+  session.grants.managePeople = true;
+  const user = await signIn();
+  await user.click(screen.getByRole("link", { name: "Manage Ada" }));
+  const details = screen.getByRole("region", { name: "Account details" });
+  expect(within(details).getByLabelText("Display name")).toBeVisible();
+  await user.type(within(details).getByLabelText("Display name"), "Ada Lovelace");
+  await user.click(within(details).getByRole("button", { name: "Save display name" }));
+  await waitFor(() =>
+    expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ displayName: "Ada Lovelace" }),
+  );
+  const actions = screen.getByRole("region", { name: "Account actions" });
+  expect(within(actions).getByRole("button", { name: "Disable account" })).toBeVisible();
+  expect(within(actions).getByRole("button", { name: "Delete account Ada" })).toBeVisible();
+  expect(screen.queryByLabelText("New password for Ada")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Email for Ada")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("region", { name: "Administration permissions" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("article").querySelector("details")).toBeNull();
 });

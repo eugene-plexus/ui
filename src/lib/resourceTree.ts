@@ -208,8 +208,6 @@ const PAGES: Record<string, PageRef[]> = {
     // install root because installing is a question about the install --
     // which machine is a picker on the page, the way Library's launch is.
     { id: "apps", label: "Apps", route: "/apps", icon: "Blocks" },
-    // Who may sign in to apps, and the apps that sign in with Eugene (C2).
-    { id: "people", label: "People", route: "/people", icon: "Users" },
     // Every machine's log on one timeline (2026-09-27).
     { id: "logs", label: "Logs", route: "/logs", icon: "ScrollText" },
     // Every setting on the install, by topic, with a search box
@@ -258,6 +256,7 @@ const PAGES: Record<string, PageRef[]> = {
   // Job sites: membership only. A site is its own enrollment and has no
   // settings page here: what it shares is its owner's, in Workbench.
   sites: [{ id: "overview", label: "Overview", route: "/sites", icon: "Laptop" }],
+  people: [{ id: "overview", label: "Overview", route: "/people", icon: "Users" }],
   site: [{ id: "overview", label: "Overview", route: "/sites", icon: "Laptop" }],
   agent: [
     SETTINGS,
@@ -313,6 +312,16 @@ export function buildTree(topology: Topology): TreeNode {
     } else if (branch.layer === "control") {
       children.push(machinesBranch(layer, branch.label, branch.expert, nodes, localNode));
       children.push(sitesBranch(topology.sites ?? []));
+      // A single directory entry stays bounded as the number of accounts grows.
+      children.push({
+        sel: "people",
+        kind: "leaf",
+        label: "People",
+        layer: "control",
+        icon: "Users",
+        children: [],
+        pages: PAGES.people ?? [],
+      });
     } else if (branch.layer === "library") {
       // The deliberate exception to "machines only under kinds that
       // multiply" (design §5.1): a machine under Library is how that
@@ -818,6 +827,7 @@ export interface Selection {
     | "backendsNode"
     | "control"
     | "sites"
+    | "people"
     | "site"
     | "agent"
     | "driver"
@@ -858,7 +868,8 @@ export function parseSelection(raw: string | null | undefined): Selection | null
     value === "library" ||
     value === "control" ||
     value === "backends" ||
-    value === "sites"
+    value === "sites" ||
+    value === "people"
   ) {
     return { type: value, node: null, name: null };
   }
@@ -901,6 +912,7 @@ export function formatSelection(selection: Selection): string {
     case "control":
     case "backends":
     case "sites":
+    case "people":
       return selection.type;
     case "site":
       return `site:${selection.name ?? ""}`;
@@ -1002,6 +1014,7 @@ export function configTabFor(selection: Selection, localNode: string | null): st
     case "backends":
     case "backendsNode":
     case "sites":
+    case "people":
     case "site":
       return null;
   }
@@ -1034,8 +1047,9 @@ export function defaultSelectionFor(
     case "/":
     case "/playground":
     case "/apps":
-    case "/people":
       return "install";
+    case "/people":
+      return "people";
     // The Inference page and the add-a-backend form belong to the branch
     // that lists the backends (2026-09-29).
     case "/inference":

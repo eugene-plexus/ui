@@ -143,6 +143,7 @@ describe("the branches", () => {
       "Gateway",
       "Machines",
       "Job sites",
+      "People",
     ]);
   });
 
@@ -169,7 +170,7 @@ describe("the branches", () => {
     // such thing". Machines always exists: this machine has settings and
     // a log whether or not a root answered.
     const tree = buildTree({ ...TWO_MACHINE, components: [] });
-    expect(labels(tree)).toEqual(["Backends", "Machines", "Job sites"]);
+    expect(labels(tree)).toEqual(["Backends", "Machines", "Job sites", "People"]);
     expect(findNode(tree, "gateway")).toBeNull();
     expect(findNode(tree, "library")).toBeNull();
   });
@@ -308,19 +309,11 @@ describe("the root is the install, not the control root", () => {
     // what to do next, not on a diagnostic. The Inference page left for
     // the Backends branch and Preferences folded into Settings
     // (2026-09-29).
-    expect(tree.pages.map((p) => p.id)).toEqual([
-      "home",
-      "playground",
-      "apps",
-      "people",
-      "logs",
-      "config",
-    ]);
+    expect(tree.pages.map((p) => p.id)).toEqual(["home", "playground", "apps", "logs", "config"]);
     expect(tree.pages.map((p) => p.route)).toEqual([
       "/",
       "/playground",
       "/apps",
-      "/people",
       "/logs",
       "/config",
     ]);
@@ -332,16 +325,16 @@ describe("it holds the install the tab strip could not", () => {
   it("renders ten nodes with four drivers each as a bounded tree", () => {
     // §0.1: this topology is 54 buttons in a horizontal strip.
     const tree = buildTree(largeInstall(10, 4));
-    expect(tree.children).toHaveLength(5);
+    expect(tree.children).toHaveLength(6);
     const drivers = branchOf(tree, "Backends");
     expect(drivers?.children).toHaveLength(10);
     expect(drivers?.children.every((g) => g.children.length === 4)).toBe(true);
     const leaves = flatten(tree).filter((n) => n.kind === "leaf");
     // 40 drivers, 10 machines, 2 singleton leaves (Machines is a branch),
     // and the 10 machines under Library.
-    expect(leaves).toHaveLength(40 + 10 + 2 + 10);
-    // The top level stays five whatever the install does.
-    expect(tree.children).toHaveLength(5);
+    expect(leaves).toHaveLength(40 + 10 + 2 + 10 + 1);
+    // The top level stays six whatever the install does.
+    expect(tree.children).toHaveLength(6);
   });
 });
 
@@ -698,7 +691,6 @@ describe("an old link still lands on the right object", () => {
       "home",
       "playground",
       "apps",
-      "people",
       "logs",
       "config",
     ]);
@@ -756,7 +748,7 @@ describe("installed apps", () => {
     expect(findSelected(tree, "app:chat")?.sel).toBe("app:chat@nas");
     expect(configTabFor(sel!, "nas")).toBeNull();
     expect(defaultSelectionFor("/apps")).toBe("install");
-    expect(defaultSelectionFor("/people")).toBe("install");
+    expect(defaultSelectionFor("/people")).toBe("people");
   });
 });
 
@@ -878,5 +870,19 @@ describe("the Job sites branch (J19)", () => {
     expect(defaultSelectionFor("/sites/")).toBe("sites");
     const leaf = findNode(buildTree(WITH_SITES), "site:s-a")!;
     expect(hrefFor(leaf.pages[0]!, leaf.sel)).toBe("/sites?sel=site%3As-a");
+  });
+});
+
+describe("People directory navigation", () => {
+  it("has one tree entry with its own page, regardless of machine count", () => {
+    for (const topology of [ONE_NODE, TWO_MACHINE, largeInstall(10, 4)]) {
+      const people = findNode(buildTree(topology), "people")!;
+      expect(people.label).toBe("People");
+      expect(people.children).toEqual([]);
+      expect(hrefFor(people.pages[0]!, people.sel)).toBe("/people?sel=people");
+    }
+    expect(defaultSelectionFor("/people/#person-ada")).toBe("people");
+    expect(formatSelection(parseSelection("people")!)).toBe("people");
+    expect(configTabFor(parseSelection("people")!, null)).toBeNull();
   });
 });

@@ -14,7 +14,7 @@ page.on("pageerror", (error) => errors.push(error.message));
 try {
   await page.addInitScript((value) => sessionStorage.setItem("eugene-session-token", value), token);
   await page.goto(url + "/people/");
-  await expect(page.getByTestId("person-Ada")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Manage Ada", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Add group", exact: true }).click();
   await page.getByLabel("Group name", { exact: true }).fill("Builders");
   await page.getByLabel("Description", { exact: true }).fill("Workbench and personal job sites");
@@ -22,8 +22,8 @@ try {
   await page.getByLabel("Use job sites as themselves", { exact: false }).check();
   await page.getByRole("button", { name: "Create group", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Builders", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Manage Ada", exact: true }).click();
   const ada = page.getByTestId("person-Ada");
-  await ada.getByText("Access groups", { exact: true }).click();
   await ada.getByLabel("Use permission groups", { exact: true }).check();
   await expect(ada.getByText(/No groups selected/)).toBeVisible();
   await ada.getByLabel("Builders", { exact: true }).check();
@@ -31,9 +31,9 @@ try {
   await expect(ada.getByText("Access from groups: Builders", { exact: true })).toBeVisible();
   await expect(ada.getByTestId("person-apps-Ada")).toHaveText("Workbench");
   await expect(ada.getByTestId("person-permissions-Ada")).toContainText("from groups");
-  await expect(
-    ada.getByText("Choose what they may do with job sites", { exact: true }),
-  ).toHaveCount(0);
+  await expect(ada.getByRole("group", { name: "Job-site permissions", exact: true })).toHaveCount(
+    0,
+  );
   await page.screenshot({ path: join(output, "accounts-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(ada).toBeVisible();

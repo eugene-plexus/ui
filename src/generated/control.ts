@@ -4,6 +4,232 @@
  */
 
 export interface paths {
+    "/v1/auth/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** listExternalProviders */
+        get: operations["listExternalProviders"];
+        put?: never;
+        /** createExternalProvider */
+        post: operations["createExternalProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/providers/{provider_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** updateExternalProvider */
+        put: operations["updateExternalProvider"];
+        post?: never;
+        /** deleteExternalProvider */
+        delete: operations["deleteExternalProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/people/{person_id}/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** personSignIn */
+        get: operations["personSignIn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/people/{person_id}/sign-in/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** inviteExternalSignIn */
+        post: operations["inviteExternalSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/people/{person_id}/sign-in/identities/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** removePersonIdentities */
+        delete: operations["removePersonIdentities"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/people/{person_id}/sign-in/sessions/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** removePersonSessions */
+        delete: operations["removePersonSessions"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/people/{person_id}/sign-in/invitations/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** removePersonInvitations */
+        delete: operations["removePersonInvitations"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/administration/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** exchangeAdministrationCode */
+        post: operations["exchangeAdministrationCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show the current member and their shared browser sign-ins
+         * @description Browser HTML flow. Eugene validates its HttpOnly browser cookie and one-time proof; no operator bearer is required.
+         */
+        get: operations["oidcAccount"];
+        put?: never;
+        /**
+         * End one or all of the current member's shared sign-ins
+         * @description Browser HTML flow. Eugene validates its HttpOnly browser cookie and one-time proof; no operator bearer is required.
+         */
+        post: operations["endBrowserSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/invitation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Enter a private one-time account connection invitation
+         * @description Browser HTML flow. Eugene validates its HttpOnly browser cookie and one-time proof; no operator bearer is required.
+         */
+        get: operations["oidcInvitation"];
+        put?: never;
+        /**
+         * Validate an invitation and ask the member to confirm the account
+         * @description Browser HTML flow. Eugene validates its HttpOnly browser cookie and one-time proof; no operator bearer is required.
+         */
+        post: operations["confirmOidcInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/external/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a provider authorization-code flow with PKCE
+         * @description Browser HTML flow. Eugene validates its HttpOnly browser cookie and one-time proof; no operator bearer is required.
+         */
+        post: operations["startExternalSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/external/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify a provider response and establish a shared sign-in
+         * @description Browser HTML flow. Eugene validates its HttpOnly browser cookie and one-time proof; no operator bearer is required.
+         */
+        get: operations["finishExternalSignIn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/client-keys/admission": {
         parameters: {
             query?: never;
@@ -2348,6 +2574,106 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        ExternalProviderKind: "google" | "microsoft" | "oidc";
+        /** @enum {string} */
+        ExternalTokenAuthMethod: "client_secret_basic" | "client_secret_post";
+        ExternalProvider: {
+            id: string;
+            name: string;
+            kind: components["schemas"]["ExternalProviderKind"];
+            issuer: string;
+            clientId: string;
+            tokenAuthMethod: components["schemas"]["ExternalTokenAuthMethod"];
+            enabled: boolean;
+            revision: string;
+            hasSecret: boolean;
+            callbackUrl: string;
+        };
+        ExternalProviderWrite: {
+            name: string;
+            kind: components["schemas"]["ExternalProviderKind"];
+            issuer: string;
+            clientId: string;
+            tokenAuthMethod: components["schemas"]["ExternalTokenAuthMethod"];
+            enabled: boolean;
+            clientSecret?: string;
+        };
+        ExternalProviderRecord: {
+            id: string;
+            name: string;
+            kind: components["schemas"]["ExternalProviderKind"];
+            issuer: string;
+            clientId: string;
+            tokenAuthMethod: components["schemas"]["ExternalTokenAuthMethod"];
+            enabled: boolean;
+            revision: string;
+            sealedSecret: string;
+        };
+        ExternalProviderList: {
+            providers: components["schemas"]["ExternalProvider"][];
+        };
+        ExternalIdentity: {
+            id: string;
+            personId: string;
+            providerId: string;
+            issuer: string;
+            subject: string;
+            createdAt: number;
+        };
+        BrowserSignIn: {
+            id: string;
+            personId: string;
+            issuer: string;
+            authAt: number;
+            expiresAt: number;
+            label: string;
+            identityId: string | null;
+            providerRevision: string | null;
+        };
+        SignInInvitation: {
+            id: string;
+            personId: string;
+            providerId: string;
+            expiresAt: number;
+            passwordChangedAt: string;
+        };
+        SignInInvitationRequest: {
+            providerId: string;
+        };
+        SignInInvitationCreated: {
+            code: string;
+            expiresAt: number;
+            url: string;
+        };
+        PersonSignIn: {
+            identities: components["schemas"]["ExternalIdentity"][];
+            sessions: components["schemas"]["BrowserSignIn"][];
+            invitations: components["schemas"]["SignInInvitation"][];
+        };
+        BrowserSignInState: {
+            /** @default {} */
+            providers: {
+                [key: string]: components["schemas"]["ExternalProviderRecord"];
+            };
+            /** @default {} */
+            identities: {
+                [key: string]: components["schemas"]["ExternalIdentity"];
+            };
+            /** @default {} */
+            invitations: {
+                [key: string]: components["schemas"]["SignInInvitation"];
+            };
+            /** @default {} */
+            sessions: {
+                [key: string]: components["schemas"]["BrowserSignIn"];
+            };
+        };
+        AdministrationCodeRequest: {
+            code: string;
+            verifier: string;
+            redirectUri: string;
+        };
         /** @description A person's Eugene sign-in, typed at the machine to link them there (J36). */
         SitePersonCheckRequest: {
             /** @description How the person signs in. */
@@ -2922,7 +3248,7 @@ export interface components {
         ClientAdmissionResult: {
             keyId: string;
             keyName: string;
-            /** @description Stable subject verified by the root */
+            /** @description Stable subject verified by the root, never caller supplied. */
             personId?: string;
             appClientId?: string;
             limits?: components["schemas"]["ClientKeyLimits"];
@@ -3550,7 +3876,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -3575,6 +3901,7 @@ export interface components {
          *     `GET /v1/nodes`.
          */
         Snapshot: {
+            browserSignIn?: components["schemas"]["BrowserSignInState"];
             /** @description Durable logical clock and per-key admission buckets; replayed verbatim with leases and rolling-window charges. */
             clientAdmission?: {
                 [key: string]: unknown;
@@ -5594,6 +5921,463 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listExternalProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalProviderList"];
+                };
+            };
+        };
+    };
+    createExternalProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalProviderWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalProvider"];
+                };
+            };
+        };
+    };
+    updateExternalProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalProviderWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalProvider"];
+                };
+            };
+        };
+    };
+    deleteExternalProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    personSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonSignIn"];
+                };
+            };
+        };
+    };
+    inviteExternalSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInInvitationCreated"];
+                };
+            };
+        };
+    };
+    removePersonIdentities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    removePersonSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    removePersonInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    exchangeAdministrationCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdministrationCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdministrationLoginResponse"];
+                };
+            };
+        };
+    };
+    oidcAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sign-in page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Continue sign-in */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Expired, mismatched or refused sign-in. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    endBrowserSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    /** @description Browser-bound account action proof. */
+                    csrf: string;
+                    /** @description Session record ID, or all. Only the current member's sessions are affected. */
+                    session: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Sign-in page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Continue sign-in */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Expired, mismatched or refused sign-in. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    oidcInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sign-in page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Continue sign-in */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Expired, mismatched or refused sign-in. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    confirmOidcInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    /** @description Proof matching the browser flow cookie. */
+                    binding: string;
+                    /** @description Owner-issued invitation code; never the stored hash. */
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Sign-in page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Continue sign-in */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Expired, mismatched or refused sign-in. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    startExternalSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    /** @description Enabled provider ID. */
+                    provider: string;
+                    /** @description Pending Eugene app authorization request. Required unless using an invitation. */
+                    request?: string;
+                    /** @description Raw invitation code for an explicit account connection. */
+                    invitation?: string;
+                    /** @description Browser proof required with an invitation. */
+                    binding?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Sign-in page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Continue sign-in */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Expired, mismatched or refused sign-in. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    finishExternalSignIn: {
+        parameters: {
+            query: {
+                /** @description One-use state bound to the initiating browser. */
+                state: string;
+                /** @description Provider authorization code. */
+                code?: string;
+                /** @description Provider response issuer, when supplied. */
+                iss?: string;
+                /** @description Provider error; fails sign-in without revealing provider details. */
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sign-in page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Continue sign-in */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Expired, mismatched or refused sign-in. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     clientAdmission: {
         parameters: {
             query?: never;

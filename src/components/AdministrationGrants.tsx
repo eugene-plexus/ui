@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { PersonSection } from "@/components/PersonSection";
 import { api, describeError } from "@/lib/api";
 import type { AdministrationGrants as Grants, PermissionGroup, Person } from "@/lib/types";
 
@@ -25,12 +26,10 @@ export function AdministrationGrants({
   const [saved, setSaved] = useState(false);
   const scope = grants.membershipGroups ?? [];
   return (
-    <details className="text-sm">
-      <summary className="cursor-pointer text-[color:var(--accent-left)]">
-        Administration access{draft && <span className="ml-2 text-xs">Unsaved changes</span>}
-      </summary>
+    <PersonSection title="Administration permissions">
+      {draft && <p className="text-xs text-[color:var(--muted)]">Unsaved changes</p>}
       <form
-        className="mt-3 flex max-w-xl flex-col gap-3"
+        className="flex flex-col gap-4 text-sm"
         onChange={() => setSaved(false)}
         onSubmit={async (e) => {
           e.preventDefault();
@@ -53,14 +52,15 @@ export function AdministrationGrants({
           }
         }}
       >
-        <p>
-          Grant only what {person.displayName || person.name} needs. These permissions do not open
+        <p className="text-[color:var(--muted)]">
+          {`Grant only what ${person.displayName || person.name} needs. These permissions do not open`}{" "}
           machine controls or anyone else&rsquo;s private chats.
         </p>
         <fieldset disabled={busy} className="flex flex-col gap-3">
-          <label className="flex items-start gap-2">
+          <label className="flex items-start gap-3 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-3">
             <input
               type="checkbox"
+              className="mt-1"
               checked={grants.managePeople ?? false}
               onChange={(e) => setGrants({ ...grants, managePeople: e.target.checked })}
             />
@@ -72,9 +72,10 @@ export function AdministrationGrants({
               </span>
             </span>
           </label>
-          <label className="flex items-start gap-2">
+          <label className="flex items-start gap-3 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] p-3">
             <input
               type="checkbox"
+              className="mt-1"
               checked={grants.manageGroups ?? false}
               onChange={(e) => setGrants({ ...grants, manageGroups: e.target.checked })}
             />
@@ -132,6 +133,6 @@ export function AdministrationGrants({
         )}
         {saved && <p role="status">Administration access saved.</p>}
       </form>
-    </details>
+    </PersonSection>
   );
 }

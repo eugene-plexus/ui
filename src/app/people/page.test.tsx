@@ -49,6 +49,7 @@ const WORKBENCH = {
 const SECRET = "the-secret-shown-once-and-never-again";
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/people");
   calls = [];
   handlers = new Map<string, Handler>([
     [
@@ -120,22 +121,70 @@ function sent(key: string): unknown[] {
   return calls.filter((c) => c.key === key).map((c) => c.body);
 }
 
+async function openAda() {
+  await userEvent.click(await screen.findByRole("link", { name: "Manage Ada" }));
+}
+
 describe("people", () => {
   it("lists each person with their state and apps", async () => {
     render(<PeoplePage />);
+    await openAda();
     const row = await screen.findByTestId("person-Ada", {}, { timeout: 5000 });
     expect(within(row).getByTestId("person-state-Ada")).toHaveTextContent("Can sign in");
     expect(within(row).getByTestId("person-apps-Ada")).toHaveTextContent("Every app");
-    expect(screen.getByText(/You sign in to apps as/)).toHaveTextContent("operator");
-    // The heading counts the people; the buttons name theirs.
-    expect(screen.getByRole("heading", { name: /^People \(\d+\)$/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).toBeInTheDocument();
     expect(
       within(row).getByRole("button", { name: "Turn signing in off for Ada" }),
     ).toBeInTheDocument();
   });
 
+  it("shows account and permission editors immediately, with account actions separate", async () => {
+    render(<PeoplePage />);
+    await openAda();
+    const details = screen.getByRole("region", { name: "Account details" });
+    expect(within(details).getByLabelText("Email for Ada")).toBeVisible();
+    const access = screen.getByRole("region", { name: "Groups and app access" });
+    expect(within(access).getByRole("radio", { name: "Individual access" })).toBeVisible();
+    expect(within(access).getByRole("checkbox", { name: /Every app/ })).toBeVisible();
+    expect(within(access).getByRole("checkbox", { name: /Follow the install/ })).toBeVisible();
+    const administration = screen.getByRole("region", { name: "Administration permissions" });
+    expect(
+      within(administration).getByRole("checkbox", { name: /^Manage accounts/ }),
+    ).toBeVisible();
+    const actions = screen.getByRole("region", { name: "Account actions" });
+    expect(within(actions).getByLabelText("New password for Ada")).toBeVisible();
+    expect(
+      within(actions).getByRole("button", { name: "Turn signing in off for Ada" }),
+    ).toBeVisible();
+    expect(within(actions).getByRole("button", { name: "Delete Ada" })).toBeVisible();
+    // A help disclosure may contain prose, but no editor should be hidden inside one.
+    expect(
+      screen.getByTestId("person-Ada").querySelector("details input, details button"),
+    ).toBeNull();
+  });
+
+  it("keeps a rejected password reset available to retry and reports success only after saving", async () => {
+    handlers.set("PUT control/v1/people/p-ada/password", () => ({
+      status: 503,
+      body: { detail: "Try again" },
+    }));
+    render(<PeoplePage />);
+    await openAda();
+    const password = screen.getByLabelText("New password for Ada");
+    await userEvent.type(password, "a-new-password-1");
+    await userEvent.click(screen.getByRole("button", { name: "Set password" }));
+    expect(await screen.findByText("Try again")).toBeVisible();
+    expect(password).toHaveValue("a-new-password-1");
+    expect(screen.queryByText("Password updated.")).not.toBeInTheDocument();
+    handlers.set("PUT control/v1/people/p-ada/password", () => ({ status: 204 }));
+    await userEvent.click(screen.getByRole("button", { name: "Set password" }));
+    expect(await screen.findByText("Password updated.")).toBeVisible();
+    expect(password).toHaveValue("");
+  });
+
   it("shows how many job sites a person owns, linking to them, and no folder access", async () => {
     render(<PeoplePage />);
+    await openAda();
     const row = await screen.findByTestId("person-Ada", {}, { timeout: 5000 });
     const sites = await within(row).findByText("2 job sites");
     expect(sites).toHaveAttribute("href", "/sites?owner=p-ada");
@@ -148,6 +197,7 @@ describe("people", () => {
   it("says a person with no job sites has none, and survives a root that lists none", async () => {
     handlers.set("GET control/v1/sites", () => ({ status: 503, body: { detail: "locked" } }));
     render(<PeoplePage />);
+    await openAda();
     const row = await screen.findByTestId("person-Ada", {}, { timeout: 5000 });
     expect(within(row).getByTestId("person-sites-Ada")).toHaveTextContent("None");
   });
@@ -171,12 +221,12 @@ describe("people", () => {
 
   it("turns signing in off and sets a new password through the root", async () => {
     render(<PeoplePage />);
+    await openAda();
     await userEvent.click(await screen.findByTestId("person-toggle-Ada", {}, { timeout: 5000 }));
     await waitFor(() =>
       expect(sent("PATCH control/v1/people/p-ada")).toEqual([{ disabled: true }]),
     );
     const password = screen.getByTestId("person-password-Ada");
-    await userEvent.click(within(password).getByText("Set a new password"));
     await userEvent.type(
       within(password).getByLabelText("New password for Ada"),
       "a-new-password-1",
@@ -212,10 +262,9 @@ describe("people", () => {
 
   it("sets a person's email, and clears it with null", async () => {
     render(<PeoplePage />);
+    await openAda();
     const change = await screen.findByTestId("person-change-email-Ada", {}, { timeout: 5000 });
-    expect(within(change).getByText("Change email")).toBeInTheDocument();
     expect(screen.getByTestId("person-email-Ada")).toHaveTextContent("ada@example.org");
-    await userEvent.click(within(change).getByText("Change email"));
     const box = within(change).getByLabelText("Email for Ada");
     await userEvent.clear(box);
     await userEvent.type(box, "ada@new.example");
@@ -231,6 +280,7 @@ describe("people", () => {
 
   it("says what a person may do with job sites, from the defaults, linking to them", async () => {
     render(<PeoplePage />);
+    await openAda();
     const line = await screen.findByTestId("person-permissions-Ada", {}, { timeout: 5000 });
     expect(screen.getByTestId("person-permissions-text-Ada")).toHaveTextContent(
       "add machines; use job sites as themselves",
@@ -244,17 +294,17 @@ describe("people", () => {
 
   it("sets a person's own job-site permissions, and returns them to the defaults", async () => {
     render(<PeoplePage />);
+    await openAda();
     const choose = await screen.findByTestId(
       "person-choose-permissions-Ada",
       {},
       { timeout: 5000 },
     );
-    await userEvent.click(within(choose).getByText("Choose what they may do with job sites"));
     await userEvent.click(within(choose).getByLabelText(/Follow the install/));
     await userEvent.click(within(choose).getByLabelText(/Add machines of their own/));
-    await userEvent.click(within(choose).getByText("Save"));
+    await userEvent.click(within(choose).getByText("Save job-site permissions"));
     await userEvent.click(within(choose).getByLabelText(/Follow the install/));
-    await userEvent.click(within(choose).getByText("Save"));
+    await userEvent.click(within(choose).getByText("Save job-site permissions"));
     await waitFor(() =>
       expect(sent("PATCH control/v1/people/p-ada")).toEqual([
         { permissions: ["use-job-sites"] },
@@ -265,8 +315,8 @@ describe("people", () => {
 
   it("limits a person to the apps ticked", async () => {
     render(<PeoplePage />);
+    await openAda();
     const choose = await screen.findByTestId("person-choose-apps-Ada", {}, { timeout: 5000 });
-    await userEvent.click(within(choose).getByText("Choose apps"));
     await userEvent.click(within(choose).getByLabelText(/Every app/));
     await userEvent.click(within(choose).getByLabelText("Workbench"));
     await userEvent.click(within(choose).getByText("Save apps"));
@@ -296,6 +346,12 @@ describe("apps that sign in with Eugene", () => {
     expect(sent("POST control/v1/oidc/clients")).toEqual([
       { name: "Open WebUI", redirectUris: ["http://192.168.1.5:3000/oauth/oidc/callback"] },
     ]);
+    // Opening a person's settings must not discard a newly issued app secret.
+    await openAda();
+    expect(screen.getByTestId("sign-in-app-secret")).not.toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: /Back to people/ }));
+    expect(screen.getByTestId("sign-in-app-secret")).toBeVisible();
+    expect(screen.getByTestId("sign-in-app-secret")).toHaveTextContent(SECRET);
     await userEvent.click(screen.getByText("I have copied it"));
     expect(screen.queryByText(SECRET)).toBeNull();
     expect(document.body.textContent).not.toContain(SECRET);
@@ -356,8 +412,8 @@ describe("shared permission groups", () => {
         { name: "Builders", description: "", apps: [WORKBENCH.clientId], permissions: [] },
       ]),
     );
+    await openAda();
     const row = within(screen.getByTestId("person-Ada"));
-    await user.click(row.getByText("Access groups"));
     await user.click(row.getByLabelText("Use permission groups"));
     expect(row.getByText(/No groups selected/)).toBeVisible();
     await user.click(row.getByRole("checkbox", { name: "Builders" }));
@@ -377,13 +433,12 @@ describe("shared permission groups", () => {
       body: { people: [{ ...ADA, groups: [group.id], appsInEffect: [], permissionsInEffect: [] }] },
     }));
     render(<PeoplePage />);
+    await openAda();
     const row = within(await screen.findByTestId("person-Ada"));
     expect(row.getByTestId("person-apps-Ada")).toHaveTextContent("No apps");
     expect(row.getByTestId("person-permissions-Ada")).toHaveTextContent("Nothing (from groups)");
     expect(row.queryByTestId("person-choose-permissions-Ada")).not.toBeInTheDocument();
-    expect(
-      within(screen.getByTestId("protected-owner")).queryByRole("button"),
-    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("protected-owner")).not.toBeVisible();
   });
 
   it("saves an empty selection explicitly and can restore individual policy", async () => {
@@ -393,8 +448,8 @@ describe("shared permission groups", () => {
       body: { groups: [group] },
     }));
     render(<PeoplePage />);
+    await openAda();
     const row = within(await screen.findByTestId("person-Ada"));
-    await user.click(row.getByText("Access groups"));
     await user.click(row.getByLabelText("Use permission groups"));
     await user.click(row.getByRole("button", { name: "Save access" }));
     await waitFor(() =>
@@ -413,9 +468,11 @@ describe("shared permission groups", () => {
       body: { detail: "Root unavailable" },
     }));
     render(<PeoplePage />);
-    await screen.findByTestId("person-Ada");
+    await screen.findByRole("link", { name: "Manage Ada" });
     expect(screen.getByText(/Groups could not be loaded/)).toHaveTextContent("Root unavailable");
     expect(screen.getByRole("button", { name: "Add group" })).toBeDisabled();
-    expect(screen.queryByText("Access groups")).not.toBeInTheDocument();
+    await openAda();
+    expect(screen.getByText(/Permission groups could not be loaded/)).toBeVisible();
+    expect(screen.queryByRole("group", { name: "Access source" })).not.toBeInTheDocument();
   });
 });

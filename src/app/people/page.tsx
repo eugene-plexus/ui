@@ -22,6 +22,9 @@ import { useCallback, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { AdministrationGrants } from "@/components/AdministrationGrants";
+import { PersonSection } from "@/components/PersonSection";
+import { ExternalSignIn, PersonSignIn } from "@/components/ExternalSignIn";
+import { PeopleDirectory } from "@/components/PeopleDirectory";
 import { AccessAudit } from "@/components/AccessAudit";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { PermissionGroups, PersonGroups } from "@/components/PermissionGroups";
@@ -121,7 +124,7 @@ export default function PeoplePage() {
   return (
     <AppShell>
       <main data-testid="people-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-8">
+        <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-8">
           <p className="text-sm text-[color:var(--muted)]">
             One account directory for Eugene and its apps, including Workbench. Manage people, their
             app access, shared permission groups, and delegated administration here. Named
@@ -139,24 +142,7 @@ export default function PeoplePage() {
           {loaded === null ? (
             !error && <p className="font-ui text-sm text-[color:var(--muted)]">Loading…</p>
           ) : (
-            <>
-              <PeopleSection loaded={loaded} onChanged={load} />
-              <PermissionGroups
-                groups={loaded.groups}
-                clients={loaded.clients}
-                people={loaded.people}
-                error={loaded.groupsError}
-                onChanged={load}
-              />
-              <AppsSection loaded={loaded} onChanged={load} />
-              <AccessAudit
-                names={Object.fromEntries([
-                  ...loaded.people.map((person) => [person.id, person.displayName || person.name]),
-                  ...(loaded.groups ?? []).map((group) => [group.id, group.name]),
-                  ...loaded.clients.map((client) => [client.clientId, client.name]),
-                ])}
-              />
-            </>
+            <PeopleSection loaded={loaded} onChanged={load} />
           )}
         </div>
       </main>
@@ -171,42 +157,60 @@ export default function PeoplePage() {
 function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () => Promise<void> }) {
   const { people, operatorName, clients, sites } = loaded;
   return (
-    <section aria-labelledby="people-heading" className="section-panel flex flex-col gap-3">
-      <h2 id="people-heading" className="section-heading font-ui mb-0 text-base font-semibold">
-        People{people.length > 0 ? ` (${people.length})` : ""}
-      </h2>
-      <p className="text-sm text-[color:var(--muted)]">
-        You sign in to apps as <span className="font-mono">{operatorName}</span>, with
-        Eugene&rsquo;s passphrase.
-        {people.length === 0 ? " Nobody else is added yet." : ""}
-      </p>
-      <div className={rowClass} data-testid="protected-owner">
-        <div className="flex flex-wrap items-center gap-3">
-          <strong>{loaded.owner?.displayName ?? "Owner"}</strong>
-          <span className="font-mono text-sm">{loaded.owner?.name ?? operatorName}</span>
-          <span className="status-success text-xs">Protected owner</span>
-        </div>
-        <p className="text-sm text-[color:var(--muted)]">
-          Full console access. The owner account and recovery passphrase are managed separately from
-          member accounts and groups.
-        </p>
-      </div>
-      {people.length > 0 && (
-        <ul className="flex flex-col gap-2" data-testid="people-list">
-          {people.map((person) => (
-            <PersonRow
-              key={person.id}
-              person={person}
-              clients={clients}
-              groups={loaded.groups}
-              sites={sites.get(person.id) ?? 0}
-              onChanged={onChanged}
-            />
-          ))}
-        </ul>
+    <PeopleDirectory
+      people={people}
+      groups={loaded.groups}
+      renderPerson={(person) => (
+        <>
+          {loaded.groupsError && (
+            <p role="alert" className="status-error mb-3 text-sm">
+              Permission groups could not be loaded. {loaded.groupsError}
+            </p>
+          )}
+          <PersonRow
+            person={person}
+            clients={clients}
+            groups={loaded.groups}
+            sites={sites.get(person.id) ?? 0}
+            onChanged={onChanged}
+          />
+        </>
       )}
-      <AddPerson operatorName={operatorName} clients={clients} onAdded={onChanged} />
-    </section>
+      introduction={
+        <>
+          <details className={rowClass} data-testid="protected-owner">
+            <summary className="cursor-pointer text-sm">
+              <strong>{loaded.owner?.displayName ?? "Owner"}</strong>{" "}
+              <span className="font-mono">{loaded.owner?.name ?? operatorName}</span>{" "}
+              <span className="status-success">Protected owner</span>
+            </summary>
+            <p className="text-sm text-[color:var(--muted)]">
+              You sign in to apps as <span className="font-mono">{operatorName}</span>, with
+              Eugene&rsquo;s passphrase. Full console access. The owner account and recovery
+              passphrase are managed separately from member accounts and groups.
+            </p>
+          </details>
+          <AddPerson operatorName={operatorName} clients={clients} onAdded={onChanged} />
+        </>
+      }
+    >
+      <PermissionGroups
+        groups={loaded.groups}
+        clients={clients}
+        people={people}
+        error={loaded.groupsError}
+        onChanged={onChanged}
+      />
+      <AppsSection loaded={loaded} onChanged={onChanged} />
+      <ExternalSignIn />
+      <AccessAudit
+        names={Object.fromEntries([
+          ...people.map((person) => [person.id, person.displayName || person.name]),
+          ...(loaded.groups ?? []).map((group) => [group.id, group.name]),
+          ...clients.map((client) => [client.clientId, client.name]),
+        ])}
+      />
+    </PeopleDirectory>
   );
 }
 
@@ -233,8 +237,10 @@ function PersonRow({
     try {
       await run();
       await onChanged();
+      return true;
     } catch (e) {
       setError(describeError(e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -242,134 +248,151 @@ function PersonRow({
 
   const path = `/v1/people/${encodeURIComponent(person.id)}`;
   return (
-    <li className={rowClass} id={`person-${person.id}`} data-testid={`person-${person.name}`}>
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="font-ui font-semibold">{person.name}</span>
-        {person.displayName && (
-          <span className="text-sm text-[color:var(--muted)]">{person.displayName}</span>
-        )}
-        {person.email && (
-          <span
-            className="text-sm text-[color:var(--muted)]"
-            data-testid={`person-email-${person.name}`}
-          >
-            {person.email}
-          </span>
-        )}
-        <span
-          className={`font-ui rounded-[var(--radius)] px-1.5 text-sm ${
-            person.disabled ? "status-warn" : "status-success"
-          }`}
-          data-testid={`person-state-${person.name}`}
-        >
-          {person.disabled ? "Signing in is off" : "Can sign in"}
-        </span>
-        <span className="ml-auto flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className={buttonClass}
-            disabled={busy}
-            onClick={() =>
-              void change(() => api.patch("control", path, { disabled: !person.disabled }))
-            }
-            data-testid={`person-toggle-${person.name}`}
-            aria-label={`${person.disabled ? "Turn signing in on" : "Turn signing in off"} for ${person.name}`}
-          >
-            {person.disabled ? "Turn signing in on" : "Turn signing in off"}
-          </button>
-          <ConfirmButton
-            label="Delete"
-            ariaLabel={`Delete ${person.name}`}
-            confirmLabel={`Delete ${person.name}`}
-            prompt="Their apps sign them out within ten minutes."
-            onConfirm={() => change(() => api.delete("control", path))}
-            className={buttonClass}
-            testId={`person-delete-${person.name}`}
+    <article
+      className="flex min-w-0 flex-col gap-5"
+      id={`person-${person.id}`}
+      data-testid={`person-${person.name}`}
+    >
+      <PersonSection title="Account details">
+        <div className="grid min-w-0 gap-6 md:grid-cols-2">
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] content-start gap-x-5 gap-y-3 text-sm">
+            <dt className="text-[color:var(--muted)]">Account name</dt>
+            <dd className="break-words">{person.name}</dd>
+            <dt className="text-[color:var(--muted)]">Display name</dt>
+            <dd className="break-words">{person.displayName || "Not set"}</dd>
+            <dt className="text-[color:var(--muted)]">Sign-in status</dt>
+            <dd
+              className={person.disabled ? "status-warn" : "status-success"}
+              data-testid={`person-state-${person.name}`}
+            >
+              {person.disabled ? "Signing in is off" : "Can sign in"}
+            </dd>
+            <dt className="text-[color:var(--muted)]">Job sites</dt>
+            <dd>
+              {sites > 0 ? (
+                <Link
+                  href={ownerSitesHref(person.id)}
+                  className="underline"
+                  data-testid={`person-sites-${person.name}`}
+                >
+                  {sites === 1 ? "1 job site" : `${sites} job sites`}
+                </Link>
+              ) : (
+                <span data-testid={`person-sites-${person.name}`}>None</span>
+              )}
+            </dd>
+          </dl>
+          <ChangeEmail
+            person={person}
+            busy={busy}
+            onSave={(email) => change(() => api.patch("control", path, { email }))}
           />
-        </span>
-      </div>
-      <p className="text-sm">
-        <span className="text-[color:var(--muted)]">Apps: </span>
-        <span data-testid={`person-apps-${person.name}`}>{appsSummary(person, clients)}</span>
-      </p>
-      <p className="text-sm">
-        <span className="text-[color:var(--muted)]">Job sites: </span>
-        {sites > 0 ? (
-          <Link
-            href={ownerSitesHref(person.id)}
-            className="underline"
-            data-testid={`person-sites-${person.name}`}
-          >
-            {sites === 1 ? "1 job site" : `${sites} job sites`}
-          </Link>
-        ) : (
-          <span data-testid={`person-sites-${person.name}`}>None</span>
-        )}
-      </p>
-      <JobSitesLine person={person} />
-      {(person.administration?.managePeople ||
-        person.administration?.manageGroups ||
-        !!person.administration?.membershipGroups.length) && (
-        <p className="text-sm">
-          Administration:{" "}
-          {[
-            person.administration.managePeople ? "manage accounts" : null,
-            person.administration.manageGroups ? "define groups" : null,
-            person.administration.membershipGroups.length
-              ? `assign members to ${person.administration.membershipGroups.map((id) => groups?.find((g) => g.id === id)?.name ?? id).join(", ")}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join("; ")}
-        </p>
-      )}
-      {person.groups != null && (
-        <p className="text-sm text-[color:var(--muted)]">
-          Access from groups:{" "}
-          {person.groups.map((id) => groups?.find((g) => g.id === id)?.name ?? id).join(", ") ||
-            "None selected"}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-4">
+        </div>
+      </PersonSection>
+      <div className="grid min-w-0 items-start gap-5 xl:grid-cols-2">
+        <PersonSection title="Groups and app access">
+          <div className="space-y-2 rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-3 text-sm">
+            <p className="font-semibold">Current access</p>
+            <p>
+              <span className="text-[color:var(--muted)]">Apps: </span>
+              <span data-testid={`person-apps-${person.name}`}>{appsSummary(person, clients)}</span>
+            </p>
+            <JobSitesLine person={person} />
+            {person.groups != null && (
+              <p className="break-words">
+                <span className="text-[color:var(--muted)]">Access from groups: </span>
+                {person.groups
+                  .map((id) => groups?.find((g) => g.id === id)?.name ?? id)
+                  .join(", ") || "None selected"}
+              </p>
+            )}
+          </div>
+          {groups !== null && (
+            <PersonGroups
+              key={JSON.stringify(person.groups)}
+              person={person}
+              groups={groups}
+              onSave={(groups) => change(() => api.patch("control", path, { groups }))}
+            />
+          )}
+          {person.groups == null && (
+            <div className="space-y-5 border-t border-[color:var(--border)] pt-4">
+              <ChooseApps
+                person={person}
+                clients={clients}
+                busy={busy}
+                onSave={(apps) => change(() => api.patch("control", path, { apps }))}
+              />
+              <ChoosePermissions
+                person={person}
+                busy={busy}
+                onSave={(permissions) => change(() => api.patch("control", path, { permissions }))}
+              />
+            </div>
+          )}
+        </PersonSection>
         {groups !== null && (
           <AdministrationGrants person={person} groups={groups} onChanged={onChanged} />
         )}
-        {groups !== null && (
-          <PersonGroups
-            key={JSON.stringify(person.groups)}
-            person={person}
-            groups={groups}
-            onSave={(groups) => change(() => api.patch("control", path, { groups }))}
-          />
-        )}
-        {person.groups == null && (
-          <>
-            <ChooseApps
-              person={person}
-              clients={clients}
-              onSave={(apps) => change(() => api.patch("control", path, { apps }))}
-            />
-            <ChoosePermissions
-              person={person}
-              onSave={(permissions) => change(() => api.patch("control", path, { permissions }))}
-            />
-          </>
-        )}
-        <NewPassword
-          name={person.name}
-          onSave={(password) => change(() => api.put("control", `${path}/password`, { password }))}
-        />
-        <ChangeEmail
-          person={person}
-          onSave={(email) => change(() => api.patch("control", path, { email }))}
-        />
       </div>
+      <PersonSignIn personId={person.id} />
+      <PersonSection title="Account actions">
+        <div className="grid min-w-0 gap-6 md:grid-cols-2">
+          <NewPassword
+            name={person.name}
+            busy={busy}
+            onSave={(password) =>
+              change(() => api.put("control", `${path}/password`, { password }))
+            }
+          />
+          <div className="flex flex-col gap-5 border-t border-[color:var(--border)] pt-5 md:border-t-0 md:border-l md:pt-0 md:pl-6">
+            <div className="space-y-2">
+              <h4 className="font-ui font-semibold">Account status</h4>
+              <p className="text-sm text-[color:var(--muted)]">
+                {person.disabled
+                  ? "Allow this person to sign in again."
+                  : "Turn off signing in while keeping the account and its settings."}
+              </p>
+              <button
+                type="button"
+                className={buttonClass}
+                disabled={busy}
+                onClick={() =>
+                  void change(() => api.patch("control", path, { disabled: !person.disabled }))
+                }
+                data-testid={`person-toggle-${person.name}`}
+                aria-label={`${person.disabled ? "Turn signing in on" : "Turn signing in off"} for ${person.name}`}
+              >
+                {person.disabled ? "Turn signing in on" : "Turn signing in off"}
+              </button>
+            </div>
+            <div className="space-y-2 border-t border-[color:var(--border)] pt-4">
+              <h4 className="font-ui font-semibold">Delete account</h4>
+              <p className="text-sm text-[color:var(--muted)]">
+                Permanently remove this account and its owned job sites.
+              </p>
+              <ConfirmButton
+                label="Delete account"
+                ariaLabel={`Delete ${person.name}`}
+                confirmLabel={`Delete ${person.name}`}
+                prompt="This cannot be undone. Their apps sign them out within ten minutes."
+                onConfirm={async () => {
+                  await change(() => api.delete("control", path));
+                }}
+                disabled={busy}
+                className={`${buttonClass} status-error`}
+                testId={`person-delete-${person.name}`}
+              />
+            </div>
+          </div>
+        </div>
+      </PersonSection>
       {error && (
         <p className="status-error text-sm" role="alert">
           {error}
         </p>
       )}
-    </li>
+    </article>
   );
 }
 
@@ -408,25 +431,32 @@ function JobSitesLine({ person }: { person: Person }) {
 function ChoosePermissions({
   person,
   onSave,
+  busy,
 }: {
   person: Pick<Person, "permissions" | "permissionsInEffect" | "name">;
-  onSave: (permissions: string[] | null) => Promise<void>;
+  onSave: (permissions: string[] | null) => Promise<boolean>;
+  busy: boolean;
 }) {
   const [defaults, setDefaults] = useState(person.permissions == null);
   const [chosen, setChosen] = useState<string[]>(
     person.permissions ?? person.permissionsInEffect ?? [],
   );
   return (
-    <details className="text-sm" data-testid={`person-choose-permissions-${person.name}`}>
-      <summary className="font-ui cursor-pointer text-[color:var(--accent-left)]">
-        Choose what they may do with job sites
-      </summary>
-      <div className="mt-2 flex max-w-md flex-col gap-1">
-        <p className="text-[color:var(--muted)]">
-          These only narrow: a machine still needs their own account on it, a link they make there,
-          and their own key on their own changes. A folder a site&rsquo;s owner shares with them
-          works either way.
-        </p>
+    <fieldset
+      disabled={busy}
+      className="min-w-0 text-sm"
+      data-testid={`person-choose-permissions-${person.name}`}
+    >
+      <legend className="font-ui font-semibold">Job-site permissions</legend>
+      <div className="mt-2 flex flex-col gap-3">
+        <details className="text-[color:var(--muted)]">
+          <summary className="cursor-pointer">How job-site permissions work</summary>
+          <p className="mt-2">
+            These only narrow: a machine still needs their own account on it, a link they make
+            there, and their own key on their own changes. A folder a site&rsquo;s owner shares with
+            them works either way.
+          </p>
+        </details>
         <label className="font-ui flex items-center gap-2">
           <input
             type="checkbox"
@@ -468,11 +498,11 @@ function ChoosePermissions({
               )
             }
           >
-            Save
+            Save job-site permissions
           </button>
         </div>
       </div>
-    </details>
+    </fieldset>
   );
 }
 
@@ -481,19 +511,23 @@ function ChooseApps({
   person,
   clients,
   onSave,
+  busy,
 }: {
   person: Pick<Person, "apps" | "name">;
   clients: OidcClient[];
-  onSave: (apps: string[] | null) => Promise<void>;
+  onSave: (apps: string[] | null) => Promise<boolean>;
+  busy: boolean;
 }) {
   const [every, setEvery] = useState(person.apps == null);
   const [chosen, setChosen] = useState<string[]>(person.apps ?? []);
   return (
-    <details className="text-sm" data-testid={`person-choose-apps-${person.name}`}>
-      <summary className="font-ui cursor-pointer text-[color:var(--accent-left)]">
-        Choose apps
-      </summary>
-      <div className="mt-2 flex flex-col gap-1">
+    <fieldset
+      disabled={busy}
+      className="min-w-0 text-sm"
+      data-testid={`person-choose-apps-${person.name}`}
+    >
+      <legend className="font-ui font-semibold">Allowed apps</legend>
+      <div className="mt-2 flex flex-col gap-3">
         <AppChoices
           clients={clients}
           every={every}
@@ -511,7 +545,7 @@ function ChooseApps({
           </button>
         </div>
       </div>
-    </details>
+    </fieldset>
   );
 }
 
@@ -562,43 +596,64 @@ function AppChoices({
 function NewPassword({
   name,
   onSave,
+  busy,
 }: {
   name: string;
-  onSave: (password: string) => Promise<void>;
+  onSave: (password: string) => Promise<boolean>;
+  busy: boolean;
 }) {
   const [password, setPassword] = useState("");
+  const [saved, setSaved] = useState(false);
   const short = password.length > 0 && password.length < MIN_PASSWORD;
   return (
-    <details className="text-sm" data-testid={`person-password-${name}`}>
-      <summary className="font-ui cursor-pointer text-[color:var(--accent-left)]">
-        Set a new password
-      </summary>
-      <div className="mt-2 flex max-w-sm flex-col gap-2">
-        <p className="text-[color:var(--muted)]">
-          Tell them the new one. Their apps sign them out within ten minutes, and they can change it
-          when they next sign in.
-        </p>
+    <form
+      className="flex min-w-0 flex-col gap-3 text-sm"
+      data-testid={`person-password-${name}`}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setSaved(false);
+        if (await onSave(password)) {
+          setPassword("");
+          setSaved(true);
+        }
+      }}
+    >
+      <h4 className="font-ui font-semibold">Reset password</h4>
+      <p className="text-[color:var(--muted)]">
+        Tell them the new one. Their apps sign them out within ten minutes, and they can change it
+        when they next sign in.
+      </p>
+      <label className="flex max-w-sm flex-col gap-2">
+        New password
         <input
           type="password"
           autoComplete="new-password"
           className={inputClass}
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          disabled={busy}
+          minLength={MIN_PASSWORD}
+          required
+          onChange={(e) => {
+            setPassword(e.target.value);
+            setSaved(false);
+          }}
           aria-label={`New password for ${name}`}
         />
-        {short && <p className="status-warn text-sm">At least {MIN_PASSWORD} characters.</p>}
-        <div>
-          <button
-            type="button"
-            className={primaryClass}
-            disabled={password.length < MIN_PASSWORD}
-            onClick={() => void onSave(password).then(() => setPassword(""))}
-          >
-            Set password
-          </button>
-        </div>
-      </div>
-    </details>
+      </label>
+      {short && <p className="status-warn text-sm">At least {MIN_PASSWORD} characters.</p>}
+      <button
+        type="submit"
+        className={`${primaryClass} self-start`}
+        disabled={busy || password.length < MIN_PASSWORD}
+      >
+        Set password
+      </button>
+      {saved && (
+        <p role="status" className="status-success">
+          Password updated.
+        </p>
+      )}
+    </form>
   );
 }
 
@@ -606,19 +661,28 @@ function NewPassword({
 function ChangeEmail({
   person,
   onSave,
+  busy,
 }: {
   person: Pick<Person, "email" | "name">;
-  onSave: (email: string | null) => Promise<void>;
+  onSave: (email: string | null) => Promise<boolean>;
+  busy: boolean;
 }) {
   const [email, setEmail] = useState(person.email ?? "");
   const problem = emailProblem(email);
   return (
-    <details className="text-sm" data-testid={`person-change-email-${person.name}`}>
-      <summary className="font-ui cursor-pointer text-[color:var(--accent-left)]">
-        {person.email ? "Change email" : "Add an email"}
-      </summary>
+    <fieldset
+      disabled={busy}
+      className="min-w-0 text-sm"
+      data-testid={`person-change-email-${person.name}`}
+    >
+      <legend className="font-ui font-semibold">Email address</legend>
       <div className="mt-2 flex max-w-sm flex-col gap-2">
         <p className="text-[color:var(--muted)]">{EMAIL_HINT}</p>
+        {person.email && (
+          <p className="break-words" data-testid={`person-email-${person.name}`}>
+            Current: {person.email}
+          </p>
+        )}
         <input
           type="email"
           autoComplete="off"
@@ -641,14 +705,16 @@ function ChangeEmail({
             <button
               type="button"
               className={buttonClass}
-              onClick={() => void onSave(null).then(() => setEmail(""))}
+              onClick={async () => {
+                if (await onSave(null)) setEmail("");
+              }}
             >
               Remove email
             </button>
           )}
         </div>
       </div>
-    </details>
+    </fieldset>
   );
 }
 

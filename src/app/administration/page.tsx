@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { PersonSection } from "@/components/PersonSection";
+import { PeopleDirectory } from "@/components/PeopleDirectory";
 import { PermissionGroups } from "@/components/PermissionGroups";
+import { beginAdministrationSignIn, finishAdministrationSignIn } from "@/lib/administrationSignIn";
 import { api, ApiError, describeError } from "@/lib/api";
 import { appsSummary, MIN_PASSWORD } from "@/lib/people";
 import type {
@@ -37,14 +40,34 @@ export default function AdministrationPage() {
   const [token, setToken] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const callback = useRef<Promise<string | null> | null>(null);
   useEffect(() => {
-    try {
-      setToken(sessionStorage.getItem(KEY));
-    } catch {
-      /* sign in */
-    }
-    setRestored(true);
-    document.title = "People and access · Eugene Plexus";
+    let live = true;
+    callback.current ??= finishAdministrationSignIn();
+    void callback.current
+      .then((signedIn) => {
+        if (!live) return;
+        if (signedIn) {
+          remember(signedIn);
+          setToken(signedIn);
+        } else {
+          try {
+            setToken(sessionStorage.getItem(KEY));
+          } catch {
+            /* memory-only */
+          }
+        }
+      })
+      .catch((e) => {
+        if (live) setNotice(describeError(e));
+      })
+      .finally(() => {
+        if (live) setRestored(true);
+      });
+    document.title = "People and access ? Eugene Plexus";
+    return () => {
+      live = false;
+    };
   }, []);
   const ended = useCallback((message: string) => {
     remember(null);
@@ -53,7 +76,7 @@ export default function AdministrationPage() {
   }, []);
   return (
     <main className="relative z-10 min-h-screen px-4 py-8 sm:px-6">
-      <div className="mx-auto flex max-w-4xl flex-col gap-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
           <div>
             <p className="text-sm text-[color:var(--muted)]">Eugene Plexus</p>
@@ -153,6 +176,23 @@ function NamedLogin({ onSignedIn }: { onSignedIn: (token: string) => void }) {
       <button className={button} disabled={busy} type="submit">
         {busy ? "Signing in…" : "Sign in"}
       </button>
+      <button
+        type="button"
+        className={button}
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await beginAdministrationSignIn();
+          } catch (e) {
+            setError(describeError(e));
+            setBusy(false);
+          }
+        }}
+      >
+        Use shared sign-in or a provider
+      </button>
       <p className="text-xs text-[color:var(--muted)]">
         This session lasts one hour. The owner must unlock Eugene after a restart if automatic
         unlock is off.
@@ -171,7 +211,6 @@ type Loaded = {
 function Directory({ token, onEnded }: { token: string; onEnded: (message: string) => void }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
   const load = useCallback(async () => {
     try {
       const options = { bearer: token };
@@ -201,6 +240,9 @@ function Directory({ token, onEnded }: { token: string; onEnded: (message: strin
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <a className="text-sm underline" href="/oidc/account">
+          My sign-in and sessions
+        </a>
         <p>
           {loaded ? `Signed in as ${loaded.session.name}` : "Checking your administration access…"}
         </p>
@@ -250,43 +292,27 @@ function Directory({ token, onEnded }: { token: string; onEnded: (message: strin
               Private conversations belong to each person.
             </p>
           </section>
-          {loaded.session.grants.managePeople && <CreateAccount token={token} onChanged={load} />}
-          <section className="flex flex-col gap-3" aria-label="People">
-            <h2 className="text-lg font-semibold">People ({loaded.people.length})</h2>
-            <label className="text-sm">
-              Find a person
-              <input
-                type="search"
-                className={`${input} mt-1`}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+          <PeopleDirectory
+            people={loaded.people}
+            groups={loaded.groups}
+            introduction={
+              loaded.session.grants.managePeople && <CreateAccount token={token} onChanged={load} />
+            }
+            renderPerson={(person) => (
+              <Account person={person} loaded={loaded} token={token} onChanged={load} />
+            )}
+          >
+            {loaded.session.grants.manageGroups && (
+              <PermissionGroups
+                groups={loaded.groups}
+                clients={loaded.clients}
+                people={loaded.people}
+                error={null}
+                bearer={token}
+                onChanged={load}
               />
-            </label>
-            {loaded.people
-              .filter((p) =>
-                `${p.name} ${p.displayName ?? ""}`.toLowerCase().includes(query.toLowerCase()),
-              )
-              .map((person) => (
-                <Account
-                  key={person.id}
-                  person={person}
-                  loaded={loaded}
-                  token={token}
-                  onChanged={load}
-                />
-              ))}
-            {loaded.people.length === 0 && <p>No member accounts yet.</p>}
-          </section>
-          {loaded.session.grants.manageGroups && (
-            <PermissionGroups
-              groups={loaded.groups}
-              clients={loaded.clients}
-              people={loaded.people}
-              error={null}
-              bearer={token}
-              onChanged={load}
-            />
-          )}
+            )}
+          </PeopleDirectory>
         </>
       )}
     </>
@@ -360,7 +386,11 @@ function CreateAccount({ token, onChanged }: { token: string; onChanged: () => P
             {error}
           </p>
         )}
-        {saved && <p role="status">Account created. Assign group access below.</p>}
+        {saved && (
+          <p role="status">
+            Account created. Find and select the person below to assign group access.
+          </p>
+        )}
       </form>
     </details>
   );
@@ -405,69 +435,110 @@ function Account({
     }
   }
   return (
-    <article className="section-panel flex flex-col gap-3">
-      <header className="flex flex-wrap items-center gap-3">
-        <h3 className="font-semibold break-words">{person.displayName || person.name}</h3>
-        {person.displayName && (
-          <span className="text-sm text-[color:var(--muted)]">{person.name}</span>
-        )}
-        <span className={person.disabled ? "status-warn" : "status-success"}>
-          {person.disabled ? "Disabled" : "Active"}
-        </span>
-        {protectedAccount && <span className="text-xs">Protected administrator</span>}
-      </header>
-      <p className="text-sm">Apps: {appsSummary(person, loaded.clients)}</p>
-      <p className="text-sm">
-        {person.groups == null
-          ? "Individual access — the owner manages assignments."
-          : `Groups: ${person.groups.map((id) => loaded.groups.find((g) => g.id === id)?.name ?? id).join(", ") || "None"}`}
-      </p>
-      {editable && scope.length > 0 && person.groups != null && (
-        <Memberships
-          person={person}
-          groups={loaded.groups.filter((g) => scope.includes(g.id))}
-          busy={busy}
-          onSave={(groups) => change({ groups })}
-        />
-      )}
-      {editable && grants.managePeople && (
-        <div className="flex flex-wrap gap-3">
-          <DisplayName
-            key={person.displayName}
-            person={person}
-            busy={busy}
-            onChange={async (value) => {
-              await change({ displayName: value });
-            }}
-          />
-          <button
-            className={button}
-            disabled={busy}
-            onClick={() => void change({ disabled: !person.disabled })}
-          >
-            {person.disabled ? "Enable account" : "Disable account"}
-          </button>
-          <ConfirmButton
-            disabled={busy}
-            className={button}
-            label="Delete account"
-            ariaLabel={`Delete account ${person.name}`}
-            confirmLabel={`Delete ${person.name}`}
-            prompt="This removes the account and its owned job sites. It cannot be undone."
-            onConfirm={async () => {
-              setError(null);
-              setBusy(true);
-              try {
-                await api.delete("control", path, { bearer: token });
-                await onChanged();
-              } catch (e) {
-                setError(describeError(e));
-              } finally {
-                setBusy(false);
-              }
-            }}
-          />
+    <article className="flex min-w-0 flex-col gap-5">
+      <PersonSection title="Account details">
+        <div className="grid min-w-0 gap-6 md:grid-cols-2">
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] content-start gap-x-5 gap-y-3 text-sm">
+            <dt className="text-[color:var(--muted)]">Account name</dt>
+            <dd className="break-words">{person.name}</dd>
+            <dt className="text-[color:var(--muted)]">Sign-in status</dt>
+            <dd className={person.disabled ? "status-warn" : "status-success"}>
+              {person.disabled ? "Disabled" : "Active"}
+            </dd>
+            {protectedAccount && (
+              <>
+                <dt className="text-[color:var(--muted)]">Administration</dt>
+                <dd>Protected administrator</dd>
+              </>
+            )}
+          </dl>
+          {editable && grants.managePeople ? (
+            <DisplayName
+              key={person.displayName}
+              person={person}
+              busy={busy}
+              onChange={async (value) => {
+                await change({ displayName: value });
+              }}
+            />
+          ) : (
+            <div className="text-sm">
+              <p className="text-[color:var(--muted)]">Display name</p>
+              <p className="break-words">{person.displayName || "Not set"}</p>
+            </div>
+          )}
         </div>
+        {protectedAccount && (
+          <p className="text-sm text-[color:var(--muted)]">
+            Only the owner can change this administrator&rsquo;s account or access.
+          </p>
+        )}
+      </PersonSection>
+      <PersonSection title="Groups and app access">
+        <div className="space-y-2 rounded-[var(--radius)] bg-[color:var(--panel-soft)] p-3 text-sm">
+          <p className="font-semibold">Current access</p>
+          <p>Apps: {appsSummary(person, loaded.clients)}</p>
+          <p className="break-words">
+            {person.groups == null
+              ? "Individual access - the owner manages assignments."
+              : `Groups: ${person.groups.map((id) => loaded.groups.find((g) => g.id === id)?.name ?? id).join(", ") || "None"}`}
+          </p>
+        </div>
+        {editable && scope.length > 0 && person.groups != null && (
+          <Memberships
+            person={person}
+            groups={loaded.groups.filter((g) => scope.includes(g.id))}
+            busy={busy}
+            onSave={(groups) => change({ groups })}
+          />
+        )}
+      </PersonSection>
+      {editable && grants.managePeople && (
+        <PersonSection title="Account actions">
+          <div className="grid min-w-0 gap-6 md:grid-cols-2">
+            <div className="space-y-3">
+              <h4 className="font-semibold">Account status</h4>
+              <p className="text-sm text-[color:var(--muted)]">
+                {person.disabled
+                  ? "Allow this person to sign in again."
+                  : "Turn off signing in while keeping the account and its settings."}
+              </p>
+              <button
+                className={button}
+                disabled={busy}
+                onClick={() => void change({ disabled: !person.disabled })}
+              >
+                {person.disabled ? "Enable account" : "Disable account"}
+              </button>
+            </div>
+            <div className="space-y-3 border-t border-[color:var(--border)] pt-5 md:border-t-0 md:border-l md:pt-0 md:pl-6">
+              <h4 className="font-semibold">Delete account</h4>
+              <p className="text-sm text-[color:var(--muted)]">
+                Permanently remove this account and its owned job sites.
+              </p>
+              <ConfirmButton
+                disabled={busy}
+                className={`${button} status-error`}
+                label="Delete account"
+                ariaLabel={`Delete account ${person.name}`}
+                confirmLabel={`Delete ${person.name}`}
+                prompt="This removes the account and its owned job sites. It cannot be undone."
+                onConfirm={async () => {
+                  setError(null);
+                  setBusy(true);
+                  try {
+                    await api.delete("control", path, { bearer: token });
+                    await onChanged();
+                  } catch (e) {
+                    setError(describeError(e));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </PersonSection>
       )}
       {error && (
         <p role="alert" className="status-error">
@@ -489,32 +560,27 @@ function DisplayName({
 }) {
   const [value, setValue] = useState(person.displayName ?? "");
   return (
-    <details className="text-sm">
-      <summary className="cursor-pointer text-[color:var(--accent-left)]">
-        Edit display name
-      </summary>
-      <form
-        className="mt-2 flex flex-col gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void onChange(value);
-        }}
-      >
-        <label>
-          Display name
-          <input
-            className={input}
-            maxLength={120}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            disabled={busy}
-          />
-        </label>
-        <button className={button} disabled={busy}>
-          Save display name
-        </button>
-      </form>
-    </details>
+    <form
+      className="flex max-w-sm flex-col gap-3 text-sm"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void onChange(value);
+      }}
+    >
+      <label className="flex flex-col gap-2">
+        Display name
+        <input
+          className={input}
+          maxLength={120}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={busy}
+        />
+      </label>
+      <button className={button} disabled={busy}>
+        Save display name
+      </button>
+    </form>
   );
 }
 
@@ -533,48 +599,42 @@ function Memberships({
   const [saved, setSaved] = useState(false);
   const scope = groups.map((g) => g.id);
   return (
-    <details>
-      <summary className="cursor-pointer text-sm text-[color:var(--accent-left)]">
-        Assign groups
-      </summary>
-      <form
-        className="mt-3"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setSaved(false);
-          // Merge the latest out-of-scope memberships, never replace them from an old draft.
-          const kept = (person.groups ?? []).filter((id) => !scope.includes(id));
-          setSaved(await onSave([...kept, ...selected.filter((id) => scope.includes(id))]));
-        }}
-      >
-        <fieldset disabled={busy} className="flex flex-col gap-2">
-          <legend className="sr-only">Groups for {person.name}</legend>
-          {groups.map((g) => (
-            <label className="flex gap-2 text-sm" key={g.id}>
-              <input
-                type="checkbox"
-                checked={selected.includes(g.id)}
-                onChange={(e) => {
-                  setSaved(false);
-                  setSelected(
-                    e.target.checked ? [...selected, g.id] : selected.filter((id) => id !== g.id),
-                  );
-                }}
-              />
-              {g.name}
-            </label>
-          ))}
-          <p className="text-xs text-[color:var(--muted)]">
-            Other memberships are kept when you save.
-          </p>
-          <button className={button}>Save memberships</button>
-        </fieldset>
-        {saved && (
-          <p role="status" className="mt-2 text-sm">
-            Memberships saved.
-          </p>
-        )}
-      </form>
-    </details>
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setSaved(false);
+        // Merge the latest out-of-scope memberships, never replace them from an old draft.
+        const kept = (person.groups ?? []).filter((id) => !scope.includes(id));
+        setSaved(await onSave([...kept, ...selected.filter((id) => scope.includes(id))]));
+      }}
+    >
+      <fieldset disabled={busy} className="flex flex-col gap-2">
+        <legend className="mb-3 font-semibold">Groups for {person.name}</legend>
+        {groups.map((g) => (
+          <label className="flex gap-2 text-sm" key={g.id}>
+            <input
+              type="checkbox"
+              checked={selected.includes(g.id)}
+              onChange={(e) => {
+                setSaved(false);
+                setSelected(
+                  e.target.checked ? [...selected, g.id] : selected.filter((id) => id !== g.id),
+                );
+              }}
+            />
+            {g.name}
+          </label>
+        ))}
+        <p className="text-xs text-[color:var(--muted)]">
+          Other memberships are kept when you save.
+        </p>
+        <button className={button}>Save memberships</button>
+      </fieldset>
+      {saved && (
+        <p role="status" className="mt-2 text-sm">
+          Memberships saved.
+        </p>
+      )}
+    </form>
   );
 }

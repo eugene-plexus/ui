@@ -3610,7 +3610,7 @@ export interface components {
         ClientAdmissionResult: {
             keyId: string;
             keyName: string;
-            /** @description Stable subject verified by the root */
+            /** @description Stable subject verified by the root, never caller supplied. */
             personId?: string;
             appClientId?: string;
             limits?: components["schemas"]["ClientKeyLimits"];
