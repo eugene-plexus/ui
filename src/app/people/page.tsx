@@ -22,6 +22,7 @@ import { useCallback, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { PermissionGroups, PersonGroups } from "@/components/PermissionGroups";
 import { CopyButton } from "@/components/CopyButton";
 import { api, describeError } from "@/lib/api";
 import {
@@ -45,6 +46,8 @@ import type {
   OidcClientCreated,
   OidcClientList,
   Person,
+  PermissionGroup,
+  PermissionGroupList,
   PersonCreateRequest,
   PersonList,
   SiteList,
@@ -67,6 +70,9 @@ const ROOT_SETTINGS = "/config?sel=control";
 
 interface Loaded {
   people: Person[];
+  owner: PersonList["owner"];
+  groups: PermissionGroup[] | null;
+  groupsError: string | null;
   operatorName: string;
   clients: OidcClient[];
   issuer: string | null;
@@ -80,14 +86,24 @@ export default function PeoplePage() {
 
   const load = useCallback(async () => {
     try {
-      const [people, clients, sites] = await Promise.all([
+      const [people, clients, sites, groups] = await Promise.all([
         api.get<PersonList>("control", "/v1/people"),
         api.get<OidcClientList>("control", "/v1/oidc/clients"),
         // Job sites are a count beside each person, never a reason to fail.
         api.get<SiteList>("control", "/v1/sites").catch(() => null),
+        api.get<PermissionGroupList>("control", "/v1/permission-groups").then(
+          (data) => ({
+            groups: data.groups ?? null,
+            error: data.groups ? null : "The root does not provide groups yet.",
+          }),
+          (e) => ({ groups: null, error: describeError(e) }),
+        ),
       ]);
       setLoaded({
         people: people.people ?? [],
+        owner: people.owner,
+        groups: groups.groups,
+        groupsError: groups.error,
         operatorName: people.operatorName ?? "operator",
         clients: clients.clients ?? [],
         issuer: clients.issuer ?? null,
@@ -105,9 +121,9 @@ export default function PeoplePage() {
       <main data-testid="people-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-8">
           <p className="text-sm text-[color:var(--muted)]">
-            Apps can ask Eugene who is using them. With nobody added here, an app asks for
-            Eugene&rsquo;s passphrase. Add people to give each one a name and password. They cannot
-            open this console.
+            One account directory for Eugene and its apps, including Workbench. Manage people, their
+            app access, and shared permission groups here. Members sign in to their apps; console
+            administration remains with the owner.
           </p>
           {error && (
             <p className="status-error rounded-[var(--radius)] px-2 py-1 text-sm" role="alert">
@@ -119,6 +135,13 @@ export default function PeoplePage() {
           ) : (
             <>
               <PeopleSection loaded={loaded} onChanged={load} />
+              <PermissionGroups
+                groups={loaded.groups}
+                clients={loaded.clients}
+                people={loaded.people}
+                error={loaded.groupsError}
+                onChanged={load}
+              />
               <AppsSection loaded={loaded} onChanged={load} />
             </>
           )}
@@ -144,6 +167,17 @@ function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () =>
         Eugene&rsquo;s passphrase.
         {people.length === 0 ? " Nobody else is added yet." : ""}
       </p>
+      <div className={rowClass} data-testid="protected-owner">
+        <div className="flex flex-wrap items-center gap-3">
+          <strong>{loaded.owner?.displayName ?? "Owner"}</strong>
+          <span className="font-mono text-sm">{loaded.owner?.name ?? operatorName}</span>
+          <span className="status-success text-xs">Protected owner</span>
+        </div>
+        <p className="text-sm text-[color:var(--muted)]">
+          Full console access. The owner account and recovery passphrase are managed separately from
+          member accounts and groups.
+        </p>
+      </div>
       {people.length > 0 && (
         <ul className="flex flex-col gap-2" data-testid="people-list">
           {people.map((person) => (
@@ -151,6 +185,7 @@ function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () =>
               key={person.id}
               person={person}
               clients={clients}
+              groups={loaded.groups}
               sites={sites.get(person.id) ?? 0}
               onChanged={onChanged}
             />
@@ -165,10 +200,12 @@ function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () =>
 function PersonRow({
   person,
   clients,
+  groups,
   sites,
   onChanged,
 }: {
   person: Person;
+  groups: PermissionGroup[] | null;
   clients: OidcClient[];
   /** How many job sites this person owns. */
   sites: number;
@@ -257,16 +294,35 @@ function PersonRow({
         )}
       </p>
       <JobSitesLine person={person} />
+      {person.groups != null && (
+        <p className="text-sm text-[color:var(--muted)]">
+          Access from groups:{" "}
+          {person.groups.map((id) => groups?.find((g) => g.id === id)?.name ?? id).join(", ") ||
+            "None selected"}
+        </p>
+      )}
       <div className="flex flex-wrap gap-4">
-        <ChooseApps
-          person={person}
-          clients={clients}
-          onSave={(apps) => change(() => api.patch("control", path, { apps }))}
-        />
-        <ChoosePermissions
-          person={person}
-          onSave={(permissions) => change(() => api.patch("control", path, { permissions }))}
-        />
+        {groups !== null && (
+          <PersonGroups
+            key={JSON.stringify(person.groups)}
+            person={person}
+            groups={groups}
+            onSave={(groups) => change(() => api.patch("control", path, { groups }))}
+          />
+        )}
+        {person.groups == null && (
+          <>
+            <ChooseApps
+              person={person}
+              clients={clients}
+              onSave={(apps) => change(() => api.patch("control", path, { apps }))}
+            />
+            <ChoosePermissions
+              person={person}
+              onSave={(permissions) => change(() => api.patch("control", path, { permissions }))}
+            />
+          </>
+        )}
         <NewPassword
           name={person.name}
           onSave={(password) => change(() => api.put("control", `${path}/password`, { password }))}
@@ -305,7 +361,9 @@ function JobSitesLine({ person }: { person: Person }) {
           )
         </span>
       ) : (
-        <span className="text-[color:var(--muted)]">(set for them)</span>
+        <span className="text-[color:var(--muted)]">
+          {summary.source === "groups" ? "(from groups)" : "(set for them)"}
+        </span>
       )}
     </p>
   );

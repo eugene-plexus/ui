@@ -44,24 +44,34 @@ export const PERMISSION_DEFAULTS_HREF = "/config?sel=control#peopleMayAddJobSite
  * the install's defaults or set for them. Read from `permissionsInEffect`,
  * the root's own answer, so the line never shows a value not in effect.
  */
-export function jobSitesSummary(person: Pick<Person, "permissions" | "permissionsInEffect">): {
+export function jobSitesSummary(
+  person: Pick<Person, "permissions" | "permissionsInEffect" | "groups">,
+): {
   text: string;
-  source: "defaults" | "own";
+  source: "defaults" | "own" | "groups";
 } {
   const inEffect = new Set<string>(person.permissionsInEffect ?? []);
   const may = JOB_SITE_PERMISSIONS.filter((p) => inEffect.has(p.id)).map((p) => p.short);
   const text = may.length === 0 ? "Nothing" : may.join("; ");
-  return { text, source: person.permissions == null ? "defaults" : "own" };
+  return {
+    text,
+    source: person.groups != null ? "groups" : person.permissions == null ? "defaults" : "own",
+  };
 }
 
 /** The shortest password the root accepts, the console's passphrase rule. */
 export const MIN_PASSWORD = 12;
 
 /** Which apps a person may sign in to, in words. */
-export function appsSummary(person: Pick<Person, "apps">, clients: OidcClient[]): string {
-  if (person.apps == null) return "Every app";
-  if (person.apps.length === 0) return "No apps";
-  const names = person.apps.map((id) => clients.find((c) => c.clientId === id)?.name ?? id);
+export function appsSummary(
+  person: Pick<Person, "apps" | "appsInEffect" | "groups">,
+  clients: OidcClient[],
+): string {
+  const apps =
+    person.groups != null || "appsInEffect" in person ? person.appsInEffect : person.apps;
+  if (apps == null) return "Every app";
+  if (apps.length === 0) return "No apps";
+  const names = apps.map((id) => clients.find((c) => c.clientId === id)?.name ?? id);
   return names.join(", ");
 }
 
