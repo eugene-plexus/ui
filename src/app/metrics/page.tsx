@@ -42,17 +42,24 @@
  */
 
 import Link from "next/link";
+import { Activity, Download, Radio } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { HourChart, RequestOutcomes, StatTile } from "@/components/MetricsCharts";
+import {
+  DashboardSection,
+  GatewayCapacity,
+  GatewayEfficiency,
+} from "@/components/GatewayOperations";
 import { CopyButton } from "@/components/CopyButton";
 import { More } from "@/components/Help";
 import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
 import { compact, hourlyPoints, msLabel, tilesFrom } from "@/lib/metricsCharts";
 import { withContext } from "@/lib/modelContext";
-import type { ClientUsageSummary } from "@/lib/types";
+import type { ClientUsageSummary, RoutingTableView } from "@/lib/types";
+import { durationLabel, percentage } from "@/lib/gatewayDashboard";
 import { usePolling } from "@/lib/usePolling";
 import { useServedContexts } from "@/lib/useServedContexts";
 import { clockTime, formatTimestamp } from "@/lib/relativeTime";
@@ -263,7 +270,7 @@ function ms(value: number): string {
 }
 
 function groupKey(g: MetricsGroup): string {
-  return [g.bucketStart, g.model, g.driver, g.runtime, g.node].join("|");
+  return JSON.stringify([g.bucketStart, g.model, g.driver, g.runtime, g.node, g.backend]);
 }
 
 /** The series colors. Marks wear these; text never does. The p90
@@ -295,6 +302,9 @@ export default function MetricsPage() {
   const [hourly, setHourly] = useState<MetricsSummary | null>(null);
   const [clientUsage, setClientUsage] = useState<ClientUsageSummary | null>(null);
   const [recent, setRecent] = useState<MetricRequest[] | null>(null);
+  const [routing, setRouting] = useState<RoutingTableView | null>(null);
+  const [routingError, setRoutingError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState("");
   const [clientError, setClientError] = useState<string | null>(null);
   const [recentError, setRecentError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -304,7 +314,7 @@ export default function MetricsPage() {
   // or the model starts a new read, and nothing used to discard an older
   // one still in flight: the last week's read, slower than the hour's,
   // could land after it and put a week of numbers under "Last hour".
-  const selection = `${hours}|${model}`;
+  const selection = `${hours}|${model}|${outcome}`;
   const [shownFor, setShownFor] = useState<string | null>(null);
   const readSeq = useRef(0);
   // When the numbers on screen were read, and whether a Refresh press is
@@ -325,7 +335,7 @@ export default function MetricsPage() {
       // The two side reads fail on their own. An older gateway has no
       // `/v1/metrics/clients`, and one refused read used to reject the
       // whole `Promise.all` and leave the page showing only an error.
-      const [[s, t, h], r, c] = await Promise.all([
+      const [[s, t, h], r, c, capacity] = await Promise.all([
         Promise.all([
           api.get<MetricsSummary>("gateway", `/v1/metrics?${modelOnly}since=${since}`),
           api.get<MetricsSummary>("gateway", `/v1/metrics?groupBy=total${scoped}&since=${since}`),
@@ -337,15 +347,18 @@ export default function MetricsPage() {
         settle(
           api.get<{ requests: MetricRequest[] }>(
             "gateway",
-            `/v1/metrics/requests?${modelOnly}limit=25`,
+            `/v1/metrics/requests?${modelOnly}${outcome ? `outcome=${outcome}&` : ""}limit=25`,
           ),
         ),
         settle(api.get<ClientUsageSummary>("gateway", `/v1/metrics/clients?since=${since}`)),
+        settle(api.get<RoutingTableView>("gateway", "/v1/admin/routing")),
       ]);
       if (!current()) return;
       setSummary(s);
       setTotals(t);
       setHourly(h);
+      setRouting(capacity.ok && Array.isArray(capacity.value.slots) ? capacity.value : null);
+      setRoutingError(capacity.ok ? null : describeError(capacity.error));
       if (c.ok) {
         setClientUsage(c.value);
         setClientError(null);
@@ -361,7 +374,7 @@ export default function MetricsPage() {
         setRecentError(describeError(r.error));
       }
       setDisabled(false);
-      setShownFor(`${hours}|${model}`);
+      setShownFor(`${hours}|${model}|${outcome}`);
       setReadAt(Date.now());
     } catch (e) {
       if (!current()) return;
@@ -379,7 +392,7 @@ export default function MetricsPage() {
     } finally {
       if (current()) setLoading(false);
     }
-  }, [hours, model]);
+  }, [hours, model, outcome]);
 
   // Poll rather than refresh-only, and keep the previous render while a
   // refetch is in flight — no skeleton, no layout jump.
@@ -393,9 +406,10 @@ export default function MetricsPage() {
   const models = useMemo(() => {
     const names = new Set<string>();
     for (const g of summary?.groups ?? []) if (g.model) names.add(g.model);
+    for (const slot of routing?.slots ?? []) names.add(slot.model);
     if (model) names.add(model);
     return [...names].sort();
-  }, [summary, model]);
+  }, [summary, model, routing]);
   const anyStreamed = points.some((p) => p.ttftP50 !== null);
   const anyDecode = points.some((p) => p.decodeP50 !== null);
 
@@ -428,6 +442,50 @@ export default function MetricsPage() {
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            disabled={!summary || shownFor !== selection || !!error || disabled}
+            onClick={() => {
+              const blob = new Blob(
+                [
+                  JSON.stringify(
+                    {
+                      readAt: new Date(readAt!).toISOString(),
+                      selection: { hours, model: model || null },
+                      scopes: {
+                        capacity: "current, all models",
+                        clients: "selected window, all models",
+                        recent: "latest 25 retained matching requests, independent of time window",
+                        recentOutcome: outcome || "all",
+                      },
+                      summary,
+                      totals,
+                      hourly,
+                      routing,
+                      routingError,
+                      clientUsage,
+                      clientError,
+                      recent,
+                      recentError,
+                    },
+                    null,
+                    2,
+                  ),
+                ],
+                { type: "application/json" },
+              );
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = `gateway-metrics-${new Date(readAt!).toISOString().replace(/[:.]/g, "-")}.json`;
+              link.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }}
+            className="action-button font-ui inline-flex items-center gap-2 rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm disabled:opacity-50"
+          >
+            <Download size={14} aria-hidden />
+            Export
+          </button>
           <button
             type="button"
             onClick={async () => {
@@ -467,11 +525,52 @@ export default function MetricsPage() {
           no way to reach it — found by Troy on the live install, whose
           copy/paste grabbed rows no scrollbar could. */}
       <main data-testid="metrics-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl px-6 py-8">
-          <p className="mb-6 text-sm text-[color:var(--muted)]">
-            What each backend did on <em>this</em> machine. For comparing your backends, not a
-            hardware benchmark.
-          </p>
+        <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+          <header className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-[color:var(--border)] pb-5">
+            <div>
+              <p className="font-ui mb-2 flex items-center gap-2 text-xs font-semibold tracking-widest text-[color:var(--muted)]">
+                <Activity size={15} aria-hidden />
+                GATEWAY OBSERVABILITY
+              </p>
+              <h1 className="font-ui text-3xl font-semibold tracking-tight">
+                Traffic. Performance. Reliability.
+              </h1>
+              <p className="mt-2 text-sm text-[color:var(--muted)]">
+                Every request through this gateway, from routing decision to final token.
+              </p>
+            </div>
+            <div className="font-ui space-y-2 text-xs text-[color:var(--muted)]">
+              <p className="flex items-center gap-2">
+                <Radio size={14} aria-hidden />
+                Auto-refresh every 15 seconds
+              </p>
+              {summary && readAt && (
+                <p title={new Date(summary.gatewayStartedAt).toLocaleString()}>
+                  Gateway uptime · {durationLabel(readAt - Date.parse(summary.gatewayStartedAt))}
+                </p>
+              )}
+            </div>
+            <nav
+              aria-label="Dashboard sections"
+              className="font-ui flex w-full flex-wrap gap-x-5 gap-y-2 text-xs"
+            >
+              {[
+                ["overview", "Overview"],
+                ["history", "Performance"],
+                ["capacity", "Capacity"],
+                ["efficiency", "Efficiency"],
+                ["requests", "Requests"],
+              ].map(([id, label]) => (
+                <a
+                  key={id}
+                  href={`#${id}`}
+                  className="underline decoration-[color:var(--border)] underline-offset-4 hover:decoration-current"
+                >
+                  {label}
+                </a>
+              ))}
+            </nav>
+          </header>
 
           {loading && <p className="font-ui text-sm text-[color:var(--muted)]">Loading…</p>}
 
@@ -494,8 +593,17 @@ export default function MetricsPage() {
               {error}
             </p>
           )}
+          {error && summary && (
+            <p
+              role="status"
+              className="status-warn mb-4 rounded-[var(--radius)] border p-3 text-sm"
+            >
+              Refresh failed. Showing the last successful snapshot from{" "}
+              {readAt ? clockTime(readAt) : "an earlier read"}.
+            </p>
+          )}
 
-          {summary && !disabled && (
+          {summary && !disabled && shownFor === selection && (
             <>
               {summary.rowsDropped > 0 && (
                 <p
@@ -515,16 +623,21 @@ export default function MetricsPage() {
 
               {tiles && tiles.requests > 0 && (
                 <section
+                  id="overview"
                   aria-label="Window at a glance"
-                  className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6"
+                  className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6"
                 >
-                  <StatTile label="Requests" value={compact(tiles.requests)} />
+                  <StatTile
+                    label="Requests"
+                    value={compact(tiles.requests)}
+                    sub="recorded in selected window"
+                  />
                   <StatTile
                     label="Failed"
                     value={compact(tiles.errors)}
                     sub={
                       tiles.requests > 0
-                        ? `${((tiles.errors / tiles.requests) * 100).toFixed(1)}% of requests`
+                        ? `${percentage(tiles.errors, tiles.requests)} of requests`
                         : undefined
                     }
                     tone="error"
@@ -560,313 +673,350 @@ export default function MetricsPage() {
               )}
 
               {points.length > 1 && tiles && tiles.requests > 0 && (
-                <section aria-label="History" className="mb-8 grid gap-x-8 gap-y-6 lg:grid-cols-2">
-                  <HourChart
-                    title="Requests"
-                    points={points}
-                    kind="bars"
-                    format={(v) => compact(Math.round(v))}
-                    series={[{ name: "Requests", value: (p) => p.requests, color: SERIES }]}
-                  />
-                  <HourChart
-                    title="Failed"
-                    caption="requests no backend served"
-                    points={points}
-                    kind="bars"
-                    format={(v) => compact(Math.round(v))}
-                    series={[{ name: "Failed", value: (p) => p.errors, color: SERIES_ERROR }]}
-                  />
-                  <HourChart
-                    title="Latency"
-                    caption="whole request, per hour"
-                    points={points}
-                    kind="lines"
-                    format={(v) => msLabel(v)}
-                    series={[
-                      { name: "p50", value: (p) => p.latencyP50, color: SERIES },
-                      { name: "p90", value: (p) => p.latencyP90, color: SERIES_SOFT },
-                    ]}
-                  />
-                  {anyDecode ? (
+                <DashboardSection
+                  id="history"
+                  title="Performance over time"
+                  description="Hourly buckets · edge buckets may be partial · local time"
+                >
+                  <div aria-label="History" className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                     <HourChart
-                      title="Decode speed"
-                      caption="tokens per second after the first token"
+                      title="Requests"
                       points={points}
-                      kind="lines"
-                      format={(v) => `${v.toFixed(1)} tok/s`}
-                      axisFormat={(v) => `${Math.round(v)}`}
-                      series={[{ name: "tok/s (p50)", value: (p) => p.decodeP50, color: SERIES }]}
+                      kind="bars"
+                      format={(v) => compact(Math.round(v))}
+                      series={[{ name: "Requests", value: (p) => p.requests, color: SERIES }]}
                     />
-                  ) : anyStreamed ? (
                     <HourChart
-                      title="First token"
-                      caption="median, streamed requests"
+                      title="Failed"
+                      caption="requests no backend served"
+                      points={points}
+                      kind="bars"
+                      format={(v) => compact(Math.round(v))}
+                      series={[{ name: "Failed", value: (p) => p.errors, color: SERIES_ERROR }]}
+                    />
+                    <HourChart
+                      title="Latency"
+                      caption="whole request, per hour"
                       points={points}
                       kind="lines"
                       format={(v) => msLabel(v)}
-                      series={[{ name: "TTFT (p50)", value: (p) => p.ttftP50, color: SERIES }]}
+                      series={[
+                        { name: "p50", value: (p) => p.latencyP50, color: SERIES },
+                        { name: "p90", value: (p) => p.latencyP90, color: SERIES_SOFT },
+                      ]}
                     />
-                  ) : null}
-                  {anyDecode && anyStreamed && (
+                    {anyDecode ? (
+                      <HourChart
+                        title="Decode speed"
+                        caption="tokens per second after the first token"
+                        points={points}
+                        kind="lines"
+                        format={(v) => `${v.toFixed(1)} tok/s`}
+                        axisFormat={(v) => `${Math.round(v)}`}
+                        series={[{ name: "tok/s (p50)", value: (p) => p.decodeP50, color: SERIES }]}
+                      />
+                    ) : anyStreamed ? (
+                      <HourChart
+                        title="First token"
+                        caption="median, streamed requests"
+                        points={points}
+                        kind="lines"
+                        format={(v) => msLabel(v)}
+                        series={[{ name: "TTFT (p50)", value: (p) => p.ttftP50, color: SERIES }]}
+                      />
+                    ) : null}
+                    {anyDecode && anyStreamed && (
+                      <HourChart
+                        title="First token"
+                        caption="median, streamed requests"
+                        points={points}
+                        kind="lines"
+                        format={(v) => msLabel(v)}
+                        series={[{ name: "TTFT (p50)", value: (p) => p.ttftP50, color: SERIES }]}
+                      />
+                    )}
                     <HourChart
-                      title="First token"
-                      caption="median, streamed requests"
+                      title="Failovers & cold starts"
+                      caption="requests per hour"
                       points={points}
                       kind="lines"
-                      format={(v) => msLabel(v)}
-                      series={[{ name: "TTFT (p50)", value: (p) => p.ttftP50, color: SERIES }]}
+                      format={(v) => compact(Math.round(v))}
+                      series={[
+                        { name: "Failovers", value: (p) => p.cascaded ?? null, color: SERIES },
+                        {
+                          name: "Cold starts",
+                          value: (p) => p.swappedIn ?? null,
+                          color: SERIES_SOFT,
+                        },
+                      ]}
                     />
-                  )}
-                </section>
+                  </div>
+                </DashboardSection>
               )}
 
-              {summary.groups.length === 0 ? (
-                <p className="font-ui text-sm text-[color:var(--muted)]">
-                  Nothing was served in this window. Send a message from the{" "}
-                  <Link href="/playground" className="underline">
-                    playground
-                  </Link>{" "}
-                  and come back.
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b border-[color:var(--border)] text-left">
-                        <th className="py-2 pr-3 font-medium">Model</th>
-                        <th className="py-2 pr-3 font-medium">Backend</th>
-                        <th className="py-2 pr-3 text-right font-medium">Requests</th>
-                        <th className="py-2 pr-3 text-right font-medium">Median</th>
-                        <th className="py-2 pr-3 text-right font-medium">Slowest</th>
-                        <th
-                          className="py-2 pr-3 text-right font-medium"
-                          title="Median time to the first token. On a local engine it is mostly prompt processing."
-                        >
-                          First token
-                        </th>
-                        <th
-                          className="py-2 pr-3 text-right font-medium"
-                          title="Share of prompt tokens served from the engine's prompt cache, over requests whose backend reported it."
-                        >
-                          Reused
-                        </th>
-                        <th
-                          className="py-2 pr-3 text-right font-medium"
-                          title="Of the requests that continued a conversation seen before, how many went back to the replica that already held it."
-                        >
-                          Same replica
-                        </th>
-                        <th
-                          className="py-2 pr-3 text-right font-medium"
-                          title="Of those that went back to their replica, how many found their history gone. Many means this model needs more context or another replica."
-                        >
-                          Evicted
-                        </th>
-                        <th
-                          className="py-2 pr-3 text-right font-medium"
-                          title="Tokens per second AFTER the first token — prefill excluded. The number people mean by tok/s."
-                        >
-                          Decode
-                        </th>
-                        <th
-                          className="py-2 pr-3 text-right font-medium"
-                          title="Tok/s over the whole attempt, prefill included. Lower than Decode on long prompts."
-                        >
-                          Tokens/sec
-                        </th>
-                        <th
-                          className="py-2 pr-3 text-right font-medium"
-                          title="Time spent deciding where to send the request: resolving the model, picking a backend, and any routing-table refresh."
-                        >
-                          Routing
-                        </th>
-                        <th
-                          className="py-2 pr-3 text-right font-medium"
-                          title="What Eugene Plexus itself cost: the local hop to the driver plus the driver's own work. Measured rather than assumed."
-                        >
-                          Overhead
-                        </th>
-                        <th className="py-2 pr-3 text-right font-medium">Failed</th>
-                        <th className="py-2 pr-3 text-right font-medium">Failed over</th>
-                        <th className="py-2 text-right font-medium">Woken</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {summary.groups.map((g) => (
-                        <tr
-                          key={groupKey(g)}
-                          className="border-b border-[color:var(--border)] align-top"
-                        >
-                          <td className="py-2 pr-3 font-mono break-all">
-                            {g.model ? (
-                              <ModelName name={g.model} context={contexts(g.model)} />
-                            ) : (
-                              "—"
-                            )}
-                          </td>
-                          <td className="py-2 pr-3">
-                            <span className="font-mono">{g.driver ?? "—"}</span>
-                            {/* By runtime NAME, so two replicas of one model stay
+              <GatewayCapacity routing={routing} error={routingError} readAt={readAt} />
+              <GatewayEfficiency total={totals?.groups[0]} />
+
+              <details className="section-panel mb-6" data-testid="backend-measurements">
+                <summary className="font-ui cursor-pointer text-sm font-semibold">
+                  Backend comparison{" "}
+                  <span className="ml-2 font-normal text-[color:var(--muted)]">
+                    {summary.groups.length} measured model/backend combinations · expand all
+                    measurements
+                  </span>
+                </summary>
+                {summary.groups.length === 0 ? (
+                  <p className="font-ui text-sm text-[color:var(--muted)]">
+                    Nothing was served in this window. Send a message from the{" "}
+                    <Link href="/playground" className="underline">
+                      playground
+                    </Link>{" "}
+                    and come back.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-sm">
+                      <thead>
+                        <tr className="border-b border-[color:var(--border)] text-left">
+                          <th className="py-2 pr-3 font-medium">Model</th>
+                          <th className="py-2 pr-3 font-medium">Backend</th>
+                          <th className="py-2 pr-3 text-right font-medium">Requests</th>
+                          <th className="py-2 pr-3 text-right font-medium">Median</th>
+                          <th className="py-2 pr-3 text-right font-medium">Slowest</th>
+                          <th
+                            className="py-2 pr-3 text-right font-medium"
+                            title="Median time to the first token. On a local engine it is mostly prompt processing."
+                          >
+                            First token
+                          </th>
+                          <th
+                            className="py-2 pr-3 text-right font-medium"
+                            title="Share of prompt tokens served from the engine's prompt cache, over requests whose backend reported it."
+                          >
+                            Reused
+                          </th>
+                          <th
+                            className="py-2 pr-3 text-right font-medium"
+                            title="Of the requests that continued a conversation seen before, how many went back to the replica that already held it."
+                          >
+                            Same replica
+                          </th>
+                          <th
+                            className="py-2 pr-3 text-right font-medium"
+                            title="Of those that went back to their replica, how many found their history gone. Many means this model needs more context or another replica."
+                          >
+                            Evicted
+                          </th>
+                          <th
+                            className="py-2 pr-3 text-right font-medium"
+                            title="Tokens per second AFTER the first token — prefill excluded. The number people mean by tok/s."
+                          >
+                            Decode
+                          </th>
+                          <th
+                            className="py-2 pr-3 text-right font-medium"
+                            title="Tok/s over the whole attempt, prefill included. Lower than Decode on long prompts."
+                          >
+                            Tokens/sec
+                          </th>
+                          <th
+                            className="py-2 pr-3 text-right font-medium"
+                            title="Time spent deciding where to send the request: resolving the model, picking a backend, and any routing-table refresh."
+                          >
+                            Routing
+                          </th>
+                          <th
+                            className="py-2 pr-3 text-right font-medium"
+                            title="What Eugene Plexus itself cost: the local hop to the driver plus the driver's own work. Measured rather than assumed."
+                          >
+                            Overhead
+                          </th>
+                          <th className="py-2 pr-3 text-right font-medium">Failed</th>
+                          <th className="py-2 pr-3 text-right font-medium">Failed over</th>
+                          <th className="py-2 text-right font-medium">Woken</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {summary.groups.map((g) => (
+                          <tr
+                            key={groupKey(g)}
+                            className="border-b border-[color:var(--border)] align-top"
+                          >
+                            <td className="py-2 pr-3 font-mono break-all">
+                              {g.model ? (
+                                <ModelName name={g.model} context={contexts(g.model)} />
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td className="py-2 pr-3">
+                              <span className="font-mono">{g.driver ?? "—"}</span>
+                              {/* By runtime NAME, so two replicas of one model stay
                           distinguishable — the case balancing exists for.
                           Absent for hosted and CLI backends, which have no
                           runtime of ours. */}
-                            {g.runtime && (
-                              <span className="text-[color:var(--muted)]"> · {g.runtime}</span>
-                            )}
-                            {g.node && (
-                              <span className="text-[color:var(--muted)]"> @ {g.node}</span>
-                            )}
-                          </td>
-                          <td className="py-2 pr-3 text-right font-mono">{g.requests}</td>
-                          <td className="py-2 pr-3 text-right font-mono">{ms(g.latencyMs.p50)}</td>
-                          <td className="py-2 pr-3 text-right font-mono">{ms(g.latencyMs.max)}</td>
-                          <td className="py-2 pr-3 text-right font-mono">
-                            {g.ttftMs ? (
-                              ms(g.ttftMs.p50)
-                            ) : (
-                              <span
-                                className="text-[color:var(--muted)]"
-                                title="Nothing in this group streamed, so there was no first token to time."
-                              >
-                                &mdash;
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 pr-3 text-right font-mono">
-                            <ReusedCell cache={g.promptCache} />
-                          </td>
-                          <td className="py-2 pr-3 text-right font-mono">
-                            <SameReplicaCell affinity={g.affinity} />
-                          </td>
-                          <td className="py-2 pr-3 text-right font-mono">
-                            <EvictedCell affinity={g.affinity} />
-                          </td>
-                          <td className="py-2 pr-3 text-right font-mono">
-                            {g.decodeTokensPerSecond ? (
-                              <>
-                                {g.decodeTokensPerSecond.p50.toFixed(1)}
+                              {g.runtime && (
+                                <span className="text-[color:var(--muted)]"> · {g.runtime}</span>
+                              )}
+                              {g.node && (
+                                <span className="text-[color:var(--muted)]"> @ {g.node}</span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">{g.requests}</td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              {ms(g.latencyMs.p50)}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              {ms(g.latencyMs.max)}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              {g.ttftMs ? (
+                                ms(g.ttftMs.p50)
+                              ) : (
                                 <span
                                   className="text-[color:var(--muted)]"
-                                  title={`Median over ${g.decodeTokensPerSecond.samples} streamed request(s) with token counts`}
+                                  title="Nothing in this group streamed, so there was no first token to time."
                                 >
-                                  {" "}
-                                  ({g.decodeTokensPerSecond.samples})
+                                  &mdash;
                                 </span>
-                              </>
-                            ) : (
-                              <span
-                                className="text-[color:var(--muted)]"
-                                title="Needs streamed requests that reported token counts and decoded for at least 250 ms. Not the same as zero."
-                              >
-                                &mdash;
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 pr-3 text-right font-mono">
-                            {g.tokensPerSecond ? (
-                              <>
-                                {g.tokensPerSecond.p50.toFixed(1)}
-                                <span
-                                  className="text-[color:var(--muted)]"
-                                  title={`Median over ${g.tokensPerSecond.samples} request(s) that reported token counts`}
-                                >
-                                  {" "}
-                                  ({g.tokensPerSecond.samples})
-                                </span>
-                              </>
-                            ) : (
-                              <span
-                                className="text-[color:var(--muted)]"
-                                title="This backend reported no token counts for these requests, so there is no rate. Not the same as zero."
-                              >
-                                unreported
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 pr-3 text-right font-mono">
-                            {g.routingMs ? (
-                              ms(g.routingMs.p50)
-                            ) : (
-                              <span className="text-[color:var(--muted)]">&mdash;</span>
-                            )}
-                          </td>
-                          <td className="py-2 pr-3 text-right font-mono">
-                            {g.overheadMs ? (
-                              ms(g.overheadMs.p50)
-                            ) : (
-                              <span
-                                className="text-[color:var(--muted)]"
-                                title="This backend does not report its own call time, so overhead cannot be computed. Not the same as none."
-                              >
-                                unreported
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 pr-3 text-right font-mono">
-                            {g.errors > 0 ? (
-                              <span className="text-status-error">{g.errors}</span>
-                            ) : (
-                              <span className="text-[color:var(--muted)]">0</span>
-                            )}
-                          </td>
-                          <td className="py-2 pr-3 text-right font-mono">
-                            {g.cascaded > 0 ? (
-                              g.cascaded
-                            ) : (
-                              <span className="text-[color:var(--muted)]">0</span>
-                            )}
-                          </td>
-                          <td className="py-2 text-right font-mono">
-                            {g.swappedIn > 0 ? (
-                              <>
-                                {g.swappedIn}
-                                {g.waitedMs && (
-                                  <span className="text-[color:var(--muted)]">
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              <ReusedCell cache={g.promptCache} />
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              <SameReplicaCell affinity={g.affinity} />
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              <EvictedCell affinity={g.affinity} />
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              {g.decodeTokensPerSecond ? (
+                                <>
+                                  {g.decodeTokensPerSecond.p50.toFixed(1)}
+                                  <span
+                                    className="text-[color:var(--muted)]"
+                                    title={`Median over ${g.decodeTokensPerSecond.samples} streamed request(s) with token counts`}
+                                  >
                                     {" "}
-                                    ({ms(g.waitedMs.p50)})
+                                    ({g.decodeTokensPerSecond.samples})
                                   </span>
-                                )}
-                              </>
-                            ) : (
-                              <span className="text-[color:var(--muted)]">0</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                                </>
+                              ) : (
+                                <span
+                                  className="text-[color:var(--muted)]"
+                                  title="Needs streamed requests that reported token counts and decoded for at least 250 ms. Not the same as zero."
+                                >
+                                  &mdash;
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              {g.tokensPerSecond ? (
+                                <>
+                                  {g.tokensPerSecond.p50.toFixed(1)}
+                                  <span
+                                    className="text-[color:var(--muted)]"
+                                    title={`Median over ${g.tokensPerSecond.samples} request(s) that reported token counts`}
+                                  >
+                                    {" "}
+                                    ({g.tokensPerSecond.samples})
+                                  </span>
+                                </>
+                              ) : (
+                                <span
+                                  className="text-[color:var(--muted)]"
+                                  title="This backend reported no token counts for these requests, so there is no rate. Not the same as zero."
+                                >
+                                  unreported
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              {g.routingMs ? (
+                                ms(g.routingMs.p50)
+                              ) : (
+                                <span className="text-[color:var(--muted)]">&mdash;</span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              {g.overheadMs ? (
+                                ms(g.overheadMs.p50)
+                              ) : (
+                                <span
+                                  className="text-[color:var(--muted)]"
+                                  title="This backend does not report its own call time, so overhead cannot be computed. Not the same as none."
+                                >
+                                  unreported
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              {g.errors > 0 ? (
+                                <span className="text-status-error">{g.errors}</span>
+                              ) : (
+                                <span className="text-[color:var(--muted)]">0</span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-mono">
+                              {g.cascaded > 0 ? (
+                                g.cascaded
+                              ) : (
+                                <span className="text-[color:var(--muted)]">0</span>
+                              )}
+                            </td>
+                            <td className="py-2 text-right font-mono">
+                              {g.swappedIn > 0 ? (
+                                <>
+                                  {g.swappedIn}
+                                  {g.waitedMs && (
+                                    <span className="text-[color:var(--muted)]">
+                                      {" "}
+                                      ({ms(g.waitedMs.p50)})
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-[color:var(--muted)]">0</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
-              {/* What each column measures: for whoever asks, not under every table. */}
-              <More
-                summary="How these are measured"
-                summaryClassName="text-[0.6875rem] text-[color:var(--muted)] underline"
-                className="mt-3"
-                testId="metrics-how-measured"
-              >
-                <div className="space-y-1 text-[0.6875rem] text-[color:var(--muted)]">
-                  <p>
-                    <strong>Decode</strong> is tok/s after the first token.{" "}
-                    <strong>Tokens/sec</strong> includes prefill. Both are measured on the backend
-                    that answered, so a failover does not count against it. The number in brackets
-                    is how many requests the median covers.
-                  </p>
-                  <p>
-                    <strong>First token</strong> includes the hop to the driver, so on a local
-                    engine it is mostly prompt processing. For real prefill numbers, use the{" "}
-                    <Link href="/library" className="underline">
-                      benchmark
-                    </Link>
-                    .
-                  </p>
-                  <p>
-                    <strong>Overhead</strong> is what Eugene itself costs: the gap between the
-                    backend’s own time and the gateway’s. Compare it with the median; on a local
-                    install it is usually small.
-                  </p>
-                </div>
-              </More>
+                {/* What each column measures: for whoever asks, not under every table. */}
+                <More
+                  summary="How these are measured"
+                  summaryClassName="text-[0.6875rem] text-[color:var(--muted)] underline"
+                  className="mt-3"
+                  testId="metrics-how-measured"
+                >
+                  <div className="space-y-1 text-[0.6875rem] text-[color:var(--muted)]">
+                    <p>
+                      <strong>Decode</strong> is tok/s after the first token.{" "}
+                      <strong>Tokens/sec</strong> includes prefill. Both are measured on the backend
+                      that answered, so a failover does not count against it. The number in brackets
+                      is how many requests the median covers.
+                    </p>
+                    <p>
+                      <strong>First token</strong> includes the hop to the driver, so on a local
+                      engine it is mostly prompt processing. For real prefill numbers, use the{" "}
+                      <Link href="/library" className="underline">
+                        benchmark
+                      </Link>
+                      .
+                    </p>
+                    <p>
+                      <strong>Overhead</strong> is what Eugene itself costs: the gap between the
+                      backend’s own time and the gateway’s. Compare it with the median; on a local
+                      install it is usually small.
+                    </p>
+                  </div>
+                </More>
+              </details>
 
               {clientError && (
                 <section className="section-panel mt-6" aria-label="Usage by client key">
@@ -957,6 +1107,25 @@ export default function MetricsPage() {
                 </section>
               )}
 
+              <div id="requests" className="mt-7 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-ui text-base font-semibold">Request investigation</h2>
+                <select
+                  aria-label="Request outcome"
+                  value={outcome}
+                  onChange={(e) => setOutcome(e.target.value)}
+                  className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm"
+                >
+                  <option value="">All outcomes</option>
+                  <option value="error">Failures</option>
+                  <option value="cascaded">Failovers</option>
+                  <option value="served">Served</option>
+                </select>
+              </div>
+              {recent && recent.length === 0 && (
+                <p className="section-panel mt-3 text-sm text-[color:var(--muted)]">
+                  No retained requests match this model and outcome.
+                </p>
+              )}
               {recentError && (
                 <section className="section-panel mt-6" aria-label="Recent requests">
                   <h2 className="section-heading font-ui text-base font-semibold">
@@ -974,8 +1143,8 @@ export default function MetricsPage() {
                     Recent requests
                   </h2>
                   <p className="mb-3 text-sm text-[color:var(--muted)]">
-                    The rows behind the numbers above, newest first. Each attempt is shown in order;
-                    where the balancer chose, what it saw is shown too.
+                    Latest 25 retained requests for this model and outcome, independent of the time
+                    window above. Newest first; each attempt and routing decision is shown below.
                   </p>
                   <ul className="space-y-1">
                     {recent.map((r, i) => (

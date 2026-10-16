@@ -40,6 +40,8 @@ export interface HourPoint {
   t: string;
   requests: number;
   errors: number;
+  cascaded?: number;
+  swappedIn?: number;
   latencyP50: number | null;
   latencyP90: number | null;
   ttftP50: number | null;
@@ -90,6 +92,8 @@ export function hourlyPoints(
       t,
       requests: g?.requests ?? 0,
       errors: g?.errors ?? 0,
+      cascaded: g?.cascaded ?? 0,
+      swappedIn: g?.swappedIn ?? 0,
       latencyP50: g?.latencyMs?.p50 ?? null,
       latencyP90: g?.latencyMs?.p90 ?? null,
       ttftP50: g?.ttftMs?.p50 ?? null,

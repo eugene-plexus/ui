@@ -59,6 +59,9 @@ jobs:
       - name: Engine overview regressions detect broken behavior
         run: node scripts/check-engines-sabotage.mjs
 
+      - name: Gateway dashboard accounting regressions
+        run: node scripts/check-metrics-sabotage.mjs
+
       - name: Build
         run: npm run build
 
@@ -73,6 +76,9 @@ jobs:
 
       - name: Engine overview layout and controls in Chrome
         run: node scripts/engines-browser-acceptance.mjs out test-results/engines
+
+      - name: Gateway operations dashboard in Chrome
+        run: node scripts/metrics-browser-acceptance.mjs out test-results/metrics
 
   wheel:
     name: Build the eugene-plexus-ui wheel

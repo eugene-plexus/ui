@@ -50,16 +50,60 @@ export function RequestOutcomes({ requests, errors }: { requests: number; errors
       </figcaption>
       {valid ? (
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
-          <p className="font-ui shrink-0 text-sm text-[color:var(--muted)]">
-            <span className="mr-2 text-2xl font-semibold text-[color:var(--foreground)] tabular-nums">
+          <svg
+            viewBox="0 0 160 160"
+            className="w-32 shrink-0 self-center"
+            role="img"
+            aria-label={`${served.toLocaleString()} served, ${errors.toLocaleString()} not served, out of ${requests.toLocaleString()} recorded requests.`}
+          >
+            <defs>
+              <pattern
+                id={`${id}-hatch`}
+                width="5"
+                height="5"
+                patternUnits="userSpaceOnUse"
+                patternTransform="rotate(45)"
+              >
+                <rect width="5" height="5" fill="var(--status-error-bg)" />
+                <line x1="0" y1="0" x2="0" y2="5" stroke="var(--status-error-fg)" strokeWidth="3" />
+              </pattern>
+            </defs>
+            <circle
+              cx="80"
+              cy="80"
+              r="64"
+              fill="none"
+              stroke={`url(#${id}-hatch)`}
+              strokeWidth="12"
+            />
+            <circle
+              cx="80"
+              cy="80"
+              r="64"
+              fill="none"
+              stroke="var(--accent-left)"
+              strokeWidth="12"
+              pathLength="100"
+              strokeDasharray={`${percent} 100`}
+              transform="rotate(-90 80 80)"
+            />
+            <text
+              x="80"
+              y="81"
+              textAnchor="middle"
+              fill="var(--foreground)"
+              fontSize="25"
+              fontWeight="600"
+            >
               {percentText}%
-            </span>
-            served
-          </p>
+            </text>
+            <text x="80" y="103" textAnchor="middle" fill="var(--muted)" fontSize="13">
+              served
+            </text>
+          </svg>
           <div className="min-w-0 flex-1 space-y-2">
             <div
-              role="img"
-              aria-label={`${served.toLocaleString()} served, ${errors.toLocaleString()} not served, out of ${requests.toLocaleString()} recorded requests.`}
+              aria-hidden
               className="flex h-3 overflow-hidden rounded-full border border-[color:var(--border)] bg-[color:var(--panel-soft)]"
             >
               <span
@@ -101,7 +145,7 @@ export function RequestOutcomes({ requests, errors }: { requests: number; errors
 }
 
 const W = 460;
-const H = 150;
+const H = 190;
 const PAD_LEFT = 44;
 const PAD_RIGHT = 10;
 const PAD_TOP = 14;
@@ -114,6 +158,7 @@ export interface Series {
   value: (p: HourPoint) => number | null;
   /** CSS color expression — a token var or a color-mix over tokens. */
   color: string;
+  dashed?: boolean;
 }
 
 interface FrameProps {
@@ -238,18 +283,21 @@ export function HourChart({
   const yFor = (v: number) => PAD_TOP + PLOT_H - (Math.min(v, max) / max) * PLOT_H;
 
   return (
-    <figure className="section-panel min-w-0">
-      <figcaption className="font-ui mb-1 flex items-baseline gap-2 text-sm">
+    <figure className="section-panel min-w-0 overflow-hidden">
+      <figcaption className="font-ui mb-4 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
         <span className="font-semibold">{title}</span>
         {caption && <span className="text-xs text-[color:var(--muted)]">{caption}</span>}
         {kind === "lines" && series.length > 1 && (
-          <span className="ml-auto flex items-center gap-3 text-xs text-[color:var(--muted)]">
-            {series.map((s) => (
+          <span className="flex w-full items-center gap-3 text-xs text-[color:var(--muted)]">
+            {series.map((s, seriesIndex) => (
               <span key={s.name} className="flex items-center gap-1">
                 <span
                   aria-hidden
-                  className="inline-block h-0.5 w-4 rounded-full"
-                  style={{ backgroundColor: s.color }}
+                  className="inline-block w-4 border-t-2"
+                  style={{
+                    borderColor: s.color,
+                    borderStyle: s.dashed || seriesIndex > 0 ? "dashed" : "solid",
+                  }}
                 />
                 {s.name}
               </span>
@@ -334,7 +382,7 @@ export function HourChart({
             })}
 
           {kind === "lines" &&
-            series.map((s) => (
+            series.map((s, seriesIndex) => (
               <g key={s.name}>
                 {segments(points, s.value, max).map((run, ri) =>
                   run.length === 1 ? (
@@ -357,6 +405,7 @@ export function HourChart({
                       stroke={s.color}
                       strokeWidth={2}
                       strokeLinejoin="round"
+                      strokeDasharray={s.dashed || seriesIndex > 0 ? "5 4" : undefined}
                       strokeLinecap="round"
                     />
                   ),
@@ -399,8 +448,13 @@ export function HourChart({
           <div
             className="font-ui pointer-events-none absolute top-0 z-10 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 text-xs shadow-sm"
             style={{
-              left: `${Math.min(92, Math.max(2, ((hover! + 0.5) / span) * 100))}%`,
-              transform: "translateX(-50%)",
+              left: `${Math.min(100, Math.max(0, ((hover! + 0.5) / span) * 100))}%`,
+              transform:
+                hover! < span / 3
+                  ? "translateX(0)"
+                  : hover! > (2 * span) / 3
+                    ? "translateX(-100%)"
+                    : "translateX(-50%)",
             }}
           >
             <div className="text-[color:var(--muted)]">{hourLabel(hovered.t, span)}</div>
@@ -480,16 +534,16 @@ export function StatTile({
   tone?: "error";
 }) {
   return (
-    <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2">
-      <div className="font-ui text-xs text-[color:var(--muted)]">{label}</div>
+    <div className="relative min-w-0 overflow-hidden rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-4 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[color:var(--accent-left)]">
+      <div className="font-ui mb-3 text-xs font-medium text-[color:var(--muted)]">{label}</div>
       <div
-        className={`font-ui text-xl font-semibold ${
+        className={`font-ui text-2xl font-semibold tracking-tight tabular-nums ${
           tone === "error" && value !== null && value !== "0" ? "text-status-error" : ""
         }`}
       >
         {value ?? <span className="text-sm font-normal text-[color:var(--muted)]">unreported</span>}
       </div>
-      {sub && <div className="text-[0.625rem] text-[color:var(--muted)]">{sub}</div>}
+      {sub && <div className="mt-2 text-xs text-[color:var(--muted)]">{sub}</div>}
     </div>
   );
 }
