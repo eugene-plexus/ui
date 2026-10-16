@@ -127,15 +127,17 @@ beforeEach(() => {
           headers: { "content-type": "application/json" },
         });
       }
-      const body = url.endsWith("/gateway/v1/models")
-        ? modelList
-        : url.includes("/metrics/requests")
-          ? requests
-          : url.includes("/metrics/clients")
-            ? clientUsage
-            : older && olderSummary !== null
-              ? olderSummary
-              : summary;
+      const body = url.endsWith("/gateway/v1/admin/routing")
+        ? { refreshed_at: new Date().toISOString(), slots: [] }
+        : url.endsWith("/gateway/v1/models")
+          ? modelList
+          : url.includes("/metrics/requests")
+            ? requests
+            : url.includes("/metrics/clients")
+              ? clientUsage
+              : older && olderSummary !== null
+                ? olderSummary
+                : summary;
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -149,6 +151,40 @@ afterEach(() => {
 });
 
 describe("metrics page", () => {
+  it("marks a failed refresh stale, retains the last snapshot, and prevents exporting it as current", async () => {
+    render(<MetricsPage />);
+    await screen.findByText("116.8");
+    status = 500;
+    errorBody = { detail: "Metrics file is full" };
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(
+      await screen.findByText(/Refresh failed. Showing the last successful snapshot/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("116.8")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
+  });
+
+  it("filters incident requests on the server without changing the historical totals", async () => {
+    render(<MetricsPage />);
+    await screen.findByText("116.8");
+    await userEvent.selectOptions(screen.getByLabelText("Request outcome"), "error");
+    await waitFor(() =>
+      expect(urls.some((u) => u.includes("/metrics/requests?outcome=error&limit=25"))).toBe(true),
+    );
+    await waitFor(() => expect(screen.queryByTestId("metrics-updating")).toBeNull());
+    expect(screen.getByText("116.8")).toBeInTheDocument();
+    expect(
+      urls.filter((u) => u.includes("groupBy=total")).every((u) => !u.includes("outcome=")),
+    ).toBe(true);
+  });
+
+  it("keeps historical measurements when capacity cannot be read", async () => {
+    failPaths = ["/admin/routing"];
+    render(<MetricsPage />);
+    expect(await screen.findByText("116.8")).toBeInTheDocument();
+    expect(screen.getByText(/Capacity unavailable: Not Found/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
   it("shows throughput per backend with the sample count it was measured over", async () => {
     render(<MetricsPage />);
 
@@ -330,8 +366,9 @@ describe("metrics page", () => {
     // The two phases that used to be invisible: routing happened before
     // any clock started, and the local hop was asserted to be free
     // rather than measured.
-    expect(screen.getByText("3 ms")).toBeInTheDocument();
-    expect(screen.getByText("6 ms")).toBeInTheDocument();
+    const comparison = within(screen.getByTestId("backend-measurements"));
+    expect(comparison.getByText("3 ms")).toBeInTheDocument();
+    expect(comparison.getByText("6 ms")).toBeInTheDocument();
   });
 
   it("says overhead is unreported rather than showing it as free", async () => {
