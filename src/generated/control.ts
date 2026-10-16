@@ -271,6 +271,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/permission-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Permission groups shared by Eugene and its apps
+         * @description Operator only. Group grants are enforced at app sign-in/refresh and job-site authorization.
+         */
+        get: operations["listPermissionGroups"];
+        put?: never;
+        /**
+         * Create a permission group
+         * @description Operator only; active root. New groups grant nothing unless explicitly configured.
+         */
+        post: operations["createPermissionGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/permission-groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a group's name and grants
+         * @description Operator only. Existing member IDs stay assigned; new authorizations and refreshes use the new grants.
+         */
+        put: operations["replacePermissionGroup"];
+        post?: never;
+        /**
+         * Delete a group and its memberships
+         * @description Operator only. Empty memberships remain group-based with no access; individual defaults are not restored.
+         */
+        delete: operations["deletePermissionGroup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/people": {
         parameters: {
             query?: never;
@@ -3391,7 +3441,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -3520,6 +3570,8 @@ export interface components {
              *     holding the passphrase.
              */
             controlPublicKey?: string;
+            /** @description Central access groups. Absent in old snapshots means no groups. */
+            permissionGroups?: components["schemas"]["PermissionGroup"][];
             /**
              * @description The people who may sign in to apps, as `putPerson`,
              *     `setPersonPassword` and `deletePerson` left them, with their
@@ -3558,6 +3610,8 @@ export interface components {
             devGrants?: components["schemas"]["SiteDevGrant"][];
         };
         SnapshotPerson: {
+            /** @description Null or absent keeps individual access. A list uses only the union of these groups; an empty list grants no access. Individual app/permission settings are retained but inactive in group mode. */
+            groups?: string[] | null;
             /**
              * @deprecated
              * @description Read from snapshots written before slice 2b.1, and ignored (J20).
@@ -3604,6 +3658,8 @@ export interface components {
          *     a person's sign-in opens their apps and nothing in the hub.
          */
         Person: {
+            /** @description Null or absent keeps individual access. A list uses only the union of these groups; an empty list grants no access. Individual app/permission settings are retained but inactive in group mode. */
+            groups?: string[] | null;
             /** @description Stable; the `sub` in their ID tokens. */
             id: string;
             /** @description What they sign in with. Unique, compared case-folded. */
@@ -3616,6 +3672,8 @@ export interface components {
              *     WebUI) identify people by it (C4).
              */
             email?: string;
+            /** @description Effective app grants, calculated from groups or individual access. Null means every app; an empty list means none. */
+            appsInEffect?: string[] | null;
             /** @description The `clientId`s they may sign in to. Null is every app on the install. */
             apps?: string[] | null;
             /**
@@ -3625,7 +3683,7 @@ export interface components {
              *     left on it.
              */
             permissions?: components["schemas"]["PersonPermission"][] | null;
-            /** @description What applies now, from `permissions` or, when it is null, the install's defaults. */
+            /** @description Effective permissions from selected groups, or individual permissions/install defaults when groups is null. */
             permissionsInEffect?: components["schemas"]["PersonPermission"][];
             disabled: boolean;
             /** Format: date-time */
@@ -3653,11 +3711,14 @@ export interface components {
          */
         PersonPermission: "add-job-sites" | "use-job-sites";
         PersonList: {
+            owner?: components["schemas"]["OwnerAccount"];
             people: components["schemas"]["Person"][];
             /** @description The name the owner signs in with, once the install has people. */
             operatorName?: string;
         };
         PersonCreateRequest: {
+            /** @description Null or absent keeps individual access. A list uses only the union of these groups; an empty list grants no access. Individual app/permission settings are retained but inactive in group mode. */
+            groups?: string[] | null;
             name: string;
             displayName?: string;
             email?: string;
@@ -3672,6 +3733,8 @@ export interface components {
             permissions?: components["schemas"]["PersonPermission"][] | null;
         };
         PersonUpdateRequest: {
+            /** @description Null or absent keeps individual access. A list uses only the union of these groups; an empty list grants no access. Individual app/permission settings are retained but inactive in group mode. */
+            groups?: string[] | null;
             displayName?: string;
             /** @description A new address, or `null` to clear it. */
             email?: string | null;
@@ -3926,6 +3989,39 @@ export interface components {
              *     recovery path, by design.
              */
             passphrase: string;
+        };
+        /** @description Protected root owner, listed beside people without changing the existing operator subject or passphrase recovery. Not editable through person/group APIs. */
+        OwnerAccount: {
+            id: string;
+            name: string;
+            displayName: string;
+        };
+        /** @description A shared collection of app and job-site grants. */
+        PermissionGroup: {
+            id: string;
+            name: string;
+            description: string;
+            /** @description Explicit app client IDs; null deliberately grants all apps. */
+            apps: string[] | null;
+            permissions: components["schemas"]["PersonPermission"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description Complete replacement policy; omitted grants default to no access. */
+        PermissionGroupWrite: {
+            name: string;
+            /** @default  */
+            description: string;
+            /** @default [] */
+            apps: string[] | null;
+            /** @default [] */
+            permissions: components["schemas"]["PersonPermission"][];
+        };
+        /** @description All permission groups in the central directory. */
+        PermissionGroupList: {
+            groups: components["schemas"]["PermissionGroup"][];
         };
         /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
@@ -5836,6 +5932,101 @@ export interface operations {
                     "application/json": components["schemas"]["OAuthError"];
                 };
             };
+        };
+    };
+    listPermissionGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All groups; membership is on Person.groups. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionGroupList"];
+                };
+            };
+        };
+    };
+    createPermissionGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermissionGroupWrite"];
+            };
+        };
+        responses: {
+            /** @description The group. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionGroup"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    replacePermissionGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermissionGroupWrite"];
+            };
+        };
+        responses: {
+            /** @description The group. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionGroup"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    deletePermissionGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
         };
     };
     listPeople: {

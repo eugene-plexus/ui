@@ -68,6 +68,7 @@ beforeEach(() => {
         },
       }),
     ],
+    ["GET control/v1/permission-groups", () => ({ status: 200, body: { groups: [] } })],
     ["GET control/v1/oidc/clients", () => ({ status: 200, body: { clients: [WORKBENCH] } })],
     ["POST control/v1/people", () => ({ status: 201, body: { ...ADA, id: "p-new" } })],
     ["PATCH control/v1/people/p-ada", () => ({ status: 200, body: { ...ADA, disabled: true } })],
@@ -324,4 +325,97 @@ it("says why when the root cannot answer", async () => {
   }));
   render(<PeoplePage />);
   expect(await screen.findByRole("alert", {}, { timeout: 5000 })).toHaveTextContent(/locked/i);
+});
+
+describe("shared permission groups", () => {
+  const group = {
+    id: "g-builders",
+    name: "Builders",
+    description: "Shared access",
+    apps: [WORKBENCH.clientId],
+    permissions: ["use-job-sites"],
+    createdAt: ADA.createdAt,
+    updatedAt: ADA.createdAt,
+  };
+
+  it("creates a group with explicit selected grants, then assigns it", async () => {
+    const user = userEvent.setup();
+    let groups: (typeof group)[] = [];
+    handlers.set("GET control/v1/permission-groups", () => ({ status: 200, body: { groups } }));
+    handlers.set("POST control/v1/permission-groups", () => {
+      groups = [group];
+      return { status: 201, body: group };
+    });
+    render(<PeoplePage />);
+    await user.click(await screen.findByRole("button", { name: "Add group" }));
+    await user.type(screen.getByLabelText("Group name"), "Builders");
+    await user.click(screen.getByLabelText("Workbench"));
+    await user.click(screen.getByRole("button", { name: "Create group" }));
+    await waitFor(() =>
+      expect(sent("POST control/v1/permission-groups")).toEqual([
+        { name: "Builders", description: "", apps: [WORKBENCH.clientId], permissions: [] },
+      ]),
+    );
+    const row = within(screen.getByTestId("person-Ada"));
+    await user.click(row.getByText("Access groups"));
+    await user.click(row.getByLabelText("Use permission groups"));
+    expect(row.getByText(/No groups selected/)).toBeVisible();
+    await user.click(row.getByLabelText("Builders"));
+    await user.click(row.getByRole("button", { name: "Save access" }));
+    await waitFor(() =>
+      expect(sent("PATCH control/v1/people/p-ada")).toContainEqual({ groups: [group.id] }),
+    );
+  });
+
+  it("shows effective group access and hides inactive individual settings", async () => {
+    handlers.set("GET control/v1/permission-groups", () => ({
+      status: 200,
+      body: { groups: [group] },
+    }));
+    handlers.set("GET control/v1/people", () => ({
+      status: 200,
+      body: { people: [{ ...ADA, groups: [group.id], appsInEffect: [], permissionsInEffect: [] }] },
+    }));
+    render(<PeoplePage />);
+    const row = within(await screen.findByTestId("person-Ada"));
+    expect(row.getByTestId("person-apps-Ada")).toHaveTextContent("No apps");
+    expect(row.getByTestId("person-permissions-Ada")).toHaveTextContent("Nothing (from groups)");
+    expect(row.queryByTestId("person-choose-permissions-Ada")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("protected-owner")).queryByRole("button"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("saves an empty selection explicitly and can restore individual policy", async () => {
+    const user = userEvent.setup();
+    handlers.set("GET control/v1/permission-groups", () => ({
+      status: 200,
+      body: { groups: [group] },
+    }));
+    render(<PeoplePage />);
+    const row = within(await screen.findByTestId("person-Ada"));
+    await user.click(row.getByText("Access groups"));
+    await user.click(row.getByLabelText("Use permission groups"));
+    await user.click(row.getByRole("button", { name: "Save access" }));
+    await waitFor(() =>
+      expect(sent("PATCH control/v1/people/p-ada")).toContainEqual({ groups: [] }),
+    );
+    await user.click(row.getByLabelText("Individual access"));
+    await user.click(row.getByRole("button", { name: "Save access" }));
+    await waitFor(() =>
+      expect(sent("PATCH control/v1/people/p-ada")).toContainEqual({ groups: null }),
+    );
+  });
+
+  it("reports a group fetch failure without exposing assignment controls", async () => {
+    handlers.set("GET control/v1/permission-groups", () => ({
+      status: 503,
+      body: { detail: "Root unavailable" },
+    }));
+    render(<PeoplePage />);
+    await screen.findByTestId("person-Ada");
+    expect(screen.getByText(/Groups could not be loaded/)).toHaveTextContent("Root unavailable");
+    expect(screen.getByRole("button", { name: "Add group" })).toBeDisabled();
+    expect(screen.queryByText("Access groups")).not.toBeInTheDocument();
+  });
 });

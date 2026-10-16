@@ -228,6 +228,9 @@ export type RuntimePlacement = ControlComponents["schemas"]["RuntimePlacement"];
 export type RuntimePlacementList = ControlComponents["schemas"]["RuntimePlacementList"];
 
 // C2: the people who sign in to apps, and the apps that sign in with Eugene.
+export type PermissionGroup = ControlComponents["schemas"]["PermissionGroup"];
+export type PermissionGroupWrite = ControlComponents["schemas"]["PermissionGroupWrite"];
+export type PermissionGroupList = ControlComponents["schemas"]["PermissionGroupList"];
 export type Person = ControlComponents["schemas"]["Person"];
 export type PersonList = ControlComponents["schemas"]["PersonList"];
 export type PersonCreateRequest = ControlComponents["schemas"]["PersonCreateRequest"];
