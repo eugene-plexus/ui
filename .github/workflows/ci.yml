@@ -56,6 +56,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Engine overview regressions detect broken behavior
+        run: node scripts/check-engines-sabotage.mjs
+
       - name: Build
         run: npm run build
 
@@ -67,6 +70,9 @@ jobs:
 
       - name: Container access setup and downloads in Chrome
         run: node scripts/access-browser-acceptance.mjs out test-results/access
+
+      - name: Engine overview layout and controls in Chrome
+        run: node scripts/engines-browser-acceptance.mjs out test-results/engines
 
   wheel:
     name: Build the eugene-plexus-ui wheel

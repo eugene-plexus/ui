@@ -790,6 +790,7 @@ describe("an engine install", () => {
       await screen.findByTestId("engine-install-failed", {}, { timeout: 5000 }),
     ).toHaveTextContent("install failed: checksum mismatch");
     expect(screen.getByTestId("engine-install-failed")).toHaveAttribute("role", "alert");
+    await waitFor(() => expect(screen.getByTestId("engine-management")).toHaveAttribute("open"));
     expect(screen.getByRole("button", { name: "Try again llama.cpp" })).toHaveTextContent(
       "Try again",
     );
@@ -809,6 +810,74 @@ describe("an engine install", () => {
     expect(
       await screen.findByTestId("engine-install-progress", {}, { timeout: 5000 }),
     ).toHaveTextContent("downloading 50% of 1.0 GB");
+  });
+});
+
+describe("model overview and engine setup", () => {
+  it("keeps manual instructions closed until requested without hiding model controls", async () => {
+    handlers.set("GET agent/v1/engines", () => ({
+      status: 200,
+      body: {
+        engines: [
+          {
+            engine: "kev",
+            available: false,
+            experimental: true,
+            acquisition: {
+              policy: "manual",
+              installable: false,
+              reason: "Use the checkout's own interpreter and download the matching base model.",
+              manualInstall: {
+                command: "uv sync --extra serve",
+                docsUrl: "https://example.invalid/kev",
+              },
+            },
+          },
+        ],
+      },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    const management = await screen.findByTestId("engine-management");
+    expect(management).not.toHaveAttribute("open");
+    expect(screen.getByText("uv sync --extra serve")).not.toBeVisible();
+    expect(within(row).getByRole("button", { name: "Stop gemma-3-27b" })).toBeVisible();
+    await act(async () => {
+      management.querySelector("summary")!.click();
+    });
+    await waitFor(() => expect(management).toHaveAttribute("open"));
+    expect(screen.getByText("uv sync --extra serve")).not.toBeVisible();
+    await act(async () => {
+      screen.getByLabelText("Setup details for Kev").click();
+    });
+    expect(screen.getByText("uv sync --extra serve")).toBeVisible();
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(
+          ([url, init]) =>
+            init?.method === "POST" && !String(url).endsWith("/library/folders/check"),
+        ),
+    ).toBe(false);
+  });
+
+  it("does not repeat the model identity as an engine process name", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: { runtimes: [nodeRuntime({ name: "gemma-a", modelAlias: "gemma-a" })] },
+    }));
+    handlers.set("GET gateway/v1/admin/drivers", () => ({
+      status: 200,
+      body: {
+        drivers: [
+          { name: "gemma-a-driver", runtime: "gemma-a", modelId: "gemma-a", reachable: true },
+        ],
+      },
+    }));
+    render(<InferencePage />);
+    const model = await screen.findByTestId("backend-model");
+    const row = model.closest("tr") as HTMLElement;
+    await within(row).findByText("Managed by Eugene", { exact: false });
+    expect(row.textContent?.split("gemma-a").length).toBe(2);
   });
 });
 
@@ -953,7 +1022,7 @@ describe("a served model's context window", () => {
   async function modelCell() {
     render(<InferencePage />);
     const context = await screen.findByTestId("model-context", {}, { timeout: 5000 });
-    return context.closest("td") as HTMLElement;
+    return context.closest('[data-testid="backend-model"]') as HTMLElement;
   }
 
   it("sits beside the model's name, as the gateway reports it", async () => {

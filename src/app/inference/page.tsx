@@ -426,7 +426,7 @@ function InferencePageInner() {
       }
     >
       <main className="flex min-h-0 flex-1 flex-col">
-        {controlRoot && (
+        {controlRoot?.tone === "warn" && (
           <div
             className={
               controlRoot.tone === "warn"
@@ -466,7 +466,7 @@ function InferencePageInner() {
           </div>
         )}
 
-        <div className="flex-1 space-y-6 overflow-y-auto p-4">
+        <div className="min-w-0 flex-1 space-y-5 overflow-y-auto p-4 lg:p-6">
           {scope && (
             <p className="text-sm text-[color:var(--muted)]" data-testid="inference-scope">
               {scope.driver && sources !== null && !rows.some((r) => r.driver === scope.driver)
@@ -502,6 +502,18 @@ function InferencePageInner() {
               marked={scope?.driver ?? null}
             />
           ))}
+          {controlRoot?.tone === "muted" && (
+            <details className="text-xs text-[color:var(--muted)]">
+              <summary className="cursor-pointer">Connection details</summary>
+              <p
+                className="mt-2 [overflow-wrap:anywhere]"
+                data-testid="control-root"
+                title={controlRoot.detail ?? undefined}
+              >
+                {controlRoot.text}
+              </p>
+            </details>
+          )}
         </div>
       </main>
     </AppShell>
@@ -576,8 +588,8 @@ function NodeSection({
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
   return (
     <section className="section-panel">
-      <div className="section-heading flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="font-mono text-xs tracking-wider text-[color:var(--muted)] uppercase">
+      <div className="section-heading flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-ui text-base font-semibold break-all">
           {label}
           {node?.local ? " · here" : ""}
         </h2>
@@ -594,29 +606,20 @@ function NodeSection({
           <span className="text-sm text-[color:var(--muted)]">{describeBudget(node.budget)}</span>
         )}
       </div>
-      <EnginesLine
-        target={targetFor(name, localName)}
-        reachable={node?.reachable ?? true}
-        onEngines={setEngines}
-      />
-      {engines?.some((e) => e.engine === "strata" && e.available) && (
-        <ExperimentalModels node={name} rows={rows} />
-      )}
       {rows.length === 0 ? (
         <p className="mt-2 text-sm text-[color:var(--muted)]">Nothing serving on this node.</p>
       ) : (
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="font-ui text-[color:var(--muted)]">
+        <div className="min-w-0" data-testid="models-panel">
+          <table className="block w-full text-left text-sm xl:table xl:table-fixed">
+            <caption className="sr-only">Models and backends on {label}</caption>
+            <thead className="font-ui hidden text-xs text-[color:var(--muted)] xl:table-header-group">
               <tr>
-                <th className="py-1.5 pr-4">Model</th>
-                <th className="py-1.5 pr-4">Served by</th>
-                <th className="py-1.5 pr-4">State</th>
-                <th className="py-1.5 pr-4">Traffic</th>
-                <th className="py-1.5 pr-4 text-right">Actions</th>
+                <th className="w-[42%] px-3 pb-3 font-medium">Model / backend</th>
+                <th className="w-[33%] px-3 pb-3 font-medium">Status</th>
+                <th className="w-[25%] px-3 pb-3 font-medium">Controls</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="block xl:table-row-group">
               {rows.map((row) => (
                 <RowView
                   key={row.key}
@@ -636,6 +639,14 @@ function NodeSection({
           </table>
         </div>
       )}
+      <EngineManagement
+        target={targetFor(name, localName)}
+        reachable={node?.reachable ?? true}
+        onEngines={setEngines}
+        label={label}
+        nodeName={name}
+        rows={rows}
+      />
     </section>
   );
 }
@@ -758,58 +769,69 @@ function RowView({
     savedAutoStart && savedAutoStart.over === autoStartNow ? savedAutoStart.value : autoStartNow;
   return (
     <tr
-      className={`border-t border-[color:var(--border)] ${marked ? "bg-[color:var(--panel-hover)]" : ""}`}
+      className={`block border-t border-[color:var(--border)] py-3 [overflow-wrap:anywhere] xl:table-row ${marked ? "bg-[color:var(--panel-hover)]" : ""}`}
       data-driver={row.driver ?? undefined}
       data-marked={marked ? "true" : undefined}
     >
-      <td className="py-1.5 pr-4 font-mono">
-        {row.account ? (
-          <span className="font-ui" data-testid="account-models">
-            every model it lists{" "}
-            <span className="text-[color:var(--muted)]">
-              ({row.account.count}, named <span className="font-mono">{row.driver}/…</span>)
+      <td className="block min-w-0 px-3 py-2 align-top xl:table-cell xl:py-5">
+        <div className="font-ui text-base font-semibold" data-testid="backend-model">
+          {row.account ? (
+            <span className="font-ui" data-testid="account-models">
+              every model it lists{" "}
+              <span className="text-[color:var(--muted)]">
+                ({row.account.count}, named <span className="font-mono">{row.driver}/…</span>)
+              </span>
             </span>
-          </span>
-        ) : row.model ? (
-          <ModelName name={row.model} context={contexts(row.model)} />
-        ) : (
-          <span className="text-[color:var(--muted)]">no model reported</span>
-        )}
+          ) : row.model ? (
+            <ModelName name={row.model} context={contexts(row.model)} />
+          ) : (
+            <span className="text-[color:var(--muted)]">no model reported</span>
+          )}
+        </div>
+        <div className="mt-2 space-y-1 text-xs text-[color:var(--muted)]">
+          {row.runtime ? (
+            <>
+              <span className="font-medium text-[color:var(--foreground)]">
+                {engineWord(row.engine ?? "engine")}
+              </span>{" "}
+              {engines?.find((e) => e.engine === row.engine)?.experimental && (
+                <span className="text-status-warn">· Experimental </span>
+              )}
+              <span> · Managed by Eugene</span>
+              {!repeatsModel(row.runtime, row.model ?? "") && (
+                <div className="font-mono" title="Saved runtime name">
+                  {row.runtime}
+                </div>
+              )}
+              {own?.profile?.name && (
+                // Two runtimes of one model, one per profile, read the same
+                // until this line existed (2026-10-01): the runtime's name
+                // is cut to 60 characters and loses the profile's.
+                <div className="text-[0.6875rem]" data-testid="runtime-profile">
+                  profile <span className="font-medium">{own.profile.name}</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {row.backend ? (BACKEND_LABEL[row.backend] ?? row.backend) : "external backend"}
+              {row.url && (
+                <span className="ml-1 font-mono text-[color:var(--muted)]">{row.url}</span>
+              )}
+              <span className="text-[color:var(--muted)]"> · runs on its own</span>
+            </>
+          )}
+          {row.driver && !driverIsImplied(row) && (
+            <div className="text-[0.6875rem] text-[color:var(--muted)]">
+              driver <span className="font-mono">{row.driver}</span>
+            </div>
+          )}
+        </div>
       </td>
-      <td className="py-1.5 pr-4">
-        {row.runtime ? (
-          <>
-            <span className="font-mono">{row.engine ?? "engine"}</span> runtime{" "}
-            {engines?.find((e) => e.engine === row.engine)?.experimental && (
-              <span className="text-status-warn">· Experimental </span>
-            )}
-            <span className="font-mono">{row.runtime}</span>
-            <span className="text-[color:var(--muted)]"> · we supervise it</span>
-            {own?.profile?.name && (
-              // Two runtimes of one model, one per profile, read the same
-              // until this line existed (2026-10-01): the runtime's name
-              // is cut to 60 characters and loses the profile's.
-              <div className="text-[0.6875rem]" data-testid="runtime-profile">
-                profile <span className="font-medium">{own.profile.name}</span>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            {row.backend ? (BACKEND_LABEL[row.backend] ?? row.backend) : "external backend"}
-            {row.url && <span className="ml-1 font-mono text-[color:var(--muted)]">{row.url}</span>}
-            <span className="text-[color:var(--muted)]"> · runs on its own</span>
-          </>
-        )}
-        {row.driver && !driverIsImplied(row) && (
-          <div className="text-[0.6875rem] text-[color:var(--muted)]">
-            driver <span className="font-mono">{row.driver}</span>
-          </div>
-        )}
-      </td>
-      <td className="py-1.5 pr-4">
+      <td className="block min-w-0 space-y-1.5 px-3 py-2 align-top xl:table-cell xl:py-5">
         {row.runtime && status ? (
           <span
+            className="inline-flex flex-wrap items-center gap-1.5 rounded-full border border-current/20 px-2.5 py-0.5 text-xs font-medium"
             style={{ color: known ? STATUS_TONE[status as RuntimeStatus] : undefined }}
             title={known ? STATUS_HELP[status as RuntimeStatus] : undefined}
           >
@@ -836,8 +858,8 @@ function RowView({
         )}
         {missingEngine && (
           <div className="text-[0.6875rem]" data-testid="stopped-reason">
-            {engineWord(missingEngine)} is not installed on this machine, so this cannot start.
-            Install it above, then press start.
+            {engineWord(missingEngine)} is not installed on this machine, so this cannot start. Open
+            Engines below to install it, then press start.
           </div>
         )}
         {copying && (
@@ -918,6 +940,129 @@ function RowView({
             {failure}
           </div>
         )}
+        {row.eligible === false && row.ineligibleReason && (
+          <div className="text-[0.6875rem] text-[color:var(--muted)]">
+            not routable: {row.ineligibleReason}
+          </div>
+        )}
+        {/* Why the gateway routes nothing here, in words, on a runtime's
+            row too: Strata's read only "ready" while its driver could not
+            be reached, and the reason sat in a tooltip (2026-10-10). */}
+        {row.reachable === false && (
+          <div
+            className="text-[0.6875rem]"
+            style={{ color: "var(--status-error-fg)" }}
+            data-testid="driver-unreachable"
+          >
+            {row.runtime
+              ? "The gateway cannot reach its driver: "
+              : "The gateway cannot reach it: "}
+            {row.error ?? "it did not say why"}
+          </div>
+        )}
+        {row.error && row.reachable !== false && (
+          <div
+            className="text-[0.6875rem]"
+            style={{ color: "var(--status-error-fg)" }}
+            data-testid="driver-error"
+          >
+            {row.runtime || row.error.startsWith("is ") ? `Its driver ${row.error}` : row.error}
+          </div>
+        )}
+        {row.inFlight !== null && (
+          <div className="text-xs text-[color:var(--muted)]">
+            {row.inFlight === 0 ? "No active requests" : `${row.inFlight} in flight`}
+            {row.idleSeconds !== null && row.inFlight === 0 && (
+              <span> · idle {formatDuration(row.idleSeconds)}</span>
+            )}
+          </div>
+        )}
+      </td>
+      <td className="block min-w-0 space-y-3 px-3 py-2 align-top xl:table-cell xl:py-5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {row.runtime ? (
+            <>
+              {!asking && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onAct(row.node, row.runtime as string, "start")}
+                    aria-label={`${busy === `${prefix}start` ? "Starting" : "Start"} ${actionName}`}
+                    disabled={busy !== null || status === "ready" || status === "loading"}
+                    className={smallButton}
+                  >
+                    {busy === `${prefix}start` ? "Starting…" : "Start"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onAct(row.node, row.runtime as string, "stop")}
+                    aria-label={`${busy === `${prefix}stop` ? "Stopping" : "Stop"} ${actionName}`}
+                    disabled={busy !== null || status === "stopped"}
+                    className={smallButton}
+                  >
+                    {busy === `${prefix}stop` ? "Stopping…" : "Stop"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onAct(row.node, row.runtime as string, "restart")}
+                    aria-label={`${busy === `${prefix}restart` ? "Restarting" : "Restart"} ${actionName}`}
+                    disabled={busy !== null}
+                    className={smallButton}
+                  >
+                    {busy === `${prefix}restart` ? "Restarting…" : "Restart"}
+                  </button>
+                </>
+              )}
+              <span className="inline-block">
+                <ConfirmButton
+                  label={busy === `${prefix}remove` ? "Removing…" : "Remove"}
+                  prompt="The engine stops; the model files stay."
+                  ariaLabel={`Remove ${actionName}`}
+                  onConfirm={() => onRemove(row)}
+                  disabled={busy !== null}
+                  className={dangerButton}
+                  title="Stops the engine and forgets the runtime and its driver. The model files stay."
+                  testId="remove-row"
+                  onAsking={setAsking}
+                />
+              </span>
+            </>
+          ) : (
+            row.driver && (
+              <>
+                {/* Selects the driver itself: a bare `/config` carries no
+                  `?sel=` and opens on "Nothing selected", which is where
+                  this link used to leave the operator. The machine rides
+                  in the token when the root placed it; a bare name is
+                  what the tree resolves on a box with no name. */}
+                <Link
+                  href={`/config?sel=${encodeURIComponent(
+                    formatSelection({ type: "driver", node: row.node, name: row.driver }),
+                  )}`}
+                  className={smallButton}
+                  aria-label={`Settings for ${actionName}`}
+                  title="Eugene does not start or stop an external backend. Its URL, model id and API key are in its driver's settings."
+                >
+                  Settings
+                </Link>
+                <span className="inline-block">
+                  <ConfirmButton
+                    label={
+                      busy === `${row.node ?? ""}/${row.driver}:remove` ? "Removing…" : "Remove"
+                    }
+                    prompt="The app it fronts is untouched."
+                    ariaLabel={`Remove ${actionName}`}
+                    onConfirm={() => onRemove(row)}
+                    disabled={busy !== null}
+                    className={dangerButton}
+                    title="Forgets this driver and stops its process. The backend it fronts is untouched."
+                    testId="remove-row"
+                  />
+                </span>
+              </>
+            )
+          )}
+        </div>
         {row.runtime && (
           <div className="text-[0.6875rem]">
             <Link
@@ -949,123 +1094,6 @@ function RowView({
             Start when Eugene starts
           </label>
         )}
-        {row.eligible === false && row.ineligibleReason && (
-          <div className="text-[0.6875rem] text-[color:var(--muted)]">
-            not routable: {row.ineligibleReason}
-          </div>
-        )}
-        {/* Why the gateway routes nothing here, in words, on a runtime's
-            row too: Strata's read only "ready" while its driver could not
-            be reached, and the reason sat in a tooltip (2026-10-10). */}
-        {row.reachable === false && (
-          <div
-            className="text-[0.6875rem]"
-            style={{ color: "var(--status-error-fg)" }}
-            data-testid="driver-unreachable"
-          >
-            {row.runtime
-              ? "The gateway cannot reach its driver: "
-              : "The gateway cannot reach it: "}
-            {row.error ?? "it did not say why"}
-          </div>
-        )}
-        {row.error && row.reachable !== false && (
-          <div
-            className="text-[0.6875rem]"
-            style={{ color: "var(--status-error-fg)" }}
-            data-testid="driver-error"
-          >
-            {row.runtime || row.error.startsWith("is ") ? `Its driver ${row.error}` : row.error}
-          </div>
-        )}
-      </td>
-      <td className="py-1.5 pr-4 text-[color:var(--muted)]">
-        {row.inFlight !== null ? `${row.inFlight} in flight` : "—"}
-        {row.idleSeconds !== null && row.inFlight === 0 && (
-          <span className="ml-1">· idle {formatDuration(row.idleSeconds)}</span>
-        )}
-      </td>
-      <td className="py-1.5 pr-4 text-right whitespace-nowrap">
-        {row.runtime ? (
-          <>
-            {!asking && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onAct(row.node, row.runtime as string, "start")}
-                  aria-label={`${busy === `${prefix}start` ? "Starting" : "Start"} ${actionName}`}
-                  disabled={busy !== null || status === "ready" || status === "loading"}
-                  className={smallButton}
-                >
-                  {busy === `${prefix}start` ? "Starting…" : "Start"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onAct(row.node, row.runtime as string, "stop")}
-                  aria-label={`${busy === `${prefix}stop` ? "Stopping" : "Stop"} ${actionName}`}
-                  disabled={busy !== null || status === "stopped"}
-                  className={`${smallButton} ml-1`}
-                >
-                  {busy === `${prefix}stop` ? "Stopping…" : "Stop"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onAct(row.node, row.runtime as string, "restart")}
-                  aria-label={`${busy === `${prefix}restart` ? "Restarting" : "Restart"} ${actionName}`}
-                  disabled={busy !== null}
-                  className={`${smallButton} ml-1`}
-                >
-                  {busy === `${prefix}restart` ? "Restarting…" : "Restart"}
-                </button>
-              </>
-            )}
-            <span className="ml-1 inline-block">
-              <ConfirmButton
-                label={busy === `${prefix}remove` ? "Removing…" : "Remove"}
-                prompt="The engine stops; the model files stay."
-                ariaLabel={`Remove ${actionName}`}
-                onConfirm={() => onRemove(row)}
-                disabled={busy !== null}
-                className={dangerButton}
-                title="Stops the engine and forgets the runtime and its driver. The model files stay."
-                testId="remove-row"
-                onAsking={setAsking}
-              />
-            </span>
-          </>
-        ) : (
-          row.driver && (
-            <>
-              {/* Selects the driver itself: a bare `/config` carries no
-                  `?sel=` and opens on "Nothing selected", which is where
-                  this link used to leave the operator. The machine rides
-                  in the token when the root placed it; a bare name is
-                  what the tree resolves on a box with no name. */}
-              <Link
-                href={`/config?sel=${encodeURIComponent(
-                  formatSelection({ type: "driver", node: row.node, name: row.driver }),
-                )}`}
-                className={smallButton}
-                aria-label={`Settings for ${actionName}`}
-                title="Eugene does not start or stop an external backend. Its URL, model id and API key are in its driver's settings."
-              >
-                Settings
-              </Link>
-              <span className="ml-1 inline-block">
-                <ConfirmButton
-                  label={busy === `${row.node ?? ""}/${row.driver}:remove` ? "Removing…" : "Remove"}
-                  prompt="The app it fronts is untouched."
-                  ariaLabel={`Remove ${actionName}`}
-                  onConfirm={() => onRemove(row)}
-                  disabled={busy !== null}
-                  className={dangerButton}
-                  title="Forgets this driver and stops its process. The backend it fronts is untouched."
-                  testId="remove-row"
-                />
-              </span>
-            </>
-          )
-        )}
       </td>
     </tr>
   );
@@ -1080,13 +1108,19 @@ function RowView({
  * build says so and why (Linux with NVIDIA is a permanent answer, not a
  * transient failure).
  */
-function EnginesLine({
+function EngineManagement({
   target,
   reachable,
   onEngines,
+  label,
+  nodeName,
+  rows,
 }: {
   target: string;
   reachable: boolean;
+  label: string;
+  nodeName: string | null;
+  rows: Row[];
   /** The node's engines as last read, for the rows above this line. */
   onEngines?: (engines: EngineDescriptor[]) => void;
 }) {
@@ -1101,6 +1135,7 @@ function EnginesLine({
   // chosen for this machine.
   const [builds, setBuilds] = useState<Record<string, string>>({});
   const seeded = useRef(false);
+  const [expanded, setExpanded] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -1139,6 +1174,13 @@ function EnginesLine({
   }, [load, reachable]);
 
   const installing = Object.values(installs).some((i) => i != null && inFlight(i.state));
+  const needsAttention =
+    installing ||
+    Object.values(installs).some((i) => i?.state === "failed") ||
+    Object.values(installErrors).some(Boolean);
+  useEffect(() => {
+    if (needsAttention) setExpanded(true);
+  }, [needsAttention]);
 
   useEffect(() => {
     if (!installing) return;
@@ -1195,143 +1237,227 @@ function EnginesLine({
 
   if (!reachable) return null;
   if (error) {
-    return <p className="text-[0.6875rem] text-[color:var(--muted)]">engines: {error}</p>;
+    return (
+      <p role="alert" className="text-status-error mt-4 text-sm">
+        Could not read engines: {error}
+      </p>
+    );
   }
   if (engines === null) return null;
+  const offered = engines.filter(offeredOnThisNode);
+  const installed = offered.filter((e) => e.available).length;
 
   return (
-    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] text-[color:var(--muted)]">
-      <span>engines:</span>
-      {engines.filter(offeredOnThisNode).map((e) => {
-        const state = installs[e.engine];
-        const busyInstall = state != null && inFlight(state.state);
-        // A failed install fell back to "not installed" plus the same
-        // button, with the reason -- on the record all along -- nowhere.
-        const failed = state?.state === "failed";
-        const refused = installErrors[e.engine];
-        const reason = e.acquisition?.reason;
-        return (
-          <span key={e.engine} className="inline-flex items-center gap-1.5">
-            <span className="font-mono">{e.engine}</span>
-            {e.experimental && (
-              <span
-                className="rounded-[var(--radius)] border border-[color:var(--border)] px-1 text-[0.5625rem] tracking-wide uppercase"
-                title={
-                  "Limited integration and support. Features may change quickly upstream. " +
-                  "A successful hardware test does not remove this designation. " +
-                  (e.acquisition?.manualInstall?.notes ?? "")
-                }
-              >
-                experimental
-              </span>
-            )}
-            <span
-              style={{
-                color: e.available ? "var(--status-success-fg)" : "var(--status-error-fg)",
-              }}
+    <details
+      className="mt-5 border-t border-[color:var(--border)] pt-4"
+      data-testid="engine-management"
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
+      <summary className="cursor-pointer text-sm" aria-label={`Engines on ${label}`}>
+        <span className="font-ui font-semibold">Engines</span>
+        <span className="ml-3 text-xs text-[color:var(--muted)]">
+          {installed} installed · {offered.length - installed} not installed
+        </span>
+        <span className="ml-3 text-xs text-[color:var(--muted)]">Install, update and setup</span>
+        {needsAttention && (
+          <span className="text-status-warn ml-3 text-xs">
+            {installing ? "Installation in progress" : "Needs attention"}
+          </span>
+        )}
+      </summary>
+      <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+        {offered.map((e) => {
+          const state = installs[e.engine];
+          const busyInstall = state != null && inFlight(state.state);
+          const failed = state?.state === "failed";
+          const refused = installErrors[e.engine];
+          const reason = e.acquisition?.reason;
+          const manual = e.acquisition?.manualInstall;
+          return (
+            <section
+              key={e.engine}
+              aria-label={`${engineWord(e.engine)} engine`}
+              className="min-w-0 space-y-3 rounded-[var(--radius)] border border-[color:var(--border)] p-4 text-sm [overflow-wrap:anywhere]"
             >
-              {e.available ? `build ${e.version ?? "?"}` : "not installed"}
-            </span>
-            {e.managed?.variant && (
-              // Which build, because "why is this slow" is often "it is
-              // the CPU one", and nothing else on the page says.
-              <span data-testid="engine-variant" className="font-mono">
-                {e.managed.variant}
-              </span>
-            )}
-            {busyInstall ? (
-              <span data-testid="engine-install-progress" className="tabular-nums">
-                {installProgress(state)}
-              </span>
-            ) : e.acquisition?.installable ? (
-              <>
-                {failed && (
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-ui font-semibold">{engineWord(e.engine)}</h3>
+                {e.experimental && (
                   <span
-                    data-testid="engine-install-failed"
-                    role="alert"
-                    className="text-status-error"
+                    className="rounded border border-[color:var(--border)] px-1.5 py-0.5 text-[0.625rem] text-[color:var(--muted)]"
+                    title="Limited integration and support. Features may change quickly upstream."
                   >
-                    install failed{state.error ? `: ${state.error}` : ""}
+                    Experimental
                   </span>
                 )}
-                {(e.acquisition.alternatives?.length ?? 0) > 1 && (
-                  <select
-                    aria-label={`Build of ${e.engine} to install`}
-                    data-testid="engine-build-choice"
-                    title={expertHint(
-                      "The build chosen for this machine is first, then every other build " +
-                        "published for this system. Try SYCL on an Intel Arc, or CPU to " +
-                        "rule out the card.",
-                    )}
-                    value={builds[e.engine] ?? ""}
-                    onChange={(event) =>
-                      setBuilds((prev) => ({ ...prev, [e.engine]: event.target.value }))
-                    }
-                    disabled={posting !== null}
-                    className="rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-1 font-mono text-[0.6875rem]"
-                  >
-                    <option value="">
-                      {e.acquisition.variant ?? "default"} (for this machine)
-                    </option>
-                    {(e.acquisition.alternatives ?? [])
-                      .filter((v) => v !== e.acquisition?.variant)
-                      .map((v) => (
-                        <option key={v} value={v}>
-                          {v}
-                        </option>
-                      ))}
-                  </select>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void install(e.engine)}
-                  disabled={posting !== null}
-                  aria-label={`${
-                    posting === e.engine
-                      ? "Starting"
-                      : failed
-                        ? "Try again"
-                        : e.managed && !builds[e.engine]
-                          ? "Update"
-                          : "Install"
-                  } ${engineWord(e.engine)}`}
-                  className={tinyButton}
+                <span
+                  className={`ml-auto text-xs ${e.available ? "text-status-success" : "text-[color:var(--muted)]"}`}
                 >
-                  {posting === e.engine
-                    ? "Starting…"
-                    : failed
-                      ? "Try again"
-                      : e.managed && !builds[e.engine]
-                        ? "Update"
-                        : "Install"}
-                </button>
-              </>
-            ) : !e.available && reason ? (
-              // The reason in words, not a tooltip: "not installable here"
-              // alone says nothing to someone new (2026-10-10).
-              <span className="text-[color:var(--muted)]">({reason})</span>
-            ) : null}
-            {refused && (
-              <span role="alert" className="text-status-error">
-                {refused}
-              </span>
-            )}
-            {e.managed && !busyInstall && (
-              <ConfirmButton
-                label="Uninstall"
-                ariaLabel={`Uninstall ${engineWord(e.engine)}`}
-                confirmLabel="Uninstall engine"
-                cancelLabel="Keep engine"
-                prompt={`Remove Eugene-managed ${e.engine} builds? Models and saved runtimes stay. Stop its runtimes first.`}
-                disabled={posting !== null}
-                className={tinyButton}
-                onConfirm={() => uninstall(e.engine)}
-              />
-            )}
-          </span>
-        );
-      })}
-    </p>
+                  {e.available ? "Installed" : "Not installed"}
+                </span>
+              </div>
+              {e.available && (
+                <div className="space-y-1 text-xs text-[color:var(--muted)]">
+                  <p>
+                    Version <span className="font-mono">{e.version ?? "unknown"}</span>
+                  </p>
+                  {e.managed?.variant && (
+                    <p data-testid="engine-variant" className="font-mono">
+                      {e.managed.variant}
+                    </p>
+                  )}
+                </div>
+              )}
+              {busyInstall ? (
+                <p
+                  role="status"
+                  data-testid="engine-install-progress"
+                  className="text-xs tabular-nums"
+                >
+                  {installProgress(state)}
+                </p>
+              ) : (
+                <>
+                  {failed && (
+                    <p
+                      data-testid="engine-install-failed"
+                      role="alert"
+                      className="text-status-error text-xs"
+                    >
+                      install failed{state.error ? `: ${state.error}` : ""}
+                    </p>
+                  )}
+                  {e.acquisition?.installable ? (
+                    <>
+                      {(e.acquisition.alternatives?.length ?? 0) > 1 && (
+                        <label className="block space-y-1 text-xs text-[color:var(--muted)]">
+                          <span>Build to install</span>
+                          <select
+                            aria-label={`Build of ${e.engine} to install`}
+                            data-testid="engine-build-choice"
+                            title={expertHint(
+                              "The build chosen for this machine is first. Choose another build to use a different accelerator.",
+                            )}
+                            value={builds[e.engine] ?? ""}
+                            onChange={(event) =>
+                              setBuilds((prev) => ({ ...prev, [e.engine]: event.target.value }))
+                            }
+                            disabled={posting !== null}
+                            className="block w-full min-w-0 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] p-2 text-xs"
+                          >
+                            <option value="">
+                              {e.acquisition.variant ?? "default"} (recommended)
+                            </option>
+                            {(e.acquisition.alternatives ?? [])
+                              .filter((v) => v !== e.acquisition?.variant)
+                              .map((v) => (
+                                <option key={v} value={v}>
+                                  {v}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void install(e.engine)}
+                          disabled={posting !== null}
+                          aria-label={`${posting === e.engine ? "Starting" : failed ? "Try again" : e.managed && !builds[e.engine] ? "Update" : "Install"} ${engineWord(e.engine)}`}
+                          className={smallButton}
+                        >
+                          {posting === e.engine
+                            ? "Starting…"
+                            : failed
+                              ? "Try again"
+                              : e.managed && !builds[e.engine]
+                                ? "Update"
+                                : "Install"}
+                        </button>
+                        {e.managed && (
+                          <ConfirmButton
+                            label="Uninstall"
+                            ariaLabel={`Uninstall ${engineWord(e.engine)}`}
+                            confirmLabel="Uninstall engine"
+                            cancelLabel="Keep engine"
+                            prompt={`Remove Eugene-managed ${engineWord(e.engine)} builds? Models and saved settings stay. Stop its models first.`}
+                            disabled={posting !== null}
+                            className={dangerButton}
+                            onConfirm={() => uninstall(e.engine)}
+                          />
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    !e.available && (
+                      <p className="text-xs text-[color:var(--muted)]">
+                        {manual
+                          ? "Requires manual setup."
+                          : "Automatic installation is unavailable."}
+                      </p>
+                    )
+                  )}
+                  {e.managed && !e.acquisition?.installable && (
+                    <ConfirmButton
+                      label="Uninstall"
+                      ariaLabel={`Uninstall ${engineWord(e.engine)}`}
+                      confirmLabel="Uninstall engine"
+                      cancelLabel="Keep engine"
+                      prompt={`Remove Eugene-managed ${engineWord(e.engine)} builds? Models and saved settings stay. Stop its models first.`}
+                      disabled={posting !== null}
+                      className={dangerButton}
+                      onConfirm={() => uninstall(e.engine)}
+                    />
+                  )}
+                </>
+              )}
+              {refused && (
+                <p role="alert" className="text-status-error text-xs">
+                  {refused}
+                </p>
+              )}
+              {(reason || manual) && (
+                <details className="text-xs text-[color:var(--muted)]">
+                  <summary
+                    className="cursor-pointer"
+                    aria-label={`Setup details for ${engineWord(e.engine)}`}
+                  >
+                    Setup details
+                  </summary>
+                  <div className="mt-3 space-y-3 leading-relaxed">
+                    {reason && <p>{reason}</p>}
+                    {manual?.command && (
+                      <pre className="rounded bg-[color:var(--background)] p-3 [overflow-wrap:anywhere] whitespace-pre-wrap">
+                        {manual.command}
+                      </pre>
+                    )}
+                    {manual?.notes && manual.notes !== reason && <p>{manual.notes}</p>}
+                    {manual?.docsUrl && /^https?:\/\//.test(manual.docsUrl) && (
+                      <a
+                        href={manual.docsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline"
+                      >
+                        Installation guide
+                      </a>
+                    )}
+                  </div>
+                </details>
+              )}
+            </section>
+          );
+        })}
+      </div>
+      {offered.length === 0 && (
+        <p className="mt-3 text-sm text-[color:var(--muted)]">
+          No engines reported for this machine.
+        </p>
+      )}
+      {engines.some((e) => e.engine === "strata" && e.available) && (
+        <ExperimentalModels node={nodeName} rows={rows} />
+      )}
+    </details>
   );
 }
 
@@ -1353,6 +1479,7 @@ function engineWord(engine: string): string {
   if (engine === "vllm") return "vLLM";
   if (engine === "mlx") return "MLX";
   if (engine === "kev") return "Kev";
+  if (engine === "strata") return "Strata";
   return engine;
 }
 
@@ -1387,5 +1514,3 @@ const smallButton =
   "action-button action-button--compact font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-30";
 const dangerButton =
   "action-button action-button--danger action-button--compact font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-0.5 text-[0.6875rem] transition-colors hover:border-[color:var(--status-error-border)] hover:text-[color:var(--status-error-fg)] disabled:cursor-not-allowed disabled:opacity-30";
-const tinyButton =
-  "action-button action-button--compact font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-1.5 py-0 text-[0.625rem] transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]";

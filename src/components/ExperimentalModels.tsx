@@ -40,18 +40,21 @@ export function ExperimentalModels({ node, rows }: { node: string | null; rows: 
 
   return (
     <div className="mt-3 space-y-2 text-sm">
-      <p>
-        <strong>Strata · Experimental</strong> — text chat with prepared models. Tools and
-        structured output work; media is not supported. Prepare one from a model&apos;s{" "}
-        <Link href="/library" className="underline">
-          Library
-        </Link>{" "}
-        page (<em>Prepare for Strata</em>), or download and prepare one from{" "}
-        <Link href="/discover" className="underline">
-          Discover
-        </Link>
-        .
-      </p>
+      <details className="text-xs text-[color:var(--muted)]">
+        <summary className="cursor-pointer">Using Strata models</summary>
+        <p className="mt-2 max-w-3xl leading-relaxed">
+          <strong>Strata · Experimental</strong> — text chat with prepared models. Tools and
+          structured output work; media is not supported. Prepare one from a model&apos;s{" "}
+          <Link href="/library" className="underline">
+            Library
+          </Link>{" "}
+          page (<em>Prepare for Strata</em>), or download and prepare one from{" "}
+          <Link href="/discover" className="underline">
+            Discover
+          </Link>
+          .
+        </p>
+      </details>
       {running.length > 0 && stopped.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <label>
