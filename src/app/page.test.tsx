@@ -677,7 +677,11 @@ describe("Home with exactly one model on disk (S3)", () => {
     fireEvent.click(run);
     const status = await within(card).findByTestId("run-status");
     await waitFor(() => expect(status).toHaveAttribute("data-step", "ready"), { timeout: 5000 });
-    expect(status).toHaveTextContent("ready — try it on Home");
+    expect(status).toHaveTextContent("Launch completed on Amish_Station");
+    expect(await within(status).findByRole("link", { name: "Try it on Home" })).toHaveAttribute(
+      "href",
+      "/",
+    );
     // Home submits intent; execution and recovery are verified on the server.
     const submitted = calls.find(
       (c) => c.method === "PUT" && c.route.startsWith("library/v1/run-operations/"),
