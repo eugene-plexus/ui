@@ -86,6 +86,22 @@ afterEach(() => {
 });
 
 describe("preparation runs", () => {
+  it.each(["cpu", "gpu"] as const)("keeps %s image preparation after refresh", async (vision) => {
+    const id = startPreparation({ ...GGUF, contextLength: null }, HERE, {
+      engine: "strata",
+      contextSize: null,
+      vision,
+    });
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    expect(api.put).toHaveBeenCalledWith("library", `/v1/run-operations/${id}`, {
+      node: "amish",
+      modelId: "g",
+      preparation: { engine: "strata", vision },
+    });
+    await refreshRuns();
+    expect(getRuns()[0]?.preparing?.vision).toBe(vision);
+  });
+
   it("asks for the engine and context, once while it is in flight", async () => {
     const id = startPreparation({ ...GGUF, contextLength: null }, HERE, {
       engine: "strata",
@@ -128,7 +144,7 @@ describe("preparation runs", () => {
         label: "Qwen3.8-Flash-Next IQ2_XS",
       },
       HERE,
-      { engine: "strata", contextSize: null },
+      { engine: "strata", contextSize: null, vision: "gpu" },
     );
     await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     expect(api.put).toHaveBeenCalledWith("library", `/v1/run-operations/${id}`, {
@@ -138,7 +154,7 @@ describe("preparation runs", () => {
         files: ["IQ2_XS/a-00001-of-00002.gguf", "IQ2_XS/a-00002-of-00002.gguf"],
         revision: "ed59f92",
       },
-      preparation: { engine: "strata" },
+      preparation: { engine: "strata", vision: "gpu" },
     });
     await refreshRuns();
     // Once the server has it, the run is named by the file it is getting.

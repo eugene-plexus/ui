@@ -6258,6 +6258,11 @@ export interface components {
          */
         MlxQuantizationRule: "required" | "forbidden";
         /**
+         * @description Where to encode images during inference; off prepares text only.
+         * @enum {string}
+         */
+        PreparationVisionMode: "off" | "cpu" | "gpu";
+        /**
          * @description A match that runs only after the engine prepares it (Strata builds
          *     an expert pack, a lookup table and an MTP helper from a GGUF). The
          *     verdict is `after_preparation`; the original file is never
@@ -6285,6 +6290,13 @@ export interface components {
              *     Absent: the preparation takes no context.
              */
             contexts?: number[];
+            /**
+             * @description Image encoder choices supported by this model's preparation. Absent:
+             *     no image preparation is offered. Omitting the choice in a run intent
+             *     preserves text-only preparation. Enabling images downloads an extra
+             *     encoder and uses additional memory while serving.
+             */
+            visionModes?: components["schemas"]["PreparationVisionMode"][];
             /**
              * @description The oldest version of the engine that prepares this model, as
              *     the engine's own setup states it (LS7, B30): e.g. Strata's

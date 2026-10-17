@@ -35,12 +35,31 @@ const ENTRY: SupportedModel = {
 };
 
 describe("PrepareControl", () => {
+  it.each(["off", "cpu", "gpu"] as const)("submits the %s image mode", (vision) => {
+    const start = vi.fn(() => "vision_1");
+    const entry: SupportedModel = {
+      ...ENTRY,
+      preparation: { ...ENTRY.preparation!, visionModes: ["off", "cpu", "gpu"] },
+    };
+    render(
+      <PrepareControl engine="strata" entry={entry} node={NODE} where="amish" onStart={start} />,
+    );
+    expect(screen.getByTestId("prepare-vision")).toHaveValue("off");
+    fireEvent.change(screen.getByTestId("prepare-vision"), { target: { value: vision } });
+    expect(screen.getByTestId("prepare-disk")).toHaveTextContent(
+      vision === "off" ? "44.50 GB" : "45.50 GB",
+    );
+    fireEvent.click(screen.getByTestId("prepare-start"));
+    expect(start).toHaveBeenCalledWith({ engine: "strata", contextSize: null, vision });
+  });
+
   it("leaves the context to the engine when it offers none to choose", () => {
     const start = vi.fn(() => "prep_1");
     render(
       <PrepareControl engine="strata" entry={ENTRY} node={NODE} where="amish" onStart={start} />,
     );
     expect(screen.queryByTestId("prepare-context")).toBeNull();
+    expect(screen.queryByTestId("prepare-vision")).toBeNull();
     expect(screen.getByTestId("prepare-disk")).toHaveTextContent("44.50 GB");
     fireEvent.click(screen.getByTestId("prepare-start"));
     expect(start).toHaveBeenCalledWith({ engine: "strata", contextSize: null });

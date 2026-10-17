@@ -18,6 +18,7 @@ import type {
 export type RunStep = RunProtocol["schemas"]["Operation"]["step"];
 /** Where a preparation is, as the engine's node reports it (LS5). */
 export type PreparationStatus = RunProtocol["schemas"]["PreparationStatus"];
+export type PreparationVisionMode = RunProtocol["schemas"]["PreparationVisionMode"];
 
 /** Which step a failure belongs to; "names which one failed if one does". */
 export type FailedStep =
@@ -34,6 +35,7 @@ export type FailedStep =
 export interface RunPreparation {
   engine: string;
   contextSize: number | null;
+  vision?: PreparationVisionMode;
 }
 
 /** What a run needs to know about the transfer it is waiting on. */
@@ -124,7 +126,11 @@ export interface RunOperation extends Pick<
       revision?: string | null;
       source?: string | null;
     } | null;
-    preparation?: { engine: string; contextSize?: number | null } | null;
+    preparation?: {
+      engine: string;
+      contextSize?: number | null;
+      vision?: PreparationVisionMode;
+    } | null;
   };
   model: RunModel | null;
   engine: string | null;
@@ -207,7 +213,13 @@ function observe(record: RunOperation): RunTask {
 
 function preparingOf(intent: RunOperation["intent"]): RunPreparation | null {
   const wanted = intent.preparation;
-  return wanted ? { engine: wanted.engine, contextSize: wanted.contextSize ?? null } : null;
+  return wanted
+    ? {
+        engine: wanted.engine,
+        contextSize: wanted.contextSize ?? null,
+        ...(wanted.vision ? { vision: wanted.vision } : {}),
+      }
+    : null;
 }
 
 /** Public for explicit refreshes and tests; transient read failures keep the last view. */
@@ -470,6 +482,7 @@ export function startPreparation(
       preparation: {
         engine: preparation.engine,
         ...(preparation.contextSize ? { contextSize: preparation.contextSize } : {}),
+        ...(preparation.vision ? { vision: preparation.vision } : {}),
       },
     },
     node,
@@ -508,6 +521,7 @@ export function startDownloadAndPrepare(
       preparation: {
         engine: preparation.engine,
         ...(preparation.contextSize ? { contextSize: preparation.contextSize } : {}),
+        ...(preparation.vision ? { vision: preparation.vision } : {}),
       },
     },
     node,

@@ -1213,6 +1213,11 @@ export interface components {
              * @description The context the engine prepares for. Absent: the engine's own recommendation for the node.
              */
             contextSize?: number | null;
+            /**
+             * @description Image encoder placement. Off preserves text-only preparation.
+             * @default off
+             */
+            vision: components["schemas"]["PreparationVisionMode"];
         };
         /**
          * PreparationStatus
@@ -1250,6 +1255,12 @@ export interface components {
              */
             warnings?: string[];
         };
+        /**
+         * PreparationVisionMode
+         * @description Where to encode images during inference; off prepares text only.
+         * @enum {string}
+         */
+        PreparationVisionMode: "off" | "cpu" | "gpu";
         /**
          * PreparedDetail
          * @description A prepared model's provenance, as its file

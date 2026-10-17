@@ -6,7 +6,13 @@ import { RunStatus } from "@/components/RunButton";
 import { engineName } from "@/lib/issues";
 import { formatBytes } from "@/components/FitBadge";
 import type { TargetNode } from "@/lib/nodeBudget";
-import { isTerminal, runById, useRuns, type RunPreparation } from "@/lib/oneClickRun";
+import {
+  isTerminal,
+  runById,
+  useRuns,
+  type PreparationVisionMode,
+  type RunPreparation,
+} from "@/lib/oneClickRun";
 import type { SupportedModel } from "@/lib/types";
 
 /**
@@ -45,6 +51,7 @@ export function PrepareControl({
   const runs = useRuns();
   void runs; // a store change re-renders this control; `runById` reads the same store
   const [context, setContext] = useState<number | null>(null);
+  const [vision, setVision] = useState<PreparationVisionMode>("off");
   const [runId, setRunId] = useState<string | null>(null);
   // Why pressing it started nothing, in the browser's own words.
   const [startError, setStartError] = useState<string | null>(null);
@@ -53,11 +60,17 @@ export function PrepareControl({
   const name = engineName(engine);
   const preparation = entry?.preparation ?? null;
   const contexts = preparation?.contexts ?? [];
+  const visionModes = preparation?.visionModes ?? [];
+  const selectedVision = visionModes.includes(vision) ? vision : "off";
   const start = () => {
     if (!node) return;
     setStartError(null);
     try {
-      const id = onStart({ engine, contextSize: context });
+      const id = onStart({
+        engine,
+        contextSize: context,
+        ...(visionModes.length > 0 ? { vision: selectedVision } : {}),
+      });
       if (!id) {
         setStartError("Nothing was started: this page has not found the model's files yet.");
         return;
@@ -95,8 +108,10 @@ export function PrepareControl({
           <>
             {" "}
             By {name}&rsquo;s own rule that needs about{" "}
-            <span data-testid="prepare-disk">{formatBytes(preparation.diskBytes)}</span> more free
-            on the drive holding the Library folder.
+            <span data-testid="prepare-disk">
+              {formatBytes(preparation.diskBytes + (selectedVision === "off" ? 0 : 1_000_000_000))}
+            </span>{" "}
+            more free on the drive holding the Library folder.
           </>
         )}{" "}
         The model file itself is not changed. Then it starts, like Run.
@@ -121,6 +136,24 @@ export function PrepareControl({
             Fixed when it is prepared. Preparing it again with another context takes seconds; the
             rest is kept.
           </span>
+        </label>
+      )}
+      {visionModes.length > 0 && (
+        <label className="mt-2 flex flex-wrap items-center gap-2">
+          <span>Images</span>
+          <select
+            data-testid="prepare-vision"
+            value={selectedVision}
+            disabled={busy}
+            onChange={(event) => setVision(event.target.value as PreparationVisionMode)}
+            className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1"
+          >
+            {visionModes.map((mode) => (
+              <option key={mode} value={mode}>
+                {mode === "off" ? "Off" : mode === "cpu" ? "CPU" : "GPU"}
+              </option>
+            ))}
+          </select>
         </label>
       )}
       <div className="mt-3">
