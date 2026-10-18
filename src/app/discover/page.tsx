@@ -1028,6 +1028,11 @@ function RepoDetail({
   // see, and discovers that days later in a chat. The box below the
   // button is where turning it off lives, visibly.
   const [withVision, setWithVision] = useState(true);
+  // The drafting companion (library#13). Off by default: it speeds the
+  // model up only once its profile drafts with it (SD1, S1), and takes
+  // memory of its own when it does.
+  const [draft, setDraft] = useState<string | null>(null);
+  const [withDraft, setWithDraft] = useState(false);
   const [preflights, setPreflights] = useState<Record<string, CataloguePreflight>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -1101,6 +1106,13 @@ function RepoDetail({
         setDetail(body);
         setError(null);
         setProjector((current) => current ?? (body.projectors ?? [])[0]?.path ?? null);
+        // The smallest precision: the one measured (SD1), and the least memory.
+        setDraft(
+          (current) =>
+            current ??
+            [...(body.draftFiles ?? [])].sort((a, b) => a.sizeBytes - b.sizeBytes)[0]?.path ??
+            null,
+        );
       } catch (err) {
         if (id !== requestId.current) return;
         if (err instanceof ApiError && err.status === 401) return;
@@ -1149,12 +1161,37 @@ function RepoDetail({
       // directory — which is what pairs it: the scan finds a projector
       // beside its model and the launch line picks it up unaided.
       if (withVision && projector) files.push(projector);
+      if (withDraft && draft) files.push(draft);
       const created = await api.post<Download>("library", "/v1/downloads", {
         repo,
         // Named only when it is not the default hub.
         ...hubParam,
         revision: detail?.resolvedCommit ?? detail?.revision ?? "main",
         files,
+      });
+      rememberDownloadTarget(created.id, node);
+      onDownloadStarted();
+    } catch (err) {
+      setActionError(describeError(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** The companion alone, into the folder of a version already on the disk. */
+  async function downloadDraftBeside(candidate: CatalogueCandidate) {
+    const owned = candidate.alreadyOwned;
+    if (!draft || !owned?.root || !owned.folder) return;
+    setBusy(`draft:${candidate.label}`);
+    setActionError(null);
+    try {
+      const created = await api.post<Download>("library", "/v1/downloads", {
+        repo,
+        ...hubParam,
+        revision: detail?.resolvedCommit ?? detail?.revision ?? "main",
+        files: [draft],
+        root: owned.root,
+        subdirectory: owned.folder,
       });
       rememberDownloadTarget(created.id, node);
       onDownloadStarted();
@@ -1192,6 +1229,8 @@ function RepoDetail({
 
   const projectors = detail.projectors ?? [];
   const projectorFile = projectors.find((p) => p.path === projector) ?? null;
+  const draftFiles = detail.draftFiles ?? [];
+  const draftFile = draftFiles.find((p) => p.path === draft) ?? null;
 
   // The library's multimodal warning is API prose — it says "listed
   // under `projectors`", a field name — and the vision box below now
@@ -1200,10 +1239,12 @@ function RepoDetail({
   const warnings = (detail.warnings ?? []).filter((w) => !w.includes("listed under `projectors`"));
 
   /** What the Download button fetches, said on the button. */
-  const downloadLabel = (candidate: CatalogueCandidate) =>
-    withVision && projectorFile
-      ? `Download ${formatBytes(candidate.sizeBytes)} + ${formatBytes(projectorFile.sizeBytes)} vision`
-      : `Download ${formatBytes(candidate.sizeBytes)}`;
+  const downloadLabel = (candidate: CatalogueCandidate) => {
+    let label = `Download ${formatBytes(candidate.sizeBytes)}`;
+    if (withVision && projectorFile) label += ` + ${formatBytes(projectorFile.sizeBytes)} vision`;
+    if (withDraft && draftFile) label += ` + ${formatBytes(draftFile.sizeBytes)} drafting`;
+    return label;
+  };
 
   const downloadAction = (candidate: CatalogueCandidate, testId?: string) => (
     <ModelDownloadAction
@@ -1215,6 +1256,7 @@ function RepoDetail({
         files: [
           ...candidate.files.map((file) => file.path),
           ...(withVision && projector ? [projector] : []),
+          ...(withDraft && draft ? [draft] : []),
         ],
         label: candidate.files[0]?.path.split("/").pop() ?? repo,
       }}
@@ -1405,6 +1447,19 @@ function RepoDetail({
           onChoose={setProjector}
           enabled={withVision}
           onEnabled={setWithVision}
+        />
+      )}
+
+      {draftFiles.length > 0 && (
+        <DraftPairing
+          files={draftFiles}
+          chosen={draft}
+          onChoose={setDraft}
+          enabled={withDraft}
+          onEnabled={setWithDraft}
+          owned={detail.candidates.filter((c) => c.alreadyOwned?.root && c.alreadyOwned.folder)}
+          busy={busy !== null}
+          onFetchBeside={(candidate) => void downloadDraftBeside(candidate)}
         />
       )}
 
@@ -1784,6 +1839,98 @@ function VisionPairing({
         <p className="font-mono-ui mt-1 text-[color:var(--muted)]">
           {projectors[0]?.path} · {formatBytes(projectors[0]?.sizeBytes)}
         </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The drafting companion (library#13): an MTP file the repository ships
+ * beside the model, with which llama.cpp drafts a few tokens ahead (SD1).
+ * Downloaded beside the model, the scan pairs it; the profile's "Draft
+ * with" uses it, and the settings builder tries it. A version already on
+ * the disk gets it into its own folder.
+ */
+function DraftPairing({
+  files,
+  chosen,
+  onChoose,
+  enabled,
+  onEnabled,
+  owned,
+  busy,
+  onFetchBeside,
+}: {
+  files: CatalogueFile[];
+  chosen: string | null;
+  onChoose: (path: string) => void;
+  enabled: boolean;
+  onEnabled: (value: boolean) => void;
+  owned: CatalogueCandidate[];
+  busy: boolean;
+  onFetchBeside: (candidate: CatalogueCandidate) => void;
+}) {
+  const chosenFile = files.find((f) => f.path === chosen) ?? null;
+  return (
+    <div
+      data-testid="draft-pairing"
+      className="rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-2 text-sm"
+    >
+      <label className="font-ui flex items-center gap-2 font-semibold">
+        <input
+          type="checkbox"
+          data-testid="draft-checkbox"
+          checked={enabled}
+          onChange={(event) => onEnabled(event.target.checked)}
+        />
+        Also get the drafting part, for faster answers
+      </label>
+      <p className="mt-0.5 text-[color:var(--muted)]">
+        A small file that proposes a few tokens ahead for the model to check. It downloads beside
+        the version you pick and needs memory of its own. The model&rsquo;s profile uses it when
+        Draft with is set to Companion file, and the settings builder tries it.
+      </p>
+      {files.length > 1 && enabled && (
+        <div className="mt-2 space-y-1">
+          <p className="text-[color:var(--muted)]">
+            More than one precision is published. Smaller takes less memory; bigger guesses better.
+          </p>
+          {files.map((file) => (
+            <label key={file.path} className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="draft-file"
+                checked={chosen === file.path}
+                onChange={() => onChoose(file.path)}
+              />
+              <span className="font-mono-ui">{file.path}</span>
+              <span className="text-[color:var(--muted)] tabular-nums">
+                {formatBytes(file.sizeBytes)}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+      {files.length === 1 && enabled && (
+        <p className="font-mono-ui mt-1 text-[color:var(--muted)]">
+          {files[0]?.path} · {formatBytes(files[0]?.sizeBytes)}
+        </p>
+      )}
+      {enabled && chosenFile && owned.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {owned.map((candidate) => (
+            <button
+              key={candidate.label}
+              type="button"
+              data-testid={`draft-beside-${candidate.label}`}
+              disabled={busy}
+              onClick={() => onFetchBeside(candidate)}
+              className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-2 py-1 disabled:opacity-50"
+            >
+              Get it beside your {candidate.label} ({formatBytes(chosenFile.sizeBytes)})
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

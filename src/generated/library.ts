@@ -2546,9 +2546,22 @@ export interface components {
              */
             projectors?: components["schemas"]["CatalogueFile"][];
             /**
+             * @description Speculative-decoding companions offered by this repo (role
+             *     `draft`, library#13): `mtp-*` or `draft-*` GGUFs, as their own
+             *     list for the reasons `projectors` is one. A repo commonly
+             *     ships several precisions of one MTP file, and each pairs with
+             *     every quant of the model. Add the chosen one to the download's
+             *     `files`; downloaded beside the model, the scan lists it in
+             *     `GgufSpeculation.draftFiles`. To fetch one later beside a
+             *     version already on the disk, download it alone to that
+             *     version's `alreadyOwned.root` and `alreadyOwned.folder`.
+             */
+            draftFiles?: components["schemas"]["CatalogueFile"][];
+            /**
              * @description Files in the repo that are neither candidates nor
-             *     projectors: the imatrix calibration file, an MTP or draft
-             *     model, documentation. Reported rather than hidden, for the
+             *     projectors or companions: the imatrix calibration file, a
+             *     drafter of a kind Eugene does not launch yet (`dflash-*`),
+             *     documentation. Reported rather than hidden, for the
              *     same reason the scan reports `skipped` — a listing that
              *     silently drops files it did not understand is
              *     indistinguishable from one that is broken.
@@ -2720,6 +2733,18 @@ export interface components {
              * @enum {string}
              */
             matchedOn?: "digest" | "name_and_size";
+            /**
+             * @description The configured model directory that holds it: a download's
+             *     `root` for a file meant to land beside it, such as a drafting
+             *     companion fetched later (library#13). Absent when it sits
+             *     outside every configured directory.
+             */
+            root?: string;
+            /**
+             * @description Its folder relative to `root` (`.` when it sits in `root`
+             *     itself): the matching download `subdirectory`.
+             */
+            folder?: string;
         };
         /**
          * @description The starter set as this install has it, scored against one
@@ -3005,7 +3030,8 @@ export interface components {
              * @description Repo-relative paths. Every shard of a split candidate, the
              *     projector if the operator wants vision, and for safetensors
              *     the sidecars as well as the weights. Take these from
-             *     `CatalogueCandidate.files` and `CatalogueModel.projectors`.
+             *     `CatalogueCandidate.files`, `CatalogueModel.projectors` and
+             *     `CatalogueModel.draftFiles`.
              */
             files: string[];
             /**
@@ -3752,12 +3778,16 @@ export interface components {
          *     * `shard` — the second through Nth part of a split model.
          *     * `projector` — a vision projector (`general.type: mmproj`),
          *       which is why it is a role here and not a model of its own.
+         *     * `draft` — a speculative-decoding companion beside a GGUF model
+         *       (`GgufSpeculation.draftFiles`): a separate MTP head or a small
+         *       draft model. Like a projector, it belongs to the model beside
+         *       it, and several quants of one model can share it.
          *     * `config` / `tokenizer` / `index` — safetensors sidecars.
          *     * `other` — present in the model's directory, counted in
          *       `sizeBytes`, not classified.
          * @enum {string}
          */
-        "schemas-ModelFileRole": "weights" | "shard" | "projector" | "config" | "tokenizer" | "index" | "other";
+        "schemas-ModelFileRole": "weights" | "shard" | "projector" | "draft" | "config" | "tokenizer" | "index" | "other";
         /**
          * ModelFile
          * @description One file belonging to a model, and what part it plays.
@@ -3771,6 +3801,62 @@ export interface components {
             role: components["schemas"]["schemas-ModelFileRole"];
             /** Sizebytes */
             sizeBytes?: number | null;
+        };
+        /**
+         * DraftKind
+         * @description How llama.cpp drafts with a companion file, read from the file
+         *     itself:
+         *
+         *     * `mtp` — a separate MTP head: the `nextn` tensors of the last
+         *       block and no first block (`--spec-type draft-mtp`).
+         *     * `simple` — a whole small model named as a draft (`draft-*.gguf`)
+         *       (`--spec-type draft-simple`).
+         * @enum {string}
+         */
+        "schemas-DraftKind": "mtp" | "simple";
+        /** DraftFile */
+        "schemas-DraftFile": {
+            /**
+             * Path
+             * @description Absolute path, in the same folder as the model.
+             */
+            path: string;
+            kind: components["schemas"]["schemas-DraftKind"];
+            /** Sizebytes */
+            sizeBytes?: number | null;
+        };
+        /**
+         * GgufSpeculation
+         * @description What this model can draft with when it runs with speculative
+         *     decoding (docs/design/speculative-decoding.md, SD1). Read from
+         *     the tensor table, by llama.cpp's own rule (b11719,
+         *     `common_speculative_types_from_gguf`): a file carries an MTP head
+         *     when it has `blk.<block_count-1>.nextn.eh_proj.weight`.
+         *
+         *     Absent on an entry scanned before SD1, which a rescan fills in.
+         */
+        "schemas-GgufSpeculation": {
+            /**
+             * Mtphead
+             * @description The model carries its own multi-token prediction head in this
+             *     file, beside every other block. Its profile can then draft
+             *     with "Model's own prediction head" (`--spec-type draft-mtp`
+             *     with no draft file), which runs on the main weights and costs
+             *     only a small context.
+             *
+             *     `<arch>.nextn_predict_layers` is not enough on its own: a
+             *     separate MTP file (ggml-org's `mtp-*.gguf`) declares it too,
+             *     and holds only the last block.
+             */
+            mtpHead: boolean;
+            /**
+             * Draftfiles
+             * @description Companion files in this model's folder that it can draft
+             *     with (`--spec-draft-model`). Also listed in `files` with the
+             *     role `draft`, and skipped as models with the reason `draft`.
+             *     Empty when there are none.
+             */
+            draftFiles: components["schemas"]["schemas-DraftFile"][];
         };
         /**
          * RecommendedSampling
@@ -3875,6 +3961,7 @@ export interface components {
              *     show and a profile should be able to override.
              */
             projectorPath?: string | null;
+            speculation?: components["schemas"]["schemas-GgufSpeculation"] | null;
             recommendedSampling?: components["schemas"]["schemas-RecommendedSampling"] | null;
             /**
              * Metadata
