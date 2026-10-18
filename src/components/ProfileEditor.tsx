@@ -16,6 +16,7 @@ import { DEFAULT_PROFILE_NAME, composeSpec } from "@/lib/launchSpec";
 import { libraryFoldersHref } from "@/lib/libraryReach";
 import type { TargetNode } from "@/lib/nodeBudget";
 import { builtFieldLabel, builtOn, editedSinceBuilt, measuredLine } from "@/lib/profileBuild";
+import { ACTS_WHEN_UNSET, speculationFields } from "@/lib/speculation";
 import {
   isSearchFile,
   modeToSave,
@@ -855,10 +856,16 @@ function ProfileForm({
           flag to an engine adapter is a server-side change only. */}
       {schema ? (
         <div className="mt-3">
-          {schema.fields.map((field) => (
+          {/* SD1: "Draft with" offers only what this model's file and
+              folder hold; "Reuse repeated text" is acted on when unset. */}
+          {speculationFields(schema.fields, model, flags).map((field) => (
             <Fragment key={field.key}>
               <ConfigFieldInput
-                field={asProfileFlag(field, engine, model.contextLength ?? null)}
+                field={
+                  ACTS_WHEN_UNSET.has(field.key)
+                    ? field
+                    : asProfileFlag(field, engine, model.contextLength ?? null)
+                }
                 value={flags[field.key]}
                 pending={saving}
                 onChange={(v) => setFlags((prev) => ({ ...prev, [field.key]: v }))}

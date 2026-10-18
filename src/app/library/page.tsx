@@ -101,6 +101,7 @@ const RUNTIME_POLL_MS = 5000;
 
 const SKIP_REASON_LABEL: Record<SkipReason, string> = {
   projector: "vision projector",
+  draft: "speculative-decoding companion",
   shard_member: "shard of a split model",
   adapter: "LoRA adapter",
   older_revision: "older cache revision",
@@ -1616,6 +1617,13 @@ function Facts({ model }: { model: LibraryModel }) {
           <span className="font-mono text-[0.625rem] break-all">{model.gguf.projectorPath}</span>
         </Row>
       )}
+
+      {model.gguf?.speculation?.mtpHead && <Row label="drafting">its own MTP prediction head</Row>}
+      {(model.gguf?.speculation?.draftFiles ?? []).map((file) => (
+        <Row key={file.path} label={file.kind === "mtp" ? "MTP head" : "draft model"}>
+          <span className="font-mono text-[0.625rem] break-all">{file.path}</span>
+        </Row>
+      ))}
 
       {model.safetensors?.repoId && (
         <Row label="repo">

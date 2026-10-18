@@ -31,6 +31,7 @@ import type {
   ProfileBuildAccuracy,
   ProfileBuildList,
 } from "@/lib/types";
+import { draftLines } from "@/lib/speculation";
 import { expertHint } from "@/lib/vocabulary";
 
 /**
@@ -224,6 +225,8 @@ function BuildChoice({
   // Keyed on the model's identity, not the object: the page re-reads the
   // library, and a new object for the same model must not ask again.
   const { id: modelId, name: modelName, path: modelPath } = model;
+  const draftKey = (model.gguf?.speculation?.draftFiles ?? []).map((f) => f.path).join("\n");
+  const draftPaths = useMemo(() => (draftKey ? draftKey.split("\n") : []), [draftKey]);
   const request = useMemo(() => {
     const identity = { name: modelName, path: modelPath } as LibraryModel;
     const runtime: RuntimeCreate = base
@@ -241,8 +244,10 @@ function BuildChoice({
       accuracy,
       memoryMarginMiB: marginValid ? marginMiB : null,
       evaluationText: text.trim() ? text : null,
+      // SD1: the companions the Library found, timed in the drafting phase.
+      draftFiles: draftPaths,
     };
-  }, [modelId, modelName, modelPath, base, accuracy, marginMiB, marginValid, text]);
+  }, [modelId, modelName, modelPath, base, accuracy, marginMiB, marginValid, text, draftPaths]);
 
   // The dry run, asked again whenever the answer could change. It changes
   // nothing on the node, so asking eagerly costs a round trip and buys a
@@ -581,6 +586,13 @@ function BuildResult({
                 <p className="text-[color:var(--muted)]">
                   Only one setting was worth keeping on this machine.
                 </p>
+              )}
+              {draftLines(build).length > 0 && (
+                <ul data-testid="build-drafting">
+                  {draftLines(build).map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
               )}
             </div>
           )}

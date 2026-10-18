@@ -523,6 +523,29 @@ export interface components {
          * @enum {string}
          */
         DownloadState: "queued" | "resolving" | "downloading" | "verifying" | "done" | "failed" | "paused" | "cancelled";
+        /** DraftFile */
+        DraftFile: {
+            /**
+             * Path
+             * @description Absolute path, in the same folder as the model.
+             */
+            path: string;
+            kind: components["schemas"]["DraftKind"];
+            /** Sizebytes */
+            sizeBytes?: number | null;
+        };
+        /**
+         * DraftKind
+         * @description How llama.cpp drafts with a companion file, read from the file
+         *     itself:
+         *
+         *     * `mtp` — a separate MTP head: the `nextn` tensors of the last
+         *       block and no first block (`--spec-type draft-mtp`).
+         *     * `simple` — a whole small model named as a draft (`draft-*.gguf`)
+         *       (`--spec-type draft-simple`).
+         * @enum {string}
+         */
+        DraftKind: "mtp" | "simple";
         /**
          * EngineKind
          * @description Which engine adapter constructs the argv and interprets
@@ -669,6 +692,7 @@ export interface components {
              *     show and a profile should be able to override.
              */
             projectorPath?: string | null;
+            speculation?: components["schemas"]["GgufSpeculation"] | null;
             recommendedSampling?: components["schemas"]["RecommendedSampling"] | null;
             /**
              * Metadata
@@ -681,6 +705,39 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * GgufSpeculation
+         * @description What this model can draft with when it runs with speculative
+         *     decoding (docs/design/speculative-decoding.md, SD1). Read from
+         *     the tensor table, by llama.cpp's own rule (b11719,
+         *     `common_speculative_types_from_gguf`): a file carries an MTP head
+         *     when it has `blk.<block_count-1>.nextn.eh_proj.weight`.
+         *
+         *     Absent on an entry scanned before SD1, which a rescan fills in.
+         */
+        GgufSpeculation: {
+            /**
+             * Mtphead
+             * @description The model carries its own multi-token prediction head in this
+             *     file, beside every other block. Its profile can then draft
+             *     with "Model's own prediction head" (`--spec-type draft-mtp`
+             *     with no draft file), which runs on the main weights and costs
+             *     only a small context.
+             *
+             *     `<arch>.nextn_predict_layers` is not enough on its own: a
+             *     separate MTP file (ggml-org's `mtp-*.gguf`) declares it too,
+             *     and holds only the last block.
+             */
+            mtpHead: boolean;
+            /**
+             * Draftfiles
+             * @description Companion files in this model's folder that it can draft
+             *     with (`--spec-draft-model`). Also listed in `files` with the
+             *     role `draft`, and skipped as models with the reason `draft`.
+             *     Empty when there are none.
+             */
+            draftFiles: components["schemas"]["DraftFile"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1037,12 +1094,16 @@ export interface components {
          *     * `shard` — the second through Nth part of a split model.
          *     * `projector` — a vision projector (`general.type: mmproj`),
          *       which is why it is a role here and not a model of its own.
+         *     * `draft` — a speculative-decoding companion beside a GGUF model
+         *       (`GgufSpeculation.draftFiles`): a separate MTP head or a small
+         *       draft model. Like a projector, it belongs to the model beside
+         *       it, and several quants of one model can share it.
          *     * `config` / `tokenizer` / `index` — safetensors sidecars.
          *     * `other` — present in the model's directory, counted in
          *       `sizeBytes`, not classified.
          * @enum {string}
          */
-        ModelFileRole: "weights" | "shard" | "projector" | "config" | "tokenizer" | "index" | "other";
+        ModelFileRole: "weights" | "shard" | "projector" | "draft" | "config" | "tokenizer" | "index" | "other";
         /**
          * ModelFormat
          * @description On-disk format of a model. A dimension of the data model rather

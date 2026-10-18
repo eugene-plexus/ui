@@ -36,6 +36,7 @@ import { useIssues } from "@/lib/useIssues";
 import { useServedContexts } from "@/lib/useServedContexts";
 import { usePolling } from "@/lib/usePolling";
 import { stopReasonWords } from "@/lib/runningModel";
+import { speculationLine } from "@/lib/speculation";
 import { expertHint } from "@/lib/vocabulary";
 import type {
   ComponentPlacementList,
@@ -747,6 +748,8 @@ function RowView({
     now,
     recallLoadSeconds(loadKey(row.node, row.model)),
   );
+  // SD1: what it drafts with and how much it keeps, a fact and no advice (S3).
+  const drafting = speculationLine(own?.speculation);
   const prefix = `${row.node ?? ""}/${row.runtime ?? ""}:`;
   // What a row's buttons say they act on, for a screen reader that hears
   // the buttons without the row around them.
@@ -920,6 +923,12 @@ function RowView({
                 {source.note}
               </div>
             )}
+          </div>
+        )}
+        {drafting && (
+          <div className="text-[0.6875rem] text-[color:var(--muted)]" data-testid="speculation">
+            {drafting.text}
+            {drafting.note && <div className="text-status-warn">{drafting.note}</div>}
           </div>
         )}
         {compute && (
