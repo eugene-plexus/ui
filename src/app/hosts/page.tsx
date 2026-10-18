@@ -197,18 +197,22 @@ function Inner() {
         </>
       }
     >
-      <div className="flex flex-col gap-6">
-        {!treeNode && (
-          <FleetTable
-            machines={machines}
-            fleet={fleet}
-            loaded={loaded}
-            chosen={detailKey}
-            onChoose={setChosen}
-          />
-        )}
-        {detailNode && <MachineDetail node={detailNode} reading={detail} loaded={loaded} />}
-      </div>
+      {/* The shell is h-dvh with overflow hidden, so the page owns its
+          scroll, as Metrics does. */}
+      <main data-testid="hosts-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+          {!treeNode && (
+            <FleetTable
+              machines={machines}
+              fleet={fleet}
+              loaded={loaded}
+              chosen={detailKey}
+              onChoose={setChosen}
+            />
+          )}
+          {detailNode && <MachineDetail node={detailNode} reading={detail} loaded={loaded} />}
+        </div>
+      </main>
     </AppShell>
   );
 }
