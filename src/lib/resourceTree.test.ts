@@ -309,12 +309,20 @@ describe("the root is the install, not the control root", () => {
     // what to do next, not on a diagnostic. The Inference page left for
     // the Backends branch and Preferences folded into Settings
     // (2026-09-29).
-    expect(tree.pages.map((p) => p.id)).toEqual(["home", "playground", "apps", "logs", "config"]);
+    expect(tree.pages.map((p) => p.id)).toEqual([
+      "home",
+      "playground",
+      "apps",
+      "logs",
+      "hosts",
+      "config",
+    ]);
     expect(tree.pages.map((p) => p.route)).toEqual([
       "/",
       "/playground",
       "/apps",
       "/logs",
+      "/hosts",
       "/config",
     ]);
     expect(tree.pages.at(-1)?.label).toBe("Settings");
@@ -365,7 +373,7 @@ describe("the machine level appears only once there is more than one machine", (
     expect(agent?.label).toBe("solo");
     expect(agent?.hint).toBe("this machine");
     expect(agent?.local).toBe(true);
-    expect(agent?.pages.map((p) => p.id)).toEqual(["config", "logs"]);
+    expect(agent?.pages.map((p) => p.id)).toEqual(["config", "logs", "hosts"]);
     const machines = branchOf(tree, "Machines");
     expect(machines?.children).toEqual([agent]);
     expect(machines?.pages.map((p) => [p.label, p.route])).toEqual([
@@ -501,7 +509,7 @@ describe("the page menu", () => {
     expect(pagesOf("backends")).toEqual(["Overview", "Add a backend", "Add a search account"]);
     expect(pagesOf("backends:node:nas")).toEqual(["Overview"]);
     expect(pagesOf("control")).toEqual(["Overview", "Settings"]);
-    expect(pagesOf("agent:nas")).toEqual(["Settings", "Logs"]);
+    expect(pagesOf("agent:nas")).toEqual(["Settings", "Logs", "Hosts"]);
     expect(pagesOf("driver:ollama-qwen@Amish_Station")).toEqual(["Overview", "Settings"]);
   });
 
@@ -692,6 +700,7 @@ describe("an old link still lands on the right object", () => {
       "playground",
       "apps",
       "logs",
+      "hosts",
       "config",
     ]);
     expect(selectionFromConfigTab("ui")).toBe("install");

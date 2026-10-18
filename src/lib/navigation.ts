@@ -264,6 +264,17 @@ export const SCREENS: readonly Screen[] = [
     blurb: "Every backend the gateway routes to, grouped by the machine it runs on.",
   },
   {
+    // Host history (specs docs/design/host-history.md): what each machine's
+    // hardware did over time. Filed under `hardware` because that is its
+    // subject; each agent records its own machine, hence the span.
+    href: "/hosts",
+    label: "Hosts",
+    icon: "HardDrive",
+    layer: "hardware",
+    spans: ["agent"],
+    blurb: "What each machine's GPUs, CPU, memory and disks did over time.",
+  },
+  {
     href: "/library",
     label: "Library",
     icon: "Database",

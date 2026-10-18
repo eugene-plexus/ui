@@ -640,7 +640,7 @@ export interface paths {
          *       repo: shards are summed into one candidate, and the vision
          *       projectors, the imatrix calibration file and the MTP draft
          *       model are pulled out of the candidate list into
-         *       `projectors` / `otherFiles`. A screen that lists `.gguf`
+         *       `projectors` / `otherFiles` / `draftFiles`. A screen that lists `.gguf`
          *       files offers four things that cannot be launched and one that
          *       is half a model.
          *     * **Scores every candidate** against detected memory at
@@ -3512,7 +3512,8 @@ export interface components {
              * @description Repo-relative paths. Every shard of a split candidate, the
              *     projector if the operator wants vision, and for safetensors
              *     the sidecars as well as the weights. Take these from
-             *     `CatalogueCandidate.files` and `CatalogueModel.projectors`.
+             *     `CatalogueCandidate.files`, `CatalogueModel.projectors` and
+             *     `CatalogueModel.draftFiles`.
              */
             files: string[];
             /**
