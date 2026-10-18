@@ -521,7 +521,9 @@ export function DownloadNextStep({
             Downloaded{destination ? ` · Run on ${destination.label}` : ""}
           </p>
           {destination && <FinishedRun modelId={download.modelId} node={destination} />}
-          {destination && !destination.reachable && <p role="alert">{destination.lastError}</p>}
+          {destination && !destination.reachable && (
+            <p role="alert">{destination.lastError}</p>
+          )}{" "}
           <Link
             href={modelLibraryHref(download.modelId, destination)}
             className="inline-block underline"

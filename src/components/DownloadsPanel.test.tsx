@@ -268,6 +268,9 @@ describe("a finished download's Run (ui#17)", () => {
       "Run from its page: Strata suits this machine better after preparing",
     );
     expect(link).toHaveAttribute("href", "/library?model=m1&node=n1");
+    expect(screen.getByTestId("download-next-step")).toHaveTextContent(
+      "Run from its page: Strata suits this machine better after preparing Open in the Library",
+    );
     expect(screen.queryByTestId("run-button")).toBeNull();
   });
 

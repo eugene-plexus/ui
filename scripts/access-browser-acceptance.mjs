@@ -83,9 +83,11 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/access/`);
   await expect(page.getByRole("heading", { name: "Container access setup" })).toBeVisible();
   await expect(page.getByRole("region", { name: "In effect" })).toContainText("direct ports");
-  // The console stays on its own port by default; only a console served
-  // through this setup can be opened to any network.
-  await expect(page.getByRole("radio", { name: /On its own port, as now/ })).toBeChecked();
+  await expect(page.getByRole("radio", { name: /Through this setup too/ })).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: /Allow the console from any network/ }),
+  ).not.toBeChecked();
+  await page.getByRole("radio", { name: /On its own port, as now/ }).check();
   await expect(
     page.getByRole("checkbox", { name: /Allow the console from any network/ }),
   ).toHaveCount(0);
@@ -98,10 +100,19 @@ try {
   await risks.screenshot({ path: join(output, "public-console-risks.png") });
   await page.getByRole("checkbox", { name: /Allow the console from any network/ }).uncheck();
   await expect(risks).toHaveCount(0);
-  await page.getByRole("radio", { name: /On its own port, as now/ }).check();
   await page.getByLabel("Base domain", { exact: false }).fill("example.org");
   await page.getByLabel("Allowed private networks", { exact: false }).fill("192.168.16.0/24");
   await page.getByLabel("Trusted proxy IP addresses", { exact: false }).fill("172.30.0.2");
+  await expect(page.getByRole("checkbox", { name: /Enable the model API/ })).not.toBeChecked();
+  await page.getByRole("button", { name: "Prepare setup" }).click();
+  await expect(page.getByRole("region", { name: "Prepared setup" })).toBeVisible();
+  assert.equal(submitted.console_direct, undefined);
+  assert.equal(submitted.public_console, undefined);
+  assert.deepEqual(submitted.console.networks, ["192.168.16.0/24"]);
+  assert.equal(submitted.inference, undefined);
+  assert.equal(submitted.inference_on_console, undefined);
+  await page.getByRole("radio", { name: /On its own port, as now/ }).check();
+  await expect(page.getByRole("region", { name: "Prepared setup" })).toHaveCount(0);
   await page.getByRole("button", { name: "Prepare setup" }).click();
   await expect(page.getByRole("region", { name: "Prepared setup" })).toBeVisible();
   assert.equal(submitted.proxy.transport, "http");
