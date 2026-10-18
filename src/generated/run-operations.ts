@@ -473,7 +473,8 @@ export interface components {
              * @description Repo-relative paths. Every shard of a split candidate, the
              *     projector if the operator wants vision, and for safetensors
              *     the sidecars as well as the weights. Take these from
-             *     `CatalogueCandidate.files` and `CatalogueModel.projectors`.
+             *     `CatalogueCandidate.files`, `CatalogueModel.projectors` and
+             *     `CatalogueModel.draftFiles`.
              */
             files: string[];
             /**
