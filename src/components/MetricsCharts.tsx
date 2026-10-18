@@ -23,7 +23,15 @@
 
 import { useId, useMemo, useRef, useState } from "react";
 
-import { type HourPoint, hourLabel, niceMax } from "@/lib/metricsCharts";
+import {
+  type HourPoint,
+  type TimeLabel,
+  type TimePoint,
+  hourLabel,
+  niceMax,
+} from "@/lib/metricsCharts";
+
+export type { TimeLabel, TimePoint };
 
 export function RequestOutcomes({ requests, errors }: { requests: number; errors: number }) {
   const id = useId();
@@ -153,28 +161,35 @@ const PAD_BOTTOM = 22;
 const PLOT_W = W - PAD_LEFT - PAD_RIGHT;
 const PLOT_H = H - PAD_TOP - PAD_BOTTOM;
 
-export interface Series {
+export interface Series<P extends TimePoint = HourPoint> {
   name: string;
-  value: (p: HourPoint) => number | null;
+  value: (p: P) => number | null;
   /** CSS color expression — a token var or a color-mix over tokens. */
   color: string;
   dashed?: boolean;
 }
 
-interface FrameProps {
+interface FrameProps<P extends TimePoint> {
   title: string;
   caption?: string;
-  points: HourPoint[];
-  series: Series[];
+  points: P[];
+  series: Series<P>[];
   format: (v: number) => string;
   /** Axis ticks only — shorter than `format`, because 44px of gutter
    * holds "2.5 s" and not "60.0 tok/s". Defaults to `format`. */
   axisFormat?: (v: number) => string;
   /** "bars" draws series[0] as columns; "lines" draws every series. */
   kind: "bars" | "lines";
+  /** Names a bucket. Defaults to the hour label the gateway charts use. */
+  timeLabel?: TimeLabel;
+  /** What one bucket is, for the chart's label: "hour" by default. */
+  per?: string;
 }
 
-function ticksFor(points: HourPoint[], series: Series[]): { max: number; mid: number } {
+function ticksFor<P extends TimePoint>(
+  points: P[],
+  series: Series<P>[],
+): { max: number; mid: number } {
   let max = 0;
   for (const p of points) {
     for (const s of series) {
@@ -192,10 +207,11 @@ function ticksFor(points: HourPoint[], series: Series[]): { max: number; mid: nu
  * say only that a table existed, and its `aria-describedby` named an id
  * no element had.
  */
-export function chartSummary(
-  points: HourPoint[],
-  series: Series[],
+export function chartSummary<P extends TimePoint>(
+  points: P[],
+  series: Series<P>[],
   format: (v: number) => string,
+  label: TimeLabel = hourLabel,
 ): string {
   const span = points.length;
   const parts: string[] = [];
@@ -213,8 +229,8 @@ export function chartSummary(
       continue;
     }
     parts.push(
-      `${s.name}: latest ${format(latest.v)} at ${hourLabel(latest.t, span)}, ` +
-        `highest ${format(peak.v)} at ${hourLabel(peak.t, span)}.`,
+      `${s.name}: latest ${format(latest.v)} at ${label(latest.t, span)}, ` +
+        `highest ${format(peak.v)} at ${label(peak.t, span)}.`,
     );
   }
   return parts.join(" ");
@@ -228,9 +244,9 @@ function xFor(index: number, count: number): number {
 /** Polyline segments between nulls: a gap in the data is a gap in the
  * ink. Exported for the unit test — the rule is worth pinning without
  * a DOM. */
-export function segments(
-  points: HourPoint[],
-  value: (p: HourPoint) => number | null,
+export function segments<P extends TimePoint>(
+  points: P[],
+  value: (p: P) => number | null,
   yMax: number,
 ): { x: number; y: number }[][] {
   const runs: { x: number; y: number }[][] = [];
@@ -251,7 +267,7 @@ export function segments(
   return runs;
 }
 
-export function HourChart({
+export function HourChart<P extends TimePoint = HourPoint>({
   title,
   caption,
   points,
@@ -259,13 +275,18 @@ export function HourChart({
   format,
   axisFormat,
   kind,
-}: FrameProps) {
+  timeLabel = hourLabel,
+  per = "hour",
+}: FrameProps<P>) {
   const tick = axisFormat ?? format;
   const id = useId();
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const { max } = useMemo(() => ticksFor(points, series), [points, series]);
-  const summary = useMemo(() => chartSummary(points, series, format), [points, series, format]);
+  const summary = useMemo(
+    () => chartSummary(points, series, format, timeLabel),
+    [points, series, format, timeLabel],
+  );
   const span = points.length;
 
   if (points.length === 0) return null;
@@ -312,7 +333,7 @@ export function HourChart({
           viewBox={`0 0 ${W} ${H}`}
           className="w-full"
           role="img"
-          aria-label={`${title} per hour; the same values are in the table below this chart.`}
+          aria-label={`${title} per ${per}; the same values are in the table below this chart.`}
           aria-describedby={id}
           onPointerMove={onMove}
           onPointerLeave={() => setHover(null)}
@@ -356,7 +377,7 @@ export function HourChart({
                 className="fill-[color:var(--muted)]"
                 fontSize={9}
               >
-                {hourLabel(points[i]!.t, span)}
+                {timeLabel(points[i]!.t, span)}
               </text>
             ))}
 
@@ -457,7 +478,7 @@ export function HourChart({
                     : "translateX(-50%)",
             }}
           >
-            <div className="text-[color:var(--muted)]">{hourLabel(hovered.t, span)}</div>
+            <div className="text-[color:var(--muted)]">{timeLabel(hovered.t, span)}</div>
             {series.map((s) => {
               const v = s.value(hovered);
               return (
@@ -487,7 +508,7 @@ export function HourChart({
         <table className="mt-1 w-full text-left text-xs" aria-describedby={id}>
           <thead>
             <tr>
-              <th className="py-1 pr-2 font-medium">Hour</th>
+              <th className="py-1 pr-2 font-medium">{per === "hour" ? "Hour" : "Time"}</th>
               {series.map((s) => (
                 <th key={s.name} className="py-1 pr-2 text-right font-medium">
                   {s.name}
@@ -498,7 +519,7 @@ export function HourChart({
           <tbody>
             {points.map((p) => (
               <tr key={p.t} className="border-t border-[color:var(--border)]">
-                <td className="py-1 pr-2 text-[color:var(--muted)]">{hourLabel(p.t, span)}</td>
+                <td className="py-1 pr-2 text-[color:var(--muted)]">{timeLabel(p.t, span)}</td>
                 {series.map((s) => {
                   const v = s.value(p);
                   return (

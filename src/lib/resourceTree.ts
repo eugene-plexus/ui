@@ -210,6 +210,8 @@ const PAGES: Record<string, PageRef[]> = {
     { id: "apps", label: "Apps", route: "/apps", icon: "Blocks" },
     // Every machine's log on one timeline (2026-09-27).
     { id: "logs", label: "Logs", route: "/logs", icon: "ScrollText" },
+    // Every machine's hardware over time (host history, 2026-10-18).
+    { id: "hosts", label: "Hosts", route: "/hosts", icon: "HardDrive" },
     // Every setting on the install, by topic, with a search box
     // (2026-09-29). The browser's own theme and font size are its last
     // card, which is where Preferences went.
@@ -262,6 +264,8 @@ const PAGES: Record<string, PageRef[]> = {
     SETTINGS,
     // That machine's own log: its agent and everything it runs.
     { id: "logs", label: "Logs", route: "/logs", icon: "ScrollText" },
+    // That machine's hardware over time.
+    { id: "hosts", label: "Hosts", route: "/hosts", icon: "HardDrive" },
   ],
   // A backend: its row on the Inference page, with the actions, and its
   // own settings.

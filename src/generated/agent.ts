@@ -1960,6 +1960,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What this host's hardware did over a window.
+         * @description Host history (`docs/design/host-history.md`, H1-H6 taken
+         *     2026-10-18). Each agent records **its own host**: a sampler every
+         *     `hostHistorySampleSeconds` writes one row to a SQLite file in the
+         *     agent's state directory and rolls rows up into minute and hour
+         *     buckets (min, mean and max per series). A single-machine install
+         *     has history with no control root, a node that loses the root keeps
+         *     recording, and the replicated log never carries time series. The
+         *     console reads every node through the agent's proxy
+         *     (`/api/proxy/node:<name>/v1/node/history`), so a fleet view is one
+         *     screen.
+         *
+         *     **Resolution.** `raw` buckets are single samples, `minute` and
+         *     `hour` are rollups. With `step=auto` the agent picks the finest
+         *     resolution whose retention still covers `from` and that gives at
+         *     most 1,500 buckets over the window. A named `step` is honoured, and
+         *     a window that would need more than 5,000 buckets at it is refused.
+         *
+         *     **The timeline is explicit.** `buckets` lists every bucket in the
+         *     window, including the empty ones, with how many samples it holds
+         *     and how many it should have held. A bucket with no samples is a
+         *     gap (the agent was stopped, the machine slept); one with fewer than
+         *     expected is partial. Every series carries `min`, `mean` and `max`
+         *     arrays aligned with `buckets`, `null` where the bucket had no
+         *     reading of that series.
+         *
+         *     **`null` is not 0.** A series this host cannot read is present with
+         *     `unavailable` saying why (no NVIDIA driver, a platform that does not
+         *     publish the counter) and every value `null`, so a screen can say
+         *     "not reported" and the reason. A series that read once and then
+         *     failed shows `null` from that point, not a flat zero.
+         *
+         *     Reading history works with recording off (`enabled: false`): what
+         *     was recorded is kept until `DELETE /v1/node/history`.
+         *
+         *     Operator or service token, as `GET /v1/node`.
+         */
+        get: operations["getNodeHistory"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete everything this host has recorded.
+         * @description Empties the store. Turning `hostHistoryEnabled` off stops
+         *     recording and deletes nothing; this is the one call that deletes,
+         *     and recording (if on) starts again from empty at the next sample.
+         *     Operator session only.
+         */
+        delete: operations["deleteNodeHistory"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node/trust-bundle": {
         parameters: {
             query?: never;
@@ -2695,6 +2756,134 @@ export interface components {
              * @description The active root it follows, this node's `controlUrl`.
              */
             following?: string;
+        };
+        /**
+         * @description A resolution of host history: single samples, or minute or hour
+         *     rollups. Each is kept for its own retention
+         *     (`hostHistoryRawHours`, `hostHistoryMinuteDays`,
+         *     `hostHistoryHourDays`).
+         * @enum {string}
+         */
+        HostHistoryStep: "raw" | "minute" | "hour";
+        /**
+         * @description A resolution to ask for, or `auto` to let the agent choose.
+         * @default auto
+         * @enum {string}
+         */
+        HostHistoryStepChoice: "auto" | "raw" | "minute" | "hour";
+        /**
+         * @description What a host-history series measures.
+         *
+         *     * `gpuMemoryUsed` is every process's use of the card, system-wide.
+         *       `gpuMemoryEugene` is the part of it held by this agent's own
+         *       runtimes (their process trees), measured per process, not
+         *       estimated from a reservation; the rest is everything else on
+         *       the machine.
+         *     * `gpuUtilization` is the busiest engine's percentage, the figure
+         *       Task Manager shows. `gpuTemperature` is the core temperature,
+         *       `gpuPower` the board's draw.
+         *     * `diskFree` and `diskTotal` are per volume, for each volume that
+         *       holds a model folder, the model-copy folder or the engine folder.
+         *     * `runtimesRunning` counts this agent's runtimes that are ready;
+         *       `runtimesLoading` those copying, starting or loading.
+         * @enum {string}
+         */
+        HostMetric: "gpuMemoryUsed" | "gpuMemoryTotal" | "gpuMemoryEugene" | "gpuUtilization" | "gpuTemperature" | "gpuPower" | "cpuUtilization" | "ramUsed" | "ramTotal" | "swapUsed" | "swapTotal" | "diskFree" | "diskTotal" | "runtimesRunning" | "runtimesLoading";
+        /** @enum {string} */
+        HostUnit: "bytes" | "percent" | "celsius" | "watts" | "count";
+        /** @description One bucket on the window's timeline. */
+        HostBucket: {
+            /** Format: date-time */
+            start: string;
+            /**
+             * @description Samples recorded in this bucket. 0 is a gap: nothing was
+             *     recording.
+             */
+            samples: number;
+            /**
+             * @description How many the sample interval in force would have produced.
+             *     Fewer than this is a partial bucket: a missed sample, or the
+             *     start or end of a gap.
+             */
+            expectedSamples: number;
+        };
+        /**
+         * @description One measured quantity over the window. `min`, `mean` and `max`
+         *     have one entry per `HostHistory.buckets` entry, `null` where that
+         *     bucket holds no reading of this series. For `raw` buckets the three
+         *     are the same reading.
+         */
+        HostSeries: {
+            /**
+             * @description Stable across the window and across requests: `gpu:<kind>:<index>`
+             *     plus the metric for a GPU series, `disk:<volume>` plus the metric
+             *     for a disk series, the metric alone for the rest.
+             */
+            key: string;
+            metric: components["schemas"]["HostMetric"];
+            unit: components["schemas"]["HostUnit"];
+            /** @description What to call it on a screen, e.g. `NVIDIA GeForce RTX 5090 memory used`. */
+            label: string;
+            deviceKind?: components["schemas"]["ComputeDeviceKind"];
+            /** @description The device's `ComputeDevice.index` in `GET /v1/node`, for a GPU series. */
+            deviceIndex?: number;
+            deviceName?: string;
+            /** @description The volume's mount point or drive, for a disk series. */
+            volume?: string;
+            /**
+             * @description For a disk series, the folders on that volume it is measured
+             *     for: model folders, the model-copy folder, the engine folder.
+             */
+            holds?: string[];
+            /**
+             * @description Why this host does not report this series, when it does not;
+             *     every value is then `null`. Absent when it reports.
+             */
+            unavailable?: string;
+            /** @description The newest reading, whatever the window. Absent when there is none. */
+            latest?: number;
+            min: (number | null)[];
+            mean: (number | null)[];
+            max: (number | null)[];
+        };
+        /** @description What this host's hardware did over a window (`GET /v1/node/history`). */
+        HostHistory: {
+            /** @description Whether this agent is recording now (`hostHistoryEnabled`). */
+            enabled: boolean;
+            /** @description The sample interval in force (`hostHistorySampleSeconds`). */
+            sampleSeconds: number;
+            step: components["schemas"]["HostHistoryStep"];
+            stepSeconds: number;
+            /**
+             * Format: date-time
+             * @description The window's start, aligned down to the step.
+             */
+            from: string;
+            /**
+             * Format: date-time
+             * @description The window's end, exclusive.
+             */
+            to: string;
+            /**
+             * Format: date-time
+             * @description The oldest bucket kept at this resolution. Absent when nothing
+             *     is recorded.
+             */
+            recordingSince?: string;
+            /**
+             * @description True when `from` is older than this resolution's retention, so
+             *     the start of the window is gone rather than empty.
+             */
+            truncated: boolean;
+            /**
+             * Format: date-time
+             * @description When the newest sample was taken. Absent when there is none.
+             */
+            latestAt?: string;
+            /** @description The store's size on disk. */
+            storeBytes?: number;
+            buckets: components["schemas"]["HostBucket"][];
+            series: components["schemas"]["HostSeries"][];
         };
         /**
          * @description What this agent knows about its own host and its own place in an
@@ -9713,6 +9902,74 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+        };
+    };
+    getNodeHistory: {
+        parameters: {
+            query?: {
+                /** @description Start of the window, inclusive. Defaults to one hour before `to`. */
+                from?: string;
+                /** @description End of the window, exclusive. Defaults to now. */
+                to?: string;
+                /** @description The resolution. `auto` (default) chooses as above. */
+                step?: components["schemas"]["HostHistoryStepChoice"];
+                /**
+                 * @description Restrict the series to these metrics; repeat the parameter for
+                 *     several. Absent means every metric. The fleet row asks for the
+                 *     four GPU series it draws and nothing else.
+                 */
+                metric?: components["schemas"]["HostMetric"][];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The window. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostHistory"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            /**
+             * @description The store could not be opened; the problem's detail names the
+             *     observed cause. Distinct from an empty window, which is a 200
+             *     whose buckets hold no samples.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteNodeHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     pushTrustBundle: {

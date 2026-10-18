@@ -35,6 +35,16 @@ export interface ChartGroup {
   waitedMs?: { p50: number; p90: number; max: number } | null;
 }
 
+/** Anything on a time axis. The gateway's charts plot hours; host
+ * history plots whatever resolution its window was read at. */
+export interface TimePoint {
+  /** Bucket start, ISO-8601. */
+  t: string;
+}
+
+/** How a bucket is named on the axis, in the tooltip and in the table. */
+export type TimeLabel = (iso: string, span: number) => string;
+
 export interface HourPoint {
   /** Bucket start, ISO-8601 Z, hour resolution. */
   t: string;

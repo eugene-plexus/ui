@@ -95,8 +95,8 @@ describe("the registry agrees with the website", () => {
 });
 
 describe("every screen resolves", () => {
-  it("has thirteen navigable screens", () => {
-    expect(SCREENS).toHaveLength(13);
+  it("has fourteen navigable screens", () => {
+    expect(SCREENS).toHaveLength(14);
   });
 
   it("puts Home at the root and the playground beside it, both under Your tools", () => {
@@ -195,6 +195,7 @@ describe("the groups are the page's two halves", () => {
       "/metrics",
       "/routing",
       "/inference",
+      "/hosts",
     ]);
     expect(NAV_GROUPS.at(1)?.screens.map((s) => s.href)).toEqual([
       "/library",
