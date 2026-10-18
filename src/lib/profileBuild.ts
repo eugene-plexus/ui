@@ -21,6 +21,7 @@
  * labelled *about* was a second number to doubt.
  */
 
+import { builtDraftFlags } from "./speculation";
 import type {
   BuildCandidate,
   CacheType,
@@ -68,6 +69,9 @@ export const BUILDER_FLAGS = [
   "cacheType",
   "flashAttention",
   "memoryMargin",
+  // SD1: what to draft with, timed on the node (S1).
+  "draftWith",
+  "draftModelPath",
 ] as const;
 
 // --- the slider -----------------------------------------------------------
@@ -220,7 +224,7 @@ export function builtSpec(args: {
   const kept: Record<string, unknown> = { ...(base?.flags ?? {}) };
   delete kept.gpuLayers;
   for (const key of BUILDER_FLAGS) delete kept[key];
-  const chosen = builtFlags(candidate, build.memoryMarginMiB);
+  const chosen = { ...builtFlags(candidate, build.memoryMarginMiB), ...builtDraftFlags(build) };
   const spec: ModelProfileSpec = {
     name,
     engine: "llama_cpp",
@@ -363,6 +367,8 @@ export function phaseLine(build: ProfileBuild): string {
       return "Measuring speed";
     case "confirming":
       return "Loading the best one to check it";
+    case "drafting":
+      return "Timing each way it can draft";
     case "finished":
       return build.state === "completed"
         ? "Finished"

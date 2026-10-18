@@ -2385,10 +2385,13 @@ export interface components {
          *       placement passed explicitly.
          *     * `confirming` — loading the recommended candidate once in
          *       llama-server and checking it serves.
+         *     * `drafting` — timing decode in llama-server on the confirmed
+         *       candidate with each way this model can draft (SD1). Skipped
+         *       for a model that has nothing to draft with.
          *     * `finished` — the job has ended; `state` says how.
          * @enum {string}
          */
-        ProfileBuildPhase: "quality" | "candidates" | "measuring" | "confirming" | "finished";
+        ProfileBuildPhase: "quality" | "candidates" | "measuring" | "confirming" | "drafting" | "finished";
         /** @enum {string} */
         EvaluationTextSource: "bundled" | "custom";
         /** @description Which text the quality measurement used. A custom text is identified, never stored. */
@@ -2427,6 +2430,16 @@ export interface components {
              * @default true
              */
             restartAfter: boolean;
+            /**
+             * @description Companion files the Library found beside the model
+             *     (`GgufSpeculation.draftFiles` paths), to time in the
+             *     `drafting` phase. Each must sit in the model's own folder;
+             *     the agent reads each file's kind itself. The model's own MTP
+             *     head, if it has one, is read from the model file and needs
+             *     nothing here.
+             * @default []
+             */
+            draftFiles: string[];
         };
         CacheQuality: {
             cacheType: components["schemas"]["CacheType"];
@@ -2465,6 +2478,32 @@ export interface components {
             graphicsMemoryBytes?: number | null;
             detail?: string;
         };
+        /**
+         * @description What a llama.cpp runtime drafts with (the profile flag
+         *     `draftWith`, SD1):
+         *
+         *     * `off` — nothing; the default until a settings build has timed
+         *       the others on the node (S1).
+         *     * `mtpHead` — the model's own MTP head (`--spec-type draft-mtp`).
+         *     * `companion` — a companion file (`draftModelPath`) with
+         *       `--spec-draft-model`, as `draft-mtp` or `draft-simple` by the
+         *       file's own tensors.
+         * @enum {string}
+         */
+        DraftWith: "off" | "mtpHead" | "companion";
+        /** @description One way of drafting, timed in llama-server on the confirmed candidate, with "Reuse repeated text" off so the model's own drafting is what is timed. */
+        DraftTrial: {
+            draftWith: components["schemas"]["DraftWith"];
+            /** @description The companion file, as the Library names it. Null unless `draftWith` is `companion`. */
+            draftModelPath?: string | null;
+            /** @description llama-server's own decode speed for one fixed generation (`timings.predicted_per_second`). Null when it did not serve. */
+            decodeTokensPerSecond?: number | null;
+            draftedTokens?: number | null;
+            acceptedTokens?: number | null;
+            /** @description Graphics memory used while this trial was loaded, where the node can measure it. */
+            graphicsMemoryBytes?: number | null;
+            detail?: string;
+        };
         ProfileBuild: {
             id: string;
             node: string;
@@ -2500,6 +2539,15 @@ export interface components {
                 [key: string]: string;
             };
             restarts: components["schemas"]["MeasurementRestart"][];
+            /** @description The `drafting` phase's trials, `off` first. Empty when the model had nothing to draft with, or for a build from before SD1. */
+            draftTrials?: components["schemas"]["DraftTrial"][];
+            /**
+             * @description Index into `draftTrials` of the fastest, which the saved
+             *     profile's `draftWith` takes (S1). A way of drafting must beat
+             *     `off` by more than 3%, the same tolerance as `recommended`, or
+             *     `off` is kept. Null when nothing was timed.
+             */
+            recommendedDraft?: number | null;
         };
         ProfileBuildList: {
             builds: components["schemas"]["ProfileBuild"][];
@@ -4716,6 +4764,39 @@ export interface components {
              */
             lastError?: string;
             loadProgress?: components["schemas"]["LoadProgress"];
+            speculation?: components["schemas"]["RuntimeSpeculation"];
+        };
+        /**
+         * @description Speculative decoding as this runtime was started with it, and how
+         *     much of what it drafted the model kept (SD1,
+         *     docs/design/speculative-decoding.md). Read from the command line
+         *     and from llama-server's own counters
+         *     (`llamacpp:spec_decode_num_draft_tokens_total` and
+         *     `llamacpp:spec_decode_num_accepted_tokens_total` on `/metrics`),
+         *     which count from the engine's last start. A fact, not advice:
+         *     Eugene recommends nothing from the rate (S3).
+         *
+         *     Absent when the runtime speculates with nothing, or when its
+         *     engine does not.
+         */
+        RuntimeSpeculation: {
+            /**
+             * @description llama.cpp's own names, in the order it tries them for each
+             *     sequence, for example `[ngram-mod, draft-mtp]`.
+             */
+            types: string[];
+            /** @description The companion file it drafts with (`--spec-draft-model`), as this host opens it. Null when it drafts with the model's own head or with no model. */
+            draftModelPath?: string | null;
+            /** @description Tokens drafted since the engine started. Null until it has been read. */
+            draftedTokens?: number | null;
+            /** @description Drafted tokens the model kept. The acceptance rate is this over `draftedTokens`. */
+            acceptedTokens?: number | null;
+            /**
+             * @description Why speculation the profile asks for is not in effect, for
+             *     example an engine build that does not offer it. Null when it
+             *     is in effect as asked.
+             */
+            note?: string | null;
         };
         /**
          * @description How far into reading its model an engine is, **present only while
