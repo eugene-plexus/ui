@@ -76,6 +76,8 @@ function asked(path: string): number {
  */
 interface ModelBodyOptions {
   projectors?: { path: string; sizeBytes: number; role: string }[];
+  draftFiles?: { path: string; sizeBytes: number; role: string }[];
+  alreadyOwned?: { modelId: string; path: string; root?: string; folder?: string };
   warnings?: string[];
   chatTemplate?: boolean;
   recommended?: { label: string; reason: string };
@@ -96,6 +98,7 @@ function modelBody(contextLength: number, options: ModelBodyOptions = {}) {
         format: "gguf",
         files: [{ path: "Qwen3.8-27B-Q4_K_M.gguf", sizeBytes: WEIGHTS, role: "weights" }],
         sizeBytes: WEIGHTS,
+        ...(options.alreadyOwned ? { alreadyOwned: options.alreadyOwned } : {}),
         fit: {
           verdict: required <= FREE_VRAM ? "fits" : "no",
           requiredBytes: required,
@@ -109,6 +112,7 @@ function modelBody(contextLength: number, options: ModelBodyOptions = {}) {
       },
     ],
     projectors: options.projectors ?? [],
+    draftFiles: options.draftFiles ?? [],
     otherFiles: [],
     warnings: options.warnings ?? [],
     ...(options.chatTemplate !== undefined ? { chatTemplate: options.chatTemplate } : {}),
@@ -411,6 +415,80 @@ describe("vision pairing", () => {
     await openTheRepo();
     expect(screen.queryByTestId("vision-pairing")).not.toBeInTheDocument();
     expect(screen.queryByTestId("takes-images")).not.toBeInTheDocument();
+  });
+});
+
+describe("drafting companion (library#13)", () => {
+  const DRAFTS = [
+    { path: "mtp-Qwen3.8-27B-Q8_0.gguf", sizeBytes: 3_164_000_000, role: "draft" },
+    { path: "mtp-Qwen3.8-27B-Q4_0.gguf", sizeBytes: 1_680_000_000, role: "draft" },
+  ];
+  const withDrafts = (extra: ModelBodyOptions = {}): ModelBodyOptions => ({
+    draftFiles: DRAFTS,
+    recommended: { label: "Q4_K_M", reason: "Largest that fits." },
+    ...extra,
+  });
+
+  beforeEach(() => {
+    handlers.set("POST library/v1/downloads", () => ok({ id: "d1" }));
+  });
+
+  it("is off by default, and the download is the quant alone", async () => {
+    useModel(withDrafts());
+    await openTheRepo();
+    const checkbox = screen.getByTestId("draft-checkbox") as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    const button = screen.getByTestId("repo-recommended-download");
+    expect(button.textContent).not.toContain("drafting");
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(lastDownloadBody().files).toEqual(["Qwen3.8-27B-Q4_K_M.gguf"]);
+  });
+
+  it("checked, the smallest precision rides along and the button says its size", async () => {
+    useModel(withDrafts());
+    await openTheRepo();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("draft-checkbox"));
+    });
+    const button = screen.getByTestId("repo-recommended-download");
+    expect(button.textContent).toContain("+ 1.68 GB drafting");
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(lastDownloadBody().files).toEqual([
+      "Qwen3.8-27B-Q4_K_M.gguf",
+      "mtp-Qwen3.8-27B-Q4_0.gguf",
+    ]);
+  });
+
+  it("a version already on the disk gets the companion alone, into its own folder", async () => {
+    useModel(
+      withDrafts({
+        alreadyOwned: { modelId: "m1", path: "/models/q/x.gguf", root: "/models", folder: "q" },
+      }),
+    );
+    await openTheRepo();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("draft-checkbox"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: /mtp-Qwen3.8-27B-Q8_0/ }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("draft-beside-Q4_K_M"));
+    });
+    expect(lastDownloadBody()).toMatchObject({
+      files: ["mtp-Qwen3.8-27B-Q8_0.gguf"],
+      root: "/models",
+      subdirectory: "q",
+    });
+  });
+
+  it("a repo without one shows no box", async () => {
+    await openTheRepo();
+    expect(screen.queryByTestId("draft-pairing")).not.toBeInTheDocument();
   });
 });
 
