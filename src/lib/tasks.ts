@@ -35,6 +35,7 @@
  * driver", no "declaration". A test on the tray asserts the banned list.
  */
 
+import { labelOf } from "./nodeLabels";
 import { phaseLine } from "./profileBuild";
 import { downloadHref } from "./downloadHandoff";
 import type {
@@ -137,7 +138,7 @@ export function tasksFrom(sources: TaskSources): Task[] {
         (job): Task => ({
           id: `benchmark:${job.node}/${job.id}`,
           kind: "benchmark",
-          title: `Benchmarking ${job.request.profileName} on ${job.node}`,
+          title: `Benchmarking ${job.request.profileName} on ${labelOf(job.node)}`,
           detail: job.detail,
           progress: job.progress,
           href: `/library?model=${encodeURIComponent(job.request.modelId)}&node=${encodeURIComponent(job.node)}`,
@@ -149,7 +150,7 @@ export function tasksFrom(sources: TaskSources): Task[] {
         (build): Task => ({
           id: `build:${build.node}/${build.id}`,
           kind: "build",
-          title: `Building settings for ${build.runtime.name} on ${build.node}`,
+          title: `Building settings for ${build.runtime.name} on ${labelOf(build.node)}`,
           detail: [phaseLine(build), build.detail].filter(Boolean).join(" · "),
           progress: build.progress,
           href: `/library?model=${encodeURIComponent(build.modelId)}&node=${encodeURIComponent(build.node)}`,
@@ -352,8 +353,8 @@ function loadTasks(runtimes: RuntimePlacementList | null, local: RuntimeList | n
       kind: "load",
       title:
         r.status === "copying"
-          ? `Copying ${r.model ?? r.name} to ${r.node ?? "this machine"}`
-          : `Loading ${r.model ?? r.name} on ${r.node ?? "this machine"}`,
+          ? `Copying ${r.model ?? r.name} to ${labelOf(r.node) ?? "this machine"}`
+          : `Loading ${r.model ?? r.name} on ${labelOf(r.node) ?? "this machine"}`,
       // The copy is the reason a first start after switching it on takes
       // minutes, so it is a task in its own right: without it the tray
       // is empty while the machine is busy, and the person concludes the

@@ -26,6 +26,7 @@ import {
   openTarget,
   updateAvailable,
 } from "@/lib/apps";
+import { labelOf } from "@/lib/nodeLabels";
 import { parseSelection } from "@/lib/resourceTree";
 import type { App, AppCatalogue, AppInstall, NodeIdentity } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
@@ -133,7 +134,7 @@ function Inner() {
           {!appId && <p className="text-sm text-[color:var(--muted)]">Pick an app in the tree.</p>}
           {gone && (
             <p className="text-sm text-[color:var(--muted)]" data-testid="app-gone">
-              This app is not installed on {node ?? "this machine"} any more.{" "}
+              This app is not installed on {labelOf(node) ?? "this machine"} any more.{" "}
               <Link href="/apps" className="underline">
                 See the apps
               </Link>
@@ -243,7 +244,7 @@ function Overview({
 
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-[color:var(--muted)]">Machine</dt>
-        <dd>{app.node ?? "this machine"}</dd>
+        <dd>{labelOf(app.node) ?? "this machine"}</dd>
         <dt className="text-[color:var(--muted)]">Version</dt>
         <dd className="font-mono">
           {app.version}

@@ -28,6 +28,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { api, describeError } from "@/lib/api";
 import { agentTarget, workbenchLink } from "@/lib/apps";
 import { isLoopbackUrl, rootControlUrl } from "@/lib/joinCommand";
+import { labelOf } from "@/lib/nodeLabels";
 import { timeAgo, timeUntil } from "@/lib/relativeTime";
 import {
   describeContact,
@@ -293,7 +294,7 @@ function SiteRow({
           <span data-testid={`site-host-${site.id}`}>
             <span className="text-[color:var(--muted)]"> · runs on </span>
             <Link href={machineHref(site.hostNode)} className="underline">
-              {site.hostNode}
+              {labelOf(site.hostNode)}
             </Link>
           </span>
         ) : null}

@@ -15,6 +15,7 @@ import { describeAdmission } from "@/lib/launchPreview";
 import { DEFAULT_PROFILE_NAME, composeSpec } from "@/lib/launchSpec";
 import { libraryFoldersHref } from "@/lib/libraryReach";
 import type { TargetNode } from "@/lib/nodeBudget";
+import { labelOf } from "@/lib/nodeLabels";
 import { builtFieldLabel, builtOn, editedSinceBuilt, measuredLine } from "@/lib/profileBuild";
 import { ACTS_WHEN_UNSET, speculationFields } from "@/lib/speculation";
 import {
@@ -534,7 +535,7 @@ function ProfileRow({
           {profile.builtBy && (
             <span
               className="badge rounded bg-[color:var(--border)] px-1 text-[0.5625rem] tracking-wider uppercase"
-              title={`Built on ${profile.builtBy.node} on ${builtOn(profile.builtBy)}`}
+              title={`Built on ${labelOf(profile.builtBy.node)} on ${builtOn(profile.builtBy)}`}
             >
               {editedSinceBuilt(profile) ? "built, edited since" : "built"}
             </span>

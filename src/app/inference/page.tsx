@@ -28,6 +28,7 @@ import {
 } from "@/lib/issues";
 import { loadKey, recallLoadSeconds, rememberLoadSeconds } from "@/lib/loadMemory";
 import { engineLogsHref } from "@/lib/logs";
+import { labelOf } from "@/lib/nodeLabels";
 import { repeatsModel } from "@/lib/servedLine";
 import { type TargetNode, describeBudget, targetFor, useTargetNode } from "@/lib/nodeBudget";
 import type { ContextLookup } from "@/lib/modelContext";
@@ -329,7 +330,7 @@ function InferencePageInner() {
   // A bare reason at the top of the page said something failed and not
   // which of a dozen rows it was about.
   function failed(verb: string, name: string, node: string | null, err: unknown) {
-    const where = node ?? localName ?? "this machine";
+    const where = labelOf(node ?? localName) ?? "this machine";
     setActionError(`Could not ${verb} ${name} on ${where}: ${describeError(err)}`);
   }
 
@@ -471,10 +472,10 @@ function InferencePageInner() {
           {scope && (
             <p className="text-sm text-[color:var(--muted)]" data-testid="inference-scope">
               {scope.driver && sources !== null && !rows.some((r) => r.driver === scope.driver)
-                ? `Nothing named ${scope.driver}${scope.node ? ` on ${scope.node}` : ""} is listed; showing ${scope.node ?? "everything"}.`
+                ? `Nothing named ${scope.driver}${scope.node ? ` on ${labelOf(scope.node)}` : ""} is listed; showing ${labelOf(scope.node) ?? "everything"}.`
                 : scope.driver
-                  ? `Showing ${scope.driver}${scope.node ? ` on ${scope.node}` : ""}.`
-                  : `Showing ${scope.node ?? localName ?? "this machine"} only.`}{" "}
+                  ? `Showing ${scope.driver}${scope.node ? ` on ${labelOf(scope.node)}` : ""}.`
+                  : `Showing ${labelOf(scope.node ?? localName) ?? "this machine"} only.`}{" "}
               <Link href="/inference?sel=backends" className="underline">
                 Show everything
               </Link>
@@ -582,7 +583,7 @@ function NodeSection({
   /** The driver whose row the tree selected, if one. */
   marked?: string | null;
 }) {
-  const label = name ?? node?.label ?? "this host";
+  const label = labelOf(name) ?? node?.label ?? "this host";
   // The node's engines, lifted here from the engines line so a stopped
   // runtime's row can say the reason it cannot start (S3: Skip leaves a
   // runtime declared with no engine to run it, and the reason is here).

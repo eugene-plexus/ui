@@ -49,6 +49,7 @@ import type {
   RuntimeList,
 } from "./types";
 import { versionDifference } from "./updates";
+import { labelOf, recordNodeLabels } from "@/lib/nodeLabels";
 
 const POLL_MS = 30_000;
 
@@ -179,6 +180,7 @@ async function readRoster(
 ): Promise<{ nodes: ControlNodeRow[] | null; locked: boolean }> {
   try {
     const list = await api.get<{ nodes?: ControlNodeRow[] }>("control", "/v1/nodes", options);
+    recordNodeLabels(list.nodes ?? []);
     return { nodes: list.nodes ?? [], locked: false };
   } catch (e) {
     // Standalone, uninitialized, unreachable or sealed. Only the last is
@@ -282,7 +284,12 @@ async function readSources(token: string): Promise<IssueSources> {
   const localName = local.identity?.name ?? null;
   const perNode = await Promise.all([
     readNode(
-      { name: localName, label: localName ?? "this machine", local: true, target: "agent" },
+      {
+        name: localName,
+        label: labelOf(localName) ?? "this machine",
+        local: true,
+        target: "agent",
+      },
       local,
       options,
     ),
@@ -292,7 +299,7 @@ async function readSources(token: string): Promise<IssueSources> {
         readNode(
           {
             name: row.name,
-            label: row.name,
+            label: labelOf(row.name),
             local: false,
             target: targetFor(row.name, localName),
           },

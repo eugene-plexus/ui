@@ -6,6 +6,8 @@
  * probes anything; these functions only say what the root reported.
  */
 
+import { labelOf } from "@/lib/nodeLabels";
+
 import { timeAgo } from "./relativeTime";
 
 /** `StandbyStatus`, as `GET /v1/control/status` lists it. */
@@ -32,7 +34,7 @@ export function standbyWords(status: StandbyStatus, now: number = Date.now()): s
     return "Not heard from yet. Its machine starts it within a minute of being chosen.";
   }
   if (!status.reachable) {
-    return `Last heard ${heard}. Check that ${status.node} is on and can reach this machine.`;
+    return `Last heard ${heard}. Check that ${labelOf(status.node)} is on and can reach this machine.`;
   }
   const lag = status.lagEntries ?? 0;
   if (lag === 0) return `Up to date, last heard ${heard}.`;
@@ -42,11 +44,11 @@ export function standbyWords(status: StandbyStatus, now: number = Date.now()): s
 /** What making a machine the standby means, said before it is done. */
 export function makeStandbyQuestion(node: string): string {
   return (
-    `Make ${node} the standby? It keeps a copy of this install's locked keys. ` +
+    `Make ${labelOf(node)} the standby? It keeps a copy of this install's locked keys. ` +
     "Someone who takes that machine could try to guess your passphrase offline."
   );
 }
 
 export function stopStandbyQuestion(node: string): string {
-  return `Stop ${node} being the standby? Its copy is deleted from that machine.`;
+  return `Stop ${labelOf(node)} being the standby? Its copy is deleted from that machine.`;
 }

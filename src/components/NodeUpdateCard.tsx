@@ -9,6 +9,7 @@ import { api, describeError } from "@/lib/api";
 import type { NodeIdentity, NodeUpdate } from "@/lib/types";
 import { refreshIssues } from "@/lib/useIssues";
 import { RESTARTING, buildStamps, describeUpdate } from "@/lib/updates";
+import { useNodeLabels } from "@/lib/nodeLabels";
 
 /** After this long without the machine reporting back, say so. */
 const NO_WORD_MS = 15 * 60 * 1000;
@@ -42,6 +43,8 @@ export function NodeUpdateCard({
   onUpdating?: (updating: boolean) => void;
   versionsDiffer?: boolean;
 }) {
+  // `name` addresses the machine; people read its label (node-labels.md).
+  const shown = useNodeLabels()(name) ?? name;
   const [busy, setBusy] = useState<"checking" | "updating" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [requested, setRequested] = useState<{ at: number; label: string } | null>(null);
@@ -106,7 +109,7 @@ export function NodeUpdateCard({
   // "This machine did not answer" was shown while it was still loading.
   const reading = !loaded && identity === null;
   const headline = waiting
-    ? `Updating ${name}`
+    ? `Updating ${shown}`
     : reading
       ? "Reading this machine's version…"
       : view.headline;
@@ -132,7 +135,7 @@ export function NodeUpdateCard({
       className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-ui text-sm font-semibold">{name}</h3>
+        <h3 className="font-ui text-sm font-semibold">{shown}</h3>
         {(!loaded || view.version) && (
           <span data-testid="node-version" className="font-mono text-xs text-[color:var(--muted)]">
             {loaded ? view.version : "…"}
@@ -174,8 +177,8 @@ export function NodeUpdateCard({
             <ConfirmButton
               testId="node-update-now"
               label={busy === "updating" ? "Checking newest and starting…" : "Update"}
-              confirmLabel={`Update ${name}`}
-              prompt={`${name} restarts, and the models on it stop for a minute or two.`}
+              confirmLabel={`Update ${shown}`}
+              prompt={`${shown} restarts, and the models on it stop for a minute or two.`}
               disabled={busy !== null}
               onConfirm={update}
               className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1.5 text-sm font-medium text-[color:var(--on-accent-left)] hover:brightness-110 disabled:opacity-50"
@@ -203,7 +206,7 @@ export function NodeUpdateCard({
       {/* The commits are for whoever is chasing a build, not for a status
           line: one click away. */}
       {stamps.length > 0 && (
-        <More summary="Details" label={name} testId="node-update-details" className="mt-2">
+        <More summary="Details" label={shown} testId="node-update-details" className="mt-2">
           <p className="font-mono text-xs break-words text-[color:var(--muted)]">
             {stamps.join(" · ")}
           </p>

@@ -40,6 +40,7 @@ import {
   runnable,
 } from "@/lib/eligibility";
 import { engineName as engineLabel } from "@/lib/issues";
+import { labelOf } from "@/lib/nodeLabels";
 import { isSearchFile, kindOfFile, kindWords } from "@/lib/searchModels";
 import {
   type NodeBudget,
@@ -415,7 +416,7 @@ function LibraryPageInner() {
                 target={target}
                 models={models ?? []}
                 eligibility={eligibility}
-                where={picker.selected?.name ?? "this machine"}
+                where={picker.selected?.label ?? "this machine"}
                 onClose={() => setAdding(false)}
                 onAdded={(model) => {
                   setAdding(false);
@@ -852,7 +853,7 @@ function ModelDetail({
   // this page has a node picker in its header, so a sentence about "this
   // machine" is a sentence that does not say which. An unenrolled box has
   // no name and gets the generic phrase, which is all there is to say.
-  const where = node?.name ?? "this machine";
+  const where = node?.label ?? "this machine";
 
   function preparation(v: EngineVerdict) {
     return (
@@ -1434,7 +1435,7 @@ function FitPanel({
         {name}&rsquo;s estimate
         {budget && (
           <>
-            , scored against {budget.node ?? "this host"}
+            , scored against {labelOf(budget.node) ?? "this host"}
             {budget.gpu ? ` · ${budget.gpu.name}` : " · no GPU"}, where a launch from here runs
             {resident && <> — free memory, which this model is already inside</>}
           </>

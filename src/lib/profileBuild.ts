@@ -21,6 +21,7 @@
  * labelled *about* was a second number to doubt.
  */
 
+import { labelOf } from "./nodeLabels";
 import { builtDraftFlags } from "./speculation";
 import type {
   BuildCandidate,
@@ -203,7 +204,7 @@ export function builtByRecord(
 
 /** `Built for laptop` — what Save proposes, editable (§6). */
 export function builtName(node: string): string {
-  return `Built for ${node}`;
+  return `Built for ${labelOf(node)}`;
 }
 
 /**
@@ -302,8 +303,8 @@ export function measuredLine(profile: ModelProfile): string | null {
       ? ` Same next token as Max ${Math.floor(record.sameTopTokenPercent)} times in 100.`
       : "";
   return editedSinceBuilt(profile)
-    ? `Measured on ${record.node} before this profile was edited${measured}. These numbers may no longer describe it.${quality}`
-    : `Measured on ${record.node}${measured}.${quality}`;
+    ? `Measured on ${labelOf(record.node)} before this profile was edited${measured}. These numbers may no longer describe it.${quality}`
+    : `Measured on ${labelOf(record.node)}${measured}.${quality}`;
 }
 
 // --- asking before stopping (shared with Benchmark) ------------------------

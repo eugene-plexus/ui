@@ -64,6 +64,7 @@
  */
 
 import { layerOf, type IconName, type Layer, type LayerId } from "./navigation";
+import { labelOf } from "@/lib/nodeLabels";
 
 /** One component as the control root or a local agent reports it. */
 export interface ComponentPlacement {
@@ -469,7 +470,7 @@ function singletonLeaf(
     node: owner,
     children: [],
     pages: PAGES[kind] ?? [],
-    hint: owner ?? undefined,
+    hint: labelOf(owner) ?? undefined,
     expert,
   };
 }
@@ -513,7 +514,7 @@ function machinesBranch(
           {
             sel: "agent",
             kind: "leaf" as const,
-            label: localNode ?? THIS_MACHINE,
+            label: labelOf(localNode) ?? THIS_MACHINE,
             layer: "agent",
             icon: layerOf("agent").icon,
             node: localNode,
@@ -527,7 +528,7 @@ function machinesBranch(
       : nodes.map((name) => ({
           sel: `agent:${name}`,
           kind: "leaf" as const,
-          label: name,
+          label: labelOf(name),
           layer: "agent" as const,
           icon: layerOf("agent").icon,
           node: name,
@@ -612,7 +613,7 @@ function libraryNodeLeaves(
       {
         sel: "library:node",
         kind: "leaf",
-        label: localNode ?? THIS_MACHINE,
+        label: labelOf(localNode) ?? THIS_MACHINE,
         layer: layer.id,
         icon: "FolderTree",
         node: localNode,
@@ -625,7 +626,7 @@ function libraryNodeLeaves(
   return nodes.map((name) => ({
     sel: `library:node:${name}`,
     kind: "leaf" as const,
-    label: name,
+    label: labelOf(name),
     layer: layer.id,
     icon: "FolderTree" as const,
     node: name,
@@ -726,7 +727,7 @@ function driverBranch(
     return {
       sel: key ? `backends:node:${key}` : "backends:node",
       kind: "nodeGroup" as const,
-      label: key ?? localNode ?? THIS_MACHINE,
+      label: labelOf(key ?? localNode) ?? THIS_MACHINE,
       layer: layer.id,
       icon: layer.icon,
       node: key,
@@ -801,7 +802,7 @@ function appBranch(
     keys.map((key) => ({
       sel: null,
       kind: "nodeGroup" as const,
-      label: key ?? localNode ?? THIS_MACHINE,
+      label: labelOf(key ?? localNode) ?? THIS_MACHINE,
       layer: layer.id,
       icon: "Blocks" as const,
       node: key,

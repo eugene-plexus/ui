@@ -14,6 +14,7 @@
 import { useState } from "react";
 
 import { api, describeError } from "@/lib/api";
+import { labelOf } from "@/lib/nodeLabels";
 import {
   isStandby,
   makeStandbyQuestion,
@@ -75,7 +76,7 @@ export function StandbyPanel({
       {current ? (
         <div className="space-y-2">
           <p data-testid="standby-state">
-            <span className="font-medium">{current}</span> is the standby.{" "}
+            <span className="font-medium">{labelOf(current)}</span> is the standby.{" "}
             <span className="text-[color:var(--muted)]">
               {reported ? standbyWords(reported) : standbyWords({ node: current })}
             </span>
@@ -128,7 +129,7 @@ export function StandbyPanel({
                 <option value="">Choose a machine</option>
                 {nodes.map((n) => (
                   <option key={n.name} value={n.name}>
-                    {n.name}
+                    {labelOf(n.name)}
                   </option>
                 ))}
               </select>

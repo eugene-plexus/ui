@@ -20,6 +20,7 @@
 
 import type { Selection, Topology } from "./resourceTree";
 import type { ConfigField, ConfigSchema } from "./types";
+import { labelOf } from "@/lib/nodeLabels";
 
 export type TopicId =
   | "models"
@@ -262,7 +263,7 @@ export function ownersFor(selection: Selection | null, topology: Topology): Sett
     id: name ? `agent:${name}` : "agent",
     target: name === null || name === local ? "agent" : `node:${name}`,
     component: "agent",
-    label: name ?? "This machine",
+    label: labelOf(name) ?? "This machine",
     node: name,
     hint: name !== null && name === local ? "agent · this machine" : "agent",
   });
@@ -606,7 +607,7 @@ export interface BackendRef {
 export function elsewhereIndex(backends: readonly BackendRef[] = []): ElsewhereEntry[] {
   const perBackend: ElsewhereEntry[] = backends.map((b) => ({
     id: `backend:${b.name}@${b.node ?? ""}`,
-    label: `${b.name}${b.node ? ` on ${b.node}` : ""}`,
+    label: `${b.name}${b.node ? ` on ${labelOf(b.node)}` : ""}`,
     description: "A backend's provider, model, address and API key.",
     href: `/config?sel=${encodeURIComponent(
       b.node ? `driver:${b.name}@${b.node}` : `driver:${b.name}`,

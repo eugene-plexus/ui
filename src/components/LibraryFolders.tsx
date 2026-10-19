@@ -23,6 +23,7 @@ import {
   withMountBoxes,
 } from "@/lib/libraryReach";
 import { type TargetNode, useTargetNode } from "@/lib/nodeBudget";
+import { labelOf } from "@/lib/nodeLabels";
 import {
   restartLabel,
   savedMessage,
@@ -371,7 +372,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
 
   const title = gridView
     ? "Folders"
-    : `Folders on ${selectedNode?.label ?? nodeName ?? "this machine"}`;
+    : `Folders on ${selectedNode?.label ?? labelOf(nodeName) ?? "this machine"}`;
 
   return (
     <main
@@ -908,9 +909,9 @@ function NodeColumn({
       <p className="text-sm text-[color:var(--muted)]">
         {nodeName ? (
           <>
-            <span className="font-mono">{nodeName}</span> is not in the node registry as this
-            console sees it. If it was just enrolled, reload; if the control root is sealed, unlock
-            it under Machines.
+            <span className="font-mono">{labelOf(nodeName)}</span> is not in the node registry as
+            this console sees it. If it was just enrolled, reload; if the control root is sealed,
+            unlock it under Machines.
           </>
         ) : (
           "Reading this machine's identity…"

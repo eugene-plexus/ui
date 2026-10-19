@@ -43,6 +43,7 @@ import type {
   AppManifest,
   NodeIdentity,
 } from "@/lib/types";
+import { labelOf } from "@/lib/nodeLabels";
 import { usePolling } from "@/lib/usePolling";
 
 const INSTALL_POLL_MS = 1000;
@@ -195,7 +196,7 @@ function InstalledApp({
         {app.name}
       </Link>
       {showMachine && machine && (
-        <span className="font-ui text-sm text-[color:var(--muted)]">on {machine}</span>
+        <span className="font-ui text-sm text-[color:var(--muted)]">on {labelOf(machine)}</span>
       )}
       <span className="font-mono text-sm text-[color:var(--muted)]">{app.version}</span>
       <span className={`font-ui rounded-[var(--radius)] px-1.5 text-sm ${toneClass}`}>
@@ -325,7 +326,7 @@ function Catalogue({
             >
               {machines.map((m) => (
                 <option key={m ?? "__local"} value={m ?? ""}>
-                  {m ?? "this machine"}
+                  {labelOf(m) ?? "this machine"}
                   {m === localNode ? " (here)" : ""}
                 </option>
               ))}
