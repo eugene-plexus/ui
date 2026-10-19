@@ -1917,6 +1917,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/nodes/{name}/label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Give a node the name people see
+         * @description One `labelNode` entry (`docs/design/node-labels.md`). The label is
+         *     what every screen shows for this machine. `name` stays its identity:
+         *     the label is never a key, never signed, never in a URL or a
+         *     `node:<name>` target.
+         *
+         *     A session holding the `membership` capability. The label is trimmed.
+         *     It is refused when it holds a control character, or when it matches
+         *     another node's name or label ignoring case, because two machines
+         *     shown under one name is a console that lies about where a click
+         *     goes. A label equal to this node's own name clears it. Setting the
+         *     label it already has changes nothing and appends nothing.
+         */
+        put: operations["labelNode"];
+        post?: never;
+        /**
+         * Show a node by its name again
+         * @description One `labelNode` entry with `label: null`. A node with no label
+         *     answers the same, and nothing is appended. The `membership`
+         *     capability.
+         */
+        delete: operations["clearNodeLabel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/nodes/{name}/hosted-sites": {
         parameters: {
             query?: never;
@@ -3328,6 +3366,14 @@ export interface components {
              */
             name: string;
             /**
+             * @description The name people see for this machine, set by an operator
+             *     (`PUT /v1/nodes/{name}/label`) or at enrollment. `null` shows
+             *     `name`. Display only: everything that addresses the node uses
+             *     `name`. Unique across the install's names and labels, ignoring
+             *     case, when it was written.
+             */
+            label?: string | null;
+            /**
              * Format: uri
              * @description Where this node's agent is reachable — from this root, and from
              *     a gateway sending a lifecycle action to the agent that owns a
@@ -3463,6 +3509,16 @@ export interface components {
          * @enum {string}
          */
         NodeRole: "control" | "standby" | "agent";
+        /**
+         * @description What people call a machine, shown wherever its name would be. Any
+         *     letters, spaces and punctuation; no control characters. Trimmed
+         *     before it is checked. Not an identifier: nothing addresses a node by
+         *     it.
+         */
+        NodeLabel: string;
+        NodeLabelRequest: {
+            label: components["schemas"]["NodeLabel"];
+        };
         JoinTokenRequest: {
             /**
              * @description Bind this token to one intended node name. Optional; when
@@ -3552,6 +3608,14 @@ export interface components {
             /** @description The join token, which is this request's only credential. */
             token: string;
             name: string;
+            /**
+             * @description The name people see for this machine, recorded as `Node.label`
+             *     under the rules `PUT /v1/nodes/{name}/label` applies. Checked
+             *     before the join token is spent. Omitted, or equal to `name`, is
+             *     no label. A machine that enrolls again under the same name keeps
+             *     the label it had unless this sets one.
+             */
+            label?: components["schemas"]["NodeLabel"];
             /**
              * @description The agent's identity public key. The private half stays on
              *     the node; sending it would defeat the point of per-node
@@ -3830,7 +3894,13 @@ export interface components {
             at?: string;
         };
         /**
-         * @description **`setStandby` (2026-10-08)** gives one node the `standby` grant
+         * @description **`labelNode` (2026-10-19)** sets or clears one node's `label`, the
+         *     name people see (`{name, label}`, `label` a string or `null`). It is
+         *     its own op because `updateNode` is the node-signed address change and
+         *     a label is an operator's, unsigned: widening that op would put an
+         *     unsigned field under a signature that does not name it.
+         *
+         *     **`setStandby` (2026-10-08)** gives one node the `standby` grant
          *     (`on: true`) or takes it away (`on: false`); `promote` takes it from
          *     the node it promotes (`docs/design/warm-standby.md`). At most one
          *     node holds it.
@@ -3880,7 +3950,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -8677,6 +8747,90 @@ export interface operations {
             };
             /** @description Locked. Nothing changed. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    labelNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description The node, with its label. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Node"];
+                };
+            };
+            /** @description The label is empty after trimming or holds a control character. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /**
+             * @description Another node is already called this (the problem names it), or
+             *     this host is a standby and accepts no writes. Nothing changed.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    clearNodeLabel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The node, without a label. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Node"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description This host is a standby and accepts no writes. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

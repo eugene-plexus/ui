@@ -58,6 +58,7 @@ import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
 import { compact, hourlyPoints, msLabel, tilesFrom } from "@/lib/metricsCharts";
 import { withContext } from "@/lib/modelContext";
+import { labelOf } from "@/lib/nodeLabels";
 import type { ClientUsageSummary, RoutingTableView } from "@/lib/types";
 import { durationLabel, percentage } from "@/lib/gatewayDashboard";
 import { usePolling } from "@/lib/usePolling";
@@ -861,7 +862,10 @@ export default function MetricsPage() {
                                 <span className="text-[color:var(--muted)]"> · {g.runtime}</span>
                               )}
                               {g.node && (
-                                <span className="text-[color:var(--muted)]"> @ {g.node}</span>
+                                <span className="text-[color:var(--muted)]">
+                                  {" "}
+                                  @ {labelOf(g.node)}
+                                </span>
                               )}
                             </td>
                             <td className="py-2 pr-3 text-right font-mono">{g.requests}</td>

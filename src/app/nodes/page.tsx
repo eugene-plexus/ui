@@ -35,6 +35,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { CopyButton } from "@/components/CopyButton";
 import { More } from "@/components/Help";
+import { NodeNameCell } from "@/components/NodeNameCell";
 import { NodeUpdateCard } from "@/components/NodeUpdateCard";
 import { StandbyPanel } from "@/components/StandbyPanel";
 import { UpdateAllPanel } from "@/components/UpdateAllPanel";
@@ -49,6 +50,7 @@ import {
   rootControlUrl,
   windowsJoinCommand,
 } from "@/lib/joinCommand";
+import { recordNodeLabels } from "@/lib/nodeLabels";
 import { describeLiveness, nodeLiveness } from "@/lib/nodeLiveness";
 import { timeAgo, timeUntil } from "@/lib/relativeTime";
 import { describeServed } from "@/lib/servedLine";
@@ -77,6 +79,7 @@ const SERVED_POLL_MS = 10000;
 
 interface NodeRow {
   name: string;
+  label?: string | null;
   role: string;
   reachable: boolean;
   url?: string | null;
@@ -269,6 +272,7 @@ export default function NodesPage() {
         api.get<{ nodes: NodeRow[] }>("control", "/v1/nodes"),
         api.get<ControlStatus>("control", "/v1/control/status").catch(() => null),
       ]);
+      recordNodeLabels(list.nodes ?? []);
       setNodes(list.nodes ?? []);
       setStatus(st);
       setError(null);
@@ -556,7 +560,7 @@ export default function NodesPage() {
                     {nodes.map((n) => (
                       <tr key={n.name} className="border-t border-[color:var(--border)]">
                         <td className="py-2 pr-4 font-medium">
-                          {n.name}
+                          <NodeNameCell node={n} onChanged={() => void load()} />
                           {sitesHostedBy(sites, n.name).map((site) => (
                             <div
                               key={site.id}

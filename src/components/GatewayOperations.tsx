@@ -16,6 +16,7 @@ import { MetricDial } from "@/components/MetricDial";
 
 import { capacityBackends, durationLabel, percentage } from "@/lib/gatewayDashboard";
 import { compact, msLabel } from "@/lib/metricsCharts";
+import { labelOf } from "@/lib/nodeLabels";
 import type { RoutingTableView } from "@/lib/types";
 
 export function DashboardSection({
@@ -169,7 +170,7 @@ export function GatewayCapacity({
                       <div className="min-w-0">
                         <p className="font-ui text-sm font-semibold break-all">{b.driver}</p>
                         <p className="mt-1 text-xs break-all text-[color:var(--muted)]">
-                          {b.node ?? "Node unreported"}
+                          {labelOf(b.node) ?? "Node unreported"}
                           {b.runtime ? ` / ${b.runtime}` : ""}
                         </p>
                       </div>

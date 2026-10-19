@@ -45,6 +45,7 @@ import type { components as LibraryComponents } from "@/generated/library";
 
 import { ApiError, api } from "./api";
 import type { ComputeDevice, NodeIdentity } from "./types";
+import { labelOf, recordNodeLabels } from "@/lib/nodeLabels";
 
 type FitQuestion = LibraryComponents["schemas"]["FitQuestion"];
 
@@ -221,7 +222,7 @@ export function localTargetNode(identity: NodeIdentity | null): TargetNode {
   const name = identity?.name ?? null;
   return {
     name,
-    label: name ?? "this machine",
+    label: labelOf(name) ?? "this machine",
     local: true,
     target: "agent",
     reachable: true,
@@ -301,6 +302,7 @@ export function useTargetNode(): {
       let rows: ControlNodeRow[] = [];
       try {
         rows = (await api.get<{ nodes?: ControlNodeRow[] }>("control", "/v1/nodes")).nodes ?? [];
+        recordNodeLabels(rows);
       } catch {
         // Standalone, or the root is down or sealed: this host is the
         // only node there is to offer, and it is offered.
@@ -311,7 +313,7 @@ export function useTargetNode(): {
       const list: TargetNode[] = [];
       list.push({
         name: localName,
-        label: localName ?? "this host",
+        label: labelOf(localName) ?? "this host",
         local: true,
         target: "agent",
         reachable: true,
@@ -322,7 +324,7 @@ export function useTargetNode(): {
         if (row.name === localName) continue;
         list.push({
           name: row.name,
-          label: row.name,
+          label: labelOf(row.name),
           local: false,
           target: targetFor(row.name, localName),
           reachable: row.reachable ?? true,

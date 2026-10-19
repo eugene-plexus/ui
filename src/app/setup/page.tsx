@@ -122,6 +122,7 @@ export default function WizardPage() {
   // to sessionStorage. A mid-wizard refresh re-prompts for it.
   const [passphrase, setPassphrase] = useState("");
   const [passphraseConfirm, setPassphraseConfirm] = useState("");
+  const [machineName, setMachineName] = useState("");
   // What the agent measured about this host's OS keyring (S0). `null` until
   // the status probe answers, or forever against an agent that predates
   // the field - either way the draft keeps the passphrase prompt.
@@ -397,7 +398,7 @@ export default function WizardPage() {
       const controlUrl = controlUrlFrom(components);
       if (controlUrl) {
         setMessage("Joining this machine to the install…");
-        setSessionToken(await enrollLocalAgent(passphrase, controlUrl));
+        setSessionToken(await enrollLocalAgent(passphrase, controlUrl, machineName));
       }
 
       // Step 3: persist the chosen securityMode - on BOTH processes that
@@ -521,6 +522,8 @@ export default function WizardPage() {
               securityMode={draft.securityMode}
               keyringAvailable={keyringAvailable}
               passphraseFile={passphraseFile}
+              machineName={machineName}
+              onMachineName={setMachineName}
               onPassphrase={setPassphrase}
               onPassphraseConfirm={setPassphraseConfirm}
               onSecurityMode={(v) => patchDraft({ securityMode: v })}

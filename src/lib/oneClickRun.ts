@@ -14,6 +14,7 @@ import type {
   ModelCapabilities,
   RuntimeStatus,
 } from "./types";
+import { labelOf } from "@/lib/nodeLabels";
 
 export type RunStep = RunProtocol["schemas"]["Operation"]["step"];
 /** Where a preparation is, as the engine's node reports it (LS5). */
@@ -175,7 +176,7 @@ function observe(record: RunOperation): RunTask {
       name: record.node,
       local,
       target: local ? "agent" : `node:${record.node}`,
-      label: record.node ?? "this machine",
+      label: labelOf(record.node) ?? "this machine",
     },
     model: record.model ?? {
       id: "",
@@ -302,7 +303,7 @@ export function isTerminal(step: RunStep): boolean {
 export function runNodeOf(node: TargetNode): RunNode {
   return {
     target: node.target,
-    label: node.local ? (node.name ?? "this machine") : node.label,
+    label: node.local ? (labelOf(node.name) ?? "this machine") : node.label,
     name: node.name,
     local: node.local,
   };

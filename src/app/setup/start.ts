@@ -86,7 +86,11 @@ export async function withRetry<T>(
  * Returns the replacement session token. `restart_all` deliberately skips
  * the control root, so the root this just enrolled with stays up.
  */
-export async function enrollLocalAgent(passphrase: string, controlUrl: string): Promise<string> {
+export async function enrollLocalAgent(
+  passphrase: string,
+  controlUrl: string,
+  machineName = "",
+): Promise<string> {
   // Control ignores an Authorization header on its own login route, and
   // since the agent resolves proxy targets in process, nothing else is
   // reading one here either -- which is what makes the call below a
@@ -104,7 +108,14 @@ export async function enrollLocalAgent(passphrase: string, controlUrl: string): 
     // the header through rather than translating it.
     { bearer: session.sessionToken },
   );
-  await api.post("agent", "/v1/node/enroll", { controlUrl, token: minted.token });
+  // The name people see (node-labels.md); empty, the machine is shown by
+  // its network name.
+  const label = machineName.trim();
+  await api.post("agent", "/v1/node/enroll", {
+    controlUrl,
+    token: minted.token,
+    ...(label ? { label } : {}),
+  });
   // The enrollment restarted every child and changed what this agent
   // trusts, so this is retried: the agent answers immediately but is
   // briefly the only thing that does.

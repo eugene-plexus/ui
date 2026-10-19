@@ -8,6 +8,7 @@ import { composeSpec } from "@/lib/launchSpec";
 import { formatTimestamp } from "@/lib/relativeTime";
 import { formatBytesShort } from "@/lib/tasks";
 import type { TargetNode } from "@/lib/nodeBudget";
+import { labelOf } from "@/lib/nodeLabels";
 import type {
   Benchmark,
   BenchmarkList,
@@ -287,7 +288,8 @@ export function BenchmarkPanel({
       {history.map((job) => (
         <article key={job.id} className="space-y-2 border-t border-[color:var(--border)] pt-3">
           <p>
-            <strong>{job.state}</strong> · {job.node} · {new Date(job.startedAt).toLocaleString()}
+            <strong>{job.state}</strong> · {labelOf(job.node)} ·{" "}
+            {new Date(job.startedAt).toLocaleString()}
           </p>
           <p role={job.state === "running" ? "status" : undefined}>{job.detail}</p>
           {job.state === "running" && (

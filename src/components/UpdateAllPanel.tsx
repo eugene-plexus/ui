@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api, describeError } from "@/lib/api";
+import { labelOf } from "@/lib/nodeLabels";
 import type { UpdateAllRun, UpdateAllStatus } from "@/lib/types";
 import { ConfirmButton } from "./ConfirmButton";
 
@@ -133,7 +134,7 @@ export function UpdateAllPanel({ onChanged }: { onChanged: () => void | Promise<
             {run.items.map((item, i) => (
               <li key={`${item.node}:${item.app ?? item.kind}:${i}`}>
                 <span className="font-semibold">
-                  {item.node}
+                  {labelOf(item.node)}
                   {item.kind === "app" ? ` · ${item.app ?? "Apps"}` : ""}: {labels[item.state]}
                 </span>
                 <p className="break-words text-[color:var(--muted)]">{item.detail}</p>

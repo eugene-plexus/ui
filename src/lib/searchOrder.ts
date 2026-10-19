@@ -6,6 +6,7 @@
  * gateway's `webSearchOrder` setting; unset, the default rule applies.
  */
 
+import { labelOf } from "@/lib/nodeLabels";
 import type { RoutingTableView } from "@/lib/types";
 
 export type SearchAccountView = NonNullable<RoutingTableView["search_accounts"]>[number];
@@ -88,7 +89,7 @@ export function accountWords(account: SearchAccountView): {
 } {
   return {
     title: account.label?.trim() || account.provider,
-    where: account.node ? `on ${account.node}` : null,
+    where: account.node ? `on ${labelOf(account.node)}` : null,
     billing:
       account.billing === "free"
         ? "free"

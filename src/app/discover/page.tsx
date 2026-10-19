@@ -40,6 +40,7 @@ import {
   type ModelEligibility,
 } from "@/lib/eligibility";
 import { engineName } from "@/lib/issues";
+import { labelOf } from "@/lib/nodeLabels";
 import { useCandidateEligibility, useNodeEngines } from "@/lib/useEligibility";
 import type {
   CatalogueCandidate,
@@ -921,7 +922,7 @@ function EmptyDetail({
   onDownload: (model: StarterModel) => void;
   onOpenRepo: (repo: string) => void;
 }) {
-  const where = budget?.node ?? "this host";
+  const where = labelOf(budget?.node) ?? "this host";
   return (
     <div className="max-w-4xl space-y-4 text-sm text-[color:var(--muted)]">
       <StarterSetPanel

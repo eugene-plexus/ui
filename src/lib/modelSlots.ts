@@ -34,6 +34,7 @@
  * the row where the typo was made.
  */
 
+import { labelOf } from "./nodeLabels";
 import type { RoutingTableView } from "./types";
 
 export interface ModelSlot {
@@ -230,7 +231,7 @@ export interface TargetResolution {
 }
 
 function describeBackend(backend: RoutingBackend): string {
-  return backend.node ? `${backend.driver} @ ${backend.node}` : backend.driver;
+  return backend.node ? `${backend.driver} @ ${labelOf(backend.node)}` : backend.driver;
 }
 
 /**

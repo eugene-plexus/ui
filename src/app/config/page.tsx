@@ -13,6 +13,7 @@ import { api, describeError } from "@/lib/api";
 import { foldedKeys, isFieldVisible } from "@/lib/configPresentation";
 import { loadConfigTrio, onConfigTrioInvalidated } from "@/lib/configTrio";
 import { targetFor } from "@/lib/nodeBudget";
+import { labelOf } from "@/lib/nodeLabels";
 import {
   configTabFor,
   parseSelection,
@@ -601,7 +602,9 @@ function BackendSettings({
   const search = declared?.kind === "tool-driver";
   const multiNode = topology.nodes.length > 1;
   const label =
-    multiNode && node ? `${selection.name ?? "Backend"} @ ${node}` : (selection.name ?? "Backend");
+    multiNode && node
+      ? `${selection.name ?? "Backend"} @ ${labelOf(node)}`
+      : (selection.name ?? "Backend");
   const elsewhere = node !== null && node !== localNode;
 
   /**
@@ -650,7 +653,7 @@ function BackendSettings({
           <span>
             {node ? (
               <>
-                Runs on <span className="font-mono">{node}</span>
+                Runs on <span className="font-mono">{labelOf(node)}</span>
                 {elsewhere ? " — not the machine you are browsing from" : " — this machine"}. Paths
                 in these settings are paths on that host, inside its container if it runs in one.
               </>

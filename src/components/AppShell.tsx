@@ -35,6 +35,7 @@ import { RunDialog } from "./RunDialog";
 import { InstallModeBanner } from "./InstallModeBanner";
 import { IssuesBadge } from "./IssuesBadge";
 import { TasksTray } from "./TasksTray";
+import { useNodeLabels } from "@/lib/nodeLabels";
 
 /**
  * The three-column shell: the install tree, the selected object's pages,
@@ -95,7 +96,10 @@ function AppShellInner({
   // first build had the tree and the page menu fetch separately, and
   // they disagreed the moment a selection under-specified.
   const { topology, ready } = useTopology();
-  const tree = useMemo(() => buildTree(topology), [topology]);
+  // Rebuilt when a label changes too: the tree's words come from them.
+  const labels = useNodeLabels();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- buildTree reads labels through labelOf
+  const tree = useMemo(() => buildTree(topology), [topology, labels]);
   const node = useMemo(() => findSelected(tree, requested), [tree, requested]);
   // The row's own `sel`, not the one the URL asked for: `agent` resolves
   // to `agent:<this machine>` on an enrolled node, and that is what the
@@ -120,7 +124,7 @@ function AppShellInner({
     // The selected object's machine first: two `/config` tabs differ only
     // by which node they address, and this console's own host is the same
     // string on both.
-    node: selection?.node ?? topology.localNode,
+    node: labels(selection?.node ?? topology.localNode),
     machines: machineCount(topology),
   });
   useDocumentTitle(title);

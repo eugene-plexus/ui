@@ -3657,6 +3657,14 @@ export interface components {
              *     is the answer an operator would have typed anyway.
              */
             name?: string;
+            /**
+             * @description The name people see for this machine, passed to the control
+             *     root's enrollment as `EnrollmentRequest.label` and checked there
+             *     (`NodeLabel` in `control.yaml`). The first-run wizard sends what
+             *     the person typed for this machine; omitted, the machine is shown
+             *     by its name.
+             */
+            label?: string;
         };
         /**
          * @description A token for one other machine, asked for by one of this agent's

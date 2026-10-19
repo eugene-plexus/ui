@@ -29,6 +29,7 @@ import { useRefreshWithIssues } from "@/lib/useIssues";
 import { usePolling } from "@/lib/usePolling";
 
 import { LayerIcon } from "./LayerIcon";
+import { recordNodeLabels } from "@/lib/nodeLabels";
 
 /**
  * The install as a tree, down the left side.
@@ -114,7 +115,9 @@ export function useTopology(): { topology: Topology; ready: boolean } {
       api
         .get<{ components?: Partial<ComponentPlacement>[] }>("control", "/v1/components")
         .catch(() => null),
-      api.get<{ nodes?: { name?: unknown }[] }>("control", "/v1/nodes").catch(() => null),
+      api
+        .get<{ nodes?: { name?: unknown; label?: unknown }[] }>("control", "/v1/nodes")
+        .catch(() => null),
       // Job sites are their own enrollments (J19); a root that cannot
       // answer contributes none rather than an error, like every read here.
       api
@@ -166,6 +169,13 @@ export function useTopology(): { topology: Topology; ready: boolean } {
       .filter((x): x is { id: string; label?: unknown } => typeof x?.id === "string" && x.id !== "")
       .map((x) => ({ id: x.id, label: typeof x.label === "string" ? x.label : "" }));
 
+    recordNodeLabels(
+      (nodeNames?.nodes ?? []).flatMap((n) =>
+        typeof n.name === "string" && n.name
+          ? [{ name: n.name, label: typeof n.label === "string" ? n.label : null }]
+          : [],
+      ),
+    );
     const next: Topology = {
       localNode: node?.name ?? null,
       apps,

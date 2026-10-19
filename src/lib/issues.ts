@@ -53,6 +53,7 @@ import type {
 } from "./types";
 import { nodeLiveness } from "./nodeLiveness";
 import { describeUpdate, releaseName, versionDifference, type VersionDifference } from "./updates";
+import { labelOf } from "@/lib/nodeLabels";
 
 export type IssueKind =
   | "control-sealed"
@@ -145,6 +146,8 @@ export interface NodeFacts {
  * can be driven with the literal bodies a live root returns. */
 export interface ControlNodeRow {
   name: string;
+  /** The name people see (node-labels.md); `labelOf` reads it. */
+  label?: string | null;
   reachable?: boolean | null;
   lastError?: string | null;
   /** Absent with no `lastError` means the root has not probed this node
@@ -317,7 +320,7 @@ function nodeDownIssues(nodes: ControlNodeRow[] | null): Issue[] {
       id: `node-down:${n.name}`,
       kind: "node-down" as const,
       severity: "blocking" as const,
-      title: `${n.name} is not answering`,
+      title: `${labelOf(n.name)} is not answering`,
       detail: n.lastError
         ? `The last attempt to reach it said: ${n.lastError}`
         : "Nothing has come back from it, and no reason was recorded. Check that the machine " +

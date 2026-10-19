@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ModelName } from "@/components/ModelName";
 import type { Row } from "@/lib/inferenceRows";
 import type { ContextLookup } from "@/lib/modelContext";
+import { labelOf } from "@/lib/nodeLabels";
 
 /**
  * "Running": what is serving right now, in four columns.
@@ -55,7 +56,7 @@ export function RunningCard({ rows, contexts }: { rows: Row[]; contexts: Context
                       (row.driver ?? "—")
                     )}
                   </td>
-                  <td className="py-1.5 pr-4">{row.node ?? "this machine"}</td>
+                  <td className="py-1.5 pr-4">{labelOf(row.node) ?? "this machine"}</td>
                   <td className={`py-1.5 pr-4 ${state.className}`} title={row.error ?? undefined}>
                     {state.label}
                     {row.error && (

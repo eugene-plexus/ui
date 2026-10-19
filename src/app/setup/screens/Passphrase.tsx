@@ -20,7 +20,7 @@
  */
 
 import { MIN_PASSPHRASE_LENGTH, type SecurityMode, passphraseLength } from "../draft";
-import { Checkbox, Field, SecretInput } from "../fields";
+import { Checkbox, Field, FieldInput, SecretInput } from "../fields";
 
 export function ScreenPassphrase({
   passphrase,
@@ -28,6 +28,8 @@ export function ScreenPassphrase({
   securityMode,
   keyringAvailable,
   passphraseFile = false,
+  machineName = "",
+  onMachineName = () => {},
   onPassphrase,
   onPassphraseConfirm,
   onSecurityMode,
@@ -42,6 +44,10 @@ export function ScreenPassphrase({
    * only that account can read (the Linux system install, 2026-09-24).
    * Then there is nothing to choose, and the screen says what happens. */
   passphraseFile?: boolean;
+  /** What every screen calls this machine (node-labels.md); empty uses
+   * its network name, which on a container is its ID. */
+  machineName?: string;
+  onMachineName?: (v: string) => void;
   onPassphrase: (v: string) => void;
   onPassphraseConfirm: (v: string) => void;
   onSecurityMode: (v: SecurityMode) => void;
@@ -98,6 +104,21 @@ export function ScreenPassphrase({
           Passphrases don&rsquo;t match yet.
         </p>
       )}
+      <hr className="my-6 border-[color:var(--border)]" />
+      <Field
+        label="This machine's name"
+        description="What Eugene shows for this machine. Leave it empty to use its network name. You can change it later on Machines."
+      >
+        <FieldInput
+          value={machineName}
+          onChange={(e) => onMachineName(e.target.value)}
+          placeholder="Home server, Studio PC…"
+          maxLength={64}
+          autoComplete="off"
+          data-testid="machine-name"
+          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+        />
+      </Field>
       <hr className="my-6 border-[color:var(--border)]" />
       <h3 className="font-ui mb-3 text-sm font-semibold">After a reboot</h3>
       {passphraseFile ? (

@@ -29,6 +29,7 @@ import type {
 } from "./types";
 import { recommendedModel as recommendedStarter } from "./starter";
 import { engineLabel } from "./tasks";
+import { labelOf } from "@/lib/nodeLabels";
 
 // --- the first-model card --------------------------------------------
 
@@ -168,7 +169,7 @@ export function machineStrip(args: {
   libraryFailed: boolean;
 }): MachineStrip {
   return {
-    name: args.node?.name ?? "This machine",
+    name: labelOf(args.node?.name) ?? "This machine",
     devices: describeDevices(args.node),
     engine: describeEngines(args.engines),
     models: describeLibrary(args.library, args.libraryFailed),
