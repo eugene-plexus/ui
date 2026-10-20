@@ -262,6 +262,14 @@ export function UseFromAppsCard({
     setVerdict(null);
     void check();
   }, [check]);
+  // Nor may a check that outlives the card: it lands after the page has
+  // gone (and, in a test, after the DOM it would update is torn down).
+  useEffect(
+    () => () => {
+      checkSeq.current += 1;
+    },
+    [],
+  );
 
   // `baseUrl`, not `display`: what is listening is at the origin, and
   // the first live run said "listening at http://...:8080/v1".
