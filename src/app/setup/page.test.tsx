@@ -95,8 +95,17 @@ function healthyInstall(): Map<string, Handler> {
         body: { initialized: false, unlocked: false, keyringAvailable: false },
       }),
     ],
-    ["GET agent/v1/config", () => ({ status: 200, body: { firstRunComplete: false } })],
+    [
+      "GET agent/v1/config",
+      () => ({ status: 200, body: { firstRunComplete: false, securityMode: "prompt_on_startup" } }),
+    ],
     ["PATCH control/v1/config", () => ({ status: 200, body: {} })],
+    // CX2: each step of screen 1 says for itself whether it is done. A
+    // fresh install: the root has no passphrase and this agent has not
+    // joined it.
+    ["GET control/v1/auth/status", () => ({ status: 200, body: { initialized: false } })],
+    ["GET agent/v1/node", () => ({ status: 200, body: { enrolled: false } })],
+    ["GET control/v1/config", () => ({ status: 200, body: { securityMode: "prompt_on_startup" } })],
     // The control host's agent enrolls with the root it just spawned -
     // "every node enrolls the same way, including the control host's",
     // which nothing outside an acceptance script had ever done. Skipping
@@ -132,6 +141,20 @@ function healthyInstall(): Map<string, Handler> {
       }),
     ],
   ]);
+}
+
+/** The install after a screen 1 that finished: passphrase set on both,
+ * this machine joined, the restart choice in effect on both. */
+function committedScreenOne() {
+  handlers.set("GET agent/v1/auth/status", () => ({
+    status: 200,
+    body: { initialized: true, unlocked: true, keyringAvailable: false },
+  }));
+  handlers.set("GET control/v1/auth/status", () => ({
+    status: 200,
+    body: { initialized: true },
+  }));
+  handlers.set("GET agent/v1/node", () => ({ status: 200, body: { enrolled: true } }));
 }
 
 function key(call: Call): string {
@@ -334,14 +357,19 @@ describe("screen 1: what Continue commits", () => {
     expect(error).toHaveClass("status-error");
     // Announced, not just painted: a screen reader heard nothing.
     expect(error).toHaveAttribute("role", "alert");
-    // And it points at the diagnosis instead of at a shell.
-    expect(error).toHaveTextContent(/Needs attention/i);
+    // CX2: it no longer says "do not run setup again" or sends the person
+    // to Home, whose gate sent them straight back. Try again is the retry.
+    expect(error).toHaveTextContent(/Try again/);
+    expect(error.textContent ?? "").not.toMatch(/Do not run setup again|Needs attention/i);
     expect(error.textContent ?? "").not.toMatch(/POST|\/v1\/auth\/initialize|dev-seed/i);
     // The install is half-made either way - the agent's passphrase is set
     // and cannot be unset from here - so the honest outcome is to say so on
     // the screen the person is on, not to enroll, move on, or flip
     // firstRunComplete.
-    expect(screen.getByRole("heading", { name: /^Choose a passphrase$/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /^Finish setting up this install$/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
     expect(calls.map(key)).not.toContain("POST agent/v1/node/enroll");
     expect(calls.map(key)).not.toContain("PATCH agent/v1/config");
     expect(replace).not.toHaveBeenCalledWith("/");
@@ -612,10 +640,7 @@ describe("screen 2: what Finish commits", () => {
     // enrolled install with no models folder. The next visit has nothing
     // to redo on screen 1 and must not offer a passphrase form for an
     // install whose passphrase exists.
-    handlers.set("GET agent/v1/auth/status", () => ({
-      status: 200,
-      body: { initialized: true, unlocked: true, keyringAvailable: false },
-    }));
+    committedScreenOne();
     sessionStorage.setItem("eugene-session-token", "existing-session");
 
     render(<WizardPage />);
@@ -627,15 +652,6 @@ describe("screen 2: what Finish commits", () => {
     expect(calls.map(key)).not.toContain("POST control/v1/auth/initialize");
     // And the folder proposal is asked for, under the session that exists.
     await waitFor(() => expect(screen.getByTestId("proposed-folder")).toHaveTextContent(PROPOSED));
-  });
-
-  it("sends a committed install with no session to sign in, and returns here", async () => {
-    handlers.set("GET agent/v1/auth/status", () => ({
-      status: 200,
-      body: { initialized: true, unlocked: true, keyringAvailable: false },
-    }));
-    render(<WizardPage />);
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login?next=%2Fsetup"));
   });
 
   it("leaves a finished install alone", async () => {
@@ -650,5 +666,228 @@ describe("screen 2: what Finish commits", () => {
     render(<WizardPage />);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
     expect(calls.map(key)).not.toContain("GET library/v1/directories");
+    // Nor does it ask the root anything: a sealed root's refusal must not
+    // sign out someone who only wandered here.
+    expect(calls.map(key).filter((k) => k.includes(" control/"))).toEqual([]);
+  });
+});
+
+/**
+ * CX2: setup resumes where it stopped. Each case below opened screen 2
+ * before the fix, because the only state read was the agent's
+ * `initialized`, and the steps after it never ran again.
+ */
+describe("screen 1 resumes where it stopped", () => {
+  /** Initialized, with a session, and the root/enrollment/mode as given. */
+  function halfDone(state: {
+    controlInitialized: boolean;
+    enrolled: boolean;
+    agentMode?: string;
+    controlMode?: string;
+  }) {
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: { initialized: true, unlocked: true, keyringAvailable: true },
+    }));
+    handlers.set("GET control/v1/auth/status", () => ({
+      status: 200,
+      body: { initialized: state.controlInitialized },
+    }));
+    handlers.set("GET agent/v1/node", () => ({
+      status: 200,
+      body: { enrolled: state.enrolled },
+    }));
+    handlers.set("GET agent/v1/config", () => ({
+      status: 200,
+      body: { firstRunComplete: false, securityMode: state.agentMode ?? "prompt_on_startup" },
+    }));
+    handlers.set("GET control/v1/config", () => ({
+      status: 200,
+      body: { securityMode: state.controlMode ?? "prompt_on_startup" },
+    }));
+    sessionStorage.setItem("eugene-session-token", "existing-session");
+  }
+
+  async function resumeWith(user: ReturnType<typeof userEvent.setup>, passphrase: string) {
+    await screen.findByRole("heading", { name: /^Finish setting up this install$/ });
+    await user.type(screen.getByLabelText("Passphrase"), passphrase);
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+  }
+
+  it("sets up a control root that has no passphrase, after checking the passphrase at the agent", async () => {
+    halfDone({ controlInitialized: false, enrolled: false });
+    const user = newUser();
+    render(<WizardPage />);
+    await screen.findByRole("heading", { name: /^Finish setting up this install$/ });
+    expect(screen.getByTestId("steps-left")).toHaveTextContent(/Securing the install/);
+    expect(screen.getByTestId("steps-left")).toHaveTextContent(/Joining this machine/);
+    // One box, not two: the passphrase is set and is not being chosen.
+    expect(screen.queryByPlaceholderText(/repeat the passphrase/i)).toBeNull();
+
+    await resumeWith(user, "correct horse battery staple");
+    await screen.findByRole("heading", { name: /^Where should models live\?$/ }, { timeout: 5000 });
+
+    // The root's initialize takes whatever it gets and has no reset, so
+    // the agent checks the passphrase first.
+    expect(
+      routesFrom([
+        "POST agent/v1/auth/login",
+        "POST control/v1/auth/initialize",
+        "POST agent/v1/node/enroll",
+      ]),
+    ).toEqual([
+      "POST agent/v1/auth/login",
+      "POST control/v1/auth/initialize",
+      "POST agent/v1/node/enroll",
+      // enrollLocalAgent's own sign-in, after the restart enrolling causes
+      "POST agent/v1/auth/login",
+    ]);
+    expect(calls.map(key)).not.toContain("POST agent/v1/auth/initialize");
+    // The root's config is read only once it trusts this agent's session.
+    const order = calls.map(key);
+    expect(order.indexOf("GET control/v1/config")).toBeGreaterThan(
+      order.indexOf("POST agent/v1/node/enroll"),
+    );
+  });
+
+  it("offers the host's recommendation, not the agent's factory default, when the mode was never written", async () => {
+    // The run stopped before the security mode step, so the agent still
+    // holds prompt_on_startup only because nothing changed it.
+    halfDone({ controlInitialized: false, enrolled: false });
+    render(<WizardPage />);
+    const box = await screen.findByRole("checkbox", { name: /unlock eugene on its own/i });
+    expect(box).toBeChecked();
+  });
+
+  it("says in words when the root refuses a passphrase the agent accepted, without signing the person out", async () => {
+    halfDone({ controlInitialized: true, enrolled: false });
+    handlers.set("POST control/v1/auth/login", () => ({
+      status: 401,
+      body: { detail: { title: "Wrong passphrase" } },
+    }));
+    const user = newUser();
+    render(<WizardPage />);
+    await resumeWith(user, "correct horse battery staple");
+    const error = await screen.findByRole("alert", {}, { timeout: 5000 });
+    expect(error).toHaveTextContent(/control root refused this passphrase/i);
+    expect(replace).not.toHaveBeenCalledWith(expect.stringMatching(/^\/login/));
+    expect(sessionStorage.getItem("eugene-session-token")).not.toBeNull();
+    expect(calls.map(key)).not.toContain("POST agent/v1/node/enroll");
+  });
+
+  it("sends nothing to the control root when the agent refuses the passphrase", async () => {
+    halfDone({ controlInitialized: false, enrolled: false });
+    handlers.set("POST agent/v1/auth/login", () => ({
+      status: 401,
+      body: { detail: { title: "Wrong passphrase" } },
+    }));
+    const user = newUser();
+    render(<WizardPage />);
+    await resumeWith(user, "a typo in the passphrase");
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent(/not this install's passphrase/i);
+    expect(calls.map(key)).not.toContain("POST control/v1/auth/initialize");
+    expect(calls.map(key)).not.toContain("POST control/v1/auth/login");
+    // Still on the resume form, the box there to retype in.
+    expect(screen.getByLabelText("Passphrase")).toBeInTheDocument();
+  });
+
+  it("enrolls an agent that has not joined the root, without setting the root up again", async () => {
+    halfDone({ controlInitialized: true, enrolled: false });
+    const user = newUser();
+    render(<WizardPage />);
+    await screen.findByRole("heading", { name: /^Finish setting up this install$/ });
+    expect(screen.getByTestId("steps-left")).not.toHaveTextContent(/Securing the install/);
+    expect(screen.getByTestId("machine-name")).toBeInTheDocument();
+    await user.type(screen.getByTestId("machine-name"), "Studio PC");
+    await resumeWith(user, "correct horse battery staple");
+    await screen.findByRole("heading", { name: /^Where should models live\?$/ }, { timeout: 5000 });
+
+    expect(calls.map(key)).not.toContain("POST control/v1/auth/initialize");
+    const enroll = calls.find((c) => key(c) === "POST agent/v1/node/enroll");
+    expect(enroll?.body).toMatchObject({ label: "Studio PC" });
+  });
+
+  it("applies a restart choice the root never got, without asking for the passphrase", async () => {
+    // The agent took os_keyring and the root's PATCH failed: after a
+    // reboot the root would ask for a passphrase the wizard promised it
+    // would not.
+    halfDone({
+      controlInitialized: true,
+      enrolled: true,
+      agentMode: "os_keyring",
+      controlMode: "prompt_on_startup",
+    });
+    const user = newUser();
+    render(<WizardPage />);
+    await screen.findByRole("heading", { name: /^Finish setting up this install$/ });
+    expect(screen.getByTestId("steps-left")).toHaveTextContent(/after a restart/i);
+    expect(screen.queryByLabelText("Passphrase")).toBeNull();
+    expect(screen.queryByTestId("machine-name")).toBeNull();
+    // Prefilled from what the agent holds, which was the person's choice.
+    expect(screen.getByRole("checkbox", { name: /unlock eugene on its own/i })).toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("heading", { name: /^Where should models live\?$/ }, { timeout: 5000 });
+    expect(calls.filter((c) => key(c) === "PATCH control/v1/config").map((c) => c.body)).toEqual([
+      { securityMode: "os_keyring" },
+    ]);
+    expect(calls.map(key)).not.toContain("PATCH agent/v1/config");
+    expect(calls.map(key)).not.toContain("POST agent/v1/auth/login");
+  });
+
+  it("signs in on the form when there is no session, then shows what is left before running it", async () => {
+    halfDone({ controlInitialized: false, enrolled: false });
+    sessionStorage.removeItem("eugene-session-token");
+    const user = newUser();
+    render(<WizardPage />);
+    await resumeWith(user, "correct horse battery staple");
+    // Not bounced to /login, where the passphrase would be typed only to be
+    // asked for again here.
+    expect(replace).not.toHaveBeenCalledWith(expect.stringMatching(/^\/login/));
+    await waitFor(() =>
+      expect(screen.getByTestId("steps-left")).toHaveTextContent(/Securing the install/),
+    );
+    expect(calls.map(key)).not.toContain("POST control/v1/auth/initialize");
+    // Signed in once, and not asked again.
+    expect(screen.queryByLabelText("Passphrase")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("heading", { name: /^Where should models live\?$/ }, { timeout: 5000 });
+    expect(calls.filter((c) => key(c) === "POST control/v1/auth/initialize")).toHaveLength(1);
+  });
+
+  it("carries on from the failed step on Try again, and never initializes the agent twice", async () => {
+    let rootUp = false;
+    handlers.set("POST control/v1/auth/initialize", () =>
+      rootUp ? { status: 204 } : { status: 500, body: { detail: { title: "Kaboom" } } },
+    );
+    const user = newUser();
+    render(<WizardPage />);
+    await screen.findByRole("heading", { name: /^Choose a passphrase$/ });
+    await user.type(
+      screen.getByPlaceholderText(/a line of poetry/i),
+      "correct horse battery staple",
+    );
+    await user.type(
+      screen.getByPlaceholderText(/repeat the passphrase/i),
+      "correct horse battery staple",
+    );
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    const retry = await screen.findByRole("button", { name: "Try again" }, { timeout: 20000 });
+
+    rootUp = true;
+    await user.click(retry);
+    await screen.findByRole("heading", { name: /^Where should models live\?$/ }, { timeout: 5000 });
+    expect(calls.filter((c) => key(c) === "POST agent/v1/auth/initialize")).toHaveLength(1);
+    expect(calls.map(key)).toContain("POST agent/v1/node/enroll");
+  }, 30000);
+});
+
+describe("Cancel", () => {
+  it("is not offered, because every page sends an install without setup back here", async () => {
+    render(<WizardPage />);
+    await screen.findByRole("heading", { name: /^Choose a passphrase$/ });
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
   });
 });

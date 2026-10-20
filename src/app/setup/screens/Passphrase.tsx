@@ -58,7 +58,6 @@ export function ScreenPassphrase({
   // screen is a puzzle. Nothing is flagged before the first character.
   const typed = passphraseLength(passphrase);
   const tooShort = typed > 0 && typed < MIN_PASSPHRASE_LENGTH;
-  const noKeyring = keyringAvailable === false;
   return (
     <section>
       <h2 className="font-ui mb-2 text-xl font-semibold">Choose a passphrase</h2>
@@ -105,21 +104,61 @@ export function ScreenPassphrase({
         </p>
       )}
       <hr className="my-6 border-[color:var(--border)]" />
-      <Field
-        label="This machine's name"
-        description="What Eugene shows for this machine. Leave it empty to use its network name. You can change it later on Machines."
-      >
-        <FieldInput
-          value={machineName}
-          onChange={(e) => onMachineName(e.target.value)}
-          placeholder="Home server, Studio PC…"
-          maxLength={64}
-          autoComplete="off"
-          data-testid="machine-name"
-          className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
-        />
-      </Field>
+      <MachineNameField machineName={machineName} onMachineName={onMachineName} />
       <hr className="my-6 border-[color:var(--border)]" />
+      <RestartChoice
+        securityMode={securityMode}
+        keyringAvailable={keyringAvailable}
+        passphraseFile={passphraseFile}
+        onSecurityMode={onSecurityMode}
+      />
+    </section>
+  );
+}
+
+/** What every screen calls this machine (node-labels.md); shared with the
+ * resume form, which shows it only while enrollment is left. */
+export function MachineNameField({
+  machineName,
+  onMachineName,
+}: {
+  machineName: string;
+  onMachineName: (v: string) => void;
+}) {
+  return (
+    <Field
+      label="This machine's name"
+      description="What Eugene shows for this machine. Leave it empty to use its network name. You can change it later on Machines."
+    >
+      <FieldInput
+        value={machineName}
+        onChange={(e) => onMachineName(e.target.value)}
+        placeholder="Home server, Studio PC…"
+        maxLength={64}
+        autoComplete="off"
+        data-testid="machine-name"
+        className="font-ui w-full rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+      />
+    </Field>
+  );
+}
+
+/** Whether Eugene comes back unlocked after a restart; shared with the
+ * resume form. */
+export function RestartChoice({
+  securityMode,
+  keyringAvailable,
+  passphraseFile,
+  onSecurityMode,
+}: {
+  securityMode: SecurityMode;
+  keyringAvailable: boolean | null;
+  passphraseFile: boolean;
+  onSecurityMode: (v: SecurityMode) => void;
+}) {
+  const noKeyring = keyringAvailable === false;
+  return (
+    <>
       <h3 className="font-ui mb-3 text-sm font-semibold">After a reboot</h3>
       {passphraseFile ? (
         <p
@@ -168,6 +207,6 @@ export function ScreenPassphrase({
         Eugene itself starts when this machine does, before anyone signs in. You can change any of
         this later under Settings.
       </p>
-    </section>
+    </>
   );
 }

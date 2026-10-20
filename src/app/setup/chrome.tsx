@@ -8,8 +8,10 @@
  * Since S2 there are two screens and each has ONE primary action that
  * writes: Continue commits the passphrase and Finish commits the folder.
  * There is no Back, because after Continue the install exists and there
- * is nothing on screen 1 left to change; and Cancel is offered only on
- * screen 1 before Continue is pressed, for the same reason.
+ * is nothing on screen 1 left to change. There is no Cancel either since
+ * CX2: every page's gate sends an install that is not set up back here, so
+ * Cancel had nowhere to go but round. Before Continue nothing is written,
+ * and closing the tab is the cancel.
  */
 
 import { TOTAL_SCREENS } from "./draft";
@@ -53,8 +55,8 @@ export function WizardFooter({
   screen,
   working,
   canProceed,
-  onCancel,
   onPrimary,
+  primaryLabel,
   submits = false,
 }: {
   screen: number;
@@ -62,33 +64,19 @@ export function WizardFooter({
    * nothing on the footer can be pressed. */
   working: boolean;
   canProceed: boolean;
-  onCancel: () => void;
   onPrimary: () => void;
+  /** "Try again" after a step failed; the screen's own word otherwise. */
+  primaryLabel?: string;
   /** The primary button submits the form it sits in, so Enter in a box
    * presses it; the form's own handler then calls `onPrimary`. */
   submits?: boolean;
 }) {
   const last = screen === TOTAL_SCREENS;
-  const label = last ? "Finish" : "Continue";
+  const label = primaryLabel ?? (last ? "Finish" : "Continue");
   const workingLabel = last ? "Finishing…" : "Setting up…";
-  // Cancel only before anything has been written. Once Continue has run
-  // the install is initialized, and "cancel" would promise an undo that
-  // does not exist.
-  const showCancel = screen === 1 && !working;
 
   return (
-    <footer className="flex items-center justify-between border-t border-[color:var(--border)] bg-[color:var(--panel)] px-6 py-4">
-      <div>
-        {showCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-4 py-2 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)]"
-          >
-            Cancel
-          </button>
-        )}
-      </div>
+    <footer className="flex items-center justify-end border-t border-[color:var(--border)] bg-[color:var(--panel)] px-6 py-4">
       <div>
         <button
           type={submits ? "submit" : "button"}
