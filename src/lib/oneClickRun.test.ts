@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
 import {
+  answerAsk,
   answerInstall,
   cancelRun,
+  closeRunQuestion,
   describeRunDetail,
   dismissRun,
   findRun,
@@ -11,6 +13,7 @@ import {
   resetRunsForTests,
   runHref,
   runModelOf,
+  runQuestion,
   runsSearchModel,
   runTask,
   startDownloadAndRun,
@@ -149,6 +152,88 @@ describe("durable run observer", () => {
       download: { repo: "org/model", files: ["model.gguf"] },
     });
     expect(api.post).not.toHaveBeenCalled();
+  });
+  describe("asks about the engine at the click (CX3)", () => {
+    const LLAMA = {
+      engine: "llama_cpp",
+      available: false,
+      accepts: [{ format: "gguf" }],
+      acquisition: { policy: "managed", installable: true },
+    };
+    function engines(list: unknown[]) {
+      vi.mocked(api.get).mockImplementation(async (_target, path) =>
+        path === "/v1/node"
+          ? { name: "desktop" }
+          : path === "/v1/engines"
+            ? { engines: list }
+            : { operations: structuredClone(records) },
+      );
+    }
+    const SPEC = { repo: "org/model", file: "model.gguf", label: "Model" };
+
+    it("submits nothing until the person answers, then records the engine agreed to", async () => {
+      engines([LLAMA]);
+      const id = startDownloadAndRun(SPEC, HERE);
+      await vi.waitFor(() => expect(getRuns()[0]?.confirming).toBe(true));
+      expect(runQuestion(getRuns())?.id).toBe(id);
+      expect(describeRunDetail(getRuns()[0]!).detail).toBe(
+        "waiting for your answer: install llama.cpp too?",
+      );
+      expect(api.put).not.toHaveBeenCalled();
+      answerAsk(id, "install");
+      await vi.waitFor(() => expect(records).toHaveLength(1));
+      expect(api.put).toHaveBeenCalledWith("library", `/v1/run-operations/${id}`, {
+        node: "desktop",
+        download: { repo: "org/model", files: ["model.gguf"] },
+        installEngine: "llama_cpp",
+      });
+      expect(runQuestion(getRuns())).toBeNull();
+    });
+
+    it("leaves nothing behind when the person cancels", async () => {
+      engines([LLAMA]);
+      const id = startDownloadAndRun(SPEC, HERE);
+      await vi.waitFor(() => expect(getRuns()[0]?.confirming).toBe(true));
+      cancelRun(id);
+      await vi.waitFor(() => expect(getRuns()).toHaveLength(0));
+      expect(api.put).not.toHaveBeenCalled();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it("does not ask when an engine that runs it is installed", async () => {
+      engines([LLAMA, { ...LLAMA, engine: "strata", available: true }]);
+      startDownloadAndRun(SPEC, HERE);
+      await vi.waitFor(() => expect(records).toHaveLength(1));
+      expect(records[0]!.intent.installEngine).toBeUndefined();
+    });
+
+    it("does not count an engine that runs only other named files", async () => {
+      engines([
+        LLAMA,
+        {
+          ...LLAMA,
+          engine: "strata",
+          available: true,
+          accepts: [{ format: "gguf", files: ["other.gguf"] }],
+        },
+      ]);
+      startDownloadAndRun(SPEC, HERE);
+      await vi.waitFor(() => expect(getRuns()[0]?.confirming).toBe(true));
+    });
+  });
+
+  it("closes a waiting run's question without cancelling it, and the tray row reopens it", async () => {
+    const id = startRun(MODEL, HERE);
+    await vi.waitFor(() => expect(records).toHaveLength(1));
+    records[0]!.step = "awaiting-install";
+    records[0]!.engine = "llama_cpp";
+    await refreshRuns();
+    expect(runQuestion(getRuns())?.id).toBe(id);
+    closeRunQuestion(id);
+    expect(runQuestion(getRuns())).toBeNull();
+    expect(api.post).not.toHaveBeenCalled();
+    runTask(getRuns()[0]!).open?.();
+    expect(runQuestion(getRuns())?.id).toBe(id);
   });
   it("keeps the last known progress during an outage", async () => {
     startRun(MODEL, HERE);

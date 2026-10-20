@@ -81,7 +81,8 @@ export interface Task {
    */
   dismiss?: () => void;
   /** Cancel a durable run; completed files and already-started models remain. */
-  cancel?: () => void;
+  cancel?: () => void; /** Called when the row is followed: a run's closed question opens again (CX3). */
+  open?: () => void;
 }
 
 /** The raw bodies, each `null` when its source did not answer. */

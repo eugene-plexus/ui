@@ -9,6 +9,7 @@ import { isSearchFile } from "./searchModels";
 import { engineLabel, formatBytesShort, type Task } from "./tasks";
 import type {
   Download,
+  EngineDescriptor,
   EngineInstall,
   LibraryModel,
   ModelCapabilities,
@@ -110,6 +111,12 @@ export interface RunTask {
   finishedAt: number | null;
   /** Receipt creation timestamp, retained for task views. */
   generation: number;
+  /**
+   * Asked at the click, before anything is submitted (CX3): the machine lacks
+   * `engine`, and the person has not yet said whether to install it. Only in
+   * this tab; the Library never sees a run in this state.
+   */
+  confirming?: boolean;
 }
 
 export type InstallAnswer = "install" | "skip";
@@ -132,6 +139,8 @@ export interface RunOperation extends Pick<
       contextSize?: number | null;
       vision?: PreparationVisionMode;
     } | null;
+    /** The engine the person agreed at the click to install (CX3). */
+    installEngine?: RunProtocol["schemas"]["EngineKind"] | null;
   };
   model: RunModel | null;
   engine: string | null;
@@ -151,6 +160,10 @@ const listeners = new Set<() => void>();
 const pending = new Set<string>();
 const unconfirmed = new Set<string>();
 const nodeHints = new Map<string | null, RunNode>();
+/** Questions asked at the click, waiting for the person (CX3). */
+const asks = new Map<string, (answer: "install" | "cancel") => void>();
+/** Install questions the person closed without answering; the tray reopens them. */
+const closedQuestions = new Set<string>();
 let snapshot: RunTask[] = [];
 const EMPTY: RunTask[] = [];
 let epoch = 0;
@@ -324,11 +337,54 @@ export function runsSearchModel(model: RunModel): boolean {
   return isSearchFile(model.capabilities);
 }
 
+/** What a download chain needs from the machine, to ask at the click (CX3). */
+interface InstallQuestion {
+  /** The format it downloads, for a Run: the engine is one that loads it. */
+  format: string;
+  /** The file's name, for an engine that runs only the files it names. */
+  file?: string;
+  /** For a preparation, its engine. */
+  engine?: string;
+}
+
+/**
+ * The engine a download chain would have to install on this machine, or null
+ * when one that runs it is already there, none can be installed, or the
+ * machine did not answer. Null is never a guess: the run then asks after the
+ * download, as before CX3.
+ */
+export async function engineToInstall(
+  target: string,
+  question: InstallQuestion,
+): Promise<RunProtocol["schemas"]["EngineKind"] | null> {
+  let engines: EngineDescriptor[] | undefined;
+  try {
+    engines = (await api.get<{ engines?: EngineDescriptor[] }>(target, "/v1/engines")).engines;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(engines)) return null;
+  const installable = (e: EngineDescriptor) => !e.available && !!e.acquisition?.installable;
+  if (question.engine) {
+    const wanted = engines.find((e) => e.engine === question.engine);
+    return wanted && installable(wanted) ? wanted.engine : null;
+  }
+  const file = question.file?.split("/").pop();
+  const runs = engines.filter((e) =>
+    (e.accepts ?? []).some(
+      (r) => r.format === question.format && (!r.files || (!!file && r.files.includes(file))),
+    ),
+  );
+  if (runs.some((e) => e.available)) return null;
+  return (runs.find((e) => installable(e) && !e.experimental) ?? null)?.engine ?? null;
+}
+
 async function submit(
   id: string,
   intent: RunOperation["intent"],
   node: TargetNode,
   model: RunModel,
+  question?: InstallQuestion,
 ): Promise<void> {
   const currentEpoch = epoch;
   revision += 1;
@@ -365,6 +421,28 @@ async function submit(
       intent = { ...intent, node: identity.name ?? null };
       localName = intent.node;
       nodeHints.set(intent.node, runNodeOf({ ...node, name: intent.node }));
+    }
+    if (question) {
+      // CX3: a long download must not end in a question. Ask now, before
+      // anything is submitted, so cancelling leaves nothing behind.
+      const engine = await engineToInstall(node.target, question);
+      if (currentEpoch !== epoch) return;
+      if (engine) {
+        const task = tasks.get(id);
+        if (task) tasks.set(id, { ...task, engine, confirming: true });
+        emit();
+        const answer = await new Promise<"install" | "cancel">((resolve) => asks.set(id, resolve));
+        asks.delete(id);
+        if (currentEpoch !== epoch) return;
+        if (answer === "cancel") {
+          tasks.delete(id);
+          return;
+        }
+        const asked = tasks.get(id);
+        if (asked) tasks.set(id, { ...asked, confirming: false });
+        emit();
+        intent = { ...intent, installEngine: engine };
+      }
     }
     const record = await api.put<RunOperation>("library", `${BASE}/${enc(id)}`, intent);
     if (currentEpoch !== epoch) return;
@@ -445,6 +523,7 @@ export function startDownloadAndRun(spec: RunDownloadSpec, node: TargetNode): st
       format: spec.format ?? "gguf",
       contextLength: null,
     },
+    { format: spec.format ?? "gguf", file: spec.files?.[0] ?? spec.file },
   );
   return id;
 }
@@ -527,6 +606,7 @@ export function startDownloadAndPrepare(
     },
     node,
     { id: "", name: spec.label, path: "", format: "gguf", contextLength: null },
+    { format: "gguf", engine: preparation.engine },
   );
   return id;
 }
@@ -554,10 +634,36 @@ async function action(id: string, verb: "answer" | "cancel", body: unknown): Pro
   emit();
 }
 export function answerInstall(id: string, answer: InstallAnswer): void {
+  closedQuestions.delete(id);
   void action(id, "answer", { answer });
 }
+/** The answer to a question asked at the click (CX3): nothing is submitted
+ * until it is Install, and Cancel leaves nothing behind. */
+export function answerAsk(id: string, answer: "install" | "cancel"): void {
+  asks.get(id)?.(answer);
+}
 export function cancelRun(id: string): void {
+  closedQuestions.delete(id);
+  if (asks.has(id)) return answerAsk(id, "cancel");
   void action(id, "cancel", {});
+}
+/** Close the install question without answering it (CX3): the run keeps
+ * waiting, and its tray row opens the question again. */
+export function closeRunQuestion(id: string): void {
+  closedQuestions.add(id);
+  emit();
+}
+export function reopenRunQuestion(id: string): void {
+  if (closedQuestions.delete(id)) emit();
+}
+/** The question the run dialog shows, if any: one asked at the click first,
+ * then a run waiting for an install answer that the person has not closed. */
+export function runQuestion(runs: RunTask[]): RunTask | null {
+  return (
+    runs.find((r) => r.confirming) ??
+    runs.find((r) => r.step === "awaiting-install" && !closedQuestions.has(r.id)) ??
+    null
+  );
 }
 export function dismissRun(id: string): void {
   const currentEpoch = epoch;
@@ -596,6 +702,8 @@ export function resetRunsForTests(): void {
   pending.clear();
   unconfirmed.clear();
   nodeHints.clear();
+  asks.clear();
+  closedQuestions.clear();
   tasks.clear();
   emit();
 }
@@ -625,6 +733,7 @@ function stepWord(task: RunTask): string {
 export function describeRunDetail(task: RunTask): { detail: string; progress?: number } {
   if (task.error && task.step !== "failed") return { detail: task.error };
   const label = engineLabel(task.engine ?? task.preparing?.engine ?? "llama_cpp");
+  if (task.confirming) return { detail: `waiting for your answer: install ${label} too?` };
   switch (task.step) {
     case "downloading": {
       const d = task.download;
@@ -788,6 +897,8 @@ export function runTask(task: RunTask): Task {
         ? { runtime: task.runtime }
         : {}),
     },
+    // A closed install question opens again from its row (CX3).
+    ...(task.step === "awaiting-install" ? { open: () => reopenRunQuestion(task.id) } : {}),
     ...(isTerminal(task.step)
       ? { dismiss: () => dismissRun(task.id) }
       : { cancel: () => cancelRun(task.id) }),

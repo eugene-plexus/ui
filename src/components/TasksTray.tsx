@@ -122,7 +122,10 @@ function TaskRow({ task, onFollow }: { task: Task; onFollow: () => void }) {
     <div className="relative">
       <Link
         href={task.href}
-        onClick={onFollow}
+        onClick={() => {
+          task.open?.();
+          onFollow();
+        }}
         data-task-kind={task.kind}
         data-task-tone={task.tone}
         className="font-ui block rounded-[var(--radius)] px-2 py-1.5 text-sm transition-colors hover:bg-[color:var(--panel-hover)]"

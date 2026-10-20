@@ -125,7 +125,12 @@ export function FirstModelCard({
         <ul data-testid="home-downloads" className="mt-3 flex flex-col gap-2">
           {downloads.map((task) => (
             <li key={task.id} className="text-sm">
-              <Link href={task.href} title={task.title} className="block truncate hover:underline">
+              <Link
+                href={task.href}
+                title={task.title}
+                onClick={task.open}
+                className="block truncate hover:underline"
+              >
                 {task.title}
               </Link>
               {task.detail && (
@@ -237,8 +242,8 @@ function SuggestedModelCard({
         reason && <p className="mt-1 text-sm text-[color:var(--muted)]">{reason}</p>
       )}
       <p className="mt-1 text-sm text-[color:var(--muted)]">
-        Download into your own folder. We’ll ask before installing llama.cpp and choose starting
-        settings for this machine.
+        Download into your own folder. If llama.cpp is not installed yet, we ask before the download
+        starts, then choose starting settings for this machine and run it.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
@@ -272,7 +277,12 @@ function DownloadList({ downloads }: { downloads: Task[] }) {
     <ul data-testid="home-downloads" className="mt-3 flex flex-col gap-2">
       {downloads.map((task) => (
         <li key={task.id} className="text-sm">
-          <Link href={task.href} title={task.title} className="block truncate hover:underline">
+          <Link
+            href={task.href}
+            title={task.title}
+            onClick={task.open}
+            className="block truncate hover:underline"
+          >
             {task.title}
           </Link>
           {task.detail && (
