@@ -6,6 +6,7 @@ import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "r
 
 import { AppShell } from "@/components/AppShell";
 import { ConfigEditor, type SectionHandle } from "@/components/ConfigEditor";
+import { saveSections } from "@/lib/saveSections";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { useSharedTopology } from "@/components/ResourceTree";
 import { UIPreferences } from "@/components/UIPreferences";
@@ -306,10 +307,14 @@ function SettingsView({
     Boolean(handles.get(id)?.dirty || handles.get(id)?.attention);
   const dirtyTotal = dirtySections.reduce((n, h) => n + h.dirty, 0);
   const [savingAll, setSavingAll] = useState(false);
+  // The processes Save all will restart, by name (CX7).
+  const restarting = [
+    ...new Set(dirtySections.filter((h) => h.restartDirty).map((h) => h.label ?? "")),
+  ].filter(Boolean);
   async function saveAll() {
     setSavingAll(true);
     try {
-      for (const h of dirtySections) await h.save();
+      await saveSections(dirtySections);
     } finally {
       setSavingAll(false);
     }
@@ -485,6 +490,11 @@ function SettingsView({
               {dirtyTotal} unsaved {dirtyTotal === 1 ? "change" : "changes"}
               {dirtySections.length > 1 ? ` in ${dirtySections.length} sections` : ""}
             </span>
+            {restarting.length > 0 && (
+              <span className="text-sm text-[color:var(--muted)]" data-testid="save-all-restarts">
+                Restarts {restarting.join(", ")}, once each, after its last save.
+              </span>
+            )}
             <ConfirmButton
               label="Discard all"
               confirmLabel="Discard every change"
@@ -501,7 +511,9 @@ function SettingsView({
               data-testid="save-all"
               className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
             >
-              {savingAll ? "Saving…" : dirtySections.length > 1 ? "Save all" : "Save"}
+              {savingAll
+                ? "Saving…"
+                : `${dirtySections.length > 1 ? "Save all" : "Save"}${restarting.length ? " and restart" : ""}`}
             </button>
           </div>
         )}

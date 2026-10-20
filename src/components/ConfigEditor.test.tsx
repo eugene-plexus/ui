@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ConfigEditor } from "./ConfigEditor";
+import { ConfigEditor, restartNoteText } from "./ConfigEditor";
 
 let fields: {
   key: string;
@@ -12,6 +12,7 @@ let fields: {
   showWhen?: { key: string; equals: unknown };
   default?: unknown;
   sensitive?: boolean;
+  requiresRestart?: boolean;
 }[];
 let doc: Record<string, unknown>;
 let reject = false;
@@ -373,4 +374,24 @@ it("shows neither the wizard's flag nor the dead appearance knobs, whichever pag
   expect(await screen.findByLabelText("modelRoots")).toBeInTheDocument();
   expect(screen.queryByLabelText("First-run setup complete")).toBeNull();
   expect(screen.queryByLabelText("Theme")).toBeNull();
+});
+
+describe("a save that restarts says so before the click (CX7)", () => {
+  it("reads Save and restart only while a restart field is unsaved", async () => {
+    fields[0]!.requiresRestart = true;
+    render(<ConfigEditor target="library" label="Library" />);
+    fireEvent.change(await screen.findByDisplayValue("new"), { target: { value: "a" } });
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
+    expect(screen.queryByTestId("restart-note")).toBeNull();
+    fireEvent.change(screen.getByDisplayValue("models"), { target: { value: "elsewhere" } });
+    expect(screen.getByRole("button", { name: "Save and restart" })).toBeVisible();
+    expect(screen.getByTestId("restart-note")).toHaveTextContent("Restarts Library.");
+  });
+
+  it("says a gateway restart stops answers in apps", () => {
+    expect(restartNoteText("the gateway", "gateway")).toBe(
+      "Restarts the gateway. Answers that apps are reading stop.",
+    );
+    expect(restartNoteText("Library", "library")).toBe("Restarts Library.");
+  });
 });
