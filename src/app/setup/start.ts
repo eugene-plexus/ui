@@ -23,9 +23,10 @@
 
 import { WIZARD_PROVIDERS } from "@/lib/agent";
 import { ApiError, api, describeError } from "@/lib/api";
+import { getSessionToken } from "@/lib/session";
 import type { Component } from "@/lib/types";
 
-import type { BackendDraft } from "./draft";
+import type { BackendDraft, SecurityMode } from "./draft";
 
 /**
  * Retry a call across the restart the wizard itself causes.
@@ -95,9 +96,29 @@ export async function enrollLocalAgent(
   // since the agent resolves proxy targets in process, nothing else is
   // reading one here either -- which is what makes the call below a
   // one-credential call again.
-  const session = await api.post<{ sessionToken: string }>("control", "/v1/auth/login", {
-    passphrase,
-  });
+  //
+  // `bearer` (CX2): a refusal here is the ROOT refusing the passphrase,
+  // not this tab's session. Without it the api client took the 401 as a
+  // dead session and sent the person to /login mid-setup. A resume
+  // reaches this with a root set up on an earlier visit, which may hold a
+  // different passphrase (one set by dev-seed, or by another tab).
+  let session: { sessionToken: string };
+  try {
+    session = await api.post<{ sessionToken: string }>(
+      "control",
+      "/v1/auth/login",
+      { passphrase },
+      { bearer: getSessionToken() ?? undefined },
+    );
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) {
+      throw new Error(
+        "The control root refused this passphrase, although this machine accepted it: the " +
+          "root was set up with a different one. This machine cannot join it from here.",
+      );
+    }
+    throw e;
+  }
   const minted = await api.post<{ token: string }>(
     "control",
     "/v1/nodes/join-token",
@@ -128,6 +149,167 @@ export async function enrollLocalAgent(
     ),
   );
   return replacement.sessionToken;
+}
+
+/**
+ * What the install already has of screen 1's steps (CX2).
+ *
+ * Continue makes several writes and only the first, the agent's
+ * passphrase, cannot be redone. A visit used to choose its screen from
+ * that one alone, so when a later step failed the next visit opened
+ * screen 2 and the rest never ran: Finish could leave a control root
+ * with no passphrase. Each step says for itself whether it is done, and
+ * a resume starts at the first one that is not.
+ *
+ * A state that cannot be read counts as not done: running its step then
+ * reports the real cause in its own words.
+ */
+export interface SetupProgress {
+  components: Component[];
+  controlInitialized: boolean;
+  enrolled: boolean;
+  /** Each process's `securityMode`; `null` when it was not read (the
+   * root's is only readable once this agent is enrolled). */
+  agentMode: string | null;
+  controlMode: string | null;
+  firstRunComplete: boolean;
+}
+
+/**
+ * Read under the session this tab holds.
+ *
+ * Every read of the ROOT carries the session as an explicit `bearer`, so
+ * a refusal there (a root that is sealed, or that does not trust this
+ * agent yet) is an answer about the root and not a dead session: the api
+ * client would otherwise clear the session and send the person to
+ * /login from a read whose error is already caught.
+ */
+export async function readSetupProgress(timeoutMs?: number): Promise<SetupProgress> {
+  const opts = timeoutMs ? { timeoutMs } : undefined;
+  const agentDoc = await api.get<{ securityMode?: string; firstRunComplete?: boolean }>(
+    "agent",
+    "/v1/config",
+    opts,
+  );
+  const firstRunComplete = agentDoc.firstRunComplete === true;
+  const agentMode = agentDoc.securityMode ?? null;
+  // A finished install: nothing else is read, and the page leaves.
+  if (firstRunComplete) {
+    return {
+      components: [],
+      controlInitialized: true,
+      enrolled: true,
+      agentMode,
+      controlMode: agentMode,
+      firstRunComplete,
+    };
+  }
+  const live = await api.get<{ components?: Component[] }>("agent", "/v1/components", opts);
+  const components = live.components ?? [];
+  // Unauthenticated at the root, so the agent's own session reaches it
+  // before enrollment too.
+  const controlInitialized = await api
+    .get<{ initialized?: boolean }>("control", "/v1/auth/status", { ...opts, ...rootBearer() })
+    .then((s) => s.initialized === true)
+    .catch(() => false);
+  const node = await api.get<{ enrolled?: boolean }>("agent", "/v1/node", opts);
+  const enrolled = node.enrolled === true;
+  // Before enrollment the root trusts none of this agent's sessions.
+  const controlMode = enrolled ? await readControlMode() : null;
+  return {
+    components,
+    controlInitialized,
+    enrolled,
+    agentMode,
+    controlMode,
+    firstRunComplete,
+  };
+}
+
+function rootBearer(): { bearer?: string } {
+  const token = getSessionToken();
+  return token ? { bearer: token } : {};
+}
+
+/** The root's `securityMode`, once this agent's sessions verify there. */
+export async function readControlMode(): Promise<string | null> {
+  return api
+    .get<{ securityMode?: string }>("control", "/v1/config", rootBearer())
+    .then((d) => d.securityMode ?? null)
+    .catch(() => null);
+}
+
+/** Whether what is left needs the passphrase: the root's own, and the
+ * sign-in at the root that minting a join token takes. Unknown progress
+ * (no session yet) needs it to sign in at all. */
+export function needsPassphrase(progress: SetupProgress | null): boolean {
+  return progress === null || !progress.controlInitialized || !progress.enrolled;
+}
+
+/** Whether anything of screen 1 is left for `mode` to be in effect. */
+export function screenOneLeft(progress: SetupProgress, mode: string): boolean {
+  return (
+    !progress.controlInitialized ||
+    !progress.enrolled ||
+    progress.agentMode !== mode ||
+    progress.controlMode !== mode
+  );
+}
+
+/**
+ * The restart choice a resume offers.
+ *
+ * The agent's value is the person's only once screen 1 wrote it: when
+ * this machine has joined and both processes agree, or when the agent
+ * holds something other than its factory default. A failure before the
+ * security mode step leaves the factory default on the agent, and taking
+ * that as a choice would drop the host's recommendation (the keyring
+ * where there is one) without a word.
+ */
+export function modeToOffer(progress: SetupProgress, hostDefault: SecurityMode): SecurityMode {
+  const held = (["prompt_on_startup", "os_keyring", "passphrase_file"] as const).find(
+    (m) => m === progress.agentMode,
+  );
+  if (!held) return hostDefault;
+  if (progress.enrolled && progress.controlMode === held) return held;
+  return held === "prompt_on_startup" ? hostDefault : held;
+}
+
+/** The steps still to do, in words, for the resume form. */
+export function stepsLeft(progress: SetupProgress, mode: string): string[] {
+  const left: string[] = [];
+  if (!progress.controlInitialized) left.push("Securing the install");
+  if (!progress.enrolled) left.push("Joining this machine to the install");
+  if (progress.agentMode !== mode || progress.controlMode !== mode)
+    left.push("Saving what happens after a restart");
+  return left;
+}
+
+/**
+ * Sign in at the agent with the typed passphrase: the check a resume
+ * makes before the passphrase goes anywhere else.
+ *
+ * The control root's initialize takes whatever it is given and has no
+ * reset, so a typo sent there would lock the root to the typo. Before
+ * enrollment the agent checks its own hash, which is the passphrase the
+ * person chose. A 401 is said in words here, because the api client's
+ * own words for it are about a session.
+ */
+export async function verifyPassphrase(passphrase: string): Promise<string> {
+  try {
+    const session = await api.post<{ sessionToken: string }>(
+      "agent",
+      "/v1/auth/login",
+      { passphrase },
+      { skipAuth: true },
+    );
+    return session.sessionToken;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) {
+      throw new Error("That is not this install's passphrase. Type the one you chose.");
+    }
+    throw e;
+  }
 }
 
 /**
@@ -189,14 +371,13 @@ export async function initializeControlRoot(passphrase: string): Promise<void> {
   // else already holds the control root's port, which the install now
   // reports as an issue of its own with the holder named.
   //
-  // Three short sentences: what happened, what not to do, where the
-  // diagnosis is.
+  // CX2: it used to say "do not run setup again" and send the person to
+  // Home, whose gate sent them straight back here. Setup resumes at this
+  // step now, so Try again is the retry.
   const because = lastError instanceof Error ? lastError.message : String(lastError);
   throw new Error(
     `The control root did not take the passphrase (${because}).` +
-      ` Do not run setup again: your passphrase is saved on this machine and it would be` +
-      ` refused.` +
-      ` Open Needs attention on the home page to see what is wrong.`,
+      ` Your passphrase is saved on this machine; Try again carries on from this step.`,
   );
 }
 
