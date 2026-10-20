@@ -95,8 +95,9 @@ describe("the registry agrees with the website", () => {
 });
 
 describe("every screen resolves", () => {
-  it("has fourteen navigable screens", () => {
-    expect(SCREENS).toHaveLength(14);
+  it("has fifteen navigable screens", () => {
+    // Connect apps joined the gateway's screens with CX5 (2026-10-20).
+    expect(SCREENS).toHaveLength(15);
   });
 
   it("puts Home at the root and the playground beside it, both under Your tools", () => {
@@ -165,14 +166,14 @@ describe("every screen resolves", () => {
     expect(new Set(library.map((s) => s.icon)).size).toBe(2);
   });
 
-  it("gives the two Gateway screens two icons, Routing after Metrics", () => {
+  it("gives the three Gateway screens three icons: Connect apps, Metrics, Routing", () => {
     // Routing (2026-09-21): the priority lists as their own screen. It
     // files under the gateway — the lists are the gateway's own config —
     // and spans drivers, because every row resolves to the drivers
     // serving a model id.
     const gateway = SCREENS.filter((s) => s.layer === "gateway");
-    expect(gateway.map((s) => s.href)).toEqual(["/metrics", "/routing"]);
-    expect(new Set(gateway.map((s) => s.icon)).size).toBe(2);
+    expect(gateway.map((s) => s.href)).toEqual(["/connect", "/metrics", "/routing"]);
+    expect(new Set(gateway.map((s) => s.icon)).size).toBe(3);
     expect(SCREENS.find((s) => s.href === "/routing")?.spans).toEqual(["drivers"]);
   });
 });
@@ -192,6 +193,7 @@ describe("the groups are the page's two halves", () => {
       "/",
       "/playground",
       "/apps",
+      "/connect",
       "/metrics",
       "/routing",
       "/inference",

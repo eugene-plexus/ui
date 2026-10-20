@@ -47,6 +47,7 @@ export type IconName =
   | "FolderOpen"
   | "FolderTree"
   | "KeyRound"
+  | "Plug"
   | "Route"
   | "Blocks"
   | "ScrollText"
@@ -235,6 +236,17 @@ export const SCREENS: readonly Screen[] = [
     layer: "tools",
     spans: ["agent"],
     blurb: "Optional apps each machine can install and run, holding one key like any other tool.",
+  },
+  {
+    // The address, keys and model names an app needs (CX5, 2026-10-20).
+    // First under the gateway: the address is the front door's own, and
+    // it is the page a person connecting an app is looking for.
+    href: "/connect",
+    label: "Connect apps",
+    icon: "Plug",
+    layer: "gateway",
+    spans: [],
+    blurb: "The address, keys and model names your apps use, whether or not a model is running.",
   },
   {
     href: "/metrics",

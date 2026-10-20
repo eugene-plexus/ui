@@ -31,6 +31,7 @@ import {
   sameOffsetCandidate,
   verifyGatewayAddress,
 } from "@/lib/gatewayAddress";
+import { BASE_URL_OVERRIDE } from "@/lib/connectApps";
 import type {
   ClientKey,
   ClientKeyCreated,
@@ -39,8 +40,6 @@ import type {
   ComponentPlacementList,
   Model,
 } from "@/lib/types";
-
-const BASE_URL_OVERRIDE = "eugene-gateway-base-url";
 
 /** Semantic tone -> the theme-aware status classes in `globals.css`. */
 const TONE_CLASS = {
@@ -343,7 +342,7 @@ export function UseFromAppsCard({
 
   return (
     <section
-      // The Settings page's search answers "client key" with a link here.
+      // The Connect apps page (CX5); Settings' "client key" topic links there.
       id="use-from-apps"
       data-testid="home-use-from-apps"
       className="section-panel"

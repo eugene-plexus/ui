@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { SetupGateScreen } from "@/components/SetupGateScreen";
@@ -10,11 +11,11 @@ import { NeedsAttentionCard } from "@/components/home/NeedsAttentionCard";
 import { ReachCard } from "@/components/home/ReachCard";
 import { RunningCard } from "@/components/home/RunningCard";
 import { TryItCard } from "@/components/home/TryItCard";
-import { UseFromAppsCard } from "@/components/home/UseFromAppsCard";
+import { ConnectAppsSummary } from "@/components/home/ConnectAppsSummary";
 import { api } from "@/lib/api";
 import { PROXY, listModels } from "@/lib/completions";
 import { contextLookup } from "@/lib/modelContext";
-import { guessGatewayBaseUrl } from "@/lib/diagnostic";
+import { CONNECT_APPS_HREF, gatewayAddressGuess } from "@/lib/connectApps";
 import { chatModels, firstModelState, machineStrip } from "@/lib/home";
 import { type Sources, buildRows } from "@/lib/inferenceRows";
 import { budgetFromNode, fitQuery, localTargetNode } from "@/lib/nodeBudget";
@@ -215,22 +216,14 @@ export default function HomePage() {
   // diagnostic panel guesses it — and, like there, labelled a guess and
   // correctable, because a container that publishes 8080 as 8280 makes it
   // wrong in exactly the way a harness handed the same numbers would be.
-  const gatewayPortUrl = useMemo(
-    () =>
-      node?.entrypoint
-        ? (node.entrypoint.inferenceUrl ?? null)
-        : typeof window === "undefined" || components === null
-          ? null
-          : guessGatewayBaseUrl(
-              (components.components ?? []).map((c) => ({
-                kind: String(c.kind ?? ""),
-                url: c.url ?? "",
-                advertiseUrl: c.advertiseUrl ?? undefined,
-              })),
-              { protocol: window.location.protocol, hostname: window.location.hostname },
-            ),
-    [components, node?.entrypoint],
-  );
+  const gatewayPortUrl = useMemo(() => gatewayAddressGuess(node, components), [node, components]);
+
+  // The card moved to its own page (CX5). A link or bookmark to the old
+  // anchor on Home goes there instead of to a Home without it.
+  const router = useRouter();
+  useEffect(() => {
+    if (window.location.hash === "#use-from-apps") router.replace(CONNECT_APPS_HREF);
+  }, [router]);
 
   if (gate !== "ready") {
     return <SetupGateScreen state={gate} onRetry={retryGate} />;
@@ -251,15 +244,13 @@ export default function HomePage() {
             }}
           />
           {chat.length > 0 && <TryItCard models={chat} routing={sources?.routing ?? null} />}
-          {chat.length > 0 && (
-            <UseFromAppsCard
-              models={chat}
-              gatewayPortUrl={gatewayPortUrl}
-              placement={sources?.placement ?? null}
-              localNode={node?.name ?? null}
-              boundAddresses={node?.reach?.boundAddresses ?? null}
-            />
-          )}
+          {/* Always: the card itself is on Connect apps (CX5), which
+              renders whether or not a model is served. */}
+          <ConnectAppsSummary
+            gatewayPortUrl={gatewayPortUrl}
+            placement={sources?.placement ?? null}
+            localNode={node?.name ?? null}
+          />
           <ReachCard reach={node?.reach ?? null} onChanged={() => void loadSlow()} />
           {/* Side by side when there is something running, per §6.1's
               wireframe; a lone half-width card reads as a mistake, so

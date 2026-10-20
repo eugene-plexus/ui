@@ -123,8 +123,8 @@ export default function AppsPage() {
           <p className="text-sm text-[color:var(--muted)]">
             Apps are optional programs a machine can run for you, like a chat app. Each gets its own
             key, listed on{" "}
-            <Link href="/" className="underline">
-              Home
+            <Link href="/connect" className="underline">
+              Connect apps
             </Link>
             .
           </p>

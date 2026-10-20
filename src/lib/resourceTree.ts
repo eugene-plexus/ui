@@ -219,6 +219,8 @@ const PAGES: Record<string, PageRef[]> = {
     SETTINGS,
   ],
   gateway: [
+    // Address, keys and model names for apps (CX5).
+    { id: "connect", label: "Connect apps", route: "/connect", icon: "Plug" },
     { id: "metrics", label: "Metrics", route: "/metrics", icon: "Radio" },
     // The priority lists (`modelSlots`) as their own page rather than a
     // JSON field on Config: they grow with the install, and their real
@@ -1060,6 +1062,7 @@ export function defaultSelectionFor(
     case "/inference":
     case "/backends/add":
       return "backends";
+    case "/connect":
     case "/metrics":
     case "/routing":
       return "gateway";

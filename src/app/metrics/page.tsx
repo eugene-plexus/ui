@@ -1060,7 +1060,11 @@ export default function MetricsPage() {
                   <p className="mb-2 text-sm text-[color:var(--muted)]">
                     All models on this gateway in the selected window, whatever the filter above
                     says. Tokens are reported usage only; failed attempts may use unreported tokens.
-                    This is not a billing total.
+                    This is not a billing total.{" "}
+                    <Link href="/connect" data-testid="metrics-manage-keys" className="underline">
+                      Manage keys on Connect apps
+                    </Link>
+                    .
                   </p>
                   {clientUsage.truncated && (
                     <p role="status" className="status-warn text-sm">
