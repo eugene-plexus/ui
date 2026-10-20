@@ -927,3 +927,28 @@ describe("job sites are not machines (J19)", () => {
     expect(within(row).getByTestId("token-site")).toHaveTextContent("job site");
   });
 });
+
+describe("removing a machine (CX6)", () => {
+  it("offers it on every machine but the root's, and removes through the root", async () => {
+    sealed = false;
+    nodesBody = {
+      nodes: [
+        { name: "unraid", role: "control", reachable: true, url: "http://192.168.16.252:8283" },
+        { name: "old-box", role: "worker", reachable: false, url: "http://192.168.16.80:8079" },
+      ],
+    };
+    const user = userEvent.setup();
+    render(<NodesPage />);
+    const remove = await screen.findByRole("button", { name: "Remove old-box from install" });
+    expect(screen.queryByTestId("remove-machine-unraid")).toBeNull();
+
+    await user.click(remove);
+    expect(screen.getByTestId("remove-machine-prompt")).toHaveTextContent(/key is revoked/);
+    await user.click(screen.getByRole("button", { name: "Remove and revoke its key" }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === "DELETE" && c.url.endsWith("/v1/nodes/old-box"))).toBe(
+        true,
+      ),
+    );
+  });
+});
