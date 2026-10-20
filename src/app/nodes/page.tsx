@@ -61,6 +61,7 @@ import type { Site, SiteList } from "@/lib/types";
 import { useNodeUpdates } from "@/lib/useNodeUpdates";
 import { usePolling } from "@/lib/usePolling";
 import { expertHint } from "@/lib/vocabulary";
+import { logsHref } from "@/lib/logs";
 
 /**
  * Troy's number, and the reason for it: unlock the root and it is
@@ -627,7 +628,14 @@ export default function NodesPage() {
                               className="mt-0.5 max-w-md text-sm text-[color:var(--muted)]"
                               data-testid="node-last-error"
                             >
-                              {n.lastError}
+                              {n.lastError}{" "}
+                              <Link
+                                href={logsHref({ q: n.name })}
+                                className="underline"
+                                data-testid="node-last-error-logs"
+                              >
+                                Logs →
+                              </Link>
                             </div>
                           ) : null}
                           {/* Every machine but the root's own (CX6); more

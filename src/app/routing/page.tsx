@@ -500,7 +500,10 @@ export default function RoutingPage() {
               )}
               {saveState && saveState.rejected.length === 0 && (
                 <p className="mt-3 text-sm text-[color:var(--muted)]" data-testid="save-applied">
-                  Saved. The gateway reads the lists on its next routing refresh
+                  {/* The gateway reads `modelSlots` on every request, so the
+                    lists below are already the ones in use (CX8). Until
+                    2026-10-20 this said "on its next routing refresh". */}
+                  Saved. The gateway uses these lists now
                   {saveState.requiresRestart ? " — and reports a restart is required" : ""}.
                 </p>
               )}
@@ -729,7 +732,7 @@ function ResolutionLine({ resolution }: { resolution: ReturnType<typeof resolveT
     <span className="text-sm text-[color:var(--muted)]" data-testid="target-served">
       served by {resolution.servedBy.join(", ")}
       {resolution.eligibleCount < resolution.servedBy.length
-        ? ` · ${resolution.eligibleCount} of ${resolution.servedBy.length} ready`
+        ? ` · ${resolution.eligibleCount} of ${resolution.servedBy.length} ready (${resolution.notReady.join(", ")})`
         : ""}
     </span>
   );
@@ -759,7 +762,7 @@ function SelfResolutionLine({ self }: { self: ReturnType<typeof selfTier> }) {
     <span className="text-sm text-[color:var(--muted)]" data-testid="self-served">
       served by {self.servedBy.join(", ")}
       {self.eligibleCount < self.servedBy.length
-        ? ` · ${self.eligibleCount} of ${self.servedBy.length} ready`
+        ? ` · ${self.eligibleCount} of ${self.servedBy.length} ready (${self.notReady.join(", ")})`
         : ""}
     </span>
   );

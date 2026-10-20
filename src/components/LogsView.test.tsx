@@ -212,6 +212,24 @@ describe("Logs", () => {
     expect(screen.getByTestId("logs-source")).toHaveValue("engine: qwen");
   });
 
+  it("opens on the text a link named, and asks the machine for only those lines (CX8)", async () => {
+    const world: World = { history: { agent: page([]) }, calls: [], push: {} };
+    stub(world);
+    render(
+      <LogsView
+        machines={[NAS]}
+        loaded
+        everyMachine={false}
+        initialSource={null}
+        initialQuery="req-7f3a"
+      />,
+    );
+    await waitFor(() => expect(world.calls.some((c) => c.startsWith("agent/v1/logs?"))).toBe(true));
+    const first = world.calls.find((c) => c.startsWith("agent/v1/logs?"))!;
+    expect(new URLSearchParams(first.split("?")[1]).get("contains")).toBe("req-7f3a");
+    expect(screen.getByTestId("logs-filter")).toHaveValue("req-7f3a");
+  });
+
   it("stops following when Follow is turned off", async () => {
     const world: World = { history: { agent: page([]) }, calls: [], push: {} };
     stub(world);

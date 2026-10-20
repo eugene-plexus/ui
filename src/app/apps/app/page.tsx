@@ -30,6 +30,7 @@ import { labelOf } from "@/lib/nodeLabels";
 import { parseSelection } from "@/lib/resourceTree";
 import type { App, AppCatalogue, AppInstall, NodeIdentity } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
+import { logsHref } from "@/lib/logs";
 
 const buttonClass =
   "action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1 text-sm transition-colors hover:border-[color:var(--border-hover)] hover:bg-[color:var(--panel-hover)] disabled:cursor-not-allowed disabled:opacity-40";
@@ -149,6 +150,7 @@ function Inner() {
           {app && !gone && (
             <Overview
               app={app}
+              node={node}
               busy={busy}
               pageHost={pageHost}
               catalogueVersion={catalogueVersion}
@@ -171,6 +173,7 @@ function Inner() {
 
 function Overview({
   app,
+  node,
   busy,
   pageHost,
   catalogueVersion,
@@ -185,6 +188,8 @@ function Overview({
   onUninstall,
 }: {
   app: App;
+  /** The app's machine, for its log; null is this console's own. */
+  node: string | null;
   busy: boolean;
   pageHost: string;
   catalogueVersion: string | null;
@@ -230,7 +235,14 @@ function Overview({
           role="alert"
           data-testid="app-last-error"
         >
-          {app.lastError}
+          {app.lastError}{" "}
+          <Link
+            href={logsHref({ node, source: `app: ${app.id}` })}
+            className="underline"
+            data-testid="app-last-error-logs"
+          >
+            Logs →
+          </Link>
         </p>
       )}
       {app.detail && (
@@ -359,6 +371,18 @@ function Overview({
           }
         >
           {describeInstall(install)} {install.state === "failed" ? install.error : ""}
+          {install.state === "failed" && (
+            <>
+              {" "}
+              <Link
+                href={logsHref({ node, q: app.id })}
+                className="underline"
+                data-testid="app-install-logs"
+              >
+                Logs →
+              </Link>
+            </>
+          )}
         </p>
       )}
 

@@ -95,7 +95,7 @@ it("edits the app's settings on its own machine, and restarts the app, not the a
   render(<AppSettingsPage />);
   const input = await screen.findByDisplayValue("searxng", {}, { timeout: 5000 });
   fireEvent.change(input, { target: { value: "brave" } });
-  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await userEvent.click(screen.getByRole("button", { name: "Save and restart" }));
   await waitFor(() => expect(calls).toContain("POST node:gpu/v1/apps/chat/restart"), {
     timeout: 5000,
   });
