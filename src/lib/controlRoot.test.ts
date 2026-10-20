@@ -22,7 +22,7 @@ describe("describeControlRoot", () => {
     expect(line).not.toBeNull();
     expect(line?.tone).toBe("muted");
     expect(line?.text).toBe(
-      "Control root http://127.0.0.1:8183 · found through this node's agent · 2 nodes",
+      "Control root http://127.0.0.1:8183 · found through this machine's agent · 2 machines",
     );
     expect(line?.detail).toBeNull();
   });
@@ -34,7 +34,7 @@ describe("describeControlRoot", () => {
       ),
     );
     expect(line?.text).toBe(
-      "Control root http://192.168.16.252:8283 · set under Settings · 1 node",
+      "Control root http://192.168.16.252:8283 · set under Settings · 1 machine",
     );
   });
 
@@ -46,7 +46,7 @@ describe("describeControlRoot", () => {
     );
     expect(line?.tone).toBe("warn");
     expect(line?.text).toBe(
-      "Control root http://127.0.0.1:8083 did not answer on the gateway's last refresh (503 Locked): showing the last node list it had · 2 nodes.",
+      "Control root http://127.0.0.1:8083 did not answer on the gateway's last refresh (503 Locked): showing the last machine list it had · 2 machines.",
     );
     // A sealed root has a specific remedy, and the line says it.
     expect(line?.detail).toContain("Machines page");
@@ -61,7 +61,7 @@ describe("describeControlRoot", () => {
     );
     expect(line?.tone).toBe("warn");
     expect(line?.text).toBe(
-      "Control root http://nowhere:1 did not answer on the gateway's last refresh (HTTP 404): showing the last node list it had.",
+      "Control root http://nowhere:1 did not answer on the gateway's last refresh (HTTP 404): showing the last machine list it had.",
     );
     expect(line?.detail).toContain("set under Settings");
     expect(line?.detail).not.toContain("Machines page");

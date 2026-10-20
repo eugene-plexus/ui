@@ -699,7 +699,7 @@ function driverBranch(
         };
   const hintFor = (key: string | null, count: number): string | undefined =>
     !(key === null || nodes.includes(key))
-      ? "no node in the registry"
+      ? "no machine in the registry"
       : count === 0
         ? "none"
         : undefined;

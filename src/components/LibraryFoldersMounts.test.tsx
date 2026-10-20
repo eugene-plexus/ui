@@ -61,21 +61,21 @@ describe("Config -> Library folders", () => {
   it("types a share path into the Windows box, keystroke by keystroke", async () => {
     const onValue = vi.fn();
     render(<Harness initial={[{ path: "/models", mounts: [] }]} onValue={onValue} />);
-    const windows = screen.getByLabelText("Mount on Windows nodes");
+    const windows = screen.getByLabelText("Mount on Windows machines");
     await userEvent.type(windows, UNC);
 
     expect(windows).toHaveValue(UNC);
-    expect(screen.getByLabelText("Mount on Linux and macOS nodes")).toHaveValue("");
+    expect(screen.getByLabelText("Mount on Linux and macOS machines")).toHaveValue("");
     expect(onValue).toHaveBeenLastCalledWith([{ path: "/models", mounts: [UNC] }]);
   });
 
   it("types a drive-letter path too, and keeps the Linux/macOS mount beside it", async () => {
     const onValue = vi.fn();
     render(<Harness initial={[{ path: "/models", mounts: ["/mnt/models"] }]} onValue={onValue} />);
-    await userEvent.type(screen.getByLabelText("Mount on Windows nodes"), String.raw`Z:\models`);
+    await userEvent.type(screen.getByLabelText("Mount on Windows machines"), String.raw`Z:\models`);
 
-    expect(screen.getByLabelText("Mount on Windows nodes")).toHaveValue(String.raw`Z:\models`);
-    expect(screen.getByLabelText("Mount on Linux and macOS nodes")).toHaveValue("/mnt/models");
+    expect(screen.getByLabelText("Mount on Windows machines")).toHaveValue(String.raw`Z:\models`);
+    expect(screen.getByLabelText("Mount on Linux and macOS machines")).toHaveValue("/mnt/models");
     expect(onValue).toHaveBeenLastCalledWith([
       { path: "/models", mounts: ["/mnt/models", String.raw`Z:\models`] },
     ]);
@@ -83,7 +83,7 @@ describe("Config -> Library folders", () => {
 
   it("says so when a box holds the other system's kind of path", async () => {
     render(<Harness initial={[{ path: "/models", mounts: [] }]} onValue={vi.fn()} />);
-    await userEvent.type(screen.getByLabelText("Mount on Windows nodes"), "/mnt/models");
+    await userEvent.type(screen.getByLabelText("Mount on Windows machines"), "/mnt/models");
     expect(screen.getByTestId("mount-problem-windows")).toHaveTextContent(
       "/mnt/models is a Linux/macOS path",
     );
@@ -102,13 +102,13 @@ describe("Config -> Library folders", () => {
     );
     // Both rows typed into: with the typed boxes left where they were, the
     // remaining folder would show the removed one's path.
-    const [first, second] = screen.getAllByLabelText("Mount on Windows nodes");
+    const [first, second] = screen.getAllByLabelText("Mount on Windows machines");
     await userEvent.type(first!, String.raw`X:\a`);
     await userEvent.type(second!, String.raw`Y:\b`);
     await userEvent.click(screen.getAllByRole("button", { name: "remove" })[0]!);
 
-    expect(screen.getAllByLabelText("Mount on Windows nodes")).toHaveLength(1);
-    expect(screen.getByLabelText("Mount on Windows nodes")).toHaveValue(String.raw`Y:\b`);
+    expect(screen.getAllByLabelText("Mount on Windows machines")).toHaveLength(1);
+    expect(screen.getByLabelText("Mount on Windows machines")).toHaveValue(String.raw`Y:\b`);
     expect(onValue).toHaveBeenLastCalledWith([{ path: "/b", mounts: [String.raw`Y:\b`] }]);
   });
 });

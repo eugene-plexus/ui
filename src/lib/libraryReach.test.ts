@@ -115,18 +115,18 @@ describe("one node's cell for one folder", () => {
   it("is unknown, never an error, when the node did not answer or lacks the folder", () => {
     expect(cellFor("/models", null)).toMatchObject({
       tone: "unknown",
-      note: "node did not answer",
+      note: "machine did not answer",
     });
     expect(cellFor("/new", reach)).toMatchObject({
       tone: "unknown",
-      note: "not in this node's folder list",
+      note: "not in this machine's folder list",
     });
     const stale: LibraryFolderReach = {
       libraryConsulted: false,
       folderListAgeSeconds: 600,
       folders: [],
     };
-    expect(cellFor("/new", stale).note).toBe("this node's copy is 10 min old and lacks it");
+    expect(cellFor("/new", stale).note).toBe("this machine's copy is 10 min old and lacks it");
     const never: LibraryFolderReach = { libraryConsulted: false, folders: [] };
     expect(cellFor("/new", never).note).toContain("never read");
     expect(cellFor("/new", never).tone).toBe("unknown");

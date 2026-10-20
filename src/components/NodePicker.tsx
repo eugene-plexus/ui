@@ -26,7 +26,7 @@ export function NodePicker({
 
   const summary = describeBudget(selected.budget);
   const title =
-    "Verdicts use this node's free memory, and Launch runs the model here. " +
+    "Verdicts use this machine's free memory, and Launch runs the model here. " +
     "The library may be on another machine; its hardware is not measured.";
 
   if (nodes.length <= 1) {
@@ -44,7 +44,7 @@ export function NodePicker({
         value={selected.name ?? ""}
         onChange={(event) => onSelect(event.target.value === "" ? null : event.target.value)}
         className="font-ui max-w-full min-w-0 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 text-sm outline-none focus:border-[color:var(--border-hover)]"
-        aria-label="Node to score against and launch on"
+        aria-label="Machine to score against and launch on"
       >
         {nodes.map((node) => (
           <option key={node.name ?? "__local"} value={node.name ?? ""}>

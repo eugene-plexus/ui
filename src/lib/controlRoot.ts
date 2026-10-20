@@ -35,7 +35,7 @@ export function describeControlRoot(
 
   const url = root.url ? String(root.url).replace(/\/$/, "") : null;
   const nodes = typeof root.nodes === "number" ? root.nodes : null;
-  const nodesText = nodes === null ? "" : ` · ${nodes} node${nodes === 1 ? "" : "s"}`;
+  const nodesText = nodes === null ? "" : ` · ${nodes} machine${nodes === 1 ? "" : "s"}`;
 
   if (root.source === "none") {
     return {
@@ -45,7 +45,8 @@ export function describeControlRoot(
     };
   }
 
-  const from = root.source === "config" ? "set under Settings" : "found through this node's agent";
+  const from =
+    root.source === "config" ? "set under Settings" : "found through this machine's agent";
   const where = url ? `Control root ${url}` : "Control root";
 
   if (!root.reachable) {
@@ -53,10 +54,10 @@ export function describeControlRoot(
     const sealed = typeof root.error === "string" && /locked/i.test(root.error);
     return {
       tone: "warn",
-      text: `${where} did not answer on the gateway's last refresh${why}: showing the last node list it had${nodesText}.`,
+      text: `${where} did not answer on the gateway's last refresh${why}: showing the last machine list it had${nodesText}.`,
       detail: sealed
         ? "The root is sealed, as after every container restart: unlock it on the Machines page, or set up the passphrase file so it unlocks itself."
-        : `${where.charAt(0).toUpperCase()}${where.slice(1)} was ${from}. Backends on the nodes it last listed stay routable; a node that joined since will not appear until it answers.`,
+        : `${where.charAt(0).toUpperCase()}${where.slice(1)} was ${from}. Backends on the machines it last listed stay routable; a machine that joined since will not appear until it answers.`,
     };
   }
 

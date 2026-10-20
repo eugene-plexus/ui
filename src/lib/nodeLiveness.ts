@@ -57,19 +57,19 @@ export function describeLiveness(liveness: Liveness): { label: string; title: st
     case "reachable":
       return {
         label: "reachable",
-        title: "This root reached the node's agent on its last pass.",
+        title: "This root reached the machine's agent on its last pass.",
       };
     case "unchecked":
       return {
         label: "checking…",
         title:
           "This root has not polled since it started; a sealed root cannot poll. It clears within one poll interval after an unlock. This is not " +
-          "a report that the node is down.",
+          "a report that the machine is down.",
       };
     default:
       return {
         label: "down",
-        title: "This root tried to reach the node and could not. The reason is below.",
+        title: "This root tried to reach the machine and could not. The reason is below.",
       };
   }
 }

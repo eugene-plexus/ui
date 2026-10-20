@@ -151,7 +151,7 @@ export function foldersProblem(folders: LibraryFolder[]): string | null {
       }
       const shape = shapeOf(mount);
       if (shapes.has(shape))
-        return `${folder.path} has two ${shape} mounts; a node takes the first`;
+        return `${folder.path} has two ${shape} mounts; a machine takes the first`;
       shapes.add(shape);
     }
   }
@@ -191,7 +191,7 @@ export function cellFor(folderPath: string, reach: LibraryFolderReach | null): R
       localPath: null,
       source: null,
       tone: "unknown",
-      note: "node did not answer",
+      note: "machine did not answer",
     };
   }
   if (!row) {
@@ -204,10 +204,10 @@ export function cellFor(folderPath: string, reach: LibraryFolderReach | null): R
       // mounts: that is a fault with a fix, not an unknown.
       tone: !reach.libraryConsulted && reach.libraryError ? "error" : "unknown",
       note: reach.libraryConsulted
-        ? "not in this node's folder list"
+        ? "not in this machine's folder list"
         : age == null
-          ? "this node has never read the Library's folders"
-          : `this node's copy is ${describeAge(age)} old and lacks it`,
+          ? "this machine has never read the Library's folders"
+          : `this machine's copy is ${describeAge(age)} old and lacks it`,
     };
   }
   if (!row.exists) {

@@ -143,7 +143,7 @@ describe("nodes page, sealed control root", () => {
     expect(screen.getByText(/unknown until the root is unlocked/i)).toBeTruthy();
     // "No nodes are enrolled. That is unusual" is a claim about the
     // registry. We never got to read it.
-    expect(screen.queryByText(/no nodes are enrolled/i)).toBeNull();
+    expect(screen.queryByText(/no machines are enrolled/i)).toBeNull();
   });
 
   it("says why the form is still here now that signing in unlocks the root too", async () => {
@@ -532,7 +532,7 @@ describe("the join command", () => {
       },
     };
     render(<NodesPage />);
-    await screen.findByText(/Node connections are not published/);
+    await screen.findByText(/Machine connections are not published/);
     expect(screen.getByRole("button", { name: "Make a join token" })).toBeDisabled();
     expect(screen.getByLabelText(/Control root URL/)).toHaveValue("");
   });

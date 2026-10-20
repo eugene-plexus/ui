@@ -488,7 +488,7 @@ function LaunchPreview({
           </Link>
           {" — Library → "}
           {node.label}
-          {" → Folders. Set it on the folder itself to cover every node of that kind."}
+          {" → Folders. Set it on the folder itself to cover every machine of that kind."}
         </p>
       )}
     </div>
@@ -897,13 +897,13 @@ function ProfileForm({
               {suggestedWay === "experts" ? (
                 <>
                   contextSize starts at {suggestedContext.toLocaleString()}. That is the longest it
-                  can be with every layer on {nodeLabel ?? "this node"}&rsquo;s graphics card and
+                  can be with every layer on {nodeLabel ?? "this machine"}&rsquo;s graphics card and
                   the experts in system memory.
                 </>
               ) : (
                 <>
                   contextSize starts at {suggestedContext.toLocaleString()}: the largest context at
-                  which this file fits entirely in {nodeLabel ?? "this node"}&rsquo;s GPU memory.
+                  which this file fits entirely in {nodeLabel ?? "this machine"}&rsquo;s GPU memory.
                 </>
               )}
               {suggestedWay === "whole" && model.contextLength != null && (

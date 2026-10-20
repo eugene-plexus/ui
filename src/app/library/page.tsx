@@ -1384,7 +1384,7 @@ function FitPanel({
                   : fit.fit.offload === "layers"
                     ? "Needs partial CPU offload"
                     : "Needs system memory as well")}
-              {verdict === "no" && "Too large for this node"}
+              {verdict === "no" && "Too large for this machine"}
               {verdict === "unknown" && "Can't tell: a GPU here did not say its memory"}
             </>
           )}
@@ -1702,7 +1702,7 @@ function PreparedFacts({ model, prepared }: { model: LibraryModel; prepared: Pre
         </span>
         {prepared.entryFound === false && (
           <span className="ml-2 text-[color:var(--muted)]">
-            not on the Library&rsquo;s machine; the node that runs it checks it when it starts
+            not on the Library&rsquo;s machine; the machine that runs it checks it when it starts
           </span>
         )}
       </Row>
