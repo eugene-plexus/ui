@@ -314,3 +314,26 @@ export function runtimeFailure(
   if (!said || status === "ready") return null;
   return said;
 }
+
+/**
+ * A runtime's state in one plain sentence (CX1, 2026-10-20). The badge
+ * said `crashed` or `exited` with its meaning in a hover tooltip, which a
+ * phone cannot open. Null where another line already says it (loading,
+ * copying, a stop reason) or there is nothing to explain (ready). `retry`
+ * is a state a person ends by starting it again.
+ */
+export function statusSentence(status: string | null): { text: string; retry: boolean } | null {
+  switch (status) {
+    case "starting":
+      return { text: "Starting: the engine is up and not answering yet.", retry: false };
+    case "exited":
+      return { text: "Its engine exited, and Eugene is starting it again.", retry: false };
+    case "crashed":
+      return {
+        text: "Its engine failed to start several times, so Eugene stopped trying.",
+        retry: true,
+      };
+    default:
+      return null;
+  }
+}

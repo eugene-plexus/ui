@@ -186,9 +186,13 @@ describe("/backends/add", () => {
     expectPlainWords();
 
     // The order that makes the app exist before anything is asked of it.
-    const sequence = calls
-      .map(key)
-      .filter((k) => !k.startsWith("GET agent/v1/auth") && k !== "GET agent/v1/config");
+    const sequence = calls.map(key).filter(
+      (k) =>
+        !k.startsWith("GET agent/v1/auth") &&
+        k !== "GET agent/v1/config" &&
+        // This machine's name, for the settings link (CX1); read once.
+        k !== "GET agent/v1/node",
+    );
     expect(sequence).toEqual([
       "GET agent/v1/components",
       "POST agent/v1/components",
@@ -466,6 +470,12 @@ describe("a provider account (P1)", () => {
 
     const done = await screen.findByTestId("backend-added");
     expect(done).toHaveTextContent("ollama is added and serves 2 models");
+    // CX1: the settings it names are a link to that driver's, and it can be tried.
+    expect(within(done).getByRole("link", { name: "its Settings" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/config?sel=driver"),
+    );
+    expect(within(done).getByTestId("backend-try")).toHaveAttribute("href", "/playground");
     expectPlainWords();
     const patches = calls.filter((c) => key(c) === "PATCH ollama/v1/config").map((c) => c.body);
     expect(patches).toEqual([{ provider: "ollama_local" }]);

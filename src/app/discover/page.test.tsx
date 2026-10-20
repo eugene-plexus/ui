@@ -1243,13 +1243,29 @@ describe("the starter set's Download", () => {
       body: { detail: { title: "Busy", detail: "Another download is already writing that file." } },
     }));
     render(<DiscoverPage />);
-    const button = await screen.findByTestId("starter-download", {}, { timeout: 5000 });
+    const button = await screen.findByTestId("starter-download-only", {}, { timeout: 5000 });
     await act(async () => {
       fireEvent.click(button);
     });
     expect(await screen.findByTestId("starter-error")).toHaveTextContent(
       "Another download is already writing that file.",
     );
+  });
+
+  it("downloads and runs the pick, as Home's same card does (CX1)", async () => {
+    render(<DiscoverPage />);
+    const button = await screen.findByTestId("starter-download", {}, { timeout: 5000 });
+    expect(button).toHaveTextContent("Download and run");
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    // One durable run with the download inside it, not a bare download.
+    await waitFor(() =>
+      expect(seen.some((r) => r.path.startsWith("library/v1/run-operations/"))).toBe(true),
+    );
+    const run = seen.find((r) => r.path.startsWith("library/v1/run-operations/"));
+    expect(run?.body).toMatchObject({ download: { repo: REPO, files: [STARTER_FILE] } });
+    expect(seen.some((r) => r.path === "library/v1/downloads" && r.body)).toBe(false);
   });
 });
 

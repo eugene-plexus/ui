@@ -6,6 +6,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { PersonSection } from "@/components/PersonSection";
 import { PeopleDirectory } from "@/components/PeopleDirectory";
 import { PermissionGroups } from "@/components/PermissionGroups";
+import { pageTitle } from "@/lib/pageTitle";
 import { beginAdministrationSignIn, finishAdministrationSignIn } from "@/lib/administrationSignIn";
 import { api, ApiError, describeError } from "@/lib/api";
 import { appsSummary, MIN_PASSWORD } from "@/lib/people";
@@ -64,7 +65,7 @@ export default function AdministrationPage() {
       .finally(() => {
         if (live) setRestored(true);
       });
-    document.title = "People and access ? Eugene Plexus";
+    document.title = pageTitle({ page: "People and access", node: null, machines: 1 });
     return () => {
       live = false;
     };

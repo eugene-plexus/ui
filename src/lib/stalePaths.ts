@@ -13,7 +13,7 @@
  * path out itself: the agent's Windows/POSIX matching lives in one place.
  */
 
-import type { LibraryFolderReach, Runtime } from "./types";
+import type { LibraryFolderReach, Runtime, Scan } from "./types";
 
 export interface StaleModel {
   /** The node's install name; null for an unenrolled single host. */
@@ -82,6 +82,30 @@ export function savedMessage(
     );
   }
   return parts.join(" ");
+}
+
+/**
+ * What the scan that follows a save found (CX1, 2026-10-20).
+ *
+ * Saving the folders used to say "this machine has read them" and never
+ * look inside, so Home went on offering a 16 GB download to someone whose
+ * folder was full of models; setup's Finish scans for the same reason.
+ * Null means the scan could not be started or read; "scanning" means it
+ * is still walking when the page stopped waiting.
+ */
+export function scanMessage(scan: Scan | null): string {
+  if (scan === null) return "The Library could not scan them; press Scan on the Library page.";
+  if (scan.state === "failed")
+    return `The Library's scan failed: ${scan.error ?? "no reason given"}.`;
+  if (scan.state === "cancelled")
+    return "The Library's scan was cancelled; press Scan to finish it.";
+  if (scan.state !== "done") {
+    return "The Library is still scanning them; the Library page shows when it finishes.";
+  }
+  const found = scan.modelsFound ?? 0;
+  const added = scan.added ?? 0;
+  const models = `${found} ${found === 1 ? "model" : "models"}`;
+  return added > 0 ? `Found ${models}, ${added} of them new.` : `Found ${models}.`;
 }
 
 /**

@@ -372,7 +372,7 @@ export function BenchmarkResults({ job }: { job: Benchmark }) {
       >
         <path d="M50 20 V170 H440" fill="none" stroke="currentColor" />
         <text x="8" y="14" fontSize="11">
-          tokens/s
+          tok/s
         </text>
         <text x="180" y="205" fontSize="11">
           Context depth (tokens)
@@ -407,7 +407,7 @@ export function BenchmarkResults({ job }: { job: Benchmark }) {
             <tr>
               {[
                 "Context depth",
-                "Mean tokens/s",
+                "Mean tok/s",
                 "Std. deviation",
                 "Samples",
                 "Vs. empty context",

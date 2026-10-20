@@ -46,6 +46,7 @@ export function StarterSetPanel({
   inFlight = new Set<string>(),
   error: downloadError = null,
   onDownload,
+  onDownloadAndRun,
   onOpenRepo,
 }: {
   budget: NodeBudget | null;
@@ -62,6 +63,9 @@ export function StarterSetPanel({
   /** Why the last Download from this panel was refused. */
   error?: string | null;
   onDownload: (model: StarterModel) => void;
+  /** Download the pick and run it, as Home's same card does (CX1). Without
+   * it, the pick's button only downloads. */
+  onDownloadAndRun?: (model: StarterModel) => void;
   onOpenRepo: (repo: string) => void;
 }) {
   const [set, setSet] = useState<StarterSet | null>(null);
@@ -159,7 +163,7 @@ export function StarterSetPanel({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => onDownload(pick)}
+              onClick={() => (onDownloadAndRun ?? onDownload)(pick)}
               disabled={busy !== null || !!pick.alreadyOwned || inFlight.has(pick.file)}
               className={primary}
               data-testid="starter-download"
@@ -170,8 +174,21 @@ export function StarterSetPanel({
                   ? "Starting…"
                   : inFlight.has(pick.file)
                     ? "Downloading…"
-                    : `Download ${downloadSize(pick.sizeBytes)}`}
+                    : onDownloadAndRun
+                      ? `Download and run · ${downloadSize(pick.sizeBytes)}`
+                      : `Download ${downloadSize(pick.sizeBytes)}`}
             </button>
+            {onDownloadAndRun && !pick.alreadyOwned && !inFlight.has(pick.file) && (
+              <button
+                type="button"
+                onClick={() => onDownload(pick)}
+                disabled={busy !== null}
+                className={secondary}
+                data-testid="starter-download-only"
+              >
+                Download only
+              </button>
+            )}
             <button type="button" onClick={() => onOpenRepo(pick.repo)} className={secondary}>
               Choose another version
             </button>

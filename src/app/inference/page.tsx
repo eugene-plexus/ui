@@ -19,6 +19,7 @@ import {
   nodeDetails,
   runtimeFailure,
   runtimeOf,
+  statusSentence,
 } from "@/lib/inferenceRows";
 import {
   describeCompute,
@@ -113,14 +114,14 @@ const STATUS_TONE: Record<RuntimeStatus, string> = {
 };
 
 const STATUS_HELP: Record<RuntimeStatus, string> = {
-  ready: "Model loaded and serving. The only state the gateway routes to.",
+  ready: "Loaded and answering. The only state apps can reach.",
   copying: "Copying the model onto this machine's disk. The engine starts when the copy lands.",
   loading: "Answering, but still reading the model into memory.",
-  starting: "Spawned, not yet answering its readiness probe.",
+  starting: "Started, and not answering yet.",
   stopped:
     "Not running and not being restarted: stopped by you, unloaded after its idle timeout, or autoStart is off. The stop reason says which.",
-  exited: "Exited cleanly; the agent is respawning it.",
-  crashed: "Exited non-zero repeatedly. The agent gave up — see the error.",
+  exited: "Its engine exited; Eugene is starting it again.",
+  crashed: "Its engine failed to start several times, so Eugene stopped trying.",
 };
 
 const BACKEND_LABEL: Record<string, string> = {
@@ -588,6 +589,44 @@ function NodeSection({
   // runtime's row can say the reason it cannot start (S3: Skip leaves a
   // runtime declared with no engine to run it, and the reason is here).
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
+  // An engine installed from a row's "Install and start", then that row's
+  // runtime started (CX1). The engines line reads its list again after.
+  const [installStart, setInstallStart] = useState<InstallStart | null>(null);
+  const [enginesRead, setEnginesRead] = useState(0);
+  async function installAndStart(row: Row, engine: string) {
+    if (!row.runtime) return;
+    const target = targetFor(name, localName);
+    const path = `/v1/engines/${encodeURIComponent(engine)}/install`;
+    const runtime = row.runtime;
+    setInstallStart({ runtime, text: `Installing ${engineWord(engine)}…`, error: null });
+    try {
+      let record: EngineInstall;
+      try {
+        record = await api.post<EngineInstall>(target, path, {});
+      } catch (err) {
+        // 409: an install is already under way; follow that one.
+        if (!(err instanceof ApiError && err.status === 409)) throw err;
+        record = await api.get<EngineInstall>(target, path);
+      }
+      while (inFlight(record.state)) {
+        setInstallStart({ runtime, text: installProgress(record), error: null });
+        await new Promise((resolve) => setTimeout(resolve, INSTALL_POLL_MS));
+        record = await api.get<EngineInstall>(target, path);
+      }
+      if (record.state !== "done") {
+        throw new Error(record.error ?? record.message ?? `The install ended ${record.state}.`);
+      }
+      setInstallStart(null);
+      setEnginesRead((n) => n + 1);
+      onAct(row.node, runtime, "start");
+    } catch (err) {
+      setInstallStart({
+        runtime,
+        text: "",
+        error: `${engineWord(engine)} could not be installed: ${describeError(err)}`,
+      });
+    }
+  }
   return (
     <section className="section-panel">
       <div className="section-heading flex flex-wrap items-center justify-between gap-3">
@@ -633,6 +672,8 @@ function NodeSection({
                   onAct={onAct}
                   onAutoStart={onAutoStart}
                   onRemove={onRemove}
+                  onInstallAndStart={installAndStart}
+                  installStart={installStart?.runtime === row.runtime ? installStart : null}
                   contexts={contexts}
                   marked={marked !== null && marked !== undefined && row.driver === marked}
                 />
@@ -645,6 +686,7 @@ function NodeSection({
         target={targetFor(name, localName)}
         reachable={node?.reachable ?? true}
         onEngines={setEngines}
+        readAgain={enginesRead}
         label={label}
         nodeName={name}
         rows={rows}
@@ -668,6 +710,13 @@ function driverIsImplied(row: Row): boolean {
   );
 }
 
+/** A row's "Install and start": the install's progress, or why it failed. */
+interface InstallStart {
+  runtime: string;
+  text: string;
+  error: string | null;
+}
+
 /** Saves whether a runtime starts when Eugene does; true when it did. */
 type AutoStartHandler = (node: string | null, runtime: string, value: boolean) => Promise<boolean>;
 
@@ -680,6 +729,8 @@ function RowView({
   onAct,
   onAutoStart,
   onRemove,
+  onInstallAndStart,
+  installStart,
   contexts,
   marked,
 }: {
@@ -697,6 +748,10 @@ function RowView({
   onAct: (node: string | null, runtime: string, action: "start" | "stop" | "restart") => void;
   onAutoStart: AutoStartHandler;
   onRemove: (row: Row) => void;
+  /** Install the engine a stopped runtime lacks, then start it. */
+  onInstallAndStart: (row: Row, engine: string) => void;
+  /** That install, while it runs or after it failed, for this row. */
+  installStart: InstallStart | null;
   /** Each served model's context window, said beside its name. */
   contexts: ContextLookup;
   /** This is the row the tree selected. */
@@ -756,7 +811,11 @@ function RowView({
   // the buttons without the row around them.
   const actionName = row.model ?? row.driver ?? row.runtime ?? "this backend";
   const missingEngine = stoppedForWantOfEngine(row, engines);
+  const installable =
+    missingEngine !== null &&
+    engines?.find((e) => e.engine === missingEngine)?.acquisition?.installable === true;
   const failure = runtimeFailure(row.runtimeStatus, own?.lastError);
+  const sentence = row.runtime ? statusSentence(row.runtimeStatus) : null;
   // Why it is stopped, in words (agent#11: "someone stopped it" now
   // outlives a reboot, and the row says so).
   const stopReason =
@@ -860,10 +919,49 @@ function RowView({
             unreachable
           </span>
         )}
+        {sentence && !missingEngine && (
+          <div className="text-[0.6875rem]" data-testid="status-sentence">
+            {sentence.text}
+            {sentence.retry && row.runtime && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  className="underline disabled:opacity-40"
+                  disabled={busy !== null}
+                  onClick={() => onAct(row.node, row.runtime as string, "start")}
+                  data-testid="status-retry"
+                >
+                  Try again
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {missingEngine && (
-          <div className="text-[0.6875rem]" data-testid="stopped-reason">
-            {engineWord(missingEngine)} is not installed on this machine, so this cannot start. Open
-            Engines below to install it, then press start.
+          <div className="space-y-1 text-[0.6875rem]" data-testid="stopped-reason">
+            <div>
+              {engineWord(missingEngine)} is not installed on this machine, so this cannot start.
+              {!installable && " Open Engines below to see why it cannot be installed here."}
+            </div>
+            {installable && (
+              <button
+                type="button"
+                className={smallButton}
+                disabled={busy !== null || (installStart !== null && installStart.error === null)}
+                onClick={() => onInstallAndStart(row, missingEngine)}
+                data-testid="install-and-start"
+              >
+                {installStart && installStart.error === null
+                  ? installStart.text
+                  : `Install ${engineWord(missingEngine)} and start`}
+              </button>
+            )}
+            {installStart?.error && (
+              <div role="alert" style={{ color: "var(--status-error-fg)" }}>
+                {installStart.error}
+              </div>
+            )}
           </div>
         )}
         {copying && (
@@ -952,7 +1050,7 @@ function RowView({
         )}
         {row.eligible === false && row.ineligibleReason && (
           <div className="text-[0.6875rem] text-[color:var(--muted)]">
-            not routable: {row.ineligibleReason}
+            Apps cannot reach it: {row.ineligibleReason}
           </div>
         )}
         {/* Why the gateway routes nothing here, in words, on a runtime's
@@ -1122,6 +1220,7 @@ function EngineManagement({
   target,
   reachable,
   onEngines,
+  readAgain,
   label,
   nodeName,
   rows,
@@ -1133,6 +1232,8 @@ function EngineManagement({
   rows: Row[];
   /** The node's engines as last read, for the rows above this line. */
   onEngines?: (engines: EngineDescriptor[]) => void;
+  /** Read the engines again whenever this changes: a row installed one. */
+  readAgain?: number;
 }) {
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
   const [installs, setInstalls] = useState<Record<string, EngineInstall | null>>({});
@@ -1181,7 +1282,7 @@ function EngineManagement({
   useEffect(() => {
     if (!reachable) return;
     void load();
-  }, [load, reachable]);
+  }, [load, reachable, readAgain]);
 
   const installing = Object.values(installs).some((i) => i != null && inFlight(i.state));
   const needsAttention =

@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { restartLabel, savedMessage, staleOn, unreadFolders } from "./stalePaths";
+import { restartLabel, savedMessage, scanMessage, staleOn, unreadFolders } from "./stalePaths";
 import type { LibraryFolderReach, Runtime } from "./types";
 
 const AMISH = { name: "Amish_Station", label: "Amish_Station", target: "node:Amish_Station" };
@@ -103,6 +103,23 @@ describe("savedMessage", () => {
     for (const checks of [[{ label: "A", reach: reach(true) }], [{ label: "A", reach: null }]]) {
       expect(savedMessage(checks)).not.toMatch(/reboot|next launch|restart the node/i);
     }
+  });
+});
+
+describe("scanMessage", () => {
+  it("counts what the scan found once it is done", () => {
+    expect(scanMessage({ state: "done", modelsFound: 1, added: 0 })).toBe("Found 1 model.");
+    expect(scanMessage({ state: "done", modelsFound: 7, added: 3 })).toBe(
+      "Found 7 models, 3 of them new.",
+    );
+  });
+
+  it("never claims a count for a scan that has not finished", () => {
+    expect(scanMessage({ state: "scanning" })).toMatch(/still scanning/);
+    expect(scanMessage(null)).toMatch(/could not scan/);
+    expect(scanMessage({ state: "failed", error: "Y: is not mounted" })).toBe(
+      "The Library's scan failed: Y: is not mounted.",
+    );
   });
 });
 

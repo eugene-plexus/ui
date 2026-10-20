@@ -27,13 +27,14 @@
  */
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { SetupGateScreen } from "@/components/SetupGateScreen";
 import { api } from "@/lib/api";
+import { formatSelection } from "@/lib/resourceTree";
 import { providerLabel } from "@/lib/agent";
-import type { ComponentList } from "@/lib/types";
+import type { ComponentList, NodeIdentity } from "@/lib/types";
 import { useSetupGate } from "@/lib/useSetupGate";
 import { type BackendDraft, blankBackend } from "@/app/setup/draft";
 import {
@@ -70,6 +71,20 @@ export default function AddBackendPage() {
   const [created, setCreated] = useState<{ name: string; provider: string } | null>(null);
   // For a provider account: every model it lists (the default), or one.
   const [useEvery, setUseEvery] = useState(true);
+  // This machine's name, so "its Settings" opens the driver on it (CX1).
+  // Soft: a bare name is what the tree resolves on a box with no name.
+  const [localNode, setLocalNode] = useState<string | null>(null);
+  useEffect(() => {
+    void api
+      .get<NodeIdentity>("agent", "/v1/node")
+      .then((n) => setLocalNode(n.name ?? null))
+      .catch(() => undefined);
+  }, []);
+  function settingsHref(driver: string): string {
+    return `/config?sel=${encodeURIComponent(
+      formatSelection({ type: "driver", node: localNode, name: driver }),
+    )}`;
+  }
 
   function patch(p: Partial<BackendDraft>) {
     setBackend((prev) => ({ ...prev, ...p }));
@@ -293,7 +308,11 @@ export default function AddBackendPage() {
               {!phase.account && (
                 <p className="mt-3 text-sm leading-relaxed text-[color:var(--muted)]">
                   Choosing later is fine. The app will not answer anything until a model is set,
-                  under Settings.
+                  under{" "}
+                  <Link href={settingsHref(phase.name)} className="underline">
+                    its Settings
+                  </Link>
+                  .
                 </p>
               )}
             </section>
@@ -309,7 +328,11 @@ export default function AddBackendPage() {
                     and serves {phase.account.exposed}{" "}
                     {phase.account.exposed === 1 ? "model" : "models"}, each named{" "}
                     <span className="font-mono">{phase.name}/</span> and the name the app gives it.
-                    Keep fewer under Settings, in Models to use.
+                    Keep fewer under{" "}
+                    <Link href={settingsHref(phase.name)} className="underline">
+                      its Settings
+                    </Link>
+                    , in Models to use.
                   </>
                 ) : phase.modelId ? (
                   <>
@@ -317,11 +340,25 @@ export default function AddBackendPage() {
                     and answers for <span className="font-mono">{phase.modelId}</span>.
                   </>
                 ) : (
-                  <>. It has no model yet, so set one under Settings before it can answer.</>
+                  <>
+                    . It has no model yet, so set one under{" "}
+                    <Link href={settingsHref(phase.name)} className="underline">
+                      its Settings
+                    </Link>{" "}
+                    before it can answer.
+                  </>
                 )}
               </p>
               <div className="flex flex-wrap items-center gap-3">
-                <Link href="/inference" className={primary}>
+                {(phase.account || phase.modelId) && (
+                  <Link href="/playground" className={primary} data-testid="backend-try">
+                    Try it in the Playground
+                  </Link>
+                )}
+                <Link
+                  href="/inference"
+                  className={phase.account || phase.modelId ? secondary : primary}
+                >
                   See it on Backends
                 </Link>
                 <button type="button" onClick={reset} className={secondary}>

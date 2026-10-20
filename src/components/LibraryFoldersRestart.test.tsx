@@ -49,6 +49,11 @@ function stub(world: World) {
         };
       } else if (key === "PATCH library/v1/config") {
         body = { applied: ["modelRoots"], rejected: [] };
+      } else if (key === "POST library/v1/scan") {
+        status = 202;
+        body = { state: "scanning" };
+      } else if (key === "GET library/v1/scan") {
+        body = { state: "done", modelsFound: 12, added: 12 };
       } else if (key.endsWith("/v1/library/folders/check")) {
         body = world.check;
       } else if (key === "GET agent/v1/node") {
@@ -201,6 +206,21 @@ describe("Library -> Folders, after a mount changes", () => {
     const status = await screen.findByText(/Folders saved/);
     expect(status).toHaveTextContent("Folders saved, and this machine has read them.");
     expect(status.textContent).not.toMatch(/next launch|reboot/i);
+  });
+
+  it("scans the folders after a save and says how many models it found (CX1)", async () => {
+    // Saving said "this machine has read them" and never looked inside,
+    // so Home went on offering a download to a folder full of models.
+    const world: World = { opened: NEW, check: { libraryConsulted: true, folders: [] }, calls: [] };
+    stub(world);
+    render(<LibraryFolders nodeName={undefined} />);
+    const box = await screen.findByLabelText("Mount on Linux and macOS nodes");
+    await userEvent.type(box, "/mnt/models");
+    await userEvent.click(screen.getByTestId("folders-save"));
+
+    const status = await screen.findByText(/Found 12 models/, undefined, { timeout: 3000 });
+    expect(status).toHaveTextContent("Found 12 models, 12 of them new.");
+    expect(world.calls).toContain("POST library/v1/scan");
   });
 
   /** A model on OLD until `move()` is called, after which its next start opens NEW. */
