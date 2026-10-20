@@ -45,6 +45,8 @@ export interface TrustGuide {
   /** A second path for a browser with its own certificate store. */
   firefox?: string[];
   note?: string;
+  /** Where this OS shows the fingerprint to compare. */
+  check?: string;
 }
 
 const FIREFOX = [
@@ -56,6 +58,7 @@ const FIREFOX = [
 export const TRUST_GUIDES: Record<TrustOs, TrustGuide> = {
   windows: {
     title: "Windows",
+    check: "To compare, open the file first: Details tab, Thumbprint.",
     steps: [
       "Open the downloaded file and choose Install Certificate.",
       "Choose Current User, then Next.",
@@ -68,6 +71,7 @@ export const TRUST_GUIDES: Record<TrustOs, TrustGuide> = {
   },
   macos: {
     title: "macOS",
+    check: "To compare, see the SHA-256 Fingerprint in the certificate's details.",
     steps: [
       "Open the downloaded file. Keychain Access adds it.",
       "Double-click the Eugene Plexus CA entry and open Trust.",

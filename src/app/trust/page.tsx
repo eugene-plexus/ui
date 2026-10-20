@@ -10,6 +10,8 @@
 
 import { useEffect, useState } from "react";
 
+import { CaFingerprintLines } from "@/components/CaFingerprintLines";
+import { loadCaFingerprints, localhostTrustUrl, type CaFingerprints } from "@/lib/caFingerprint";
 import { BUNDLE_HREF } from "@/lib/connectTls";
 import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
 import { caServed, httpsTarget, httpsTrusted } from "@/lib/tlsProbe";
@@ -27,6 +29,7 @@ function Steps({ os, open }: { os: TrustOs; open: boolean }) {
           <li key={step}>{step}</li>
         ))}
       </ol>
+      {guide.check && <p className="mt-2 text-sm text-[color:var(--muted)]">{guide.check}</p>}
       {guide.note && <p className="mt-2 text-sm text-[color:var(--muted)]">{guide.note}</p>}
       {guide.firefox && (
         <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
@@ -45,10 +48,16 @@ export default function TrustPage() {
   const [detected, setDetected] = useState<TrustOs | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [fingerprints, setFingerprints] = useState<CaFingerprints | null | undefined>(undefined);
+  const [localUrl, setLocalUrl] = useState("");
 
   useEffect(() => {
     let live = true;
     setDetected(detectOs(navigator.userAgent, navigator.platform, navigator.maxTouchPoints));
+    setLocalUrl(localhostTrustUrl(window.location.port));
+    void loadCaFingerprints().then((found) => {
+      if (live) setFingerprints(found);
+    });
     void caServed().then((ok) => {
       if (live) setAvailable(ok);
     });
@@ -100,6 +109,21 @@ export default function TrustPage() {
               Download as PEM
             </a>
           </p>
+
+          {fingerprints ? (
+            <div className="mt-6" data-testid="trust-fingerprint">
+              <CaFingerprintLines fingerprints={fingerprints} />
+              <p className="mt-1 text-sm">
+                Check that the certificate you install shows this fingerprint.
+              </p>
+            </div>
+          ) : fingerprints === null ? (
+            <p className="mt-6 text-sm" data-testid="trust-fingerprint-elsewhere">
+              Before you install it, check its fingerprint: open the Access page on a console
+              you&apos;re already signed in to over https, or this page on this machine at{" "}
+              <span className="font-mono">{localUrl}</span>.
+            </p>
+          ) : null}
 
           <p className="mt-4 text-sm" data-testid="trust-python">
             Python clients: download the{" "}

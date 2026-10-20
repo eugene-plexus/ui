@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 
+import { CaFingerprintLines } from "@/components/CaFingerprintLines";
+import { loadCaFingerprints, type CaFingerprints } from "@/lib/caFingerprint";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { api, describeError } from "@/lib/api";
 import { certificateLine, namesChanged, parseNames, NAMES_HELP } from "@/lib/connectTls";
@@ -29,6 +31,10 @@ export function ClientDoors() {
   const [plain, setPlain] = useState<"on" | "off" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fingerprints, setFingerprints] = useState<CaFingerprints | null>(null);
+  useEffect(() => {
+    void loadCaFingerprints().then(setFingerprints);
+  }, []);
   const [otherNames, setOtherNames] = useState<Record<string, string[]>>({});
 
   const key = (node: TargetNode) => node.name ?? "this machine";
@@ -96,6 +102,11 @@ export function ClientDoors() {
       data-testid="client-doors"
     >
       <h2 className="font-ui text-lg font-semibold">Encrypted connections</h2>
+      {fingerprints && (
+        <div className="mt-2" data-testid="ca-fingerprint">
+          <CaFingerprintLines fingerprints={fingerprints} />
+        </div>
+      )}
       <div className="mt-3 space-y-3">
         {rows.map(({ node, reading }) => {
           const tls = reading?.tls ?? null;
