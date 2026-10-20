@@ -37,6 +37,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { More } from "@/components/Help";
 import { NodeNameCell } from "@/components/NodeNameCell";
 import { NodeUpdateCard } from "@/components/NodeUpdateCard";
+import { RemoveMachine } from "@/components/RemoveMachine";
 import { StandbyPanel } from "@/components/StandbyPanel";
 import { UpdateAllPanel } from "@/components/UpdateAllPanel";
 import { ApiError, api } from "@/lib/api";
@@ -629,6 +630,20 @@ export default function NodesPage() {
                               {n.lastError}
                             </div>
                           ) : null}
+                          {/* Every machine but the root's own (CX6); more
+                            plainly on one that is down. */}
+                          {n.role !== "control" && (
+                            <RemoveMachine
+                              facts={{
+                                name: n.name,
+                                label: n.label,
+                                reachable: n.reachable,
+                                standby: isStandby(n.grants),
+                                siteOwners: sitesHostedBy(sites, n.name).map((s) => s.ownerName),
+                              }}
+                              onRemoved={() => void load()}
+                            />
+                          )}
                           {status?.epoch != null &&
                           n.lastSeenEpoch != null &&
                           n.lastSeenEpoch < status.epoch ? (
