@@ -23,6 +23,7 @@ import {
   removeSlot,
   removeTarget,
   renameSlot,
+  notReadyWord,
   resolveTarget,
   selfTier,
   serializeModelSlots,
@@ -188,11 +189,34 @@ describe("resolution against the routing table", () => {
     const r = resolveTarget(ROUTING, "qwen3-coder-30b")!;
     expect(r.servedBy).toEqual(["qwen-driver @ nas", "qwen-driver @ Amish_Station"]);
     expect(r.eligibleCount).toBe(1);
+    // CX8: and why the one that is not ready is not.
+    expect(r.notReady).toEqual(["qwen-driver @ Amish_Station: not ready"]);
+  });
+
+  it("says why in one word, not the gateway's sentence (CX8)", () => {
+    const backend = { driver: "d", eligible: false } as const;
+    expect(notReadyWord({ ...backend, runtime_status: "loading" } as never)).toBe("loading");
+    expect(
+      notReadyWord({
+        ...backend,
+        runtime_status: "ready",
+        ineligible_reason: "runtime 'qwen' is being stopped",
+      } as never),
+    ).toBe("stopping");
+    expect(notReadyWord(backend as never)).toBe("not ready");
   });
 
   it("reports a target nothing serves as empty", () => {
-    expect(resolveTarget(ROUTING, "missing-model")).toEqual({ servedBy: [], eligibleCount: 0 });
-    expect(resolveTarget(ROUTING, "never-heard-of-it")).toEqual({ servedBy: [], eligibleCount: 0 });
+    expect(resolveTarget(ROUTING, "missing-model")).toEqual({
+      servedBy: [],
+      eligibleCount: 0,
+      notReady: [],
+    });
+    expect(resolveTarget(ROUTING, "never-heard-of-it")).toEqual({
+      servedBy: [],
+      eligibleCount: 0,
+      notReady: [],
+    });
   });
 
   it("keeps a primary that is down as a primary (R3.3)", () => {

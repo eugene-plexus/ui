@@ -9,6 +9,7 @@ import {
   downloadName,
   downloadText,
   engineLogsHref,
+  logsHref,
   keepNewest,
   logsQuery,
   looksLikeTrouble,
@@ -112,5 +113,22 @@ describe("the rest", () => {
       "/logs?sel=agent%3AAmish_Station&source=engine%3A%20qwen",
     );
     expect(engineLogsHref(null, "qwen")).toBe("/logs?sel=agent&source=engine%3A%20qwen");
+  });
+});
+
+describe("logsHref (CX8)", () => {
+  it("opens every machine on a request's id", () => {
+    expect(logsHref({ q: "req-7f3a" })).toBe("/logs?q=req-7f3a");
+  });
+
+  it("opens one machine on one source", () => {
+    expect(logsHref({ node: "nas", source: "app: workbench" })).toBe(
+      "/logs?sel=agent%3Anas&source=app%3A%20workbench",
+    );
+    expect(logsHref({ node: null, q: "workbench" })).toBe("/logs?sel=agent&q=workbench");
+  });
+
+  it("is plain Logs with nothing to narrow it", () => {
+    expect(logsHref({})).toBe("/logs");
   });
 });

@@ -228,6 +228,24 @@ export interface TargetResolution {
   servedBy: string[];
   /** How many of them could take a request right now. */
   eligibleCount: number;
+  /** Each one that could not, and why in one word: "qwen @ box: loading" (CX8). */
+  notReady: string[];
+}
+
+/**
+ * Why a backend cannot take a request, in one word (CX8). The gateway says
+ * "runtime 'qwen' is being stopped" or gives the runtime's status; the
+ * console says the state, not the sentence.
+ */
+export function notReadyWord(backend: RoutingBackend): string {
+  if (backend.ineligible_reason?.includes("being stopped")) return "stopping";
+  return backend.runtime_status ?? "not ready";
+}
+
+function notReady(backends: readonly RoutingBackend[]): string[] {
+  return backends
+    .filter((b) => !b.eligible)
+    .map((b) => `${describeBackend(b)}: ${notReadyWord(b)}`);
 }
 
 function describeBackend(backend: RoutingBackend): string {
@@ -249,18 +267,19 @@ export function resolveTarget(
 ): TargetResolution | null {
   if (!routing) return null;
   const wanted = id.trim();
-  if (!wanted) return { servedBy: [], eligibleCount: 0 };
+  if (!wanted) return { servedBy: [], eligibleCount: 0, notReady: [] };
   for (const slot of routing.slots ?? []) {
     for (const tier of slot.tiers ?? []) {
       if (tier.target === wanted && tier.backends.length > 0) {
         return {
           servedBy: tier.backends.map(describeBackend),
           eligibleCount: tier.backends.filter((b) => b.eligible).length,
+          notReady: notReady(tier.backends),
         };
       }
     }
   }
-  return { servedBy: [], eligibleCount: 0 };
+  return { servedBy: [], eligibleCount: 0, notReady: [] };
 }
 
 export interface SelfTier {
@@ -271,6 +290,7 @@ export interface SelfTier {
   declared: boolean;
   servedBy: string[];
   eligibleCount: number;
+  notReady: string[];
 }
 
 /**
@@ -286,11 +306,12 @@ export function selfTier(routing: RoutingTableView | null, model: string): SelfT
   const tier = slot?.tiers?.find((t) => t.target === wanted);
   // The tier's presence is the fact, not its backends: a declared runtime
   // whose driver has not joined yet still has its tier, with nothing in it.
-  if (!tier) return { declared: false, servedBy: [], eligibleCount: 0 };
+  if (!tier) return { declared: false, servedBy: [], eligibleCount: 0, notReady: [] };
   return {
     declared: true,
     servedBy: tier.backends.map(describeBackend),
     eligibleCount: tier.backends.filter((b) => b.eligible).length,
+    notReady: notReady(tier.backends),
   };
 }
 

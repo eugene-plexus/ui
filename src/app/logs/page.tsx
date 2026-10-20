@@ -15,6 +15,8 @@ import { parseSelection } from "@/lib/resourceTree";
  * root is every machine on one timeline, a machine under Agents is that
  * machine alone. `?source=` opens on one source -- the Inference screen
  * links a stopped or crashed model straight to its engine's lines.
+ * `?q=` opens on the lines that contain a text: a failure elsewhere in
+ * the console links here with its request's id or its machine's name (CX8).
  * Each machine is read through `node:<name>`, and a machine that does not
  * answer says so in its own words rather than leaving a gap.
  */
@@ -43,6 +45,7 @@ function Inner() {
         loaded={picker.loaded}
         everyMachine={!oneMachine}
         initialSource={searchParams.get("source")}
+        initialQuery={searchParams.get("q")}
       />
     </AppShell>
   );

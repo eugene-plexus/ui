@@ -47,6 +47,7 @@ import { type TargetNode, useTargetNode } from "@/lib/nodeBudget";
 import { parseSelection } from "@/lib/resourceTree";
 import { clockTime, timeAgo } from "@/lib/relativeTime";
 import { usePolling } from "@/lib/usePolling";
+import { logsHref } from "@/lib/logs";
 
 const POLL_MS = 15_000;
 const LINE = "var(--accent-left)";
@@ -328,7 +329,14 @@ function FleetTable({
                   <tr key={key} className="border-t border-[color:var(--border)] align-top">
                     <td className="py-2 pr-3">{name}</td>
                     <td colSpan={5} className="text-status-error py-2 pr-3 text-xs">
-                      Not answering: {reading.error}
+                      Not answering: {reading.error}{" "}
+                      <Link
+                        href={logsHref({ q: node.name ?? undefined })}
+                        className="underline"
+                        data-testid="hosts-silent-logs"
+                      >
+                        Logs →
+                      </Link>
                     </td>
                     <td className="py-2 pr-3 text-xs text-[color:var(--muted)]">
                       {age ? `last reading ${age}` : "no reading yet"}
@@ -475,7 +483,10 @@ function MachineDetail({
       <section className="section-panel">
         <h2 className="font-ui mb-2 text-base font-semibold">{node.label}</h2>
         <p className="text-status-error text-sm">
-          {reading.error ?? "This machine has not answered yet."}
+          {reading.error ?? "This machine has not answered yet."}{" "}
+          <Link href={logsHref({ q: node.name ?? undefined })} className="underline">
+            Logs →
+          </Link>
         </p>
       </section>
     );

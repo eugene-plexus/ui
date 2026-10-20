@@ -139,6 +139,27 @@ export function downloadName(scope: string, now: Date = new Date()): string {
  * The source is the supervisor's prefix for an engine, `engine: <name>`.
  */
 export function engineLogsHref(node: string | null, runtime: string): string {
-  const sel = formatSelection({ type: "agent", node, name: null });
-  return `/logs?sel=${encodeURIComponent(sel)}&source=${encodeURIComponent(`engine: ${runtime}`)}`;
+  return logsHref({ node, source: `engine: ${runtime}` });
+}
+
+/**
+ * Logs opened where a failure points (CX8). `node` undefined is every
+ * machine on one timeline; null is this console's own machine. `q` is the
+ * text the lines must contain: a request's id, a machine's name.
+ */
+export function logsHref({
+  node,
+  source,
+  q,
+}: {
+  node?: string | null;
+  source?: string;
+  q?: string;
+}): string {
+  const params: string[] = [];
+  if (node !== undefined)
+    params.push(`sel=${encodeURIComponent(formatSelection({ type: "agent", node, name: null }))}`);
+  if (source) params.push(`source=${encodeURIComponent(source)}`);
+  if (q) params.push(`q=${encodeURIComponent(q)}`);
+  return `/logs${params.length ? `?${params.join("&")}` : ""}`;
 }

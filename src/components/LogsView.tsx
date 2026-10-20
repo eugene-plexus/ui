@@ -44,18 +44,21 @@ export function LogsView({
   loaded,
   everyMachine,
   initialSource,
+  initialQuery = null,
 }: {
   machines: TargetNode[];
   loaded: boolean;
   everyMachine: boolean;
   initialSource: string | null;
+  /** `?q=`: the text box filled in, and the lines asked for at once. */
+  initialQuery?: string | null;
 }) {
   const [filters, setFilters] = useState<LogFilters>({
     sources: initialSource ? [initialSource] : [],
-    contains: "",
+    contains: initialQuery ?? "",
     tail: TAILS[0],
   });
-  const [typed, setTyped] = useState("");
+  const [typed, setTyped] = useState(initialQuery ?? "");
   const [follow, setFollow] = useState(true);
   const [state, setState] = useState<Record<string, MachineState>>({});
   const scroller = useRef<HTMLDivElement | null>(null);

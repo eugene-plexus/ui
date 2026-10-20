@@ -64,6 +64,7 @@ import { durationLabel, percentage } from "@/lib/gatewayDashboard";
 import { usePolling } from "@/lib/usePolling";
 import { useServedContexts } from "@/lib/useServedContexts";
 import { clockTime, formatTimestamp } from "@/lib/relativeTime";
+import { logsHref } from "@/lib/logs";
 
 interface Percentiles {
   p50: number;
@@ -1229,6 +1230,15 @@ export default function MetricsPage() {
                               iconOnly
                               className="shrink-0"
                             />
+                            {(r.outcome === "error" || r.tries.some((t) => !t.served)) && (
+                              <Link
+                                href={logsHref({ q: r.requestId })}
+                                className="ml-2 shrink-0 underline"
+                                data-testid="metrics-request-logs"
+                              >
+                                Logs →
+                              </Link>
+                            )}
                           </div>
                         )}
                         {r.tries.length > 0 && (
