@@ -43,6 +43,18 @@ const KEYS: ClientKeyList = {
 
 beforeEach(() => {
   served = [];
+  // The card checks its address with a plain fetch. Answer it here, so no
+  // real request is still in flight when a test ends.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ object: "list", data: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    ),
+  );
   vi.spyOn(api, "get").mockImplementation(async (target: string, path: string) => {
     if (target === "agent" && path === "/v1/node") return { name: "worker", enrolled: false };
     if (target === "agent" && path === "/v1/components")
@@ -52,7 +64,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("Connect apps with no model served", () => {
   it("still shows the address and the keys, and says no model is running", async () => {
