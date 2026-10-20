@@ -62,7 +62,9 @@ describe("the tokens the source names", () => {
   it("name only status classes that exist", () => {
     const missing: string[] = [];
     for (const { path, text } of files) {
-      for (const m of text.matchAll(/(?<![\w-])((?:text-)?status-[a-z]+)(?![\w-])/g)) {
+      // A test id is not a class: `data-testid="status-retry"` names no token.
+      const markup = text.replace(/data-testid="[^"]*"/g, "");
+      for (const m of markup.matchAll(/(?<![\w-])((?:text-)?status-[a-z]+)(?![\w-])/g)) {
         if (!classes.has(m[1])) missing.push(`${path.slice(SRC.length + 1)}: ${m[1]}`);
       }
     }

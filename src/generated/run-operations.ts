@@ -753,6 +753,8 @@ export interface components {
             modelId?: string | null;
             download?: components["schemas"]["DownloadSpec"] | null;
             preparation?: components["schemas"]["PreparationIntent"] | null;
+            /** @description The engine the person agreed, at the click, to install if the node lacks it (CX3). Checking that stops for this engine goes straight on to installing; any other engine still waits for an answer. */
+            installEngine?: components["schemas"]["EngineKind"] | null;
         };
         /**
          * KevCheckpointDetail

@@ -1,6 +1,6 @@
 /**
  * The one question, driven: Install is the default and focused, Skip
- * carries its warning, Escape cancels, and the words are the person's.
+ * carries its warning, Escape only closes, and the words are the person's.
  */
 
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -71,13 +71,38 @@ describe("RunDialogView", () => {
     expect(onAnswer).toHaveBeenCalledWith("run:m1@agent", "skip");
   });
 
-  it("cancels on Escape and on Cancel", () => {
+  it("only closes on Escape and Later; Cancel the run cancels it (CX3)", () => {
     const onCancel = vi.fn();
-    render(<RunDialogView task={ASKING} onAnswer={vi.fn()} onCancel={onCancel} />);
+    const onClose = vi.fn();
+    render(
+      <RunDialogView task={ASKING} onAnswer={vi.fn()} onCancel={onCancel} onClose={onClose} />,
+    );
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(onCancel).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId("run-later"));
+    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(onCancel).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("run-cancel"));
-    expect(onCancel).toHaveBeenCalledTimes(2);
+    expect(onCancel).toHaveBeenCalledWith(ASKING.id);
+  });
+
+  it("asks at the click before anything starts; Escape there starts nothing (CX3)", () => {
+    const onAsked = vi.fn();
+    render(
+      <RunDialogView
+        task={{ ...ASKING, step: "downloading", confirming: true }}
+        onAnswer={vi.fn()}
+        onAsked={onAsked}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("Install llama.cpp too?");
+    expect(dialog).toHaveTextContent("then installs llama.cpp and starts it");
+    expect(screen.queryByTestId("run-skip")).toBeNull();
+    expect(screen.getByTestId("run-install")).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onAsked).toHaveBeenLastCalledWith(ASKING.id, "cancel");
+    fireEvent.click(screen.getByTestId("run-install"));
+    expect(onAsked).toHaveBeenLastCalledWith(ASKING.id, "install");
   });
 
   it("names the node it is about when the run is on another machine", () => {
