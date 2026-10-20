@@ -15,10 +15,13 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { ConnectTls } from "@/components/ConnectTls";
 import { UseFromAppsCard } from "@/components/home/UseFromAppsCard";
 import { api } from "@/lib/api";
 import { PROXY, listModels } from "@/lib/completions";
 import { gatewayAddressGuess } from "@/lib/connectApps";
+import { gatewayUrls } from "@/lib/connectTls";
+import type { ClientTls } from "@/lib/clientDoors";
 import { chatModels } from "@/lib/home";
 import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
 import type { ComponentList, ComponentPlacementList, ModelList, NodeIdentity } from "@/lib/types";
@@ -53,7 +56,9 @@ export default function ConnectAppsPage() {
   usePolling(load, POLL_MS);
 
   const chat = useMemo(() => chatModels(models), [models]);
-  const gatewayPortUrl = useMemo(() => gatewayAddressGuess(node, components), [node, components]);
+  const gatewayGuess = useMemo(() => gatewayAddressGuess(node, components), [node, components]);
+  const tls = (node as { clientTls?: ClientTls } | null)?.clientTls ?? null;
+  const urls = useMemo(() => gatewayUrls(gatewayGuess, tls), [gatewayGuess, tls]);
 
   return (
     <AppShell>
@@ -83,11 +88,13 @@ export default function ConnectAppsPage() {
           )}
           <UseFromAppsCard
             models={chat}
-            gatewayPortUrl={gatewayPortUrl}
+            gatewayPortUrl={urls.primary}
+            verifyUrl={urls.check}
             placement={placement}
             localNode={node?.name ?? null}
             boundAddresses={node?.reach?.boundAddresses ?? null}
           />
+          <ConnectTls urls={urls} tls={tls} />
         </div>
       </main>
     </AppShell>

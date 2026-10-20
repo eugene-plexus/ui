@@ -96,6 +96,7 @@ const TONE_CLASS = {
 export function UseFromAppsCard({
   models,
   gatewayPortUrl,
+  verifyUrl,
   placement,
   localNode,
   boundAddresses,
@@ -104,6 +105,9 @@ export function UseFromAppsCard({
   models: Model[];
   /** The guessed base URL (scheme + host + gateway port), or null. */
   gatewayPortUrl: string | null;
+  /** What this page can reach to check the gateway, when that differs from the
+   * address shown (https shown, but this device does not yet trust it). */
+  verifyUrl?: string | null;
   /** The control root's placement view, for which node runs the gateway. */
   placement: ComponentPlacementList | null;
   /** This machine's node name, or null when it is not enrolled. */
@@ -178,6 +182,7 @@ export function UseFromAppsCard({
 
   const baseUrl = (override ?? gatewayPortUrl ?? "").replace(/\/+$/, "");
   const display = baseUrl ? `${baseUrl}/v1` : "";
+  const checkBase = override === null && verifyUrl ? verifyUrl.replace(/\/+$/, "") : baseUrl;
   // The fresh token while it is on screen, else the newest live key's
   // tail as a placeholder — a person who made a key yesterday needs the
   // address and the model id today, and should not be told to make
@@ -224,7 +229,7 @@ export function UseFromAppsCard({
   // has since corrected must not land over the answer about the new one.
   const checkSeq = useRef(0);
   const check = useCallback(async () => {
-    if (!baseUrl) return;
+    if (!checkBase) return;
     const seq = ++checkSeq.current;
     const current = () => seq === checkSeq.current;
     setChecking(true);
@@ -234,7 +239,7 @@ export function UseFromAppsCard({
       // gateway is there" to "and it serves these models", which is the
       // other half of the same class of bug: a client configured with a
       // model id that names nothing.
-      const found = await verifyGatewayAddress(baseUrl, { key: keyString });
+      const found = await verifyGatewayAddress(checkBase, { key: keyString });
       if (!current()) return;
       setVerdict(found);
       // A failed address on a machine that publishes ports differently
@@ -244,7 +249,7 @@ export function UseFromAppsCard({
       // a candidate that did not is never mentioned. No key: the
       // gateway's own 401 is proof enough of what is there.
       if (found.kind !== "confirmed") {
-        const guess = sameOffsetCandidate(baseUrl, evidence);
+        const guess = sameOffsetCandidate(checkBase, evidence);
         if (guess) {
           const probe = await verifyGatewayAddress(guess);
           if (current() && probe.kind === "confirmed") setCandidate(guess);
@@ -253,7 +258,7 @@ export function UseFromAppsCard({
     } finally {
       if (current()) setChecking(false);
     }
-  }, [baseUrl, keyString, evidence]);
+  }, [checkBase, keyString, evidence]);
 
   // On every change of address or key, not on a button. A check nobody
   // presses is a check nobody gets, and this one costs one GET to a
@@ -274,7 +279,7 @@ export function UseFromAppsCard({
   // `baseUrl`, not `display`: what is listening is at the origin, and
   // the first live run said "listening at http://...:8080/v1".
   const verdictText = verdict
-    ? describeVerdict(verdict, baseUrl, {
+    ? describeVerdict(verdict, checkBase, {
         remapped: evidence.kind === "remapped",
         hasCandidate: candidate !== null,
       })

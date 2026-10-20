@@ -364,6 +364,8 @@ export const SCREENS: readonly Screen[] = [
  * `/login` and `/setup` have no session, so every link in the bar would
  * 401 — and the wizard is a linear transaction that a stray click out of
  * would abandon.
+ * `/trust` is the page a fresh device opens before it can sign in; it needs
+ * no session and shows no navigation.
  * `/administration` has its own named session and capability-limited tools;
  * the owner's infrastructure navigation does not belong on that page.
  *
@@ -373,6 +375,7 @@ export const SCREENS: readonly Screen[] = [
 export const ROUTES_WITHOUT_NAV: readonly string[] = [
   "/login",
   "/setup",
+  "/trust",
   "/administration",
 ] as const;
 

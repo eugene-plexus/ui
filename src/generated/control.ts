@@ -1311,6 +1311,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/trust/machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every machine's TLS door and key, signed by this root's identity.
+         * @description **TLS between machines (LT1).** Every node's machine URL and the
+         *     keys it registered under its own signature, plus the keys of the
+         *     machine port in front of this root, signed with this root's
+         *     identity key. Agents fetch it with the trust bundle every minute,
+         *     and at once when the bundle changes, keep it on disk, and give
+         *     their children the table built from it.
+         *
+         *     The same rules as the bundle: a bearer, when sent, must verify, and
+         *     it is not on the entry point's public route. A sealed root answers
+         *     with the last list it signed; one that has never signed answers 503.
+         */
+        get: operations["getMachineList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/trust/ca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The install CA's certificate, for a device to trust.
+         * @description **TLS for clients and browsers (LT2,
+         *     `docs/design/tls-for-clients.md` §3).** The certificate of the CA
+         *     this root made once, the first time it was unsealed with LT2: ECDSA
+         *     P-256, valid 20 years, name-constrained (critical) to private
+         *     addresses and local names, so its key can sign for nothing on the
+         *     public internet. Every node's client doors present a leaf it
+         *     issued (`POST /v1/nodes/{name}/certificate`).
+         *
+         *     Public: a certificate is not a secret, and a device fetches it
+         *     before it trusts anything. PEM by default; `?format=der` answers
+         *     the DER bytes as `application/pkix-cert`, the form iOS and Android
+         *     install from a download.
+         */
+        get: operations["getInstallCa"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/components": {
         parameters: {
             query?: never;
@@ -1955,6 +2015,83 @@ export interface paths {
          *     capability.
          */
         delete: operations["clearNodeLabel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/nodes/{name}/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A leaf from the install CA for this node's own key and names.
+         * @description **LT2 (`docs/design/tls-for-clients.md` §4).** A node asks for the
+         *     certificate its client doors (8079, 8080, app ports) present, with
+         *     its own service token (`sub: agent`, signed by its key) and a CSR.
+         *     A node speaks only for itself: another node's token is refused.
+         *
+         *     **The key.** The CSR's public key must be one this node registered
+         *     under its signature (`Node.tlsPins`, LT1): a node cannot obtain a
+         *     certificate for a key it does not hold.
+         *
+         *     **The names.** Every name the CSR asks for must be the node's own,
+         *     or the whole request is refused and the refusal lists the ones that
+         *     are not:
+         *     - the host of its signed address (`Node.url`);
+         *     - `<node name>.local`;
+         *     - `localhost`, `127.0.0.1` and `::1`;
+         *     - the names the owner listed for it.
+         *
+         *     A name the CA may not sign for (a public address, a dotless name;
+         *     §3) is refused the same way. A CSR that asks for no name gets them
+         *     all, less those the CA may not sign for.
+         *
+         *     The leaf is valid 397 days. Nothing is replicated: the CA key is,
+         *     and a node asks again when its leaf is two thirds through its life
+         *     or its address changes.
+         */
+        post: operations["issueNodeCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/nodes/{name}/certificate-names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * List the names a node's client certificate may hold
+         * @description **LT2 (`tls-for-clients.md` §4).** The owner lists names a node is
+         *     reached by beyond its own address and `<name>.local`: the names the
+         *     container entry point answers for, or a name in the LAN's DNS. One
+         *     `setNodeCertificateNames` entry; the node asks for a new leaf with
+         *     them at its next look.
+         *
+         *     A session holding the `membership` capability. A name the install
+         *     CA may not sign (a public name or address, a dotless name) is
+         *     refused with the name given: use the owner's own certificate for
+         *     it. A name another node holds or lists is refused too, so no node
+         *     can present a certificate for another's name.
+         */
+        put: operations["setNodeCertificateNames"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3387,6 +3524,29 @@ export interface components {
              *     root does not guess from a source address.
              */
             url?: string;
+            /**
+             * Format: uri
+             * @description This node's machine port (LT1): the one TLS door other
+             *     machines reach it through, `https://<host>:8083`. From its
+             *     signed announcement or its enrolment. `null` on a node that
+             *     runs a version without one.
+             */
+            machineUrl?: string | null;
+            /**
+             * @description The keys this node's machine port may present, registered
+             *     under its signature. Every other machine refuses a connection
+             *     that presents any other. Empty on a node without a machine
+             *     port.
+             */
+            tlsPins?: components["schemas"]["TlsPin"][];
+            machineTls?: components["schemas"]["MachineLink"];
+            /**
+             * @description Names the owner listed for this node (LT2,
+             *     `tls-for-clients.md` §4): its client certificate may hold them
+             *     beside its own address and `.local` name. Private addresses and
+             *     local names only. Empty when none are listed.
+             */
+            certificateNames?: string[];
             role: components["schemas"]["NodeRole"];
             /**
              * @description Whether the control root could reach this node's agent on its
@@ -3505,6 +3665,120 @@ export interface components {
             lastError?: string | null;
         };
         /**
+         * Format: uri
+         * @description Where other machines reach this node's machine port (LT1,
+         *     `docs/design/tls-between-machines.md`): `https://<host>:<port>`,
+         *     8083 unless the node's published ports are remapped. Paths under
+         *     it reach this node's own listeners: `/agent`, `/control` (on the
+         *     root) and `/drivers/<name>`.
+         */
+        MachineUrl: string;
+        /**
+         * @description Base64url (no padding) of the SHA-256 of a machine key's
+         *     SubjectPublicKeyInfo, the form Job Sites pin too.
+         */
+        TlsPin: string;
+        /**
+         * @description How this root last reached the node, as an observation: never
+         *     replicated, and absent until it has polled.
+         */
+        MachineLink: {
+            /**
+             * @description * `encrypted`: the last poll went over TLS to the key the node
+             *       registered.
+             *     * `no_key`: the node runs a version without a machine port, so
+             *       traffic to it is plain (refused once encryption is required).
+             *     * `unreachable`: it has a key on record and its machine port did
+             *       not answer.
+             *     * `refused`: its machine port presented a key it did not
+             *       register. A security event; nothing was sent.
+             *     * `unknown`: not polled yet.
+             * @enum {string}
+             */
+            state: "encrypted" | "no_key" | "unreachable" | "refused" | "unknown";
+            /** @description The reason in the probe client's words, for the last three. */
+            detail?: string | null;
+        };
+        SignedMachineList: {
+            /**
+             * @description A JWS compact serialization with header
+             *     `{"alg": "EdDSA", "typ": "ep-machines+jwt"}` whose payload is a
+             *     `MachineList`, signed with this root's identity key: the key
+             *     every node pinned at enrolment.
+             */
+            jws: string;
+        };
+        /**
+         * @description Every machine's TLS door and the keys it may present (LT1). A node
+         *     that holds it reaches another node's agent, and this root, only
+         *     over TLS to a key listed here.
+         */
+        MachineList: {
+            /**
+             * Format: int64
+             * @description When it was signed.
+             */
+            iat: number;
+            /**
+             * Format: int64
+             * @description Rises by one each time the list changes. A node refuses a list
+             *     whose version is lower than the one it holds, so an old list
+             *     cannot bring back a key that was dropped.
+             */
+            version: number;
+            /**
+             * @description Encryption between machines is required (`machineEncryption`):
+             *     no plain HTTP between machines, and drivers and control bind
+             *     to loopback.
+             */
+            required: boolean;
+            /**
+             * @description Whether a node's client doors (8079, 8080, app ports) still take
+             *     plain HTTP from another machine (LT2-C4, the `clientPlainHttp`
+             *     config field). `off` only by the owner's choice; a node then
+             *     refuses a plain request from another machine with the
+             *     `https://` URL named, and loopback stays plain. Absent from an
+             *     older root's list, which means `on`.
+             * @enum {string}
+             */
+            clientPlainHttp?: "on" | "off";
+            /**
+             * @description The keys the machine port in front of this control root may
+             *     present, given to it by its own machine's agent. A node reaches
+             *     the root at the address it joined with, over TLS to one of
+             *     these.
+             */
+            controlPins: components["schemas"]["TlsPin"][];
+            nodes: components["schemas"]["MachineListNode"][];
+        };
+        MachineListNode: {
+            name: string;
+            /** @description The agent address other machines know it by (`Node.url`). */
+            url?: string | null;
+            machineUrl?: string | null;
+            pins: components["schemas"]["TlsPin"][];
+        };
+        NodeCertificateNames: {
+            names: string[];
+        };
+        NodeCertificateRequest: {
+            /**
+             * @description A PKCS#10 certificate signing request in PEM, signed with the
+             *     node's machine key, its names in a subjectAltName extension.
+             */
+            csr: string;
+        };
+        NodeCertificate: {
+            /** @description The leaf, PEM. */
+            certificate: string;
+            /** @description The install CA that signed it, PEM. */
+            ca: string;
+            /** @description The names it holds, IP addresses and DNS names. */
+            names: string[];
+            /** Format: date-time */
+            notAfter: string;
+        };
+        /**
          * @description * `control` — the active control root. Exactly one.
          *     * `standby` — replicating, promotable, serving no writes.
          *     * `agent` — supervision only, no control-plane state.
@@ -3564,6 +3838,13 @@ export interface components {
              * @description **Shown once.** Not retrievable afterwards and not stored in
              *     recoverable form — a lost token is re-minted, never looked
              *     up.
+             *
+             *     **It carries the root's machine key (LT1)** when this root has
+             *     one: `<secret>.<pin>`, the pin a `TlsPin`. A joining machine
+             *     enrols over TLS to the root's machine port and checks that key
+             *     before it sends the token, so nobody on the network can answer
+             *     in the root's place. The root takes the token with or without
+             *     the suffix.
              */
             token: string;
             /** Format: date-time */
@@ -3649,6 +3930,8 @@ export interface components {
              *     network and wrong behind anything else.
              */
             url?: string;
+            machineUrl?: components["schemas"]["MachineUrl"];
+            tlsPin?: components["schemas"]["TlsPin"];
             agentVersion?: string;
             /** @enum {string} */
             os?: "windows" | "linux" | "macos";
@@ -3690,6 +3973,15 @@ export interface components {
              *     stops one node's announcement being replayed against
              *     another's record.
              *
+             *     **With `machineUrl` or `tlsPin` in the body (LT1), the object
+             *     signed holds them too**, under the same names, so the key a
+             *     node registers is covered by the same signature as its
+             *     address: `{"machineUrl": …, "name": …, "sequence": …,
+             *     "tlsPin": …, "url": …}`, keys sorted, holding exactly the
+             *     ones the body holds. An announcement without either signs
+             *     the three fields above, so an older node's announcement
+             *     verifies as before.
+             *
              *     **Verified against the raw request body, never against a
              *     parsed `url`.** An OpenAPI `format: uri` becomes a URL type
              *     in most generators, and those normalize — Pydantic's
@@ -3702,6 +3994,8 @@ export interface components {
              *     clients are still worth having.
              */
             signature: string;
+            machineUrl?: components["schemas"]["MachineUrl"];
+            tlsPin?: components["schemas"]["TlsPin"];
         };
         NodeAddressAck: {
             name: string;
@@ -3899,7 +4193,17 @@ export interface components {
             at?: string;
         };
         /**
-         * @description **`labelNode` (2026-10-19)** sets or clears one node's `label`, the
+         * @description **`setNodeCertificateNames` (LT2, 2026-10-20)** replaces the names
+         *     the owner listed for one node's client certificate (`{name,
+         *     names}`). An operator's, unsigned, like `labelNode`.
+         *
+         *     **`setInstallCa` (LT2, 2026-10-20)** records the install CA once:
+         *     `{certificate, sealedKey}`, the certificate in PEM and the key's
+         *     PKCS8 DER sealed under the passphrase-derived key, as the other
+         *     sealed keys are. A second one is refused at apply: the CA is made
+         *     once, so every device's trust holds through a promotion.
+         *
+         *     **`labelNode` (2026-10-19)** sets or clears one node's `label`, the
          *     name people see (`{name, label}`, `label` a string or `null`). It is
          *     its own op because `updateNode` is the node-signed address change and
          *     a label is an operator's, unsigned: widening that op would put an
@@ -3955,7 +4259,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -4086,6 +4390,17 @@ export interface components {
              *     holding the passphrase.
              */
             controlPublicKey?: string;
+            /**
+             * @description The install CA's certificate, PEM (LT2): what every device
+             *     trusts. Absent until `setInstallCa`.
+             */
+            installCaCertificate?: string;
+            /**
+             * @description The install CA's private key, PKCS8 DER sealed under the
+             *     passphrase-derived key. Replicated so a promoted standby issues
+             *     leaves under the same CA and no device has to trust a new one.
+             */
+            sealedInstallCaKey?: string;
             /** @description Central access groups. Absent in old snapshots means no groups. */
             permissionGroups?: components["schemas"]["PermissionGroup"][];
             /**
@@ -7917,6 +8232,63 @@ export interface operations {
             503: components["responses"]["Problem"];
         };
     };
+    getMachineList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedMachineList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getInstallCa: {
+        parameters: {
+            query?: {
+                format?: "pem" | "der";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CA certificate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-pem-file": string;
+                    "application/pkix-cert": string;
+                };
+            };
+            /**
+             * @description This install has no CA yet: the root has not been unsealed since
+             *     it was updated to a version with LT2.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listComponents: {
         parameters: {
             query?: never;
@@ -8840,6 +9212,123 @@ export interface operations {
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
             /** @description This host is a standby and accepts no writes. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    issueNodeCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeCertificateRequest"];
+            };
+        };
+        responses: {
+            /** @description The leaf, and the CA that signed it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeCertificate"];
+                };
+            };
+            /** @description Not a CSR, or one whose signature does not verify. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /**
+             * @description Another node's token, a key this node did not register, or a
+             *     name that is not its own. Nothing was signed.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            /** @description This host is a standby and signs nothing. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description The root is sealed, or has no CA yet. Ask again later; the doors
+             *     keep the leaf they have.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setNodeCertificateNames: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeCertificateNames"];
+            };
+        };
+        responses: {
+            /** @description The node, with its names. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Node"];
+                };
+            };
+            /** @description A name the install CA may not sign, or not a name. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description Another node holds or lists one of the names, or this host is a standby. */
             409: {
                 headers: {
                     [name: string]: unknown;

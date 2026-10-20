@@ -62,6 +62,13 @@ import { useNodeUpdates } from "@/lib/useNodeUpdates";
 import { usePolling } from "@/lib/usePolling";
 import { expertHint } from "@/lib/vocabulary";
 import { logsHref } from "@/lib/logs";
+import {
+  describeEncryption,
+  describeMachineLink,
+  ENCRYPTION_SETTING_HREF,
+  type MachineEncryption,
+  type MachineLinkState,
+} from "@/lib/machineLink";
 
 /**
  * Troy's number, and the reason for it: unlock the root and it is
@@ -95,6 +102,9 @@ interface NodeRow {
   advertiseSequence?: number | null;
   devices?: { kind?: string; name?: string | null; memoryTotalBytes?: number | null }[] | null;
   grants?: string[] | null;
+  /** LT1: its TLS door, and how the root last reached it. */
+  machineUrl?: string | null;
+  machineTls?: { state: MachineLinkState; detail?: string | null } | null;
 }
 
 /** What a node serves, from the two views that know: the control root's
@@ -196,6 +206,8 @@ export default function NodesPage() {
   const [nodes, setNodes] = useState<NodeRow[] | null>(null);
   const [served, setServed] = useState<Record<string, Served[]>>({});
   const [status, setStatus] = useState<ControlStatus | null>(null);
+  /** LT1: the install's `machineEncryption`, from the root's config. */
+  const [encryption, setEncryption] = useState<MachineEncryption | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [passphrase, setPassphrase] = useState("");
@@ -270,13 +282,17 @@ export default function NodesPage() {
    */
   const load = useCallback(async () => {
     try {
-      const [list, st] = await Promise.all([
+      const [list, st, config] = await Promise.all([
         api.get<{ nodes: NodeRow[] }>("control", "/v1/nodes"),
         api.get<ControlStatus>("control", "/v1/control/status").catch(() => null),
+        api.get<Record<string, unknown>>("control", "/v1/config").catch(() => null),
       ]);
       recordNodeLabels(list.nodes ?? []);
       setNodes(list.nodes ?? []);
       setStatus(st);
+      setEncryption(
+        config ? ((config.machineEncryption as MachineEncryption | undefined) ?? null) : null,
+      );
       setError(null);
       setLocked(false);
       // The command we print has to name an address the *other* machine
@@ -522,6 +538,14 @@ export default function NodesPage() {
 
           <section className="section-panel mb-6">
             <h2 className="section-heading font-ui text-base font-semibold">This install</h2>
+            {encryption !== null && !locked ? (
+              <p className="font-ui mb-2 text-sm" data-testid="machine-encryption">
+                {describeEncryption(encryption)}{" "}
+                <Link href={ENCRYPTION_SETTING_HREF} className="underline">
+                  Change →
+                </Link>
+              </p>
+            ) : null}
             {nodes === null ? (
               <p className="text-sm text-[color:var(--muted)]">Loading…</p>
             ) : locked ? (
@@ -638,6 +662,7 @@ export default function NodesPage() {
                               </Link>
                             </div>
                           ) : null}
+                          <MachineLinkCell node={n} />
                           {/* Every machine but the root's own (CX6); more
                             plainly on one that is down. */}
                           {n.role !== "control" && (
@@ -1084,6 +1109,31 @@ function behindHint(seen: number, root: number): string {
 }
 
 /** The liveness word for one node, with the reason behind it. */
+/** LT1: whether the root reaches this machine over TLS, and what fixes it. */
+function MachineLinkCell({ node }: { node: NodeRow }) {
+  const line = describeMachineLink(node);
+  if (!line) return null;
+  return (
+    <div
+      className={`mt-0.5 max-w-md text-sm ${
+        line.tone === "good"
+          ? "text-status-success"
+          : line.tone === "bad"
+            ? "text-status-error"
+            : "text-[color:var(--muted)]"
+      }`}
+      data-testid="node-machine-link"
+    >
+      {line.text}
+      {line.fix ? (
+        <span className="ml-1 text-[color:var(--muted)]" data-testid="node-machine-link-fix">
+          {line.fix}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function LivenessCell({ node }: { node: NodeRow }) {
   const liveness = nodeLiveness(node);
   const { label, title } = describeLiveness(liveness);
