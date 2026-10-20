@@ -1288,9 +1288,17 @@ function LibraryFoldersInput({
   function update(next: LibraryFolder[]) {
     setRows(next);
     const complete = next
-      .map((f) => ({ path: f.path.trim(), mounts: (f.mounts ?? []).map((m) => m.trim()) }))
+      .map((f) => ({
+        path: f.path.trim(),
+        mounts: (f.mounts ?? []).map((m) => m.trim()),
+        kind: f.kind,
+      }))
       .filter((f) => f.path.length > 0)
-      .map((f) => ({ path: f.path, mounts: f.mounts.filter((m) => m.length > 0) }));
+      .map((f) => ({
+        path: f.path,
+        mounts: f.mounts.filter((m) => m.length > 0),
+        ...(f.kind === "ollama" ? { kind: f.kind } : {}),
+      }));
     mirrored.current = JSON.stringify(complete);
     onChange(complete);
   }

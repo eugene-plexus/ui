@@ -117,3 +117,22 @@ it("refuses a file the engine says it cannot use, naming why", async () => {
   });
   expect(screen.getByRole("button", { name: "Add model" })).toBeDisabled();
 });
+
+it("never offers an Ollama store as the folder to keep a file in", async () => {
+  vi.mocked(api.get).mockResolvedValueOnce({
+    folders: [{ path: "D:\\Models" }, { path: "C:\\Users\\a\\.ollama\\models", kind: "ollama" }],
+  });
+  render(
+    <AddPreparedModel
+      engines={[STRATA]}
+      target="agent"
+      models={[]}
+      eligibility={null}
+      where="Amish_Station"
+      onAdded={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByRole("option", { name: "D:\\Models" });
+  expect(screen.queryByRole("option", { name: /ollama/i })).toBeNull();
+});

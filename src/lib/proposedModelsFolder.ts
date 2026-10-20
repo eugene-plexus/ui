@@ -54,7 +54,10 @@ export function homeFrom(listing: DirectoryListing | null | undefined): string |
  */
 export function presetModelsFolder(list: { folders?: unknown } | null | undefined): string | null {
   const folders: unknown[] = Array.isArray(list?.folders) ? list.folders : [];
-  const first = folders[0];
+  // An Ollama store is read-only, never where models are put.
+  const first = folders.find(
+    (f) => !(f && typeof f === "object" && (f as { kind?: unknown }).kind === "ollama"),
+  );
   const path =
     typeof first === "string"
       ? first

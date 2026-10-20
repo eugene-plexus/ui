@@ -132,7 +132,9 @@ export function AddPreparedModel({
     void (async () => {
       try {
         const list = await api.get<LibraryFolderList>("library", "/v1/folders");
-        if (!cancelled) setFolders(list.folders.map((f) => f.path));
+        // An Ollama store is read-only: never a destination.
+        if (!cancelled)
+          setFolders(list.folders.filter((f) => f.kind !== "ollama").map((f) => f.path));
       } catch (err) {
         if (!cancelled) setError(describeError(err));
       }

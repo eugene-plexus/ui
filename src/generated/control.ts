@@ -839,7 +839,12 @@ export interface paths {
          *
          *     The runtimes the node hosted become un-declared. The models
          *     stay on that host's disk, but nothing in this install will route
-         *     to them.
+         *     to them. A Job Site it hosted stays, with no `hostNode`.
+         *
+         *     Two removals are refused with 409 (CX6): the machine that runs
+         *     this control root, and the last machine that reports a running
+         *     gateway. A machine that does not answer is never refused, so a
+         *     dead box can always be removed. Nothing changes on a refusal.
          */
         delete: operations["revokeNode"];
         options?: never;
@@ -7492,7 +7497,12 @@ export interface operations {
                 };
             };
             404: components["responses"]["Problem"];
-            /** @description This host is a standby and does not accept writes. */
+            /**
+             * @description Nothing is revoked. This host is a standby and does not accept
+             *     writes; or the node runs this control root ("This root's own
+             *     machine"); or it runs the install's only running gateway ("The
+             *     only gateway").
+             */
             409: {
                 headers: {
                     [name: string]: unknown;

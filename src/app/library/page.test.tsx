@@ -412,6 +412,43 @@ function listedNames(): string[] {
     .filter((n) => n !== "");
 }
 
+describe("a model read from Ollama's store", () => {
+  function ollamaModel(ollama: { tags: string[]; needsMigration?: boolean }) {
+    return () => ok({ models: [{ ...libraryModel(), ollama }], lastScanAt: null });
+  }
+
+  it("shows the Ollama source, its other tags and no Delete", async () => {
+    handlers.set("GET library/v1/models", ollamaModel({ tags: ["gemma3:27b", "gemma3:latest"] }));
+    await openTheModel();
+    const note = await screen.findByTestId("ollama-note");
+    expect(note).toHaveTextContent("Ollama");
+    expect(note).toHaveTextContent("also: gemma3:latest");
+    expect(note).not.toHaveTextContent("May not load");
+    expect(screen.getByTestId("ollama-manages")).toHaveTextContent("Ollama manages this model.");
+    expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
+    // Run stays.
+    expect(screen.getByTestId("model-run")).toBeInTheDocument();
+  });
+
+  it("warns when Ollama has not updated it", async () => {
+    handlers.set(
+      "GET library/v1/models",
+      ollamaModel({ tags: ["gpt-oss:20b"], needsMigration: true }),
+    );
+    await openTheModel();
+    expect(await screen.findByTestId("ollama-note")).toHaveTextContent(
+      "May not load in llama.cpp until Ollama has updated it.",
+    );
+    expect(screen.getByTestId("ollama-note")).not.toHaveTextContent("also:");
+  });
+
+  it("keeps Delete for a model that is not Ollama's", async () => {
+    await openTheModel();
+    expect(screen.queryByTestId("ollama-note")).toBeNull();
+    expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
+  });
+});
+
 describe("an empty library", () => {
   it("links the sentence that says where folders go to the page that holds them", async () => {
     handlers.set("GET library/v1/models", () => ok({ models: [], lastScanAt: null }));

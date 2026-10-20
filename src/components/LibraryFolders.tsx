@@ -273,7 +273,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
       const result = await api.patch<{ applied?: string[]; rejected?: { message?: string }[] }>(
         "library",
         "/v1/config",
-        { modelRoots: draft },
+        { modelRoots: draft.filter((f) => !f.found) },
       );
       if (result.rejected && result.rejected.length > 0) {
         setFailure(result.rejected.map((r) => r.message ?? "rejected").join("; "));
@@ -289,6 +289,30 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
         const scan = await scanFolders();
         setStatus(`${saved} ${scanMessage(scan)}`);
         await Promise.all(nodes.map((node) => readRunning(node)));
+      }
+    } catch (err) {
+      setFailure(describeError(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Turn off the library's own look for Ollama's store on its machine. */
+  async function stopShowingOllama() {
+    setBusy("folders");
+    setFailure(null);
+    setStatus(null);
+    try {
+      const result = await api.patch<{ rejected?: { message?: string }[] }>(
+        "library",
+        "/v1/config",
+        { findOllama: false },
+      );
+      if (result.rejected && result.rejected.length > 0) {
+        setFailure(result.rejected.map((r) => r.message ?? "rejected").join("; "));
+      } else {
+        await loadFolders();
+        setStatus("Ollama's models are no longer shown.");
       }
     } catch (err) {
       setFailure(describeError(err));
@@ -513,6 +537,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
           onMountBrowseNode={setMountBrowseNode}
           onChange={setDraft}
           onBrowse={setBrowsing}
+          onStopShowing={() => void stopShowingOllama()}
         />
       ) : (
         <NodeColumn
@@ -689,8 +714,10 @@ function FolderGrid({
   onMountBrowseNode,
   onChange,
   onBrowse,
+  onStopShowing,
 }: {
   draft: LibraryFolder[];
+  onStopShowing: () => void;
   nodes: TargetNode[];
   reaches: Record<string, LibraryFolderReach | null>;
   busy: boolean;
@@ -766,7 +793,7 @@ function FolderGrid({
                     type="text"
                     value={folder.path}
                     spellCheck={false}
-                    disabled={busy || !libraryEditable}
+                    disabled={busy || !libraryEditable || !!folder.found}
                     aria-label="Folder path on the Library's machine"
                     placeholder="/models"
                     onChange={(e) =>
@@ -779,19 +806,53 @@ function FolderGrid({
                   <button
                     type="button"
                     className={smallButtonClass}
-                    disabled={busy || !libraryEditable}
+                    disabled={busy || !libraryEditable || !!folder.found}
                     onClick={() => onBrowse({ kind: "folder-path", index, target: "library" })}
                     title="Pick the directory on the machine the Library runs on."
                   >
                     browse
                   </button>
                 </div>
+                {!folder.found && (
+                  <label className="mt-1 flex items-center gap-1 text-[0.6875rem] text-[color:var(--muted)]">
+                    Holds
+                    <select
+                      value={folder.kind === "ollama" ? "ollama" : "folder"}
+                      disabled={busy || !libraryEditable}
+                      onChange={(e) =>
+                        onChange(
+                          draft.map((f, i) => {
+                            if (i !== index) return f;
+                            const rest = { ...f };
+                            delete rest.kind;
+                            return e.target.value === "ollama"
+                              ? { ...rest, kind: "ollama" as const }
+                              : rest;
+                          }),
+                        )
+                      }
+                      className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-1 py-0.5 text-[0.6875rem]"
+                    >
+                      <option value="folder">Model files</option>
+                      <option value="ollama">An Ollama store</option>
+                    </select>
+                  </label>
+                )}
+                {folder.kind === "ollama" && (
+                  <p
+                    className="mt-1 text-[0.6875rem] text-[color:var(--muted)]"
+                    data-testid="folder-ollama"
+                  >
+                    Ollama&rsquo;s models (read-only)
+                    {folder.found ? " · found on this machine" : ""}
+                  </p>
+                )}
               </td>
               <MountCell
                 value={boxesFor(index).posix}
                 shape="posix"
                 placeholder="/mnt/models"
-                disabled={busy || !libraryEditable}
+                disabled={busy || !libraryEditable || !!folder.found}
                 onChange={(v) => setMount(index, "posix", v)}
                 testId="mount-posix"
               />
@@ -799,7 +860,7 @@ function FolderGrid({
                 value={boxesFor(index).windows}
                 shape="windows"
                 placeholder="\\\\NAS\\models"
-                disabled={busy || !libraryEditable}
+                disabled={busy || !libraryEditable || !!folder.found}
                 onChange={(v) => setMount(index, "windows", v)}
                 testId="mount-windows"
               />
@@ -826,18 +887,30 @@ function FolderGrid({
                 );
               })}
               <td className="px-2 py-1.5">
-                <button
-                  type="button"
-                  className={smallButtonClass}
-                  disabled={busy || !libraryEditable}
-                  onClick={() => {
-                    setBoxes((prev) => prev.filter((_, i) => i !== index));
-                    onChange(draft.filter((_, i) => i !== index));
-                  }}
-                  title="Stop cataloguing this folder. Nothing on disk is touched."
-                >
-                  remove
-                </button>
+                {folder.found ? (
+                  <button
+                    type="button"
+                    className={smallButtonClass}
+                    disabled={busy || !libraryEditable}
+                    onClick={onStopShowing}
+                    title="Stop listing Ollama's models. Nothing on disk is touched."
+                  >
+                    Stop showing
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={smallButtonClass}
+                    disabled={busy || !libraryEditable}
+                    onClick={() => {
+                      setBoxes((prev) => prev.filter((_, i) => i !== index));
+                      onChange(draft.filter((_, i) => i !== index));
+                    }}
+                    title="Stop cataloguing this folder. Nothing on disk is touched."
+                  >
+                    remove
+                  </button>
+                )}
               </td>
             </tr>
           ))}

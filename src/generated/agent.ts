@@ -3768,6 +3768,17 @@ export interface components {
              *     everywhere else.
              */
             passphraseFile?: boolean;
+            /**
+             * @description The agent config's `firstRunComplete`: true once first-run
+             *     setup has finished (screen 2's Finish). Here so the console's
+             *     gate can tell a half-set-up install from a finished one before
+             *     it has a session (console-ux-pass.md CX2-C1). The half-set-up
+             *     one goes to setup, which signs in and carries on in one
+             *     passphrase prompt; the finished one goes to sign-in. Present
+             *     only when `initialized` is true, and absent from an agent that
+             *     predates the field, so a console treats absent as finished.
+             */
+            firstRunComplete?: boolean;
         };
         ClientKeyLimits: {
             /**
