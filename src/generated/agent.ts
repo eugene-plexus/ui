@@ -1669,7 +1669,10 @@ export interface paths {
          * @description **LT2 (`docs/design/tls-for-clients.md` §3).** The CA that signed
          *     this node's client leaf, as control issued it, so a device can
          *     fetch it from any machine it can reach. Public. PEM by default;
-         *     `?format=der` answers DER as `application/pkix-cert`.
+         *     `?format=der` answers DER as `application/pkix-cert`;
+         *     `?format=bundle` answers the public roots Python clients use
+         *     (certifi) with the CA after them, PEM, for `SSL_CERT_FILE` or
+         *     `REQUESTS_CA_BUNDLE` (§6).
          */
         get: operations["getInstallCa"];
         put?: never;
@@ -3154,6 +3157,12 @@ export interface components {
          */
         ClientTls: {
             state: components["schemas"]["ClientTlsState"];
+            /**
+             * @description What the doors present: a leaf from the install CA, or the owner's
+             *     own certificate (`clientCertificateFile` and `clientKeyFile`,
+             *     LT2-C1's override). `null` while they present nothing.
+             */
+            source?: components["schemas"]["ClientTlsSource"] | null;
             /** @description The names the leaf holds. */
             names?: string[];
             /** Format: date-time */
@@ -3173,6 +3182,8 @@ export interface components {
             plainAllowed: boolean;
             doors: components["schemas"]["ClientDoor"][];
         };
+        /** @enum {string} */
+        ClientTlsSource: "installCa" | "supplied";
         /**
          * @description * `issued`: the doors present a leaf from the install CA.
          *     * `pending`: this node has asked and holds no leaf yet (the root is
@@ -9805,7 +9816,7 @@ export interface operations {
     getInstallCa: {
         parameters: {
             query?: {
-                format?: "pem" | "der";
+                format?: "pem" | "der" | "bundle";
             };
             header?: never;
             path?: never;

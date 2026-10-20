@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from "react";
 
+import { BUNDLE_HREF } from "@/lib/connectTls";
 import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
 import { caServed, httpsTarget, httpsTrusted } from "@/lib/tlsProbe";
 import { TRUST_GUIDES, detectOs, orderedOs, type TrustOs } from "@/lib/trustSteps";
@@ -98,6 +99,14 @@ export default function TrustPage() {
             <a className={link} href="/v1/trust/ca" download="eugene-plexus-ca.pem">
               Download as PEM
             </a>
+          </p>
+
+          <p className="mt-4 text-sm" data-testid="trust-python">
+            Python clients: download the{" "}
+            <a className={link} href={BUNDLE_HREF} download="eugene-plexus-ca-bundle.pem">
+              certificate bundle
+            </a>{" "}
+            and set SSL_CERT_FILE to it.
           </p>
 
           <div className="mt-6 space-y-3">

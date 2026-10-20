@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { api, describeError } from "@/lib/api";
+import { certificateLine, namesChanged, parseNames, NAMES_HELP } from "@/lib/connectTls";
 import { doorLine, plainSwitch, stateLine, PLAIN_WINDOW, type ClientTls } from "@/lib/clientDoors";
 import { useTargetNode, type TargetNode } from "@/lib/nodeBudget";
 import { usePolling } from "@/lib/usePolling";
@@ -28,6 +29,7 @@ export function ClientDoors() {
   const [plain, setPlain] = useState<"on" | "off" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [otherNames, setOtherNames] = useState<Record<string, string[]>>({});
 
   const key = (node: TargetNode) => node.name ?? "this machine";
 
@@ -44,6 +46,17 @@ export function ClientDoors() {
       }),
     );
     setReadings(Object.fromEntries(entries));
+    try {
+      const list = await api.get<{ nodes?: { name: string; certificateNames?: string[] }[] }>(
+        "control",
+        "/v1/nodes",
+      );
+      setOtherNames(
+        Object.fromEntries((list.nodes ?? []).map((n) => [n.name, n.certificateNames ?? []])),
+      );
+    } catch {
+      setOtherNames({});
+    }
     try {
       const config = await api.get<{ clientPlainHttp?: "on" | "off" }>("control", "/v1/config");
       setPlain(config.clientPlainHttp ?? "on");
@@ -98,10 +111,16 @@ export function ClientDoors() {
                   ))}
                 </ul>
               )}
-              {tls && tls.names && tls.names.length > 0 && (
-                <p className="mt-2 text-sm text-[color:var(--muted)]">
-                  Certificate for {tls.names.join(", ")}
+              {certificateLine(tls) && (
+                <p
+                  className="mt-2 text-sm text-[color:var(--muted)]"
+                  data-testid="certificate-line"
+                >
+                  {certificateLine(tls)}
                 </p>
+              )}
+              {node.name !== null && otherNames[node.name] !== undefined && (
+                <OtherNames machine={node.name} saved={otherNames[node.name]!} onSaved={load} />
               )}
             </div>
           );
@@ -158,5 +177,84 @@ export function ClientDoors() {
         </div>
       )}
     </section>
+  );
+}
+
+/** Names a machine is also reached by, kept by the control root. */
+function OtherNames({
+  machine,
+  saved,
+  onSaved,
+}: {
+  machine: string;
+  saved: string[];
+  onSaved: () => Promise<void>;
+}) {
+  const [text, setText] = useState(saved.join(", "));
+  const [touched, setTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const id = useId();
+
+  // Follow the root until the person starts typing.
+  useEffect(() => {
+    if (!touched) setText(saved.join(", "));
+  }, [saved, touched]);
+
+  const parsed = parseNames(text);
+  const changed = namesChanged(text, saved);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (parsed.invalid.length > 0) {
+      setError(`${parsed.invalid.join(", ")} is not a name.`);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.put("control", `/v1/nodes/${encodeURIComponent(machine)}/certificate-names`, {
+        names: parsed.names,
+      });
+      setTouched(false);
+      await onSaved();
+    } catch (err) {
+      setError(describeError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="mt-3" data-testid="other-names">
+      <label htmlFor={id} className="font-ui text-sm font-semibold">
+        Other names
+      </label>
+      <div className="mt-1 flex flex-wrap gap-2">
+        <input
+          id={id}
+          value={text}
+          onChange={(e) => {
+            setTouched(true);
+            setText(e.target.value);
+          }}
+          placeholder="box.local, eugene.lan"
+          className="min-w-0 flex-1 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-sm"
+        />
+        <button
+          type="submit"
+          disabled={busy || !changed}
+          className="action-button font-ui rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm disabled:opacity-50"
+        >
+          Save
+        </button>
+      </div>
+      <p className="mt-1 text-sm text-[color:var(--muted)]">{NAMES_HELP}</p>
+      {error && (
+        <p role="alert" className="text-status-error mt-1 text-sm" data-testid="other-names-error">
+          {error}
+        </p>
+      )}
+    </form>
   );
 }

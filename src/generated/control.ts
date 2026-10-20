@@ -2065,6 +2065,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/nodes/{name}/certificate-names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * List the names a node's client certificate may hold
+         * @description **LT2 (`tls-for-clients.md` §4).** The owner lists names a node is
+         *     reached by beyond its own address and `<name>.local`: the names the
+         *     container entry point answers for, or a name in the LAN's DNS. One
+         *     `setNodeCertificateNames` entry; the node asks for a new leaf with
+         *     them at its next look.
+         *
+         *     A session holding the `membership` capability. A name the install
+         *     CA may not sign (a public name or address, a dotless name) is
+         *     refused with the name given: use the owner's own certificate for
+         *     it. A name another node holds or lists is refused too, so no node
+         *     can present a certificate for another's name.
+         */
+        put: operations["setNodeCertificateNames"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/nodes/{name}/hosted-sites": {
         parameters: {
             query?: never;
@@ -3508,6 +3540,13 @@ export interface components {
              */
             tlsPins?: components["schemas"]["TlsPin"][];
             machineTls?: components["schemas"]["MachineLink"];
+            /**
+             * @description Names the owner listed for this node (LT2,
+             *     `tls-for-clients.md` §4): its client certificate may hold them
+             *     beside its own address and `.local` name. Private addresses and
+             *     local names only. Empty when none are listed.
+             */
+            certificateNames?: string[];
             role: components["schemas"]["NodeRole"];
             /**
              * @description Whether the control root could reach this node's agent on its
@@ -3718,6 +3757,9 @@ export interface components {
             url?: string | null;
             machineUrl?: string | null;
             pins: components["schemas"]["TlsPin"][];
+        };
+        NodeCertificateNames: {
+            names: string[];
         };
         NodeCertificateRequest: {
             /**
@@ -4151,7 +4193,11 @@ export interface components {
             at?: string;
         };
         /**
-         * @description **`setInstallCa` (LT2, 2026-10-20)** records the install CA once:
+         * @description **`setNodeCertificateNames` (LT2, 2026-10-20)** replaces the names
+         *     the owner listed for one node's client certificate (`{name,
+         *     names}`). An operator's, unsigned, like `labelNode`.
+         *
+         *     **`setInstallCa` (LT2, 2026-10-20)** records the install CA once:
          *     `{certificate, sealedKey}`, the certificate in PEM and the key's
          *     PKCS8 DER sealed under the passphrase-derived key, as the other
          *     sealed keys are. A second one is refused at apply: the CA is made
@@ -4213,7 +4259,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -9237,6 +9283,53 @@ export interface operations {
              *     keep the leaf they have.
              */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setNodeCertificateNames: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeCertificateNames"];
+            };
+        };
+        responses: {
+            /** @description The node, with its names. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Node"];
+                };
+            };
+            /** @description A name the install CA may not sign, or not a name. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description Another node holds or lists one of the names, or this host is a standby. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
