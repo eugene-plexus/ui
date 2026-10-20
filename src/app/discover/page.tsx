@@ -16,7 +16,7 @@ import { ApiError, api, describeError } from "@/lib/api";
 import { NodePicker } from "@/components/NodePicker";
 import { SearchModelsShelf } from "@/components/SearchModelsShelf";
 import { StarterSetPanel } from "@/components/StarterSetPanel";
-import { contextLabel } from "@/lib/starter";
+import { contextLabel, shortName } from "@/lib/starter";
 import { relativeAge } from "@/lib/relativeTime";
 import {
   type NodeBudget,
@@ -25,7 +25,7 @@ import {
   fitQuestion,
   useTargetNode,
 } from "@/lib/nodeBudget";
-import { startDownloadAndPrepare, startPreparation } from "@/lib/oneClickRun";
+import { startDownloadAndPrepare, startDownloadAndRun, startPreparation } from "@/lib/oneClickRun";
 import { PrepareControl } from "@/components/PrepareModel";
 import {
   bestAnswer,
@@ -438,6 +438,33 @@ function DiscoverPageInner() {
     [reloadDownloads, selected, chooseSelection],
   );
 
+  /** The pick, downloaded and run on the picked machine: one task in the
+   * tray, as Home's "Download and run" (CX1). The store owns its failure
+   * from here, so the tray row says what went wrong. */
+  const downloadAndRunStarter = useCallback(
+    async (model: StarterModel) => {
+      if (!selected) return;
+      setStarterBusy(model.repo);
+      setStarterError(null);
+      startDownloadAndRun(
+        {
+          repo: model.repo,
+          file: model.file,
+          label: shortName(model.baseModel),
+          sizeBytes: model.sizeBytes,
+        },
+        selected,
+      );
+      chooseSelection({ repo: model.repo, source: null, listed: null });
+      try {
+        await reloadDownloads();
+      } finally {
+        setStarterBusy(null);
+      }
+    },
+    [reloadDownloads, selected, chooseSelection],
+  );
+
   // Not before the node's engines are known: the filter's default and the
   // lists sent both rest on them, and a first search without them is spent
   // twice.
@@ -572,6 +599,7 @@ function DiscoverPageInner() {
                 inFlight={inFlightFiles}
                 error={starterError}
                 onDownload={downloadStarter}
+                onDownloadAndRun={selected ? downloadAndRunStarter : undefined}
                 onOpenRepo={(repo) => chooseSelection({ repo, source: null, listed: null })}
               />
             )}
@@ -909,6 +937,7 @@ function EmptyDetail({
   inFlight,
   error,
   onDownload,
+  onDownloadAndRun,
   onOpenRepo,
 }: {
   budget: NodeBudget | null;
@@ -920,6 +949,7 @@ function EmptyDetail({
   inFlight: Set<string>;
   error: string | null;
   onDownload: (model: StarterModel) => void;
+  onDownloadAndRun?: (model: StarterModel) => void;
   onOpenRepo: (repo: string) => void;
 }) {
   const where = labelOf(budget?.node) ?? "this host";
@@ -934,6 +964,7 @@ function EmptyDetail({
         inFlight={inFlight}
         error={error}
         onDownload={onDownload}
+        onDownloadAndRun={onDownloadAndRun}
         onOpenRepo={onOpenRepo}
       />
       {/* Not a chat model, so not in the starter set: the files an app that searches a
@@ -945,7 +976,7 @@ function EmptyDetail({
           <p className="mb-1 font-semibold">No GPU on {where}</p>
           <p>
             Verdicts use host memory alone, because models launched here run on this machine. If the
-            GPU is on another node, open Discover from that node&rsquo;s address.
+            GPU is on another machine, choose it in the machine picker above.
           </p>
         </div>
       )}

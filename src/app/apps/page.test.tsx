@@ -253,6 +253,22 @@ describe("installed apps", () => {
     expect(open.querySelector("[aria-hidden='true']")).toHaveTextContent("↗");
   });
 
+  it("keeps a machine that did not answer, with its reason, not as one with no apps", async () => {
+    // CX1: a failed /v1/apps read became an empty list, so the machine's
+    // apps looked uninstalled.
+    handlers.set("GET node:gpu/v1/apps", () => ({
+      status: 502,
+      body: { detail: { title: "Bad gateway", detail: "gpu did not answer: connection refused" } },
+    }));
+    render(<AppsPage />);
+    const note = await screen.findByTestId("apps-machine-silent");
+    expect(note).toHaveTextContent("gpu did not answer, so its apps are not listed");
+    expect(note).toHaveTextContent("connection refused");
+    expect(screen.getByTestId("apps-none-installed")).toHaveTextContent(
+      "No apps are installed on the machines that answered.",
+    );
+  });
+
   it("announces a catalogue that could not be read", async () => {
     handlers.set("GET agent/v1/app-catalogue", () => ({
       status: 500,

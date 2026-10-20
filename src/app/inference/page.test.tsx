@@ -1175,3 +1175,62 @@ describe("a stop that outlives a reboot, and whether a model starts with Eugene 
     expect(box.checked).toBe(true);
   });
 });
+
+describe("a row says its state in a sentence (CX1)", () => {
+  it("says a crashed engine gave up, in words, and offers Try again", async () => {
+    let started = 0;
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: { runtimes: [nodeRuntime({ status: "crashed", lastError: "exit code 3" })] },
+    }));
+    handlers.set("POST agent/v1/runtimes/gemma-a/start", () => {
+      started += 1;
+      return { status: 202, body: {} };
+    });
+    const row = await rowFor("gemma-3-27b");
+    const line = await within(row).findByTestId("status-sentence", {}, { timeout: 5000 });
+    expect(line).toHaveTextContent("failed to start several times, so Eugene stopped trying");
+    fireEvent.click(within(row).getByTestId("status-retry"));
+    await waitFor(() => expect(started).toBe(1));
+  });
+
+  it("installs a missing engine and starts the model from one button", async () => {
+    let installs = 0;
+    let started = 0;
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: { runtimes: [nodeRuntime({ status: "stopped" })] },
+    }));
+    handlers.set("GET agent/v1/engines", () => ({
+      status: 200,
+      body: {
+        engines: [
+          {
+            engine: "llama_cpp",
+            available: installs > 0,
+            modelFormats: ["gguf"],
+            acquisition: { installable: true },
+          },
+        ],
+      },
+    }));
+    handlers.set("POST agent/v1/engines/llama_cpp/install", () => {
+      installs += 1;
+      return { status: 202, body: { engine: "llama_cpp", state: "done" } };
+    });
+    handlers.set("GET agent/v1/engines/llama_cpp/install", () => ({
+      status: 200,
+      body: installs > 0 ? { engine: "llama_cpp", state: "done" } : { state: "idle" },
+    }));
+    handlers.set("POST agent/v1/runtimes/gemma-a/start", () => {
+      started += 1;
+      return { status: 202, body: {} };
+    });
+    const row = await rowFor("gemma-3-27b");
+    const button = await within(row).findByTestId("install-and-start", {}, { timeout: 5000 });
+    expect(button).toHaveTextContent("Install llama.cpp and start");
+    fireEvent.click(button);
+    await waitFor(() => expect(started).toBe(1));
+    expect(installs).toBe(1);
+  });
+});

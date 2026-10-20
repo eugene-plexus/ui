@@ -87,6 +87,9 @@ function useMachines(): { localNode: string | null; machines: (string | null)[] 
 export default function AppsPage() {
   const { localNode, machines } = useMachines();
   const [installed, setInstalled] = useState<InstalledRow[] | null>(null);
+  // A machine whose agent did not answer, with the reason. Its apps are
+  // not "not installed" -- an empty list read that way (CX1, 2026-10-20).
+  const [silent, setSilent] = useState<{ machine: string | null; reason: string }[]>([]);
   const [machine, setMachine] = useState<string | null | undefined>(undefined);
   const chosen = machine === undefined ? localNode : machine;
 
@@ -95,11 +98,19 @@ export default function AppsPage() {
       machines.map((m) =>
         api
           .get<AppList>(agentTarget(m, localNode), "/v1/apps")
-          .then((l) => (l.apps ?? []).map((app) => ({ machine: app.node ?? m, app })))
-          .catch(() => [] as InstalledRow[]),
+          .then((l) => ({
+            rows: (l.apps ?? []).map((app) => ({ machine: app.node ?? m, app })),
+            reason: null,
+          }))
+          .catch((err: unknown) => ({ rows: [] as InstalledRow[], reason: describeError(err) })),
       ),
     );
-    setInstalled(lists.flat());
+    setInstalled(lists.flatMap((l) => l.rows));
+    setSilent(
+      lists.flatMap((l, i) =>
+        l.reason === null ? [] : [{ machine: machines[i] ?? null, reason: l.reason }],
+      ),
+    );
   }, [machines, localNode]);
   usePolling(loadInstalled, LIST_POLL_MS);
 
@@ -132,7 +143,9 @@ export default function AppsPage() {
               <p className="font-ui text-sm text-[color:var(--muted)]">Loading…</p>
             ) : installed.length === 0 ? (
               <p className="text-sm text-[color:var(--muted)]" data-testid="apps-none-installed">
-                No apps are installed on any machine yet.
+                {silent.length > 0
+                  ? "No apps are installed on the machines that answered."
+                  : "No apps are installed on any machine yet."}
               </p>
             ) : (
               <ul className="flex flex-col gap-2" data-testid="apps-installed">
@@ -147,6 +160,17 @@ export default function AppsPage() {
                 ))}
               </ul>
             )}
+            {silent.map(({ machine: m, reason }) => (
+              <p
+                key={m ?? ""}
+                role="status"
+                className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm [overflow-wrap:anywhere]"
+                data-testid="apps-machine-silent"
+              >
+                {m ? labelOf(m) : "This machine"} did not answer, so its apps are not listed:{" "}
+                {reason}
+              </p>
+            ))}
           </section>
 
           <Catalogue

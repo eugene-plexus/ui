@@ -27,12 +27,23 @@ import { labelOf } from "@/lib/nodeLabels";
 import {
   restartLabel,
   savedMessage,
+  scanMessage,
   type StaleModel,
   staleOn,
   unreadFolders,
 } from "@/lib/stalePaths";
-import type { LibraryFolder, LibraryFolderReach, PathMapping, RuntimeList } from "@/lib/types";
+import type {
+  LibraryFolder,
+  LibraryFolderReach,
+  PathMapping,
+  RuntimeList,
+  Scan,
+} from "@/lib/types";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+
+/** How long a save waits for its scan before saying it is still going. */
+const SCAN_WAIT_MS = 20_000;
+const SCAN_POLL_MS = 800;
 
 /**
  * The Library's folders, and how every node reaches them (2026-09-14).
@@ -228,6 +239,32 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
   );
   const problem = useMemo(() => foldersProblem(draft), [draft]);
 
+  /**
+   * Walk the saved folders, as setup's Finish does, and wait a while for
+   * the answer. `PATCH /v1/config` deliberately never scans; a person who
+   * pressed Save has asked for these folders to be read. A 409 is a scan
+   * already running, which is waited on the same way.
+   */
+  async function scanFolders(): Promise<Scan | null> {
+    let scan: Scan;
+    try {
+      scan = await api.post<Scan>("library", "/v1/scan", { full: false });
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 409)) return null;
+      scan = { state: "scanning" };
+    }
+    const deadline = performance.now() + SCAN_WAIT_MS;
+    while (scan.state === "scanning" && performance.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, SCAN_POLL_MS));
+      try {
+        scan = await api.get<Scan>("library", "/v1/scan");
+      } catch {
+        return null;
+      }
+    }
+    return scan;
+  }
+
   async function saveFolders() {
     setBusy("folders");
     setFailure(null);
@@ -247,7 +284,10 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
         const checks = await Promise.all(
           nodes.map(async (node) => ({ label: node.label, reach: await checkNode(node) })),
         );
-        setStatus(savedMessage(checks));
+        const saved = savedMessage(checks);
+        setStatus(`${saved} Scanning them…`);
+        const scan = await scanFolders();
+        setStatus(`${saved} ${scanMessage(scan)}`);
         await Promise.all(nodes.map((node) => readRunning(node)));
       }
     } catch (err) {

@@ -129,15 +129,17 @@ beforeEach(() => {
       }
       const body = url.endsWith("/gateway/v1/admin/routing")
         ? { refreshed_at: new Date().toISOString(), slots: [] }
-        : url.endsWith("/gateway/v1/models")
-          ? modelList
-          : url.includes("/metrics/requests")
-            ? requests
-            : url.includes("/metrics/clients")
-              ? clientUsage
-              : older && olderSummary !== null
-                ? olderSummary
-                : summary;
+        : url.endsWith("/control/v1/people")
+          ? { people: [{ id: "p_7f3a", name: "jessie", displayName: "Jessie" }] }
+          : url.endsWith("/gateway/v1/models")
+            ? modelList
+            : url.includes("/metrics/requests")
+              ? requests
+              : url.includes("/metrics/clients")
+                ? clientUsage
+                : older && olderSummary !== null
+                  ? olderSummary
+                  : summary;
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -605,6 +607,27 @@ it("shows per-key usage with incomplete accounting and retention limits", async 
   expect(screen.getByText(/Older per-key history has expired/)).toBeInTheDocument();
   expect(screen.getByText(/Per-key totals are incomplete/)).toBeInTheDocument();
   expect(screen.getByText(/This is not a billing total/)).toBeInTheDocument();
+});
+
+it("names the person behind a recent request, not their ID (CX1)", async () => {
+  requests = {
+    requests: [
+      {
+        startedAt: new Date().toISOString(),
+        requestedModel: "m",
+        attempts: 1,
+        totalMs: 50,
+        requestId: "req-person",
+        outcome: "served",
+        personId: "p_7f3a",
+        appClientId: "workbench",
+        tries: [],
+      },
+    ],
+  };
+  render(<MetricsPage />);
+  const request = (await screen.findByText("Request req-person")).closest("li") as HTMLElement;
+  await waitFor(() => expect(request).toHaveTextContent("Person: Jessie"));
 });
 
 describe("each model's context window, beside its name", () => {

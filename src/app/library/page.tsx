@@ -613,7 +613,11 @@ function ModelList({
           <Link href="/library/folders?sel=library" className="underline">
             Library folders
           </Link>{" "}
-          page, then scan.
+          page, or find one to download in{" "}
+          <Link href="/discover" className="underline">
+            Discover
+          </Link>
+          .
         </p>
       )}
       {needle && all.length > 0 && shown.length === 0 && (

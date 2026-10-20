@@ -43,7 +43,7 @@
 
 import Link from "next/link";
 import { Activity, Download, Radio } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { HourChart, RequestOutcomes, StatTile } from "@/components/MetricsCharts";
@@ -59,7 +59,7 @@ import { ApiError, api, describeError } from "@/lib/api";
 import { compact, hourlyPoints, msLabel, tilesFrom } from "@/lib/metricsCharts";
 import { withContext } from "@/lib/modelContext";
 import { labelOf } from "@/lib/nodeLabels";
-import type { ClientUsageSummary, RoutingTableView } from "@/lib/types";
+import type { ClientUsageSummary, PersonList, RoutingTableView } from "@/lib/types";
 import { durationLabel, percentage } from "@/lib/gatewayDashboard";
 import { usePolling } from "@/lib/usePolling";
 import { useServedContexts } from "@/lib/useServedContexts";
@@ -324,6 +324,20 @@ export default function MetricsPage() {
   // still waiting. The button used to give no sign it had done anything.
   const [readAt, setReadAt] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Each person's name, so Recent requests says who and not an ID (CX1).
+  // Soft: only the owner and directory administrators may read the list,
+  // and anyone else sees the ID as before.
+  const [personNames, setPersonNames] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    void api
+      .get<PersonList>("control", "/v1/people")
+      .then((list) =>
+        setPersonNames(
+          new Map((list.people ?? []).map((p) => [p.id, p.displayName?.trim() || p.name])),
+        ),
+      )
+      .catch(() => undefined);
+  }, []);
 
   const load = useCallback(async () => {
     const seq = ++readSeq.current;
@@ -585,8 +599,8 @@ export default function MetricsPage() {
                 <span className="font-mono">Retain request metrics</span> on the{" "}
                 <Link href="/config?sel=gateway#metricsEnabled" className="underline">
                   Settings page
-                </Link>{" "}
-                and restart the gateway. Earlier traffic is not recovered.
+                </Link>
+                ; saving it restarts the gateway. Earlier traffic is not recovered.
               </p>
             </section>
           )}
@@ -1172,8 +1186,14 @@ export default function MetricsPage() {
                           </span>
                         )}
                         {r.personId && (
-                          <span className="mr-2" title={`App: ${r.appClientId ?? "unknown"}`}>
-                            Person: {r.personId === "operator" ? "Owner" : r.personId}
+                          <span
+                            className="mr-2"
+                            title={`${r.personId} · App: ${r.appClientId ?? "unknown"}`}
+                          >
+                            Person:{" "}
+                            {r.personId === "operator"
+                              ? "Owner"
+                              : (personNames.get(r.personId) ?? r.personId)}
                           </span>
                         )}
                         <ModelName
