@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { PlannedContextNote } from "@/components/PlannedContextNote";
 import { RunButton } from "@/components/RunButton";
 import { expertsContextSentence, placementSentence, verdictMeaning } from "@/lib/fitWords";
 import type { FirstModelState } from "@/lib/home";
@@ -245,6 +246,7 @@ function SuggestedModelCard({
         Download into your own folder. If llama.cpp is not installed yet, we ask before the download
         starts, then choose starting settings for this machine and run it.
       </p>
+      <PlannedContextNote className="mt-1" />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"

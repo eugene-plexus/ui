@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -17,6 +19,11 @@ import { NodePicker } from "@/components/NodePicker";
 import { SearchModelsShelf } from "@/components/SearchModelsShelf";
 import { StarterSetPanel } from "@/components/StarterSetPanel";
 import { contextLabel, shortName } from "@/lib/starter";
+import {
+  DEFAULT_PLANNED_CONTEXT,
+  PLANNED_CONTEXT_HREF,
+  usePlannedContext,
+} from "@/lib/plannedContext";
 import { relativeAge } from "@/lib/relativeTime";
 import {
   type NodeBudget,
@@ -243,7 +250,11 @@ function DiscoverPageInner() {
     },
     [replace],
   );
-  const [contextLength, setContextLength] = useState(8192);
+  // CX4: the one planned context, unless the person tries another here; a
+  // try is not saved, so the next visit starts from the setting again.
+  const planned = usePlannedContext();
+  const [tried, setContextLength] = useState<number | null>(null);
+  const contextLength = tried ?? planned ?? DEFAULT_PLANNED_CONTEXT;
   // What the library made of the query: `repo` means it parsed as a
   // pasted reference and `results` holds that one repo.
   const [interpreted, setInterpreted] = useState<"search" | "repo">("search");
@@ -306,12 +317,8 @@ function DiscoverPageInner() {
       const raw = localStorage.getItem(PREFS_KEY);
       if (raw) {
         const prefs = JSON.parse(raw) as DiscoverPrefs;
-        if (
-          typeof prefs.contextLength === "number" &&
-          CONTEXT_CHOICES.includes(prefs.contextLength)
-        ) {
-          setContextLength(prefs.contextLength);
-        }
+        // A stored `contextLength` is not carried over (CX4): the context
+        // is the one setting, and a try here is only for this visit.
         // The old `format` preference is not carried over: GGUF was a
         // default, not a choice, for nearly everyone who has it stored. Nor
         // is the old `level`, written on every visit whether chosen or not.
@@ -333,7 +340,6 @@ function DiscoverPageInner() {
       localStorage.setItem(
         PREFS_KEY,
         JSON.stringify({
-          contextLength,
           ...(chosenLevel !== null ? { chosenLevel } : {}),
           sort,
         } satisfies DiscoverPrefs),
@@ -341,7 +347,7 @@ function DiscoverPageInner() {
     } catch {
       // The screen just does not remember.
     }
-  }, [prefsLoaded, contextLength, chosenLevel, sort]);
+  }, [prefsLoaded, chosenLevel, sort]);
 
   useEffect(() => {
     void (async () => {
@@ -541,7 +547,7 @@ function DiscoverPageInner() {
           />
 
           <div className="px-5 py-4 sm:min-h-0 sm:overflow-y-auto">
-            <ContextControl value={contextLength} onChange={setContextLength} />
+            <ContextControl value={contextLength} planned={planned} onChange={setContextLength} />
             {downloads
               .filter((d) => d.id === searchParams.get("download") && d.repo === selection?.repo)
               .map((d) => (
@@ -697,26 +703,58 @@ function HardwareSummary({
  * so the verdict looked like a fact about the model. Watching the
  * recommendation walk down the list as this changes *is* the guidance.
  */
-function ContextControl({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+function ContextControl({
+  value,
+  planned,
+  onChange,
+}: {
+  value: number;
+  /** The one setting (CX4); null until the Library answers. */
+  planned: number | null;
+  onChange: (value: number) => void;
+}) {
+  const choices = [...new Set([...CONTEXT_CHOICES, value, ...(planned ? [planned] : [])])].sort(
+    (a, b) => a - b,
+  );
   return (
-    <label className="font-ui mb-3 flex items-center gap-1.5 text-sm text-[color:var(--muted)]">
-      <span>Scored for</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className={selectClass}
-        aria-label="Context length to score against"
-      >
-        {CONTEXT_CHOICES.map((choice) => (
-          <option key={choice} value={choice}>
-            {contextLabel(choice)}
-          </option>
-        ))}
-      </select>
-      <span title="How much conversation the model can hold at once. It costs memory, so it decides which version fits.">
-        of conversation
-      </span>
-    </label>
+    <div className="mb-3">
+      <label className="font-ui flex items-center gap-1.5 text-sm text-[color:var(--muted)]">
+        <span>Scored for</span>
+        <select
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className={selectClass}
+          aria-label="Context length to score against"
+        >
+          {choices.map((choice) => (
+            <option key={choice} value={choice}>
+              {contextLabel(choice)}
+            </option>
+          ))}
+        </select>
+        <span title="How much conversation the model can hold at once. It costs memory, so it decides which version fits.">
+          of conversation
+        </span>
+      </label>
+      {planned !== null && (
+        <p
+          className="mt-0.5 text-[0.6875rem] text-[color:var(--muted)]"
+          data-testid="planned-context"
+        >
+          {value === planned ? (
+            <>The context you plan for. </>
+          ) : (
+            <>
+              Trying {contextLabel(value)} here only: Home, the Library and Run plan for{" "}
+              {contextLabel(planned)}.{" "}
+            </>
+          )}
+          <Link href={PLANNED_CONTEXT_HREF} className="underline">
+            Change it in Settings
+          </Link>
+        </p>
+      )}
+    </div>
   );
 }
 
