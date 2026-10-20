@@ -75,7 +75,16 @@ export function parseFolders(value: unknown): LibraryFolder[] {
     const mounts = Array.isArray(record.mounts)
       ? record.mounts.filter((m): m is string => typeof m === "string" && m.trim().length > 0)
       : [];
-    return [{ path: record.path.trim(), mounts }];
+    // An Ollama store keeps its kind; `found` is the library's own note on a
+    // folder it listed without it being in `modelRoots` (CX9).
+    return [
+      {
+        path: record.path.trim(),
+        mounts,
+        ...(record.kind === "ollama" ? { kind: "ollama" as const } : {}),
+        ...(record.found === true ? { found: true } : {}),
+      },
+    ];
   });
 }
 
@@ -108,7 +117,7 @@ export function mountBoxes(folder: LibraryFolder): MountBoxes {
 /** The folder with its mounts taken from the boxes, blanks dropped. */
 export function withMountBoxes(folder: LibraryFolder, boxes: MountBoxes): LibraryFolder {
   return {
-    path: folder.path,
+    ...folder,
     mounts: [boxes.posix, boxes.windows].map((m) => m.trim()).filter((m) => m.length > 0),
   };
 }
@@ -137,8 +146,10 @@ export function withMount(folder: LibraryFolder, shape: MountShape, path: string
 
 /** Why a folder list cannot be saved yet, or null. Mirrors the library's
  * validator so the operator hears it beside the box. */
-export function foldersProblem(folders: LibraryFolder[]): string | null {
+export function foldersProblem(all: LibraryFolder[]): string | null {
   const seen = new Set<string>();
+  // A found folder is not saved into `modelRoots`, so it is not checked.
+  const folders = all.filter((f) => !f.found);
   for (const [index, folder] of folders.entries()) {
     if (!folder.path.trim()) return `folder ${index + 1} has no path`;
     const key = folder.path.trim().toLowerCase();

@@ -670,6 +670,11 @@ function ModelList({
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[0.625rem] text-[color:var(--muted)]">
               <span className="font-mono">{m.format}</span>
+              {m.ollama && (
+                <span data-testid="model-list-ollama" title="Read from Ollama's model store.">
+                  Ollama
+                </span>
+              )}
               {m.prepared && <span>for {engineLabel(m.prepared.engine)}</span>}
               {m.gguf?.quantization && <span className="font-mono">{m.gguf.quantization}</span>}
               {m.sizeLabel && <span>{m.sizeLabel}</span>}
@@ -910,6 +915,8 @@ function ModelDetail({
         </div>
       </div>
 
+      {model.ollama && <OllamaNote ollama={model.ollama} />}
+
       {model.status === "missing" && (
         <div className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
           <p>
@@ -1147,8 +1154,38 @@ function ModelDetail({
         }}
       />
 
-      {model.status === "present" && (
-        <DeleteModel model={model} nodes={nodes} onDeleted={onDeleted} />
+      {model.status === "present" &&
+        (model.ollama ? (
+          <p data-testid="ollama-manages" className="text-[0.6875rem] text-[color:var(--muted)]">
+            Ollama manages this model.
+          </p>
+        ) : (
+          <DeleteModel model={model} nodes={nodes} onDeleted={onDeleted} />
+        ))}
+    </div>
+  );
+}
+
+/** A model read from Ollama's store: its source, its other names, and the
+ * one thing that may stop it loading (CX9). */
+function OllamaNote({ ollama }: { ollama: NonNullable<LibraryModel["ollama"]> }) {
+  const others = ollama.tags.slice(1);
+  return (
+    <div data-testid="ollama-note" className="space-y-1 text-sm">
+      <p>
+        <span className="badge rounded border border-[color:var(--border)] px-1 text-[0.5625rem] tracking-wider uppercase">
+          Ollama
+        </span>
+        {others.length > 0 && (
+          <span className="ml-2 text-[0.6875rem] text-[color:var(--muted)]">
+            also: {others.join(", ")}
+          </span>
+        )}
+      </p>
+      {ollama.needsMigration && (
+        <p className="status-warn rounded-[var(--radius)] border px-3 py-2">
+          May not load in llama.cpp until Ollama has updated it.
+        </p>
       )}
     </div>
   );

@@ -1254,7 +1254,8 @@ export interface components {
             /**
              * @description The filename with its extension stripped, the directory
              *     name for safetensors, or the provenance file's name without
-             *     `.eugene-prepared.json` for `prepared`. **Not derived from metadata**: the
+             *     `.eugene-prepared.json` for `prepared`, or the first Ollama tag
+             *     for a model in an Ollama store. **Not derived from metadata**: the
              *     file's own name is what the operator downloaded, what they
              *     call it, and what `Runtime.modelAlias` defaults to — so
              *     plainly-named files mean the obvious name is already the
@@ -1328,6 +1329,7 @@ export interface components {
             safetensors?: components["schemas"]["SafetensorsDetail"];
             kev?: components["schemas"]["KevCheckpointDetail"];
             prepared?: components["schemas"]["PreparedDetail"];
+            ollama?: components["schemas"]["OllamaDetail"];
             /**
              * @description How many launch profiles are saved against this model. On
              *     the list so the browser can badge a tuned model without
@@ -1358,6 +1360,30 @@ export interface components {
              *     explain is the worst of the three states.
              */
             error?: string;
+        };
+        /**
+         * @description A model read from an Ollama store (CX9): which of Ollama's names
+         *     point at this file. Present only for a model in a folder of kind
+         *     `ollama`. Its `name` is the first of `tags`, and is what
+         *     `Runtime.modelAlias` is set to, since the file's own name is a
+         *     hash. Ollama manages the file: the library never writes or
+         *     deletes it.
+         */
+        OllamaDetail: {
+            /**
+             * @description `model:tag` names, as `ollama list` shows them, sorted. Several
+             *     tags can share one file. A model outside Ollama's own library
+             *     keeps its namespace (`user/model:tag`); one from another
+             *     registry keeps its host.
+             */
+            tags: string[];
+            /**
+             * @description Its family is one Ollama rewrites for llama.cpp
+             *     (`compatmigrate`) and this file is the older layout, so
+             *     upstream llama.cpp may not load it until Ollama has updated
+             *     it. Run is not refused for it.
+             */
+            needsMigration?: boolean;
         };
         /**
          * @description * `present` — found on disk and readable.
@@ -3639,6 +3665,8 @@ export interface components {
             modelId?: string | null;
             download?: components["schemas"]["schemas-DownloadSpec"] | null;
             preparation?: components["schemas"]["PreparationIntent"] | null;
+            /** @description The engine the person agreed, at the click, to install if the node lacks it (CX3). Checking that stops for this engine goes straight on to installing; any other engine still waits for an answer. */
+            installEngine?: components["schemas"]["EngineKind"] | null;
         };
         /**
          * ModelFormat
@@ -4253,6 +4281,33 @@ export interface components {
             missing?: components["schemas"]["schemas-PreparedFactMissing"][] | null;
         };
         /**
+         * OllamaDetail
+         * @description A model read from an Ollama store (CX9): which of Ollama's names
+         *     point at this file. Present only for a model in a folder of kind
+         *     `ollama`. Its `name` is the first of `tags`, and is what
+         *     `Runtime.modelAlias` is set to, since the file's own name is a
+         *     hash. Ollama manages the file: the library never writes or
+         *     deletes it.
+         */
+        "schemas-OllamaDetail": {
+            /**
+             * Tags
+             * @description `model:tag` names, as `ollama list` shows them, sorted. Several
+             *     tags can share one file. A model outside Ollama's own library
+             *     keeps its namespace (`user/model:tag`); one from another
+             *     registry keeps its host.
+             */
+            tags: string[];
+            /**
+             * Needsmigration
+             * @description Its family is one Ollama rewrites for llama.cpp
+             *     (`compatmigrate`) and this file is the older layout, so
+             *     upstream llama.cpp may not load it until Ollama has updated
+             *     it. Run is not refused for it.
+             */
+            needsMigration?: boolean | null;
+        };
+        /**
          * LibraryModel
          * @description One launchable model on this host.
          *
@@ -4318,7 +4373,8 @@ export interface components {
              * Name
              * @description The filename with its extension stripped, the directory
              *     name for safetensors, or the provenance file's name without
-             *     `.eugene-prepared.json` for `prepared`. **Not derived from metadata**: the
+             *     `.eugene-prepared.json` for `prepared`, or the first Ollama tag
+             *     for a model in an Ollama store. **Not derived from metadata**: the
              *     file's own name is what the operator downloaded, what they
              *     call it, and what `Runtime.modelAlias` defaults to — so
              *     plainly-named files mean the obvious name is already the
@@ -4402,6 +4458,7 @@ export interface components {
             safetensors?: components["schemas"]["schemas-SafetensorsDetail"] | null;
             kev?: components["schemas"]["schemas-KevCheckpointDetail"] | null;
             prepared?: components["schemas"]["schemas-PreparedDetail"] | null;
+            ollama?: components["schemas"]["schemas-OllamaDetail"] | null;
             /**
              * Profilecount
              * @description How many launch profiles are saved against this model. On
@@ -5793,6 +5850,18 @@ export interface components {
             retryAfterSeconds?: number;
         };
         /**
+         * @description What the library reads in a folder (CX9, 2026-10-20). `folder`:
+         *     model files, walked as they are. `ollama`: an Ollama model store
+         *     (the directory holding `blobs/` and `manifests/` or
+         *     `manifests-v2/`), read through its manifests and **never written
+         *     to** -- no download, provenance, prepared file or delete lands
+         *     there. Its models are Ollama's: one that Ollama removes goes
+         *     `missing`.
+         * @default folder
+         * @enum {string}
+         */
+        LibraryFolderKind: "folder" | "ollama";
+        /**
          * @description One directory the library catalogues, and where other machines
          *     find it (2026-09-14).
          *
@@ -5829,6 +5898,13 @@ export interface components {
              * @default []
              */
             mounts: string[];
+            kind?: components["schemas"]["LibraryFolderKind"];
+            /**
+             * @description Not in `modelRoots`: the library found it on its own machine
+             *     (an Ollama store, CX9) and lists it while `findOllama` is on.
+             *     Absent or false for a folder someone added.
+             */
+            readonly found?: boolean;
         };
         /**
          * @description One model an engine's adapter publishes as supported
