@@ -46,6 +46,8 @@ export interface RunningModel {
   driver: string | null;
   /** What the engine is actually opening — a mapped path, or a local copy. */
   localPath: string | null;
+  /** The context it serves, as the engine reports it once loaded (CX4). */
+  servedContext: number | null;
 }
 
 /** Up and serving. */
@@ -85,6 +87,7 @@ export function runningModel(model: LibraryModel, runtimes: Runtime[]): RunningM
     stopReason: best.stopReason ?? null,
     driver: best.driver ?? null,
     localPath: best.localPath ?? null,
+    servedContext: best.capabilities?.contextLength ?? null,
   };
 }
 

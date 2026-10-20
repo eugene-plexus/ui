@@ -24,6 +24,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resetPlannedContextForTests } from "@/lib/plannedContext";
+
 import DiscoverPage from "./page";
 
 const nav = vi.hoisted(() => ({
@@ -182,7 +184,11 @@ beforeEach(() => {
   seen = [];
   nav.params = new URLSearchParams();
   nav.replace = vi.fn();
+  resetPlannedContextForTests();
   handlers = new Map<string, Handler>([
+    // The one context the console plans for (CX4): every verdict here
+    // starts from it.
+    ["GET library/v1/config", () => ok({ guidanceContextLength: 8192 })],
     ["GET agent/v1/node", () => ok({ enrolled: false, devices: [] })],
     ["GET control/v1/nodes", () => ({ status: 503, body: { detail: "no root" } })],
     ["GET library/v1/hardware", () => ok({ hostname: "dev", gpus: [], warnings: [] })],
@@ -1176,17 +1182,31 @@ describe("selection and preferences survive", () => {
     }
   });
 
-  it("the scoring context and sort come back from the browser's own store", async () => {
+  it("the sort comes back from the browser's own store, the context from the setting", async () => {
+    // CX4: a context stored by an older console is a try from another
+    // visit, not the setting; the setting wins.
     localStorage.setItem(
       "eugene-discover-prefs",
       JSON.stringify({ contextLength: 32768, sort: "modified", format: "" }),
     );
     await openTheRepo();
     await waitFor(() =>
-      expect(lastQuery("library/v1/catalogue/model").get("contextLength")).toBe("32768"),
+      expect(lastQuery("library/v1/catalogue/model").get("contextLength")).toBe("8192"),
     );
     expect(lastQuery("library/v1/catalogue/search").get("sort")).toBe("modified");
     expect(lastQuery("library/v1/catalogue/search").get("format")).toBeNull();
+    expect(screen.getByTestId("planned-context")).toHaveTextContent("The context you plan for.");
+  });
+
+  it("says a try is a try, and does not keep it (CX4)", async () => {
+    await openTheRepo();
+    await setContext(32768);
+    expect(screen.getByTestId("planned-context")).toHaveTextContent(
+      "Trying 32k here only: Home, the Library and Run plan for 8k.",
+    );
+    expect(JSON.parse(localStorage.getItem("eugene-discover-prefs") ?? "{}")).not.toHaveProperty(
+      "contextLength",
+    );
   });
 });
 

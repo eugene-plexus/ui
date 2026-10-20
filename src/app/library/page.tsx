@@ -51,6 +51,8 @@ import {
   useTargetNode,
 } from "@/lib/nodeBudget";
 import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
+import { contextLabel } from "@/lib/starter";
+import { PlannedContextNote } from "@/components/PlannedContextNote";
 import { expertsContextSentence, placementSentence } from "@/lib/fitWords";
 import { runModelOf, startPreparation } from "@/lib/oneClickRun";
 import { formatBytesShort } from "@/lib/tasks";
@@ -1363,7 +1365,11 @@ function FitPanel({
         <p className="font-ui font-semibold">
           {resident ? (
             running.live ? (
-              `Running on ${where} now — it fits`
+              running.servedContext ? (
+                `Running on ${where} now, serving ${contextLabel(running.servedContext)} of conversation`
+              ) : (
+                `Running on ${where} now — it fits`
+              )
             ) : (
               `Starting on ${where}`
             )
@@ -1398,6 +1404,7 @@ function FitPanel({
           {open ? "hide the numbers" : "show the numbers"}
         </button>
       </div>
+      {!resident && <PlannedContextNote className="mt-0.5" />}
       {resident && (
         <p className="mt-0.5">
           This machine already holds it, so the memory reading below is what is left{" "}

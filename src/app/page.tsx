@@ -90,18 +90,6 @@ import { useTasks } from "@/lib/useTasks";
 const SLOW_POLL_MS = 15000;
 const FAST_POLL_MS = 5000;
 
-/**
- * The context Home's suggestion is scored at.
- *
- * 16k, and stated rather than inherited from the library's
- * `guidanceContextLength` (8k), because this card offers a download
- * measured in gigabytes and the number it was scored at should be one a
- * person would actually be happy with afterwards — a model that fits at
- * 8k and not at 16k is a model they will outgrow in one conversation.
- * Discover's own control is where a different number lives.
- */
-const STARTER_CONTEXT = 16384;
-
 export default function HomePage() {
   const { state: gate, retry: retryGate } = useSetupGate();
   const ready = gate === "ready";
@@ -154,7 +142,7 @@ export default function HomePage() {
       await api
         .get<StarterSet>(
           "library",
-          `/v1/catalogue/starter?contextLength=${STARTER_CONTEXT}&${new URLSearchParams(
+          `/v1/catalogue/starter?${new URLSearchParams(
             fitQuery(known ? budgetFromNode(known) : null),
           )}`,
         )

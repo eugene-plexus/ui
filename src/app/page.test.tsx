@@ -13,6 +13,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resetPlannedContextForTests } from "@/lib/plannedContext";
+
 import { resetRunsForTests } from "@/lib/oneClickRun";
 
 import HomePage from "./page";
@@ -141,6 +143,7 @@ function key(call: Call): string {
 }
 
 beforeEach(() => {
+  resetPlannedContextForTests();
   const recorder: Call[] = [];
   const routes = freshInstall();
   calls = recorder;
@@ -1149,6 +1152,20 @@ describe("Home's Download and run", () => {
         bytesDownloaded: 0,
       },
     }));
+  });
+
+  it("is judged at the one planned context, not a number of its own (CX4)", async () => {
+    handlers.set("GET library/v1/config", () => ({
+      status: 200,
+      body: { guidanceContextLength: 32768 },
+    }));
+    render(<HomePage />);
+    await screen.findByTestId("home-first-model");
+    const starter = calls.find((c) => c.route.startsWith("library/v1/catalogue/starter"))!;
+    expect(starter.route).not.toContain("contextLength=");
+    expect(await screen.findByTestId("planned-context")).toHaveTextContent(
+      "Judged at 32k of conversation",
+    );
   });
 
   it("names the dense pick with the library's reason, as before", async () => {

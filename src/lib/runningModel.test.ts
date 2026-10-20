@@ -42,6 +42,12 @@ describe("is this model running here", () => {
     expect(found?.stopped).toBe(false);
   });
 
+  it("carries the context the engine serves, once it says (CX4)", () => {
+    expect(runningModel(model(), [runtime()])?.servedContext).toBeNull();
+    const served = runtime({ capabilities: { contextLength: 16384, contextPoolTokens: 65536 } });
+    expect(runningModel(model(), [served])?.servedContext).toBe(16384);
+  });
+
   it("says nothing about a node running a different model", () => {
     expect(runningModel(model(), [runtime({ modelPath: "Y:\\models\\qwen-30b.gguf" })])).toBeNull();
     expect(runningModel(model(), [])).toBeNull();
