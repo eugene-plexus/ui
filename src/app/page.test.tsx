@@ -563,7 +563,7 @@ describe("Home's Running card says why a backend is down", () => {
 });
 
 describe("Home says each served model's context window", () => {
-  it("in Try it's picker, in Use it from your apps, and on the Running card", async () => {
+  it("in Try it's picker and on the Running card", async () => {
     handlers.set("GET library/v1/models", () => ({ status: 200, body: LIBRARY_WITH_TWO }));
     handlers.set("GET gateway/v1/models", () => ({
       status: 200,
@@ -596,10 +596,20 @@ describe("Home says each served model's context window", () => {
     expect(running).toHaveTextContent("qwen3-14b · 40k context");
     const picker = await screen.findByTestId("home-model");
     expect(within(picker).getByRole("option")).toHaveTextContent("qwen3-14b · 40k context");
-    // One model: the id is shown as code to copy, and the window beside it, not in it.
-    const id = await screen.findByTestId("app-model");
-    expect(id).toHaveTextContent(/^qwen3-14b$/);
-    expect(id.parentElement).toHaveTextContent("40k context");
+  });
+});
+
+describe("Home's line about connecting apps (CX5)", () => {
+  it("is there with no model served, and leads to Connect apps", async () => {
+    // The card used to show only while a chat model was served, so with
+    // the models stopped there was no way to the keys at all.
+    render(<HomePage />);
+    const line = await screen.findByTestId("home-connect-apps");
+    expect(within(line).getByRole("link", { name: /Connect apps/ })).toHaveAttribute(
+      "href",
+      "/connect",
+    );
+    expect(screen.queryByTestId("home-use-from-apps")).toBeNull();
   });
 });
 

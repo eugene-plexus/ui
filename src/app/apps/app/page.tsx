@@ -304,8 +304,8 @@ function Overview({
               <span className="text-[color:var(--muted)]">
                 {" "}
                 — listed with your other keys on{" "}
-                <Link href="/" className="underline">
-                  Home
+                <Link href="/connect" className="underline">
+                  Connect apps
                 </Link>
                 . Turning it off there cuts this app off.
               </span>

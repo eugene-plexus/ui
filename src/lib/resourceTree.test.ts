@@ -503,7 +503,7 @@ describe("the page menu", () => {
     // Overview where the object's page is an existing screen.
     const tree = buildTree(TWO_MACHINE);
     const pagesOf = (sel: string) => findNode(tree, sel)?.pages.map((p) => p.label);
-    expect(pagesOf("gateway")).toEqual(["Metrics", "Routing", "Settings"]);
+    expect(pagesOf("gateway")).toEqual(["Connect apps", "Metrics", "Routing", "Settings"]);
     expect(pagesOf("library")).toEqual(["Models", "Discover", "Folders", "Settings"]);
     expect(pagesOf("library:node:nas")).toEqual(["Folders"]);
     expect(pagesOf("backends")).toEqual(["Overview", "Add a backend", "Add a search account"]);

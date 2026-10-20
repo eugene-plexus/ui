@@ -517,8 +517,8 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
   {
     id: "client-keys",
     label: "Keys for your apps",
-    description: "Make, limit and revoke the keys your apps use, on Home.",
-    href: "/#use-from-apps",
+    description: "Make, limit and revoke the keys your apps use, on Connect apps.",
+    href: "/connect",
     keywords: ["client key", "api key", "token", "revoke", "limits", "connect", "base url"],
     topic: "access",
   },
