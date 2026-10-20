@@ -98,8 +98,30 @@ function componentEndpoints(target: ProxyTarget): ConfigEndpoints {
 export interface SectionHandle {
   dirty: number;
   attention?: boolean;
-  save: () => Promise<void>;
+  /** Sections that share a process share a restart (CX7): their target and config path. */
+  process?: string;
+  /** The process's name, for "Restarts: …". */
+  label?: string;
+  /** An unsaved field takes effect only after a restart. */
+  restartDirty?: boolean;
+  /**
+   * Save. With `deferRestart`, a save that needs a restart does not start
+   * one; it says so, and the page calls `restart` once per process.
+   */
+  save: (opts?: { deferRestart?: boolean }) => Promise<SaveOutcome>;
+  /** Restart the process for what was saved; true once it is back. */
+  restart?: () => Promise<boolean>;
+  /** Read the config again after a restart another section ran. */
+  reload?: () => Promise<void>;
   discard: () => void;
+}
+
+/** What one save did, for the page's save-all. */
+export interface SaveOutcome {
+  /** The PATCH was answered (some keys may still have been refused). */
+  saved: boolean;
+  /** The saved keys take effect only after a restart that has not run. */
+  restartNeeded: boolean;
 }
 
 export function ConfigEditor({
@@ -313,10 +335,23 @@ export function ConfigEditor({
   // The page's save-all bar. The handle's functions read the latest
   // `save`/`discard` through a ref, so the page is told again only when
   // the count changes rather than on every render.
-  const latest = useRef<{ save: () => Promise<void>; discard: () => void }>({
-    save: async () => {},
+  const latest = useRef<{
+    save: (opts?: { deferRestart?: boolean }) => Promise<SaveOutcome>;
+    discard: () => void;
+    restart: () => Promise<boolean>;
+    reload: () => Promise<void>;
+  }>({
+    save: async () => ({ saved: false, restartNeeded: false }),
     discard: () => {},
+    restart: async () => false,
+    reload: async () => {},
   });
+  // The unsaved fields that take effect only after a restart (CX7): the
+  // schema says which, so the button can say so before anyone presses it.
+  const restartDirty = useMemo(
+    () => (schema?.fields ?? []).some((f) => f.requiresRestart && dirtyKeys.has(f.key)),
+    [schema, dirtyKeys],
+  );
   const attention = Boolean(
     saveError ||
     readBackError ||
@@ -330,11 +365,16 @@ export function ConfigEditor({
     onSection(id, {
       dirty: dirtyKeys.size,
       attention,
-      save: () => latest.current.save(),
+      process: `${target} ${ends.config}`,
+      label,
+      restartDirty,
+      save: (opts) => latest.current.save(opts),
+      restart: () => latest.current.restart(),
+      reload: () => latest.current.reload(),
       discard: () => latest.current.discard(),
     });
     return () => onSection(id, null);
-  }, [sectionId, onSection, dirtyKeys.size, attention]);
+  }, [sectionId, onSection, dirtyKeys.size, attention, target, ends.config, label, restartDirty]);
 
   const labels = useMemo(() => {
     const out: Record<string, string> = {};
@@ -391,8 +431,13 @@ export function ConfigEditor({
     });
   }
 
-  async function save() {
-    if (!schema || dirtyKeys.size === 0) return;
+  // What a deferred save's server refused, kept for the restart the page
+  // runs later: the reload after it must not lose those values.
+  const deferredRefused = useRef<Record<string, unknown>>({});
+
+  async function save(opts: { deferRestart?: boolean } = {}): Promise<SaveOutcome> {
+    const outcome: SaveOutcome = { saved: false, restartNeeded: false };
+    if (!schema || dirtyKeys.size === 0) return outcome;
     setSaving(true);
     setSaveStatus(null);
     setSaveError(null);
@@ -406,6 +451,7 @@ export function ConfigEditor({
         patch[k] = draft[k];
       }
       const result = await api.patch<ConfigUpdateResult>(target, ends.config, patch);
+      outcome.saved = true;
       // Whatever another section read a moment ago is out of date now.
       invalidateConfigTrio(target);
       if (result.rejected.length) setShowMore(true);
@@ -428,7 +474,12 @@ export function ConfigEditor({
         // sentence saying why, behind a "back online" that closed itself.
         const refused: Record<string, unknown> = {};
         for (const r of result.rejected) refused[r.key] = patch[r.key];
-        void performRestart(refused);
+        // Save all restarts each process once, after its last save (CX7):
+        // a second section's PATCH must not reach a process on its way out.
+        if (opts.deferRestart) {
+          outcome.restartNeeded = true;
+          deferredRefused.current = { ...deferredRefused.current, ...refused };
+        } else void performRestart(refused);
       }
       // Refresh from server so the editor reflects any server-side coercions.
       // A read-back that fails is NOT a save that failed: the values are
@@ -445,7 +496,7 @@ export function ConfigEditor({
           `Saved, but the saved values could not be read back (${formatError(e)}). ` +
             "Reload the page to see them.",
         );
-        return;
+        return outcome;
       }
       setServerDoc(fresh);
       // Keep user's edits to fields the server rejected, otherwise reset to server values.
@@ -474,6 +525,31 @@ export function ConfigEditor({
       setSaveError(formatError(e));
     } finally {
       setSaving(false);
+    }
+    return outcome;
+  }
+
+  /** The restart a deferred save left to the page (CX7). */
+  async function restartDeferred(): Promise<boolean> {
+    const refused = deferredRefused.current;
+    deferredRefused.current = {};
+    return performRestart(refused);
+  }
+
+  /** After a restart another section of this process ran: read what is in effect now. */
+  async function reloadAfterRestart() {
+    try {
+      invalidateConfigTrio(target);
+      const { schema: schemaResp, doc: docResp } = await loadConfigTrio(target, ends.config);
+      setSchema(schemaResp);
+      setServerDoc(docResp);
+      setDraft({ ...(docResp as Record<string, unknown>), ...deferredRefused.current });
+      deferredRefused.current = {};
+      setSaveStatus((current) =>
+        current ? { ...current, requiresRestart: false, pendingRestart: [] } : null,
+      );
+    } catch {
+      // The banner keeps "Restart needed"; a reload of the page reads it again.
     }
   }
 
@@ -524,7 +600,7 @@ export function ConfigEditor({
    * in `waiting` until the timeout — at which point the modal tells
    * the operator to relaunch by hand.
    */
-  async function performRestart(refused: Record<string, unknown> = {}) {
+  async function performRestart(refused: Record<string, unknown> = {}): Promise<boolean> {
     setRestart({ phase: "scheduled", message: "Asking the process to exit…" });
     try {
       const waiting = await ends.restart();
@@ -560,6 +636,7 @@ export function ConfigEditor({
           // If the reload fails the modal still reports "back" — the
           // operator can manually refresh the page.
         }
+        return true;
       } else {
         setRestart({
           phase: "timeout",
@@ -570,13 +647,14 @@ export function ConfigEditor({
     } catch (e) {
       setRestart({ phase: "error", message: formatError(e) });
     }
+    return false;
   }
 
   function dismissRestart() {
     setRestart({ phase: "idle" });
   }
 
-  latest.current = { save, discard };
+  latest.current = { save, discard, restart: restartDeferred, reload: reloadAfterRestart };
 
   // A deep link's field: open the fold it may be behind, scroll to it and
   // mark it for a moment. Once per key, after the form exists.
@@ -704,12 +782,19 @@ export function ConfigEditor({
   const saveButton = (
     <button
       type="button"
-      onClick={save}
+      onClick={() => void save()}
       disabled={dirtyKeys.size === 0 || saving}
       className="action-button action-button--primary font-ui rounded-[var(--radius)] bg-[color:var(--accent-left)] px-3 py-1 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:brightness-100"
     >
-      {saving ? "Saving…" : "Save"}
+      {saving ? "Saving…" : restartDirty ? "Save and restart" : "Save"}
     </button>
+  );
+  // Said before the click, not after (CX7): the save restarts the process
+  // at once, and a gateway's restart ends every answer an app is reading.
+  const restartNote = restartDirty && (
+    <span className="text-sm text-[color:var(--muted)]" data-testid="restart-note">
+      {restartNoteText(label, schema?.component)}
+    </span>
   );
 
   const banners = (
@@ -808,6 +893,7 @@ export function ConfigEditor({
               <span className="text-sm text-[color:var(--muted)]">{dirtyInScope} unsaved</span>
               {discardButton}
               {testButton}
+              {restartNote}
               {saveButton}
             </div>
           )}
@@ -840,6 +926,7 @@ export function ConfigEditor({
           </span>
           {dirtyKeys.size > 0 && discardButton}
           {testButton}
+          {restartNote}
           {saveButton}
         </div>
       </header>
@@ -1248,4 +1335,14 @@ function ClearModelCopies({ target }: { target: ProxyTarget }) {
       )}
     </div>
   );
+}
+
+/**
+ * The line beside "Save and restart" (CX7). A gateway's restart is the one
+ * that stops apps mid-answer, so it alone says so.
+ */
+export function restartNoteText(label: string, component?: string | null): string {
+  return component === "gateway"
+    ? `Restarts ${label}. Answers that apps are reading stop.`
+    : `Restarts ${label}.`;
 }
