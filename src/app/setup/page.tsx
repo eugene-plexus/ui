@@ -280,6 +280,12 @@ export default function WizardPage() {
       // the other steps with, so the resume form signs in first (this used
       // to send the person to /login, and then the passphrase was asked
       // for again).
+      // A finished install has nothing here for a visitor with no session:
+      // that is a sign-in (CX2-C1).
+      if (!hasSessionToken() && status.firstRunComplete === true) {
+        routerRef.current.replace(`/login?next=${encodeURIComponent("/")}`);
+        return;
+      }
       setForm("resume");
       if (!hasSessionToken()) {
         setScreen(1);

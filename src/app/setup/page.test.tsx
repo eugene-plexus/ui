@@ -654,6 +654,16 @@ describe("screen 2: what Finish commits", () => {
     await waitFor(() => expect(screen.getByTestId("proposed-folder")).toHaveTextContent(PROPOSED));
   });
 
+  it("sends a visitor with no session on a finished install to sign in (CX2-C1)", async () => {
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: { initialized: true, unlocked: true, keyringAvailable: false, firstRunComplete: true },
+    }));
+    render(<WizardPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login?next=%2F"));
+    expect(screen.queryByLabelText("Passphrase")).toBeNull();
+  });
+
   it("leaves a finished install alone", async () => {
     // A wander to /setup on an install that is set up must not offer to
     // overwrite its folders with the proposal.
