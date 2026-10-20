@@ -199,7 +199,7 @@ describe("Library -> Folders, after a mount changes", () => {
     const world: World = { opened: NEW, check: { libraryConsulted: true, folders: [] }, calls: [] };
     stub(world);
     render(<LibraryFolders nodeName={undefined} />);
-    const box = await screen.findByLabelText("Mount on Linux and macOS nodes");
+    const box = await screen.findByLabelText("Mount on Linux and macOS machines");
     await userEvent.type(box, "/mnt/models");
     await userEvent.click(screen.getByTestId("folders-save"));
 
@@ -214,7 +214,7 @@ describe("Library -> Folders, after a mount changes", () => {
     const world: World = { opened: NEW, check: { libraryConsulted: true, folders: [] }, calls: [] };
     stub(world);
     render(<LibraryFolders nodeName={undefined} />);
-    const box = await screen.findByLabelText("Mount on Linux and macOS nodes");
+    const box = await screen.findByLabelText("Mount on Linux and macOS machines");
     await userEvent.type(box, "/mnt/models");
     await userEvent.click(screen.getByTestId("folders-save"));
 
@@ -271,7 +271,10 @@ describe("Library -> Folders, after a mount changes", () => {
     await waitFor(() => expect(calls).toContain("GET agent/v1/runtimes"));
     expect(screen.queryByTestId("stale-models")).toBeNull();
 
-    await userEvent.type(await screen.findByLabelText("Mount on Linux and macOS nodes"), "/mnt/m");
+    await userEvent.type(
+      await screen.findByLabelText("Mount on Linux and macOS machines"),
+      "/mnt/m",
+    );
     await userEvent.click(screen.getByTestId("folders-save"));
 
     expect(await screen.findByTestId("stale-model")).toHaveTextContent(NEW);

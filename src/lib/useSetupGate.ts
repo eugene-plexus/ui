@@ -47,7 +47,11 @@ export function isNoAnswer(e: unknown): boolean {
  *   1. Probe init state (public endpoint, no auth) — route to `/setup`
  *      if uninitialized.
  *   2. Check for a session token BEFORE making any authed call, so the
- *      page never renders for an unauthenticated visitor.
+ *      page never renders for an unauthenticated visitor. With none, an
+ *      install the status says is half set up (`firstRunComplete: false`)
+ *      goes to `/setup`, which signs in and carries on in one passphrase
+ *      prompt; anything else goes to `/login` (CX2-C1). An older agent
+ *      leaves the field out, which reads as finished.
  *   3. Authed `GET /v1/config` to honour `firstRunComplete`.
  *
  * **Both calls have a deadline, and no answer is its own state.** The
@@ -77,16 +81,26 @@ export function useSetupGate(): { state: SetupGateState; retry: () => void } {
     let cancelled = false;
     async function check() {
       try {
-        const status = await api.get<{ initialized: boolean }>("agent", "/v1/auth/status", {
-          skipAuth: true,
-          timeoutMs: SETUP_GATE_TIMEOUT_MS,
-        });
+        const status = await api.get<{ initialized: boolean; firstRunComplete?: boolean }>(
+          "agent",
+          "/v1/auth/status",
+          {
+            skipAuth: true,
+            timeoutMs: SETUP_GATE_TIMEOUT_MS,
+          },
+        );
         if (cancelled) return;
         if (!status.initialized) {
           router.replace("/setup");
           return;
         }
         if (!hasSessionToken()) {
+          // Half set up: setup signs in itself, so the passphrase is asked
+          // once rather than at sign-in and again for the control root.
+          if (status.firstRunComplete === false) {
+            router.replace("/setup");
+            return;
+          }
           const next = encodeURIComponent(window.location.pathname + window.location.search);
           router.replace(`/login?next=${next}`);
           return;

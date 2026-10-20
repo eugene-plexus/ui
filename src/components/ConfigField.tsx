@@ -1318,7 +1318,7 @@ function LibraryFoldersInput({
         </p>
       )}
       <p className="text-sm text-[color:var(--muted)]">
-        A folder&rsquo;s mounts cover every node of that kind. A machine that mounts it elsewhere
+        A folder&rsquo;s mounts cover every machine of that kind. A machine that mounts it elsewhere
         gets its own <em>override</em>, on{" "}
         <Link
           href={libraryFoldersHref(null)}
@@ -1374,13 +1374,13 @@ function LibraryFoldersInput({
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2 pl-2 text-[0.6875rem] text-[color:var(--muted)]">
-            <span className="w-full sm:w-auto">mounted on Linux/macOS nodes at</span>
+            <span className="w-full sm:w-auto">mounted on Linux/macOS machines at</span>
             <input
               type="text"
               value={boxesFor(index).posix}
               spellCheck={false}
               placeholder="/mnt/models  (blank: same path, or not reachable)"
-              aria-label="Mount on Linux and macOS nodes"
+              aria-label="Mount on Linux and macOS machines"
               onChange={(e) => setMount(index, "posix", e.target.value)}
               disabled={pending}
               className={`${inputClass} ${
@@ -1389,13 +1389,13 @@ function LibraryFoldersInput({
                   : ""
               }`}
             />
-            <span className="w-full sm:w-auto">on Windows nodes at</span>
+            <span className="w-full sm:w-auto">on Windows machines at</span>
             <input
               type="text"
               value={boxesFor(index).windows}
               spellCheck={false}
               placeholder="\\\\NAS\\models"
-              aria-label="Mount on Windows nodes"
+              aria-label="Mount on Windows machines"
               onChange={(e) => setMount(index, "windows", e.target.value)}
               disabled={pending}
               className={`${inputClass} ${
@@ -1430,7 +1430,7 @@ function LibraryFoldersInput({
           add folder
         </button>
         <a href="/library/folders?sel=library" className="text-[0.6875rem] underline">
-          every node&rsquo;s view of these folders: Library → Folders
+          every machine&rsquo;s view of these folders: Library → Folders
         </a>
       </div>
       {browsing !== null && browseTarget !== null && (

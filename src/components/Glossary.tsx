@@ -5,8 +5,8 @@ export const GLOSSARY = [
     "Your connected Eugene Plexus services and machines, managed together with one sign-in.",
   ],
   [
-    "Node",
-    "A machine that belongs to your install. Each node runs an agent to manage its services and engines.",
+    "Machine",
+    "A computer that belongs to your install. Each machine runs an agent to manage its services and engines. The API and expert docs call a machine a node.",
   ],
   [
     "Component",

@@ -426,22 +426,22 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
         <p className="mt-1 max-w-3xl text-sm text-[color:var(--muted)]">
           {gridView ? (
             <>
-              A node runs a model only from one of these folders. Each folder is a directory on the
-              machine the Library runs on; its <em>mounts</em> say where other machines find the
-              same directory, once, and every node of that kind inherits it. A cell is what that
-              node would open.{" "}
+              A machine runs a model only from one of these folders. Each folder is a directory on
+              the machine the Library runs on; its <em>mounts</em> say where other machines find the
+              same directory, once, and every machine of that kind inherits it. A cell is what that
+              machine would open.{" "}
               <strong>
-                Set a mount here when every node of that kind mounts the share at the same place.
+                Set a mount here when every machine of that kind mounts the share at the same place.
               </strong>{" "}
               A machine that mounts it somewhere else gets an <em>override</em> instead, on its own
-              column: click the node&rsquo;s name in the header, or pick it under Library in the
+              column: click the machine&rsquo;s name in the header, or pick it under Library in the
               tree.
             </>
           ) : (
             <>
               What this machine opens for each Library folder, and which rule says so.{" "}
-              <strong>The folder&rsquo;s own mounts</strong> &mdash; where every Windows node, and
-              every Linux or macOS node, finds it &mdash; are set once on{" "}
+              <strong>The folder&rsquo;s own mounts</strong> &mdash; where every Windows machine,
+              and every Linux or macOS machine, finds it &mdash; are set once on{" "}
               <Link
                 href={libraryFoldersHref(null)}
                 className="underline"
@@ -451,7 +451,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
               </Link>
               , and this machine inherits them. An override here is only for a machine that mounts a
               share somewhere other than the folder&rsquo;s own mounts say; leave it empty
-              otherwise. Browse lists <strong>this node&rsquo;s</strong> disk, wherever you are
+              otherwise. Browse lists <strong>this machine&rsquo;s</strong> disk, wherever you are
               reading this from.
             </>
           )}
@@ -584,7 +584,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
             data-testid="overrides-test"
             disabled={busy !== null}
             onClick={() => void testOverrides()}
-            title="Check the unsaved overrides against this node's disk and the Library's files. Saves nothing."
+            title="Check the unsaved overrides against this machine's disk and the Library's files. Saves nothing."
           >
             {busy === "test" ? "checking…" : "test"}
           </button>
@@ -605,7 +605,7 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
             grid
           </Link>
           <Link href="/library/folders?sel=library" className="text-sm underline">
-            every node
+            every machine
           </Link>
         </div>
       )}
@@ -726,10 +726,10 @@ function FolderGrid({
               Folder <span className="font-normal">(on the Library&rsquo;s machine)</span>
             </th>
             <th className="border-b border-[color:var(--border)] px-2 py-1.5 font-medium">
-              Mounted on Linux / macOS nodes at
+              Mounted on Linux / macOS machines at
             </th>
             <th className="border-b border-[color:var(--border)] px-2 py-1.5 font-medium">
-              Mounted on Windows nodes at
+              Mounted on Windows machines at
             </th>
             {nodes.map((node) => (
               <th
@@ -850,7 +850,7 @@ function FolderGrid({
             value={browseTarget}
             onChange={(e) => onMountBrowseNode(e.target.value)}
             className="font-ui rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel)] px-2 py-1 text-sm"
-            aria-label="Node whose disk to browse for a mount"
+            aria-label="Machine whose disk to browse for a mount"
           >
             {nodes.map((node) => (
               <option key={node.target} value={node.target}>
@@ -903,7 +903,9 @@ function MountCell({
         disabled={disabled}
         placeholder={placeholder}
         data-testid={testId}
-        aria-label={shape === "posix" ? "Mount on Linux and macOS nodes" : "Mount on Windows nodes"}
+        aria-label={
+          shape === "posix" ? "Mount on Linux and macOS machines" : "Mount on Windows machines"
+        }
         onChange={(e) => onChange(e.target.value)}
         className={`${inputClass} ${wrongShape ? "border-[color:var(--status-error-border)]" : ""}`}
         title={problem ?? "Blank means: reached at the folder's own path, or not at all"}
@@ -949,7 +951,7 @@ function NodeColumn({
       <p className="text-sm text-[color:var(--muted)]">
         {nodeName ? (
           <>
-            <span className="font-mono">{labelOf(nodeName)}</span> is not in the node registry as
+            <span className="font-mono">{labelOf(nodeName)}</span> is not in the machine registry as
             this console sees it. If it was just enrolled, reload; if the control root is sealed,
             unlock it under Machines.
           </>

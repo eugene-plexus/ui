@@ -263,7 +263,7 @@ describe("drivers are grouped by machine", () => {
     });
     const drivers = branchOf(tree, "Backends");
     const unplaced = drivers?.children.find((c) => c.label === "gone");
-    expect(unplaced?.hint).toBe("no node in the registry");
+    expect(unplaced?.hint).toBe("no machine in the registry");
     expect(unplaced?.children.map((c) => c.sel)).toEqual(["driver:ghost@gone"]);
   });
 
@@ -428,7 +428,7 @@ describe("the machine level appears only once there is more than one machine", (
     const drivers = branchOf(tree, "Backends");
     expect(drivers?.children.map((c) => [c.kind, c.label, c.hint])).toEqual([
       ["nodeGroup", "solo", undefined],
-      ["nodeGroup", "gone", "no node in the registry"],
+      ["nodeGroup", "gone", "no machine in the registry"],
     ]);
     // The registry is still the only source of machines (design §14.2).
     expect(branchOf(tree, "Machines")?.children.map((c) => c.sel)).toEqual(["agent:solo"]);

@@ -101,7 +101,7 @@ describe("savedMessage", () => {
 
   it("never tells anyone to reboot or relaunch a node", () => {
     for (const checks of [[{ label: "A", reach: reach(true) }], [{ label: "A", reach: null }]]) {
-      expect(savedMessage(checks)).not.toMatch(/reboot|next launch|restart the node/i);
+      expect(savedMessage(checks)).not.toMatch(/reboot|next launch|restart the machine/i);
     }
   });
 });

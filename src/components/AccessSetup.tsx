@@ -538,7 +538,7 @@ export function AccessSetup() {
         {mode === "local" && (
           <p>
             No public domain or Internet access needed. Set up local DNS, and trust Eugene’s CA
-            certificate on each browser and node.
+            certificate on each browser and machine.
           </p>
         )}
         {mode === "certificate" && (
@@ -785,8 +785,8 @@ export function AccessSetup() {
               Allow inference from any network, with an API key
               <span className={hintClass}>
                 For apps connecting remotely or through Cloudflare. Requests still need a valid
-                Eugene API key and follow its model permissions and limits. Console and node access
-                keep their own settings.
+                Eugene API key and follow its model permissions and limits. Console and machine
+                access keep their own settings.
               </span>
             </span>
           </label>

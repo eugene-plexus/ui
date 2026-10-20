@@ -530,7 +530,7 @@ export default function NodesPage() {
                 Unknown until the root is unlocked.
               </p>
             ) : nodes.length === 0 ? (
-              <p className="text-sm text-[color:var(--muted)]">No nodes are enrolled.</p>
+              <p className="text-sm text-[color:var(--muted)]">No machines are enrolled.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -768,7 +768,7 @@ export default function NodesPage() {
           is a control-root write, so the button could only produce the
           same 503 the panel above already explains. */}
           <section hidden={locked} className="section-panel">
-            <h2 className="section-heading font-ui text-base font-semibold">Add a node</h2>
+            <h2 className="section-heading font-ui text-base font-semibold">Add a machine</h2>
             <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
               Make a token, then run the command it gives you on the other machine. A token works
               once and is <strong>shown once</strong>.
@@ -776,7 +776,9 @@ export default function NodesPage() {
 
             <div className="mb-4 flex flex-wrap items-end gap-3">
               <label className="font-ui text-sm">
-                <span className="mb-1 block text-[color:var(--muted)]">Node name (optional)</span>
+                <span className="mb-1 block text-[color:var(--muted)]">
+                  Machine name (optional)
+                </span>
                 <input
                   value={newNodeName}
                   onChange={(e) => setNewNodeName(e.target.value)}
@@ -793,7 +795,7 @@ export default function NodesPage() {
                   onChange={(e) => setControlUrl(e.target.value)}
                   placeholder={
                     entrypoint
-                      ? (entrypoint.nodesUrl ?? "Node connections are not published")
+                      ? (entrypoint.nodesUrl ?? "Machine connections are not published")
                       : `http://100.64.0.1:${ports.control}`
                   }
                   aria-describedby="port-guide"
@@ -828,8 +830,8 @@ export default function NodesPage() {
                   ) : (
                     <>
                       {" "}
-                      Node connections are not published. Configure a node hostname before adding a
-                      remote machine.
+                      Machine connections are not published. Configure a machine hostname before
+                      adding a remote machine.
                     </>
                   )}
                 </p>
@@ -923,7 +925,7 @@ export default function NodesPage() {
                             · for <span className="font-mono">{t.nodeName}</span>
                           </>
                         ) : (
-                          <span className="text-[color:var(--muted)]"> · any node</span>
+                          <span className="text-[color:var(--muted)]"> · any machine</span>
                         )}
                         <span className="text-[color:var(--muted)]">
                           {" "}
@@ -1050,7 +1052,7 @@ function epochHint(root: number): string {
 
 function behindHint(seen: number, root: number): string {
   return (
-    expertHint("This node has not yet learned about a promotion. It last saw epoch ") +
+    expertHint("This machine has not yet learned about a promotion. It last saw epoch ") +
     seen +
     expertHint(", and the root is at ") +
     root +

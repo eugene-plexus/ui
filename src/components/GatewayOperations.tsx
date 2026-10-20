@@ -143,7 +143,7 @@ export function GatewayCapacity({
               {controlDown && (
                 <p>
                   <strong>Control root unavailable.</strong>{" "}
-                  {control.error ?? "Routing is using its last known node list."}
+                  {control.error ?? "Routing is using its last known machine list."}
                 </p>
               )}
               {age !== null && age > 120_000 && (
@@ -170,7 +170,7 @@ export function GatewayCapacity({
                       <div className="min-w-0">
                         <p className="font-ui text-sm font-semibold break-all">{b.driver}</p>
                         <p className="mt-1 text-xs break-all text-[color:var(--muted)]">
-                          {labelOf(b.node) ?? "Node unreported"}
+                          {labelOf(b.node) ?? "Machine unreported"}
                           {b.runtime ? ` / ${b.runtime}` : ""}
                         </p>
                       </div>

@@ -61,6 +61,8 @@ export interface AuthStatusView {
   /** True when the agent unlocks itself from a passphrase file only its own
    * account can read (2026-09-24). Absent from an older agent. */
   passphraseFile?: boolean | null;
+  /** Whether first-run setup finished (CX2-C1); absent from an older agent. */
+  firstRunComplete?: boolean | null;
 }
 
 export interface InitializeResponse {

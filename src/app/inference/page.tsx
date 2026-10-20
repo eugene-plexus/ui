@@ -405,7 +405,7 @@ function InferencePageInner() {
           <span className="font-ui text-sm text-[color:var(--muted)]">
             {rows.length === 0
               ? "nothing serving"
-              : `${rows.length} backend${rows.length === 1 ? "" : "s"} across ${nodeOrder.length} node${nodeOrder.length === 1 ? "" : "s"}`}
+              : `${rows.length} backend${rows.length === 1 ? "" : "s"} across ${nodeOrder.length} machine${nodeOrder.length === 1 ? "" : "s"}`}
           </span>
           {/* These two stay here and are not replaced by the navigation's
             Library and Config links. They are actions on this screen —
@@ -414,7 +414,7 @@ function InferencePageInner() {
           <Link
             href="/library"
             className={buttonClass}
-            title="Pick a model you own, choose the node, and launch it. The gateway routes to it when the engine is ready."
+            title="Pick a model you own, choose the machine, and launch it. The gateway routes to it when the engine is ready."
           >
             Launch a model
           </Link>
@@ -648,7 +648,7 @@ function NodeSection({
         )}
       </div>
       {rows.length === 0 ? (
-        <p className="mt-2 text-sm text-[color:var(--muted)]">Nothing serving on this node.</p>
+        <p className="mt-2 text-sm text-[color:var(--muted)]">Nothing serving on this machine.</p>
       ) : (
         <div className="min-w-0" data-testid="models-panel">
           <table className="block w-full text-left text-sm xl:table xl:table-fixed">

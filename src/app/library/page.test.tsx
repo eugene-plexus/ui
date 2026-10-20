@@ -240,7 +240,7 @@ describe("a model that is running on the picked node", () => {
     expect(fit).toHaveAttribute("data-resident", "true");
     // The three headlines that were a contradiction of the observation.
     expect(fit).not.toHaveTextContent("Needs partial CPU offload");
-    expect(fit).not.toHaveTextContent("Too large for this node");
+    expect(fit).not.toHaveTextContent("Too large for this machine");
     expect(fit).toHaveTextContent("Running on Amish_Station now — it fits");
   });
 
@@ -615,7 +615,7 @@ describe("the fit panel and the header's node picker", () => {
 
   it("scores the node the picker moves to, without another model being selected", async () => {
     await openTheModel();
-    fireEvent.change(screen.getByLabelText("Node to score against and launch on"), {
+    fireEvent.change(screen.getByLabelText("Machine to score against and launch on"), {
       target: { value: "gpu-b" },
     });
     // A second copy of the picker inside the panel kept scoring the first
