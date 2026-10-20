@@ -1657,6 +1657,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/trust/ca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The install CA's certificate, for a device to trust.
+         * @description **LT2 (`docs/design/tls-for-clients.md` §3).** The CA that signed
+         *     this node's client leaf, as control issued it, so a device can
+         *     fetch it from any machine it can reach. Public. PEM by default;
+         *     `?format=der` answers DER as `application/pkix-cert`.
+         */
+        get: operations["getInstallCa"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node": {
         parameters: {
             query?: never;
@@ -2655,6 +2678,19 @@ export interface components {
              */
             readonly advertiseUrl?: string;
             /**
+             * Format: uri
+             * @description Where another machine reaches this component **over TLS**
+             *     (LT1): this node's machine port with the component's path,
+             *     `https://<host>:8083/drivers/<name>`. Present for an
+             *     inference-driver or tool-driver this agent spawns, once the
+             *     node has a machine port. A caller that holds the node's pin
+             *     (from the root's signed machine list) prefers it to
+             *     `advertiseUrl`; one that does not, or an older one, keeps
+             *     `advertiseUrl`, and that is how an install with old and new
+             *     machines keeps working.
+             */
+            readonly machineUrl?: string;
+            /**
              * @description Present iff this component runs locally under agent
              *     supervision. Absence means it's remote (the agent only
              *     monitors reachability).
@@ -2946,6 +2982,8 @@ export interface components {
              *     What the control root holds as this node's `Node.url`.
              */
             advertiseUrl?: string;
+            machine?: components["schemas"]["MachinePort"];
+            clientTls?: components["schemas"]["ClientTls"];
             /**
              * Format: int64
              * @description The version of the trust bundle this agent holds. After a
@@ -3070,6 +3108,102 @@ export interface components {
              */
             development: boolean;
             container?: components["schemas"]["ContainerInstall"];
+        };
+        /**
+         * @description This node's machine port (LT1, `docs/design/tls-between-machines.md`):
+         *     the one TLS door every other machine of the install reaches it
+         *     through, and what this node holds about the others.
+         */
+        MachinePort: {
+            /**
+             * Format: uri
+             * @description Where other machines reach it, as announced to the root:
+             *     `https://<advertise host>:<port>`. The port is 8083, shifted by
+             *     the same offset as the agent's advertised port, or the
+             *     `machineUrl` config field. `null` while this node advertises
+             *     no address.
+             */
+            url?: string | null;
+            /** @description The port it listens on here. */
+            port?: number;
+            /**
+             * @description Base64url SHA-256 of this node's machine key's
+             *     SubjectPublicKeyInfo: what it registered, and what every other
+             *     machine checks.
+             */
+            pin: string;
+            listening: boolean;
+            /** @description Why it is not listening, in the words of the failure. */
+            error?: string | null;
+            /**
+             * @description The install requires encryption between machines, from the
+             *     root's signed list: plain HTTP from another machine is refused
+             *     here, and plain HTTP to another machine is refused.
+             */
+            required: boolean;
+            /**
+             * @description Seconds since this node last took the root's signed machine
+             *     list. `null` when it holds none.
+             */
+            listAgeSeconds?: number | null;
+        };
+        /**
+         * @description This node's client doors and the certificate they present (LT2,
+         *     `docs/design/tls-for-clients.md`). Each door takes TLS and plain
+         *     HTTP on the same port, told apart by the first byte.
+         */
+        ClientTls: {
+            state: components["schemas"]["ClientTlsState"];
+            /** @description The names the leaf holds. */
+            names?: string[];
+            /** Format: date-time */
+            notAfter?: string | null;
+            /**
+             * Format: date-time
+             * @description When this node asks for a new leaf: two thirds through its life,
+             *     or at once when its address leaves the names.
+             */
+            renewAt?: string | null;
+            /** @description The root's refusal, or the failure, in its own words. */
+            error?: string | null;
+            /**
+             * @description Plain HTTP from another machine is still taken here (LT2-C4,
+             *     the root's `clientPlainHttp`). Loopback is always plain.
+             */
+            plainAllowed: boolean;
+            doors: components["schemas"]["ClientDoor"][];
+        };
+        /**
+         * @description * `issued`: the doors present a leaf from the install CA.
+         *     * `pending`: this node has asked and holds no leaf yet (the root is
+         *       sealed, or has no CA yet).
+         *     * `none`: not enrolled; a node alone has no CA, and its doors take
+         *       plain HTTP only.
+         *     * `error`: the root refused the request; `error` says why.
+         * @enum {string}
+         */
+        ClientTlsState: "issued" | "pending" | "none" | "error";
+        ClientDoor: {
+            /** @description `console`, `gateway`, or `app:<id>`. */
+            name: string;
+            port: number;
+            listening: boolean;
+            /** @description TLS is served on this port now (a leaf is held). */
+            tls: boolean;
+            /** @description Why it is not listening, in the words of the failure. */
+            error?: string | null;
+            /**
+             * @description Plain HTTP connections from other machines in the last 7 days.
+             *     Connections, not requests: one connection carries many.
+             */
+            plainConnections: number;
+            /** @description The same, by client address, most recent first. */
+            plainClients: {
+                address: string;
+                count: number;
+                /** Format: date-time */
+                lastSeen: string;
+            }[];
         };
         InstalledComponent: {
             name: components["schemas"]["ComponentName"];
@@ -9665,6 +9799,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getInstallCa: {
+        parameters: {
+            query?: {
+                format?: "pem" | "der";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CA certificate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-pem-file": string;
+                    "application/pkix-cert": string;
+                };
+            };
+            /**
+             * @description This node holds no leaf from the install CA yet: it is not
+             *     enrolled, or the root has not issued one.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
             };
         };
     };

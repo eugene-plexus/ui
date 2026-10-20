@@ -33,6 +33,7 @@ import { LayerMap } from "./LayerMap";
 import { pageHref, ResourceTree, TopologyContext, useTopology } from "./ResourceTree";
 import { RunDialog } from "./RunDialog";
 import { InstallModeBanner } from "./InstallModeBanner";
+import { TlsProbe } from "./TlsProbe";
 import { IssuesBadge } from "./IssuesBadge";
 import { TasksTray } from "./TasksTray";
 import { useNodeLabels } from "@/lib/nodeLabels";
@@ -227,6 +228,7 @@ function AppShellInner({
           </button>
         </div>
       </header>
+      <TlsProbe />
       <InstallModeBanner />
 
       {mapOpen && <LayerMap id={mapId} current={null} onClose={closeMap} />}

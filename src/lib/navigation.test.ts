@@ -262,8 +262,13 @@ describe("every route under src/app is accounted for", () => {
     expect(missing, `object sub-routes with no page: ${missing.join(", ")}`).toEqual([]);
   });
 
-  it("excludes sign-in, setup and the separate named administration page", () => {
-    expect([...ROUTES_WITHOUT_NAV].sort()).toEqual(["/administration", "/login", "/setup"]);
+  it("excludes sign-in, setup, trust and the separate named administration page", () => {
+    expect([...ROUTES_WITHOUT_NAV].sort()).toEqual([
+      "/administration",
+      "/login",
+      "/setup",
+      "/trust",
+    ]);
   });
 
   it("names every shell page that neither a screen nor a page menu can name", () => {

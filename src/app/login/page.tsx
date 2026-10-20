@@ -27,6 +27,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Attribution } from "@/components/Attribution";
+import { TlsProbe } from "@/components/TlsProbe";
 import { SetupGateScreen } from "@/components/SetupGateScreen";
 import { ApiError, api } from "@/lib/api";
 import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
@@ -238,6 +239,7 @@ function LoginForm() {
 
   return (
     <main className="relative z-10 flex h-screen items-center justify-center px-6">
+      <TlsProbe floating />
       <div className="w-full max-w-sm">
         <header className="mb-8 text-center">
           <p className="font-mono text-[0.625rem] tracking-wider text-[color:var(--muted)] uppercase">
