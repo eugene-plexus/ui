@@ -4610,17 +4610,26 @@ export interface components {
             draftFiles: components["schemas"]["schemas-DraftFile"][];
         };
         /**
+         * RecommendedSamplingSource
+         * @description Where the author stated the sampling values: `general.sampling.*`
+         *     in a GGUF file, or a safetensors model's `generation_config.json`.
+         * @enum {string}
+         */
+        "schemas-RecommendedSamplingSource": "gguf" | "generation_config";
+        /**
          * RecommendedSampling
          * @description Sampling parameters the model's author put in the file
-         *     (`general.sampling.*` in GGUF). **Reported, never applied.**
+         *     (`general.sampling.*` in GGUF or `generation_config.json` for
+         *     safetensors), applied by the gateway as defaults when neither
+         *     the request nor the default profile sets a value. Author values
+         *     also apply when the model has no profile. A default profile with
+         *     `authorSampling: false` turns them off.
          *
-         *     The locked rule is that the gateway owns every
-         *     LLM-output-affecting parameter and no component substitutes a
-         *     local default; that rule is unchanged. But the file having an
-         *     opinion is real information, and dropping it means the operator
-         *     has to go read the model card to find out. Whether anything can
-         *     adopt these with one click is a gateway decision, not a library
-         *     one.
+         *     The Library only reports these values. The gateway owns and
+         *     sends every sampling value, falling back to its own defaults
+         *     when no request, profile or enabled author value exists. An
+         *     inference driver never substitutes its own defaults. The author's
+         *     repeat penalty is not applied.
          */
         "schemas-RecommendedSampling": {
             /** Temperature */
@@ -4629,6 +4638,9 @@ export interface components {
             topK?: number | null;
             /** Topp */
             topP?: number | null;
+            /** Minp */
+            minP?: number | null;
+            source?: components["schemas"]["schemas-RecommendedSamplingSource"] | null;
         };
         /**
          * GgufDetail
@@ -4808,6 +4820,12 @@ export interface components {
              * @description Absolute path to `config.json`, the file that made this a model.
              */
             configPath?: string | null;
+            /**
+             * @description Author sampling from `generation_config.json`, reported only
+             *     when `do_sample` is true. Greedy decoding contributes no
+             *     sampling defaults.
+             */
+            recommendedSampling?: components["schemas"]["schemas-RecommendedSampling"] | null;
         };
         /**
          * KevCheckpointDetail
@@ -5585,12 +5603,24 @@ export interface components {
             name: string;
             /** Default */
             default: boolean;
+            /**
+             * Authorsampling
+             * @description Whether to use the model author's sampling for omitted
+             *     values, as saved (`ModelProfileSpec.authorSampling`). Absent
+             *     means true for stored profiles.
+             * @default true
+             */
+            authorSampling: boolean | null;
             /** Maxtokens */
             maxTokens?: number | null;
             /** Temperature */
             temperature?: number | null;
             /** Topp */
             topP?: number | null;
+            /** Topk */
+            topK?: number | null;
+            /** Minp */
+            minP?: number | null;
             engine: components["schemas"]["EngineKind"];
             /** @description What to start the model as, as saved (`ModelProfileSpec.mode`). */
             mode?: components["schemas"]["schemas-ProfileMode"] | null;
