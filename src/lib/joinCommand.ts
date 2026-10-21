@@ -181,6 +181,9 @@ export interface JoinDetails {
   controlUrl: string;
   token: string;
   nodeName?: string | null;
+  /** How people see the machine ("Studio PC"); the name stays its identity.
+   * The installers pass it to the join (row 8). */
+  label?: string | null;
   /** A job site (remote-nodes.md §3.2): whose machine it is, by how they sign
    * in, and the root's identity key the machine pins (J7a). The person types
    * their own password at the machine; the command never carries one. */
@@ -199,6 +202,20 @@ function shellWord(value: string): string {
 }
 
 /**
+ * Why a label cannot go into the Windows command, or null when it can.
+ *
+ * Windows PowerShell 5.1 hands an argument holding a double quote, or
+ * ending in a backslash, to a program wrongly, so `install.ps1` refuses
+ * both. Said here, before the command is copied.
+ */
+export function labelProblem(label: string | null | undefined): string | null {
+  const value = (label ?? "").trim();
+  if (value.includes('"')) return "Leave out the double quote: Windows cannot pass it on.";
+  if (value.endsWith("\\")) return "Leave out the last backslash: Windows cannot pass it on.";
+  return null;
+}
+
+/**
  * The join, as the installer runs it, on a Windows machine.
  *
  * **The installer, not `eugene-plexus-agent join`.** The page used to
@@ -212,7 +229,13 @@ function shellWord(value: string): string {
  * lines with `\`, which PowerShell rejects ("Missing expression after
  * unary operator '--'").
  */
-export function windowsJoinCommand({ controlUrl, token, nodeName, jobSite }: JoinDetails): string {
+export function windowsJoinCommand({
+  controlUrl,
+  token,
+  nodeName,
+  label,
+  jobSite,
+}: JoinDetails): string {
   const args = [`-Join ${powershellWord(controlUrl)}`, `-Token ${powershellWord(token)}`];
   if (jobSite) {
     args.push(
@@ -222,11 +245,19 @@ export function windowsJoinCommand({ controlUrl, token, nodeName, jobSite }: Joi
     );
   }
   if (nodeName) args.push(`-NodeName ${powershellWord(nodeName)}`);
+  const shown = (label ?? "").trim();
+  if (shown) args.push(`-Label ${powershellWord(shown)}`);
   return `& ([scriptblock]::Create((irm ${INSTALLER_BASE}/install.ps1))) ${args.join(" ")}`;
 }
 
 /** The same join on Linux or macOS, as `tailnet.md` gives it. */
-export function posixJoinCommand({ controlUrl, token, nodeName, jobSite }: JoinDetails): string {
+export function posixJoinCommand({
+  controlUrl,
+  token,
+  nodeName,
+  label,
+  jobSite,
+}: JoinDetails): string {
   const args = [`--join ${shellWord(controlUrl)}`, `--token ${shellWord(token)}`];
   if (jobSite) {
     args.push(
@@ -236,6 +267,8 @@ export function posixJoinCommand({ controlUrl, token, nodeName, jobSite }: JoinD
     );
   }
   if (nodeName) args.push(`--name ${shellWord(nodeName)}`);
+  const shown = (label ?? "").trim();
+  if (shown) args.push(`--label ${shellWord(shown)}`);
   return `curl -fsSL ${INSTALLER_BASE}/install.sh | sh -s -- ${args.join(" ")}`;
 }
 

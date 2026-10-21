@@ -48,6 +48,7 @@ import {
   installPorts,
   isLoopbackUrl,
   joinTokenState,
+  labelProblem,
   posixJoinCommand,
   rootControlUrl,
   windowsJoinCommand,
@@ -220,6 +221,10 @@ export default function NodesPage() {
   const [outstanding, setOutstanding] = useState<TokenRecord[]>([]);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [newNodeName, setNewNodeName] = useState("");
+  // How people see the new machine (row 8). Only the command carries it:
+  // the installer passes it to the join, so typing it after the token is
+  // made still counts.
+  const [newLabel, setNewLabel] = useState("");
   // The job sites, for the "Also a job site" line under a machine that hosts
   // one. Read once and soft: a root that cannot answer shows no line.
   const [sites, setSites] = useState<Site[]>([]);
@@ -437,8 +442,10 @@ export default function NodesPage() {
         controlUrl: controlUrl.trim() || `http://<this-host>:${ports.control}`,
         token: minted.token,
         nodeName: minted.nodeName,
+        label: newLabel.trim() || null,
       }
     : null;
+  const shownAsProblem = labelProblem(newLabel);
   const joinCommands = joinDetails
     ? [
         {
@@ -836,6 +843,16 @@ export default function NodesPage() {
                 />
               </label>
               <label className="font-ui text-sm">
+                <span className="mb-1 block text-[color:var(--muted)]">Shown as (optional)</span>
+                <input
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  placeholder="Studio PC"
+                  aria-describedby={shownAsProblem ? "label-problem" : undefined}
+                  className="w-56 rounded-[var(--radius)] border border-[color:var(--border)] bg-transparent px-2 py-1 text-sm"
+                />
+              </label>
+              <label className="font-ui text-sm">
                 <span className="mb-1 block text-[color:var(--muted)]">
                   Control root URL the other machine can reach
                 </span>
@@ -909,6 +926,17 @@ export default function NodesPage() {
                 </>
               )}
             </div>
+
+            {shownAsProblem && (
+              <div
+                id="label-problem"
+                data-testid="label-problem"
+                role="alert"
+                className="status-warn mb-4 rounded-[var(--radius)] border px-3 py-2 text-sm"
+              >
+                {shownAsProblem}
+              </div>
+            )}
 
             {addressCheck && (
               <div
