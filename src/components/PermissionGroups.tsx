@@ -1,10 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { api, describeError } from "@/lib/api";
-import { JOB_SITE_PERMISSIONS } from "@/lib/people";
-import type { OidcClient, PermissionGroup, PermissionGroupWrite, Person } from "@/lib/types";
+import {
+  groupPoliciesBody,
+  JOB_SITE_PERMISSIONS,
+  QUEUE_BANDS,
+  queueBandLabel,
+  rootKnowsPolicies,
+  summaryPercentChoices,
+  summaryPercentLabel,
+} from "@/lib/people";
+import type {
+  OidcClient,
+  PermissionGroup,
+  PermissionGroupWrite,
+  Person,
+  QueueBand,
+} from "@/lib/types";
 
 const button =
   "action-button rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm disabled:opacity-40";
@@ -29,6 +43,9 @@ export function PermissionGroups({
 }) {
   const [adding, setAdding] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  // An older root has no policies and refuses the field: offer them only
+  // when its records show it knows them (row 70).
+  const knowsPolicies = rootKnowsPolicies(groups, people);
   return (
     <section className="section-panel flex flex-col gap-4" aria-labelledby="groups-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -40,8 +57,9 @@ export function PermissionGroups({
         </button>
       </div>
       <p className="text-sm text-[color:var(--muted)]">
-        Manage app and job-site access together. People using groups receive the combined access of
-        their selected groups. Defining a group and assigning its members are separate permissions.
+        Manage app and job-site access, and policies, together. People using groups receive the
+        combined access of their selected groups. Defining a group and assigning its members are
+        separate permissions.
       </p>
       {error && (
         <p role="alert" className="status-error text-sm">
@@ -59,19 +77,23 @@ export function PermissionGroups({
         </p>
       )}
       {adding && (
-        <GroupForm
-          clients={clients}
-          onSave={async (body) => {
-            await api.post("control", "/v1/permission-groups", body, { bearer });
-            await onChanged();
-            setAdding(false);
-          }}
-        />
+        <div data-testid="group-new">
+          <GroupForm
+            clients={clients}
+            withPolicies={knowsPolicies}
+            onSave={async (body) => {
+              await api.post("control", "/v1/permission-groups", body, { bearer });
+              await onChanged();
+              setAdding(false);
+            }}
+          />
+        </div>
       )}
       {groups?.map((group) => (
         <article
           key={group.id}
           className="rounded-[var(--radius)] border border-[color:var(--border)] p-4"
+          data-testid={`group-${group.id}`}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -120,6 +142,16 @@ export function PermissionGroups({
               .map((p) => p.short)
               .join("; ") || "No permissions"}
           </p>
+          {group.policies !== undefined && (
+            <>
+              <p className="text-sm" data-testid={`group-queue-${group.id}`}>
+                Queue priority: {queueBandLabel(group.policies.queueBand)}
+              </p>
+              <p className="text-sm" data-testid={`group-summary-${group.id}`}>
+                Summarise long chats at: {summaryPercentLabel(group.policies.summaryContextPercent)}
+              </p>
+            </>
+          )}
           <details className="mt-3 text-sm">
             <summary className="cursor-pointer text-[color:var(--accent-left)]">
               Edit {group.name}
@@ -128,6 +160,7 @@ export function PermissionGroups({
               key={group.updatedAt}
               group={group}
               clients={clients}
+              withPolicies={group.policies !== undefined}
               onSave={async (body) => {
                 await api.put(
                   "control",
@@ -152,10 +185,13 @@ export function PermissionGroups({
 function GroupForm({
   group,
   clients,
+  withPolicies,
   onSave,
 }: {
   group?: PermissionGroup;
   clients: OidcClient[];
+  /** Show and send the Policies section: only to a root that knows them. */
+  withPolicies: boolean;
   onSave: (body: PermissionGroupWrite) => Promise<void>;
 }) {
   const [name, setName] = useState(group?.name ?? "");
@@ -164,6 +200,11 @@ function GroupForm({
   const [apps, setApps] = useState<string[]>(group?.apps ?? []);
   const [permissions, setPermissions] = useState<PermissionGroup["permissions"]>(
     group?.permissions ?? [],
+  );
+  const hints = useId();
+  const [band, setBand] = useState<QueueBand | "">(group?.policies?.queueBand ?? "");
+  const [percent, setPercent] = useState<number | null>(
+    group?.policies?.summaryContextPercent ?? null,
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -178,7 +219,13 @@ function GroupForm({
         setError(null);
         setSaved(false);
         try {
-          await onSave({ name: name.trim(), description, apps: all ? null : apps, permissions });
+          await onSave({
+            name: name.trim(),
+            description,
+            apps: all ? null : apps,
+            permissions,
+            ...(withPolicies ? { policies: groupPoliciesBody(band, percent) } : {}),
+          });
           setSaved(true);
         } catch (e) {
           setError(describeError(e));
@@ -255,6 +302,59 @@ function GroupForm({
             </label>
           ))}
         </fieldset>
+        {withPolicies && (
+          <fieldset className="flex flex-col gap-3">
+            <legend className="mb-2 font-semibold">Policies</legend>
+            <p className="text-xs text-[color:var(--muted)]">
+              A person in several groups gets the highest priority and the larger percent.
+            </p>
+            <div className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1">
+                Queue priority
+                <select
+                  className={input}
+                  value={band}
+                  aria-describedby={`${hints}-queue`}
+                  onChange={(e) => setBand(e.target.value as QueueBand | "")}
+                >
+                  <option value="">Not set</option>
+                  {QUEUE_BANDS.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span id={`${hints}-queue`} className="text-xs text-[color:var(--muted)]">
+                When the machines are busy, Interactive requests go first and Sheddable requests are
+                turned away first.
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1">
+                Summarise long chats at
+                <select
+                  className={input}
+                  value={percent ?? ""}
+                  aria-describedby={`${hints}-summary`}
+                  onChange={(e) =>
+                    setPercent(e.target.value === "" ? null : Number(e.target.value))
+                  }
+                >
+                  <option value="">Not set</option>
+                  {summaryPercentChoices(group?.policies?.summaryContextPercent).map((p) => (
+                    <option key={p} value={p}>
+                      {p}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span id={`${hints}-summary`} className="text-xs text-[color:var(--muted)]">
+                Workbench summarises a chat when it fills this much of the model&rsquo;s context.
+              </span>
+            </div>
+          </fieldset>
+        )}
         <button className={`${button} self-start`} disabled={!name.trim()}>
           {busy ? "Saving…" : group ? "Save group" : "Create group"}
         </button>
