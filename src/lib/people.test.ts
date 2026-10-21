@@ -9,6 +9,8 @@ import {
   parseReturnAddresses,
   returnAddressProblem,
   signInAddress,
+  workbenchMachine,
+  workbenchRemovalWords,
 } from "./people";
 import type { OidcClient } from "./types";
 
@@ -134,5 +136,29 @@ describe("what a person may do with job sites (J77)", () => {
       text: "Nothing",
       source: "own",
     });
+  });
+});
+
+describe("a removed person's data in Workbench (row 7)", () => {
+  it("finds the machine Workbench runs on from its registration", () => {
+    expect(workbenchMachine(clients)).toBe("Amish_Station");
+    expect(workbenchMachine(clients.slice(1))).toBeNull();
+  });
+
+  it("says which retention applies, from Workbench's own settings", () => {
+    expect(workbenchRemovalWords(null)).toBeNull();
+    expect(workbenchRemovalWords({ removedPeopleRetention: "days", removedPeopleDays: 30 })).toBe(
+      "Their chats, notes and documents in Workbench are kept hidden for 30 days, then deleted. " +
+        "Export them in Workbench first.",
+    );
+    expect(workbenchRemovalWords({ removedPeopleRetention: "none", removedPeopleDays: 30 })).toBe(
+      "Their chats, notes and documents in Workbench are deleted now, within the hour.",
+    );
+    expect(
+      workbenchRemovalWords({ removedPeopleRetention: "days", removedPeopleDays: 1 }),
+    ).toContain("for 1 day,");
+    expect(workbenchRemovalWords("unreadable")).toBe(
+      "Their chats, notes and documents in Workbench are deleted as Workbench's settings say.",
+    );
   });
 });

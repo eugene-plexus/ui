@@ -18,7 +18,7 @@
  */
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { AdministrationGrants } from "@/components/AdministrationGrants";
@@ -30,6 +30,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { PermissionGroups, PersonGroups } from "@/components/PermissionGroups";
 import { CopyButton } from "@/components/CopyButton";
 import { api, describeError } from "@/lib/api";
+import { agentTarget } from "@/lib/apps";
 import {
   MIN_PASSWORD,
   appsSummary,
@@ -44,9 +45,12 @@ import {
   parseReturnAddresses,
   returnAddressProblem,
   signInAddress,
+  workbenchMachine,
+  workbenchRemovalWords,
 } from "@/lib/people";
 import { ownerSitesHref, siteCountsByOwner } from "@/lib/sites";
 import type {
+  NodeIdentity,
   OidcClient,
   OidcClientCreated,
   OidcClientList,
@@ -214,6 +218,38 @@ function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () =>
   );
 }
 
+/**
+ * What deleting a person does to their data in Workbench (row 7), from
+ * Workbench's own settings on the machine that runs it: kept hidden for its
+ * days, or deleted at once. Null while it loads, and when no machine runs
+ * Workbench.
+ */
+function useWorkbenchRemovalWords(clients: OidcClient[]): string | null {
+  const machine = workbenchMachine(clients);
+  const [words, setWords] = useState<string | null>(null);
+  useEffect(() => {
+    if (machine === null) {
+      setWords(null);
+      return;
+    }
+    let live = true;
+    void (async () => {
+      const here = await api
+        .get<NodeIdentity>("agent", "/v1/node")
+        .then((node) => node.name ?? null)
+        .catch(() => null);
+      const settings = await api
+        .get<Record<string, unknown>>(agentTarget(machine, here), "/v1/apps/workbench/config")
+        .catch(() => "unreadable" as const);
+      if (live) setWords(workbenchRemovalWords(settings));
+    })();
+    return () => {
+      live = false;
+    };
+  }, [machine]);
+  return words;
+}
+
 function PersonRow({
   person,
   clients,
@@ -230,6 +266,7 @@ function PersonRow({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const workbench = useWorkbenchRemovalWords(clients);
 
   async function change(run: () => Promise<unknown>) {
     setBusy(true);
@@ -375,7 +412,12 @@ function PersonRow({
                 label="Delete account"
                 ariaLabel={`Delete ${person.name}`}
                 confirmLabel={`Delete ${person.name}`}
-                prompt="This cannot be undone. Their apps sign them out within ten minutes."
+                prompt={[
+                  "This cannot be undone. Their apps sign them out within ten minutes.",
+                  workbench,
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 onConfirm={async () => {
                   await change(() => api.delete("control", path));
                 }}

@@ -91,6 +91,39 @@ export function installedByAgent(client: Pick<OidcClient, "owner">): boolean {
   return ownerLabel(client.owner) !== null;
 }
 
+/**
+ * The machine Workbench runs on, from the registration the agent made for it
+ * (`app:workbench@<machine>`), or null when no machine runs it.
+ */
+export function workbenchMachine(clients: Pick<OidcClient, "owner">[]): string | null {
+  for (const client of clients) {
+    const found = /^app:workbench@(.+)$/.exec(client.owner ?? "");
+    if (found?.[1]) return found[1];
+  }
+  return null;
+}
+
+/**
+ * What Delete account says of the person's data in Workbench (row 7), from
+ * Workbench's own settings: kept hidden for its days, then deleted, or
+ * deleted at once. Workbench learns of a removal within the hour. Null when
+ * no Workbench runs; a general sentence when its settings cannot be read.
+ */
+export function workbenchRemovalWords(
+  settings: Record<string, unknown> | "unreadable" | null,
+): string | null {
+  if (settings === null) return null;
+  const subject = "Their chats, notes and documents in Workbench";
+  if (settings === "unreadable") {
+    return `${subject} are deleted as Workbench's settings say.`;
+  }
+  if (settings.removedPeopleRetention === "none") {
+    return `${subject} are deleted now, within the hour.`;
+  }
+  const days = typeof settings.removedPeopleDays === "number" ? settings.removedPeopleDays : 30;
+  return `${subject} are kept hidden for ${days} ${days === 1 ? "day" : "days"}, then deleted. Export them in Workbench first.`;
+}
+
 /** One return address per line, blank lines dropped, each trimmed. */
 export function parseReturnAddresses(text: string): string[] {
   return [
