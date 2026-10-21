@@ -42,6 +42,7 @@ const ENGINES = [
 ] as unknown as Parameters<typeof ProfileEditor>[0]["engines"];
 
 const BASE: ModelProfile = {
+  authorSampling: true,
   id: "p1",
   name: "default",
   default: true,
@@ -377,6 +378,7 @@ describe("a finished build", () => {
 
 describe("a built profile on the page (settings never lie)", () => {
   const built: ModelProfile = {
+    authorSampling: true,
     id: "p2",
     name: "Built for Amish_Station",
     default: false,

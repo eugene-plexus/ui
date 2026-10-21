@@ -477,247 +477,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/models/{model_id}/keep": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                model_id: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Keep this Ollama model in the Library.
-         * @description Operator-only. The source must be present and have `ollama`.
-         *     Link the weights and projector into the chosen writable folder;
-         *     on any link error, copy instead and state the cause in `note`.
-         *     Check free space before copying, write to `.partial`, and verify
-         *     SHA-256 against Ollama's digest before publishing the file.
-         *
-         *     The target is `<folder>/ollama/<name>/<name>.gguf`, with `:` and
-         *     `/` in the served name replaced by `-`; a projector goes beside
-         *     it as `mmproj-<name>.gguf`. Never overwrite an existing file.
-         *     Check both lexical and real paths, resolving symlinks and
-         *     junctions: a target inside any Ollama store is read-only.
-         *     Keep never deletes or writes the source. The kept file survives
-         *     Ollama removing its name, and is never opened for writing.
-         *
-         *     After rescanning, move profiles automatically only when the
-         *     fingerprint proves the kept file has the same contents, using
-         *     relocate's `same` match. This click is the consent. Preserve the
-         *     served name and record `keptFrom`. Poll the returned job.
-         */
-        post: operations["keepOllamaModel"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/keep-jobs/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Opaque Keep job id returned by the Library. */
-                id: components["parameters"]["KeepJobId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * Read a Keep's progress or result.
-         * @description An operator session or an authorized service may read it. The
-         *     source agent uses `node` and `digest` to check a send request
-         *     against the Library's job before reading any model bytes.
-         */
-        get: operations["getKeepJob"];
-        put?: never;
-        post?: never;
-        /**
-         * Cancel a Keep that is still copying.
-         * @description Operator-only. Cancels a running transfer and removes only this
-         *     job's partial files. Never deletes Ollama's files or a completed
-         *     kept model. A terminal job is returned unchanged.
-         */
-        delete: operations["cancelKeepJob"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/nodes/{node}/ollama": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The enrolled machine's node name. */
-                node: components["parameters"]["OllamaNode"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Replace this machine's Ollama report.
-         * @description Requires a service token with `sub: agent` and issuer
-         *     `node:{node}`, addressed to the Library's machine. Another
-         *     machine or a session gets 403 with detail "A machine reports
-         *     only its own Ollama store."
-         *
-         *     At start and every 60 seconds when the listing changes, the
-         *     agent sends all its detected stores, including unreadable ones
-         *     with their observed cause. At most 1 MiB of JSON and 2,000 models
-         *     in total across all stores; count bytes as the body arrives and
-         *     reject an oversized report before replacing the previous one.
-         *     The Library's own machine is read locally and does not report.
-         *     This report moves metadata only; Keep is required before Run.
-         */
-        put: operations["reportNodeOllama"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/nodes/ollama": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Ollama models reported by other machines.
-         * @description Metadata rows, without a Library id, profiles, fit or Run.
-         *     Keep a model in the Library before running it. `readAt` is the
-         *     actual report time, including on a stale report; never refresh
-         *     it just because the listing was read. `libraryModel` identifies
-         *     a digest already held by the Library, for "Already in the Library".
-         */
-        get: operations["listNodeOllama"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/nodes/{node}/ollama/keep": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The enrolled machine's node name. */
-                node: components["parameters"]["OllamaNode"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Keep a model from this machine's Ollama store in the Library.
-         * @description Operator-only. Find the digest in that machine's report and
-         *     reserve the same target layout as a local Keep. Ask its agent
-         *     to `POST /v1/ollama/send` on behalf of this operator, with this
-         *     job id and digest. The agent sends weights and any projector to
-         *     this job's file routes using the LS10 offset, chunk and complete
-         *     protocol in 16 MiB chunks. Completion checks each file against
-         *     its reported digest and size, then rescans and records `keptFrom`.
-         *     The method is `copy`. The Library is the model's home; the
-         *     worker only holds a copy, which can link its existing Ollama blob.
-         */
-        post: operations["keepNodeOllamaModel"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/keep-jobs/{id}/files/state": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Opaque Keep job id returned by the Library. */
-                id: components["parameters"]["KeepJobId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Read how much of a worker's file has reached the Library.
-         * @description Only a service token with `sub: agent` and issuer matching the
-         *     job's `node` may use these file routes. A job selects the
-         *     destination, files, digests and sizes from its accepted report;
-         *     the sender selects only a role. No caller-supplied path or URL.
-         */
-        post: operations["getKeepFileState"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/keep-jobs/{id}/files": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Opaque Keep job id returned by the Library. */
-                id: components["parameters"]["KeepJobId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Send a chunk of a worker's model to its Keep job.
-         * @description Only the job's source agent, as on files/state. At most 16 MiB,
-         *     counted while reading. `offset` must equal the received length;
-         *     0 restarts this partial file. Refuse bytes beyond the reported
-         *     file size. Check lexical and real destination paths before each
-         *     write; never enter an Ollama store or open a kept file for writing.
-         */
-        put: operations["sendKeepFileChunk"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/keep-jobs/{id}/files/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Opaque Keep job id returned by the Library. */
-                id: components["parameters"]["KeepJobId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Check the received file against Ollama's digest.
-         * @description Only the job's source agent, as on files/state. Check SHA-256
-         *     and size against the job's reported digest and size, never a
-         *     digest supplied by the sender at completion. A mismatch deletes
-         *     the partial file and fails the job with its observed cause.
-         *     Publish only complete, verified files without overwriting an
-         *     existing file. When every file is verified, rescan and finish
-         *     the job. Repeating completion for that verified file is harmless.
-         */
-        post: operations["completeKeepFile"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/models/{id}/profiles": {
         parameters: {
             query?: never;
@@ -852,11 +611,8 @@ export interface paths {
         };
         /**
          * The Library's folders, with where nodes reach them.
-         * @description `modelRoots` as a resource (2026-09-14): one `LibraryFolderStatus`
-         *     per configured or detected directory, mounts and effective
-         *     write protection included. A symlink or junction into an
-         *     Ollama store is read-only, with the observed cause. Unreadable
-         *     detected stores stay listed with `error`. **Readable with a
+         * @description `modelRoots` as a resource (2026-09-14): one `LibraryFolder` per
+         *     configured directory, mounts included. **Readable with a
          *     service token**, unlike the config trio it mirrors, because the
          *     reader that matters is a node's agent inheriting its path rules
          *     — a worker with no library of its own reaches this through the
@@ -1533,30 +1289,11 @@ export interface components {
     schemas: {
         /**
          * @description The folders the library catalogues, as `GET /v1/folders` answers
-         *     them: `modelRoots` and detected stores, with effective read-only
-         *     status and any observed read error. Derived status is never saved
-         *     in config.
+         *     them — the same objects `modelRoots` holds, one shape on the
+         *     wire whatever shape the config was given in.
          */
         LibraryFolderList: {
-            folders: components["schemas"]["LibraryFolderStatus"][];
-        };
-        LibraryFolderStatus: components["schemas"]["LibraryFolder"] & {
-            /**
-             * @description Effective write protection. True for Ollama stores and
-             *     folders whose real path resolves inside a store,
-             *     including symlinks and Windows junctions. They are
-             *     excluded from the writable folder list.
-             */
-            readonly readOnly?: boolean;
-            /**
-             * @description The same sentence as ReadOnlyFolder's detail: names
-             *     the configured path, the Ollama store it resolves into,
-             *     and says to choose another folder. Ollama manages its
-             *     files and the Library never writes there.
-             */
-            readonly readOnlyReason?: string;
-            /** @description Observed cause when a detected store cannot be read; it stays listed. */
-            readonly error?: string;
+            folders: components["schemas"]["LibraryFolder"][];
         };
         LibraryModelList: {
             models: components["schemas"]["LibraryModel"][];
@@ -1630,11 +1367,8 @@ export interface components {
             /**
              * @description The filename with its extension stripped, the directory
              *     name for safetensors, or the provenance file's name without
-             *     `.eugene-prepared.json` for `prepared`. An Ollama model keeps
-             *     the tag it was first listed under while that tag exists;
-             *     if it disappears, use the first remaining tag and log the
-             *     change. A kept copy retains `keptFrom.servedName`.
-             *     **Not derived from metadata**: the
+             *     `.eugene-prepared.json` for `prepared`, or the first Ollama tag
+             *     for a model in an Ollama store. **Not derived from metadata**: the
              *     file's own name is what the operator downloaded, what they
              *     call it, and what `Runtime.modelAlias` defaults to — so
              *     plainly-named files mean the obvious name is already the
@@ -1709,7 +1443,6 @@ export interface components {
             kev?: components["schemas"]["KevCheckpointDetail"];
             prepared?: components["schemas"]["PreparedDetail"];
             ollama?: components["schemas"]["OllamaDetail"];
-            keptFrom?: components["schemas"]["OllamaKept"];
             /**
              * @description How many launch profiles are saved against this model. On
              *     the list so the browser can badge a tuned model without
@@ -1772,11 +1505,9 @@ export interface components {
         /**
          * @description A model read from an Ollama store (CX9): which of Ollama's names
          *     point at this file. Present only for a model in a folder of kind
-         *     `ollama`. Its `name` is the tag it was first listed under,
-         *     while that tag exists. If it disappears, take the first remaining
-         *     tag and log the change. Adding a tag never renames a model.
-         *     `Runtime.modelAlias` is set to `name`, since the file's own name
-         *     is a hash. Ollama manages the file: the library never writes or
+         *     `ollama`. Its `name` is the first of `tags`, and is what
+         *     `Runtime.modelAlias` is set to, since the file's own name is a
+         *     hash. Ollama manages the file: the library never writes or
          *     deletes it.
          */
         OllamaDetail: {
@@ -1794,143 +1525,6 @@ export interface components {
              *     it. Run is not refused for it.
              */
             needsMigration?: boolean;
-        };
-        /**
-         * @description Provenance stored against the kept file's path and reapplied on
-         *     scans. The ordinary Library model keeps `servedName` as `name`
-         *     and `Runtime.modelAlias`, even if Ollama removes every tag.
-         *     The Library never opens a kept file for writing: a link shares
-         *     Ollama's bytes. A node only holds a copy of this Library file.
-         */
-        OllamaKept: {
-            servedName: string;
-            tags: string[];
-            /** @description Ollama's weights digest, used to verify copies and match a node's blob. */
-            digest: string;
-            /** @description Absolute path of the source Ollama store on its machine. */
-            store: string;
-            /** @description Source machine for a remote Keep; absent for the Library's own machine. */
-            node?: string;
-            /** Format: date-time */
-            keptAt: string;
-            /** @enum {string} */
-            method: "link" | "copy";
-        };
-        KeepRequest: {
-            /**
-             * @description A configured writable Library folder's path. Omit for the
-             *     first writable folder. Neither its lexical path nor its
-             *     real path, including the target's existing parents, may be
-             *     inside an Ollama store.
-             */
-            folder?: string;
-        };
-        NodeOllamaKeepRequest: {
-            /** @description The weights digest from this machine's reported model. */
-            digest: string;
-            /** @description Configured writable Library folder; omitted means the first writable folder. */
-            folder?: string;
-        };
-        /**
-         * @description One Keep, with progress across the weights and any projector.
-         *     `done` means the files are verified, scanned and have `keptFrom`.
-         *     Local profiles move automatically only after a `same` fingerprint
-         *     match; Keep is the consent, and the served name stays unchanged.
-         *     Failure names its observed cause in `error`; a failed or cancelled
-         *     job never removes Ollama's file. Records contain no credentials.
-         */
-        KeepJob: {
-            id: string;
-            /** @description The ordinary Library model when done; null before it has been listed. */
-            model: components["schemas"]["LibraryModel"] | null;
-            /** @enum {string} */
-            state: "running" | "done" | "failed" | "cancelled";
-            /**
-             * @description Actual method; copy if any file needs copying, including every remote Keep.
-             * @enum {string}
-             */
-            method: "link" | "copy";
-            bytesDone: number;
-            bytesTotal: number;
-            /** @description Absolute destination weights path on the Library's machine. */
-            target: string;
-            /** @description Observed cause when failed; null otherwise. */
-            error: string | null;
-            /** @description Why a copy was needed after a link failed; names the observed cause. */
-            note?: string;
-            digest: string;
-            /** @description Source agent assigned to a remote transfer; absent for a local Keep. */
-            node?: string;
-        };
-        KeepFileRequest: {
-            /**
-             * @description A file selected by the job's accepted report, never a supplied path.
-             * @enum {string}
-             */
-            role: "weights" | "projector";
-        };
-        KeepFileState: {
-            /** @enum {string} */
-            role: "weights" | "projector";
-            /** @description Contiguous partial bytes received; 0 after completion. */
-            receivedBytes: number;
-            /** @description Complete verified file's size; null while still arriving. */
-            sizeBytes: number | null;
-            /** @description Complete verified file's SHA-256, without the prefix; null while arriving. */
-            sha256: string | null;
-        };
-        OllamaReport: {
-            /** @description All detected stores; at most 2,000 models in total across this list. */
-            stores: components["schemas"]["OllamaReportedStore"][];
-            /**
-             * Format: date-time
-             * @description When the agent read this listing, never when the UI last fetched it.
-             */
-            readAt: string;
-        };
-        OllamaReportedStore: {
-            path: string;
-            models: components["schemas"]["OllamaReportedModel"][];
-            skipped: components["schemas"]["OllamaSkippedModel"][];
-            /** @description Why this store could not be read. Keep it listed with empty models and this cause. */
-            error?: string;
-        };
-        /**
-         * @description Metadata from a worker's manifest. This is not a Library model
-         *     and cannot be run until Keep creates one. Size is the weights
-         *     blob alone; add projectorSizeBytes for the whole transfer.
-         */
-        OllamaReportedModel: {
-            /** @description Sorted Ollama tags for this blob, including namespace or registry when present. */
-            tags: string[];
-            digest: string;
-            sizeBytes: number;
-            /** @description The manifest reader's runner classification. */
-            runner: string;
-            projectorDigest?: string;
-            projectorSizeBytes?: number;
-            /** @description Architecture read from the GGUF header, when available. */
-            architecture?: string;
-            needsMigration?: boolean;
-            /**
-             * @description Added by the Library on reads when it already holds this
-             *     digest; the id of that Library model. Not trusted from a report.
-             */
-            readonly libraryModel?: string;
-        };
-        OllamaSkippedModel: {
-            name: string;
-            /** @description The observed cause for skipping this manifest or model. */
-            detail: string;
-        };
-        NodeOllamaReport: {
-            node: string;
-            /** Format: date-time */
-            readAt: string;
-            stores: components["schemas"]["OllamaReportedStore"][];
-        };
-        NodeOllamaList: {
-            nodes: components["schemas"]["NodeOllamaReport"][];
         };
         /**
          * @description * `present` — found on disk and readable.
@@ -5024,11 +4618,9 @@ export interface components {
          * OllamaDetail
          * @description A model read from an Ollama store (CX9): which of Ollama's names
          *     point at this file. Present only for a model in a folder of kind
-         *     `ollama`. Its `name` is the tag it was first listed under,
-         *     while that tag exists. If it disappears, take the first remaining
-         *     tag and log the change. Adding a tag never renames a model.
-         *     `Runtime.modelAlias` is set to `name`, since the file's own name
-         *     is a hash. Ollama manages the file: the library never writes or
+         *     `ollama`. Its `name` is the first of `tags`, and is what
+         *     `Runtime.modelAlias` is set to, since the file's own name is a
+         *     hash. Ollama manages the file: the library never writes or
          *     deletes it.
          */
         "schemas-OllamaDetail": {
@@ -5048,46 +4640,6 @@ export interface components {
              *     it. Run is not refused for it.
              */
             needsMigration?: boolean | null;
-        };
-        /**
-         * Method
-         * @enum {string}
-         */
-        Method: "link" | "copy";
-        /**
-         * OllamaKept
-         * @description Provenance stored against the kept file's path and reapplied on
-         *     scans. The ordinary Library model keeps `servedName` as `name`
-         *     and `Runtime.modelAlias`, even if Ollama removes every tag.
-         *     The Library never opens a kept file for writing: a link shares
-         *     Ollama's bytes. A node only holds a copy of this Library file.
-         */
-        "schemas-OllamaKept": {
-            /** Servedname */
-            servedName: string;
-            /** Tags */
-            tags: string[];
-            /**
-             * Digest
-             * @description Ollama's weights digest, used to verify copies and match a node's blob.
-             */
-            digest: string;
-            /**
-             * Store
-             * @description Absolute path of the source Ollama store on its machine.
-             */
-            store: string;
-            /**
-             * Node
-             * @description Source machine for a remote Keep; absent for the Library's own machine.
-             */
-            node?: string | null;
-            /**
-             * Keptat
-             * Format: date-time
-             */
-            keptAt: string;
-            method: components["schemas"]["Method"];
         };
         /**
          * LibraryModel
@@ -5155,11 +4707,8 @@ export interface components {
              * Name
              * @description The filename with its extension stripped, the directory
              *     name for safetensors, or the provenance file's name without
-             *     `.eugene-prepared.json` for `prepared`. An Ollama model keeps
-             *     the tag it was first listed under while that tag exists;
-             *     if it disappears, use the first remaining tag and log the
-             *     change. A kept copy retains `keptFrom.servedName`.
-             *     **Not derived from metadata**: the
+             *     `.eugene-prepared.json` for `prepared`, or the first Ollama tag
+             *     for a model in an Ollama store. **Not derived from metadata**: the
              *     file's own name is what the operator downloaded, what they
              *     call it, and what `Runtime.modelAlias` defaults to — so
              *     plainly-named files mean the obvious name is already the
@@ -5244,7 +4793,6 @@ export interface components {
             kev?: components["schemas"]["schemas-KevCheckpointDetail"] | null;
             prepared?: components["schemas"]["schemas-PreparedDetail"] | null;
             ollama?: components["schemas"]["schemas-OllamaDetail"] | null;
-            keptFrom?: components["schemas"]["schemas-OllamaKept"] | null;
             /**
              * Profilecount
              * @description How many launch profiles are saved against this model. On
@@ -7423,10 +6971,6 @@ export interface components {
         };
     };
     parameters: {
-        /** @description Opaque Keep job id returned by the Library. */
-        KeepJobId: string;
-        /** @description The enrolled machine's node name. */
-        OllamaNode: string;
         /**
          * @description The `hf_hub` source the repo is on (`CatalogueSource.id`, as a
          *     search result's `source` names it, LS4). Absent: the first
@@ -8122,329 +7666,6 @@ export interface operations {
              *     stored cause. Nothing moved.
              */
             503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    keepOllamaModel: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                model_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["KeepRequest"];
-            };
-        };
-        responses: {
-            /** @description Keeping the model; the job reports progress and the resulting model. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeepJob"];
-                };
-            };
-            400: components["responses"]["Problem"];
-            403: components["responses"]["Problem"];
-            404: components["responses"]["Problem"];
-            /**
-             * @description Source is not a present Ollama model, the target exists, or
-             *     ReadOnlyFolder. No write may enter an Ollama store through
-             *     a symlink or junction; the detail names both paths and says
-             *     to choose another folder.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            507: components["responses"]["Problem"];
-        };
-    };
-    getKeepJob: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Opaque Keep job id returned by the Library. */
-                id: components["parameters"]["KeepJobId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The job. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeepJob"];
-                };
-            };
-            404: components["responses"]["Problem"];
-        };
-    };
-    cancelKeepJob: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Opaque Keep job id returned by the Library. */
-                id: components["parameters"]["KeepJobId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The job after cancellation, or its existing terminal result. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeepJob"];
-                };
-            };
-            403: components["responses"]["Problem"];
-            404: components["responses"]["Problem"];
-        };
-    };
-    reportNodeOllama: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The enrolled machine's node name. */
-                node: components["parameters"]["OllamaNode"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OllamaReport"];
-            };
-        };
-        responses: {
-            /** @description Report replaced. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description A machine reports only its own Ollama store. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description The report exceeds 1 MiB or 2,000 models across all stores. */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    listNodeOllama: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The last report received from each machine. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NodeOllamaList"];
-                };
-            };
-        };
-    };
-    keepNodeOllamaModel: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The enrolled machine's node name. */
-                node: components["parameters"]["OllamaNode"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NodeOllamaKeepRequest"];
-            };
-        };
-        responses: {
-            /** @description The transfer to the Library is running. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeepJob"];
-                };
-            };
-            400: components["responses"]["Problem"];
-            403: components["responses"]["Problem"];
-            /** @description The machine or the digest is not in a report. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description The destination exists or is a ReadOnlyFolder, including a link into a store. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            507: components["responses"]["Problem"];
-        };
-    };
-    getKeepFileState: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Opaque Keep job id returned by the Library. */
-                id: components["parameters"]["KeepJobId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["KeepFileRequest"];
-            };
-        };
-        responses: {
-            /** @description The complete file, or the offset to resume at. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeepFileState"];
-                };
-            };
-            403: components["responses"]["Problem"];
-            404: components["responses"]["Problem"];
-            /** @description The job is not running or the role is not part of the job. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    sendKeepFileChunk: {
-        parameters: {
-            query: {
-                role: "weights" | "projector";
-                offset: number;
-            };
-            header?: never;
-            path: {
-                /** @description Opaque Keep job id returned by the Library. */
-                id: components["parameters"]["KeepJobId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/octet-stream": string;
-            };
-        };
-        responses: {
-            /** @description The offset for the next chunk. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeepFileState"];
-                };
-            };
-            403: components["responses"]["Problem"];
-            404: components["responses"]["Problem"];
-            /** @description Wrong offset, inactive job, unknown role, or ReadOnlyFolder. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            413: components["responses"]["Problem"];
-            507: components["responses"]["Problem"];
-        };
-    };
-    completeKeepFile: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Opaque Keep job id returned by the Library. */
-                id: components["parameters"]["KeepJobId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["KeepFileRequest"];
-            };
-        };
-        responses: {
-            /** @description The verified file. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeepFileState"];
-                };
-            };
-            403: components["responses"]["Problem"];
-            404: components["responses"]["Problem"];
-            /** @description Wrong size or digest, inactive job, unknown role, or ReadOnlyFolder. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };

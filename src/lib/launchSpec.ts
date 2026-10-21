@@ -106,6 +106,7 @@ export function defaultProfileSpec(
     name: DEFAULT_PROFILE_NAME,
     engine,
     default: true,
+    authorSampling: true,
     flags: suggestedContext != null ? { contextSize: suggestedContext } : {},
     extraArgs: [],
     env: {},

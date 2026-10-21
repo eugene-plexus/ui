@@ -85,6 +85,7 @@ export function ProfileEditor({
   engines,
   node,
   onChanged,
+  onProfilesLoaded,
 }: {
   model: LibraryModel;
   /** Engines that can load this model's format ON THE TARGET NODE. Empty
@@ -95,6 +96,7 @@ export function ProfileEditor({
    * node when the install has one host. */
   node: TargetNode | null;
   onChanged: () => void;
+  onProfilesLoaded?: (profiles: ModelProfile[] | null) => void;
 }) {
   const [profiles, setProfiles] = useState<ModelProfile[] | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -119,12 +121,14 @@ export function ProfileEditor({
         `/v1/models/${encodeURIComponent(model.id)}/profiles`,
       );
       setProfiles(list.profiles ?? []);
+      onProfilesLoaded?.(list.profiles ?? []);
       setError(null);
     } catch (err) {
+      onProfilesLoaded?.(null);
       if (err instanceof ApiError && err.status === 401) return;
       setError(describeError(err));
     }
-  }, [model.id]);
+  }, [model.id, onProfilesLoaded]);
 
   useEffect(() => {
     void load();
@@ -175,6 +179,9 @@ export function ProfileEditor({
       maxTokens: profile.maxTokens,
       temperature: profile.temperature,
       topP: profile.topP,
+      topK: profile.topK,
+      minP: profile.minP,
+      authorSampling: profile.authorSampling,
     };
     try {
       await api.put<ModelProfile>(
@@ -642,20 +649,32 @@ function asProfileFlag(field: ConfigField, engine: string, trained: number | nul
 
 /** What a blank generation default falls back to, from the gateway. */
 function fallbackFor(
-  key: "maxTokens" | "temperature" | "topP",
+  key: GenerationKey,
   gateway: Record<string, unknown> | null,
+  model: LibraryModel,
+  authorSampling: boolean,
 ): string {
-  if (key === "topP") return "not set: unspecified";
+  const author = model.gguf?.recommendedSampling ?? model.safetensors?.recommendedSampling;
+  if (authorSampling && key !== "maxTokens" && author?.[key] != null) {
+    return `not set: the model author's ${author[key]}`;
+  }
+  if (key === "topP" || key === "topK" || key === "minP") {
+    return "not set: not sent; the engine's default applies";
+  }
   const value = gateway?.[key === "maxTokens" ? "defaultMaxTokens" : "defaultTemperature"];
-  if (gateway === null) return "not set: the gateway's default";
+  if (gateway === null) return "not set: gateway default unavailable";
   if (value === null || value === undefined) {
-    return key === "maxTokens" ? "not set: no cap" : "not set: unspecified";
+    return key === "maxTokens"
+      ? "not set: no cap"
+      : "not set: not sent; the engine's default applies";
   }
   return `not set: the gateway's ${String(value)}`;
 }
 
+type GenerationKey = "maxTokens" | "temperature" | "topP" | "topK" | "minP";
+
 const generationFields: {
-  key: "maxTokens" | "temperature" | "topP";
+  key: GenerationKey;
   label: string;
   min: number;
   max?: number;
@@ -664,6 +683,8 @@ const generationFields: {
   { key: "maxTokens", label: "Maximum output tokens", min: 1, step: 1 },
   { key: "temperature", label: "Temperature", min: 0, max: 2, step: 0.01 },
   { key: "topP", label: "Top-p", min: 0, max: 1, step: 0.01 },
+  { key: "topK", label: "Top-k", min: 0, step: 1 },
+  { key: "minP", label: "Min-p", min: 0, max: 1, step: 0.01 },
 ];
 
 function ProfileForm({
@@ -709,7 +730,10 @@ function ProfileForm({
     maxTokens: existing?.maxTokens?.toString() ?? "",
     temperature: existing?.temperature?.toString() ?? "",
     topP: existing?.topP?.toString() ?? "",
+    topK: existing?.topK?.toString() ?? "",
+    minP: existing?.minP?.toString() ?? "",
   });
+  const [authorSampling, setAuthorSampling] = useState(existing?.authorSampling !== false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -736,7 +760,7 @@ function ProfileForm({
   async function save() {
     setSaving(true);
     setError(null);
-    const defaults: Partial<Pick<ModelProfileSpec, "maxTokens" | "temperature" | "topP">> = {};
+    const defaults: Partial<Pick<ModelProfileSpec, GenerationKey>> = {};
     for (const field of generationFields) {
       if (generation[field.key].trim() === "") continue;
       const value = Number(generation[field.key]);
@@ -744,10 +768,10 @@ function ProfileForm({
         !Number.isFinite(value) ||
         value < field.min ||
         (field.max != null && value > field.max) ||
-        (field.key === "maxTokens" && !Number.isInteger(value))
+        ((field.key === "maxTokens" || field.key === "topK") && !Number.isInteger(value))
       ) {
         setError(
-          `${field.label} must be ${field.key === "maxTokens" ? "a whole number of at least 1" : `between ${field.min} and ${field.max}`}.`,
+          `${field.label} must be ${field.step === 1 ? `a whole number of at least ${field.min}` : `between ${field.min} and ${field.max}`}.`,
         );
         setSaving(false);
         return;
@@ -762,6 +786,7 @@ function ProfileForm({
       // a replace that omits it clears it, which is what Auto means.
       mode: offersModes(engine) ? modeToSave(mode) : undefined,
       default: isDefault,
+      authorSampling,
       // Empty values are dropped rather than stored as nulls: an unset
       // flag must not become `--flag null` on a command line.
       flags: Object.fromEntries(
@@ -928,12 +953,20 @@ function ProfileForm({
         <p className="text-[color:var(--muted)]">
           When this is the default profile, these values fill any parameter an app omits. Changes
           apply within the gateway’s profile refresh interval, without restarting the model. Blank
-          uses{" "}
+          fields use enabled author values, then{" "}
           <Link href="/config?sel=gateway#defaultMaxTokens" className="underline">
             the gateway&rsquo;s answer defaults
           </Link>
-          ; blank Top-p leaves it unspecified.
+          . Each blank field says what applies.
         </p>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={authorSampling}
+            onChange={(event) => setAuthorSampling(event.target.checked)}
+          />
+          Use the model author&apos;s sampling where this profile sets none
+        </label>
         {generationFields.map((field) => (
           <label key={field.key} className="flex flex-col gap-1">
             <span>{field.label}</span>
@@ -943,7 +976,7 @@ function ProfileForm({
               max={field.max}
               step={field.step}
               value={generation[field.key]}
-              placeholder={fallbackFor(field.key, gatewayDefaults)}
+              placeholder={fallbackFor(field.key, gatewayDefaults, model, authorSampling)}
               onChange={(event) =>
                 setGeneration({ ...generation, [field.key]: event.target.value })
               }
