@@ -466,7 +466,20 @@ export interface paths {
         };
         /**
          * Who the access token was issued for
-         * @description A bearer access token from `/oidc/token`. The same claims as the ID token's, less the token ones.
+         * @description A bearer access token from `/oidc/token`. The same claims as the ID
+         *     token's, less the token ones.
+         *
+         *     For a registered app, the ID token and this answer carry two claims
+         *     from the person's permission groups (row 70), worked out from the
+         *     root's current state at each sign-in, refresh and call here:
+         *     - `eugene_groups`: the groups the person is in, as `{id, name}`,
+         *       sorted by name, at most 64. Empty for individual access and for
+         *       Eugene's owner.
+         *     - `eugene_policies`: a `PoliciesInEffect` object, the most generous
+         *       value of each policy across those groups, and which groups set
+         *       each. Empty when no group sets a policy.
+         *     An app reads a change after its next token refresh (the ID token
+         *     lives 10 minutes).
          */
         get: operations["oidcUserinfo"];
         put?: never;
@@ -612,8 +625,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Replace a group's name and grants
-         * @description Owner or manageGroups administrator. Existing member IDs stay assigned; new authorizations and refreshes use the new grants.
+         * Replace a group's name, grants and policies
+         * @description Owner or manageGroups administrator. Existing member IDs stay assigned; new authorizations and refreshes use the new grants and policies. The next admission check uses the new queue band.
          */
         put: operations["replacePermissionGroup"];
         post?: never;
@@ -3437,7 +3450,24 @@ export interface components {
             appClientId?: string;
             limits?: components["schemas"]["ClientKeyLimits"];
             leaseSeconds?: number;
+            /**
+             * @description The verified person's queue band from their permission groups
+             *     (row 70): the highest band any of their groups sets. Present only
+             *     when the root verified a person (`personId`) and one of their
+             *     groups sets a band. Absent for a key with no person, a release, or
+             *     a person whose groups set none: the key's own band, or the
+             *     install's default, applies. Never taken from the caller.
+             */
+            queueBand?: components["schemas"]["QueueBand"];
         };
+        /**
+         * @description Which requests wait or are turned away first when the machines are
+         *     busy. From highest to lowest: `interactive` (a person waiting at a
+         *     chat), `background` (work nobody watches), `sheddable` (refused first
+         *     under load). With no policy the install's default is `interactive`.
+         * @enum {string}
+         */
+        QueueBand: "interactive" | "background" | "sheddable";
         ClientKey: {
             id: string;
             name: string;
@@ -4520,6 +4550,8 @@ export interface components {
             permissions?: components["schemas"]["PersonPermission"][] | null;
             /** @description Effective permissions from selected groups, or individual permissions/install defaults when groups is null. */
             permissionsInEffect?: components["schemas"]["PersonPermission"][];
+            /** @description The group policies that apply to them now, and which groups set each. Absent from an older root. */
+            policiesInEffect?: components["schemas"]["PoliciesInEffect"];
             disabled: boolean;
             /** Format: date-time */
             createdAt: string;
@@ -4873,6 +4905,14 @@ export interface components {
             /** @description Explicit app client IDs; null deliberately grants all apps. */
             apps: string[] | null;
             permissions: components["schemas"]["PersonPermission"][];
+            /**
+             * @description What the group sets for its members (row 70). A root that knows
+             *     policies always answers this object, with `null` for each policy
+             *     not set; an older root leaves it out, and a console hides its
+             *     Policies section then. In the replicated log and the snapshot it
+             *     is kept only when a policy is set, holding only the policies set.
+             */
+            policies?: components["schemas"]["GroupPolicies"];
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -4887,6 +4927,42 @@ export interface components {
             apps: string[] | null;
             /** @default [] */
             permissions: components["schemas"]["PersonPermission"][];
+            /**
+             * @description The group's policies, replaced whole: a `null` or absent policy
+             *     inside is not set. Omitted from a replace, the group keeps its
+             *     current policies, so a console that predates policies never
+             *     clears them. Omitted from a create, the group sets none. An
+             *     older root refuses this field (`additionalProperties: false`).
+             */
+            policies?: components["schemas"]["GroupPolicies"];
+        };
+        /**
+         * @description Policies a permission group sets for its members (row 70). Not set
+         *     is no policy: a person whose groups set none gets the install's
+         *     default. A person in several groups gets the most generous value of
+         *     each: the highest queue band, the larger percent.
+         */
+        GroupPolicies: {
+            /** @description Queue priority for the members' requests. The root returns it in the admission check of a verified person. */
+            queueBand?: components["schemas"]["QueueBand"] | null;
+            /** @description The percent of a model's context at which Workbench starts summarising a long chat. With no policy, Workbench uses 80. */
+            summaryContextPercent?: number | null;
+        };
+        /**
+         * @description The policies that apply to a person now (row 70), from the groups
+         *     they are in: the most generous value of each. An absent value is no
+         *     policy. Individual access (`groups` null) sets none. The same object
+         *     is the `eugene_policies` sign-in claim.
+         */
+        PoliciesInEffect: {
+            queueBand?: components["schemas"]["QueueBand"];
+            summaryContextPercent?: number;
+            setBy?: components["schemas"]["PoliciesSetBy"];
+        };
+        /** @description For each policy value in effect, the ids of the groups that set that value, sorted by group name. */
+        PoliciesSetBy: {
+            queueBand?: string[];
+            summaryContextPercent?: string[];
         };
         /** @description All permission groups in the central directory. */
         PermissionGroupList: {

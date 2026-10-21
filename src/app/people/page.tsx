@@ -42,6 +42,7 @@ import {
   newPersonProblem,
   ownerLabel,
   parseReturnAddresses,
+  policiesSummary,
   returnAddressProblem,
   signInAddress,
 } from "@/lib/people";
@@ -298,6 +299,7 @@ function PersonRow({
               <span data-testid={`person-apps-${person.name}`}>{appsSummary(person, clients)}</span>
             </p>
             <JobSitesLine person={person} />
+            <PoliciesLines person={person} groups={groups} />
             {person.groups != null && (
               <p className="break-words">
                 <span className="text-[color:var(--muted)]">Access from groups: </span>
@@ -393,6 +395,28 @@ function PersonRow({
         </p>
       )}
     </article>
+  );
+}
+
+/**
+ * Row 70: the group policies that apply to a person now, and the groups
+ * that set each, read from the root's `policiesInEffect`. Nothing for an
+ * older root, which has no policies.
+ */
+function PoliciesLines({ person, groups }: { person: Person; groups: PermissionGroup[] | null }) {
+  const summary = policiesSummary(person, groups);
+  if (!summary) return null;
+  return (
+    <>
+      <p className="text-sm break-words" data-testid={`person-queue-${person.name}`}>
+        <span className="text-[color:var(--muted)]">Queue priority: </span>
+        {summary.queue}
+      </p>
+      <p className="text-sm break-words" data-testid={`person-summary-${person.name}`}>
+        <span className="text-[color:var(--muted)]">Summarise long chats at: </span>
+        {summary.summary}
+      </p>
+    </>
   );
 }
 
