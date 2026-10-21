@@ -15,6 +15,7 @@ import { rememberDownloadTarget } from "@/lib/downloadHandoff";
 import type { TargetNode } from "@/lib/nodeBudget";
 import { refreshRuns, resetRunsForTests, type RunOperation } from "@/lib/oneClickRun";
 import type { Download } from "@/lib/types";
+import { setSessionToken } from "@/lib/session";
 
 vi.mock("@/lib/api", async (original) => ({
   ...(await original<typeof import("@/lib/api")>()),
@@ -60,6 +61,7 @@ const DOWNLOAD = {
 let operations: RunOperation[];
 let runtimeExtra: Record<string, unknown>;
 beforeEach(() => {
+  setSessionToken("session");
   resetRunsForTests();
   localStorage.clear();
   operations = [];

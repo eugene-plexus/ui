@@ -22,6 +22,7 @@ import {
 } from "./oneClickRun";
 import type { TargetNode } from "./nodeBudget";
 import type { LibraryModel } from "./types";
+import { clearSessionToken, setSessionToken } from "./session";
 
 vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
@@ -64,6 +65,7 @@ function record(id: string, intent: RunOperation["intent"]): RunOperation {
   };
 }
 beforeEach(() => {
+  setSessionToken("session");
   vi.useFakeTimers();
   resetRunsForTests();
   records = [];
@@ -352,5 +354,18 @@ describe("run ids on a console opened over plain HTTP (no crypto.randomUUID)", (
     } finally {
       Object.defineProperty(crypto, "randomUUID", { value: original, configurable: true });
     }
+  });
+});
+
+describe("before sign-in", () => {
+  // A 401 from this poll sent a new browser on a half-set-up install to
+  // sign-in before the setup gate could send it to setup (CX2-C1).
+  it("reads nothing without a session", async () => {
+    clearSessionToken();
+    await refreshRuns();
+    expect(api.get).not.toHaveBeenCalled();
+    setSessionToken("session");
+    await refreshRuns();
+    expect(api.get).toHaveBeenCalledWith("library", "/v1/run-operations");
   });
 });
