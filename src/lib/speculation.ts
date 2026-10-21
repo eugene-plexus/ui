@@ -10,6 +10,7 @@
  */
 
 import type { components as AgentComponents } from "@/generated/agent";
+import { PROMPT_CACHE_KEYS } from "./promptCache";
 import type { ConfigField, LibraryModel, ProfileBuild, Runtime } from "./types";
 
 type DraftTrial = AgentComponents["schemas"]["DraftTrial"];
@@ -22,11 +23,12 @@ export const DRAFT_TOKENS_KEY = "draftTokens";
 
 /**
  * Fields the adapter acts on when a profile leaves them unset: "Reuse
- * repeated text" is on for every llama.cpp runtime (S3). The editor shows
- * the adapter's own default and words for these, where for every other
- * flag unset means nothing is passed.
+ * repeated text" is on for every llama.cpp runtime (S3), and the three prompt
+ * cache settings are passed on every start (row 9). The editor shows the
+ * adapter's own default and words for these, where for every other flag
+ * unset means nothing is passed.
  */
-export const ACTS_WHEN_UNSET = new Set<string>([REUSE_TEXT_KEY]);
+export const ACTS_WHEN_UNSET = new Set<string>([REUSE_TEXT_KEY, ...PROMPT_CACHE_KEYS]);
 
 function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
