@@ -255,6 +255,10 @@ export type LibraryModel = LibraryComponents["schemas"]["LibraryModel"];
 export type ModelDeletion = LibraryComponents["schemas"]["ModelDeletion"];
 export type ModelDeleted = LibraryComponents["schemas"]["ModelDeleted"];
 export type LibraryModelList = LibraryComponents["schemas"]["LibraryModelList"];
+// A missing model's file at a new path, and the click that moves its profiles (row 22).
+export type RelocateCandidate = LibraryComponents["schemas"]["RelocateCandidate"];
+export type RelocateCandidateList = LibraryComponents["schemas"]["RelocateCandidateList"];
+export type ModelRelocated = LibraryComponents["schemas"]["ModelRelocated"];
 export type LibraryFolderList = LibraryComponents["schemas"]["LibraryFolderList"];
 // A model an engine prepared for itself, listed through its provenance file (LS3).
 export type PreparedDetail = LibraryComponents["schemas"]["PreparedDetail"];

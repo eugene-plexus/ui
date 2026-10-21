@@ -11,6 +11,7 @@ import { DeleteModel } from "@/components/DeleteModel";
 import { CopyButton } from "@/components/CopyButton";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBreakdown, formatMemory } from "@/components/FitBadge";
+import { MovedModel, MovedNotice, profilesPhrase } from "@/components/MovedModel";
 import { ProfileEditor } from "@/components/ProfileEditor";
 import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
@@ -64,6 +65,7 @@ import type {
   LibraryModel,
   LibraryModelList,
   ModelFit,
+  ModelRelocated,
   PreparedDetail,
   Runtime,
   RuntimeList,
@@ -150,6 +152,9 @@ function LibraryPageInner() {
   const picker = useTargetNode();
   const target = picker.selected?.target ?? null;
   const [selected, setSelected] = useState<string | null>(null);
+  // What the last move of a missing model's profiles did, shown on the model
+  // that has them now (row 22). Cleared when another model is picked.
+  const [moved, setMoved] = useState<ModelRelocated | null>(null);
   // The detail pane holds the "Add a prepared model" form instead (LS3).
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -406,6 +411,7 @@ function LibraryPageInner() {
             selected={selected}
             onSelect={(id) => {
               setAdding(false);
+              setMoved(null);
               setSelected(id);
             }}
             eligibility={eligibility}
@@ -429,6 +435,7 @@ function LibraryPageInner() {
             ) : current ? (
               <ModelDetail
                 key={current.id}
+                moved={moved?.model.id === current.id ? moved : null}
                 model={current}
                 engines={engines}
                 enginesError={enginesError}
@@ -439,6 +446,11 @@ function LibraryPageInner() {
                 nodes={picker.nodes}
                 runtimes={runtimes}
                 onChanged={() => void loadModels()}
+                onRelocated={(done) => {
+                  setMoved(done);
+                  setSelected(done.model.id);
+                  void loadModels();
+                }}
                 onRuntimesChanged={() => void loadRuntimes()}
                 onDeleted={() => {
                   setSelected(null);
@@ -803,7 +815,9 @@ function ModelDetail({
   node,
   nodes,
   runtimes,
+  moved,
   onChanged,
+  onRelocated,
   onRuntimesChanged,
   onDeleted,
 }: {
@@ -822,7 +836,11 @@ function ModelDetail({
   /** What the picked node is running, so this page does not offer to
    * start something that is already up. */
   runtimes: Runtime[];
+  /** What moving this model's profiles here did, until another model is picked. */
+  moved: ModelRelocated | null;
   onChanged: () => void;
+  /** A missing model's profiles moved to another entry: select that one. */
+  onRelocated: (done: ModelRelocated) => void;
   onRuntimesChanged: () => void;
   /** Every node, so Delete can ask each whether it runs this model (LS8). */
   nodes: TargetNode[];
@@ -917,17 +935,17 @@ function ModelDetail({
 
       {model.ollama && <OllamaNote ollama={model.ollama} />}
 
+      {moved && <MovedNotice done={moved} />}
+
       {model.status === "missing" && (
         <div className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm leading-relaxed">
-          <p>
-            This file is no longer where it was
-            {model.lastSeenAt ? `, last seen ${relativeAge(model.lastSeenAt)}` : ""}. The entry is
-            kept because {model.profileCount ?? 0} launch{" "}
-            {model.profileCount === 1 ? "profile is" : "profiles are"} saved against it.
-          </p>
-          <p className="mt-1">
-            If you moved it, scan again to find it at its new path. Copy the settings across, then
-            forget this entry.
+          {/* Where the file went, said by what is in it; the move waits for a
+              click (row 22). */}
+          <MovedModel model={model} onMoved={onRelocated} />
+          <p className="mt-2 text-xs">
+            {model.lastSeenAt ? `Last seen ${relativeAge(model.lastSeenAt)}. ` : ""}
+            {profilesPhrase(model.profileCount ?? 0)} saved against it{" "}
+            {model.profileCount === 1 ? "is" : "are"} kept here.
           </p>
           {/* Asked, because the profiles are the one thing here a rescan
               cannot bring back, and the prompt says how many go. */}

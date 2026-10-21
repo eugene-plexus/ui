@@ -402,6 +402,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/models/{id}/relocate-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Where a missing model's file may have gone.
+         * @description For a `missing` model: the `present` models of the same format
+         *     that may be its file at a new path, each with how sure Eugene is
+         *     (`RelocateMatch`). Nothing is moved: the person chooses, and
+         *     `POST /v1/models/{id}/relocate` moves the profiles.
+         *
+         *     * `same` when the `fingerprint`s are equal.
+         *     * `likely` only when this model has no `fingerprint` (it went
+         *       missing before fingerprints existed) and the format, every
+         *       file's size, the architecture, the parameters, the
+         *       quantization and the context length all match.
+         *
+         *     A model that is not missing has no candidates: the answer is an
+         *     empty list.
+         */
+        get: operations["listRelocateCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/models/{id}/relocate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a missing model's profiles to the same file at its new path.
+         * @description For a `missing` model whose file moved to a `present` model of
+         *     the same format (`to`). In one transaction: the profiles move to
+         *     `to`, then the missing entry is forgotten. No file is touched.
+         *
+         *     * The files must have the same contents. `to` is fingerprinted
+         *       again now, and the answer is a 409 when its `fingerprint`
+         *       differs, naming the first difference. When this model has no
+         *       `fingerprint`, a match on size and details is `likely`, and
+         *       `confirmLikely: true` is required: Eugene cannot prove it, and
+         *       says so.
+         *     * A profile whose name `to` already uses is renamed with
+         *       " (moved)" (`renamed`). `to` keeps its own default profile; the
+         *       moved profiles are not defaults, unless `to` had no profiles.
+         *     * A profile whose `extraArgs` or `env` names the old path moves
+         *       unchanged and is listed in `warnings`: Eugene does not edit a
+         *       person's arguments.
+         *
+         *     The gateway reads the new path at its next refresh of the model
+         *     list, within 30 s. Nothing happens by itself: this is the answer
+         *     to a click.
+         */
+        post: operations["relocateModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/models/{id}/profiles": {
         parameters: {
             query?: never;
@@ -1392,6 +1467,34 @@ export interface components {
              */
             modifiedAt?: string;
             /**
+             * @description What the contents were when the scan last read them: `v1:` and
+             *     a SHA-256 over the format, each file's role and size, the first
+             *     1 MiB of each file (a safetensors file's whole JSON header
+             *     instead, up to 100 MiB), eight evenly spaced 64 KiB blocks and
+             *     the last 64 KiB. About 1.6 MiB is read per file, never the whole
+             *     of a model.
+             *
+             *     It is **proof that two files are the same file**, which the
+             *     `id` cannot be: it names no path and no date, so a file that
+             *     moved has the same fingerprint at its new path
+             *     (`POST /v1/models/{id}/relocate`). Sampled, so two files agree
+             *     only when their sizes, headers and samples all agree. Kept on a
+             *     `missing` entry, which is how a moved file is recognised.
+             *     Absent when the files could not be read, and on an entry no
+             *     scan has read since fingerprints began.
+             */
+            readonly fingerprint?: string;
+            /**
+             * @description On a `missing` entry: the `id` of the one `present` entry with
+             *     the same `fingerprint`, which is where the file went. Absent
+             *     when no entry matches, and when several do (then
+             *     `GET /v1/models/{id}/relocate-candidates` lists them and the
+             *     person picks). Worked out when the list is read, never stored.
+             *     Nothing moves because of it: moving the profiles is
+             *     `POST /v1/models/{id}/relocate`, after a click.
+             */
+            readonly movedTo?: string;
+            /**
              * @description Why this entry is `unreadable` — a header that would not
              *     parse, a permission error, a truncated file. Named rather
              *     than dropped: a model the operator can see and we cannot
@@ -1431,7 +1534,9 @@ export interface components {
          *       guesses that a file which vanished from one root and appeared
          *       in another is the same file, because a wrong guess silently
          *       applies one model's tuning to another. The profiles stay here
-         *       to be copied across by hand.
+         *       until the person moves them (`POST /v1/models/{id}/relocate`),
+         *       which needs a `fingerprint` that proves the new file has the
+         *       same contents, or an explicit confirmation when none was saved.
          *     * `unreadable` — the files are there and something about them
          *       did not work. `error` says what.
          * @enum {string}
@@ -1574,6 +1679,63 @@ export interface components {
             /** @description Files kept for other models. */
             kept: string[];
             bytesFreed: number;
+        };
+        /**
+         * @description How sure Eugene is that a `present` model is a `missing` model's
+         *     file at a new path.
+         *
+         *     * `same` — the `fingerprint`s are equal: the same contents.
+         *     * `likely` — the missing model has no `fingerprint`, and the
+         *       format, every file's size, the architecture, the parameters,
+         *       the quantization and the context length match. Eugene cannot
+         *       prove it; moving the profiles needs `confirmLikely`.
+         * @enum {string}
+         */
+        RelocateMatch: "same" | "likely";
+        RelocateCandidate: {
+            model: components["schemas"]["LibraryModel"];
+            match: components["schemas"]["RelocateMatch"];
+            /**
+             * @description What Eugene could not confirm about this match, one plain
+             *     sentence each. Empty for `same`. For `likely`: that the
+             *     missing file has no fingerprint, so its contents cannot be
+             *     compared.
+             */
+            differences: string[];
+        };
+        RelocateCandidateList: {
+            candidates: components["schemas"]["RelocateCandidate"][];
+        };
+        RelocateRequest: {
+            /** @description The `id` of the `present` model the file moved to. */
+            to: string;
+            /**
+             * @description The person confirmed moving the profiles to a file Eugene
+             *     cannot prove is the same (`RelocateMatch` `likely`). Ignored
+             *     for a proven match; without it, a `likely` match is a 409.
+             * @default false
+             */
+            confirmLikely: boolean;
+        };
+        ProfileRename: {
+            /** @description The profile's name on the missing model. */
+            name: string;
+            /** @description Its name on the model it moved to, because that model uses `name`. */
+            renamedTo: string;
+        };
+        /** @description What a relocate did. */
+        ModelRelocated: {
+            model: components["schemas"]["LibraryModel"];
+            /** @description How many profiles moved to `model`. */
+            moved: number;
+            /** @description The profiles that came with a new name; empty when none did. */
+            renamed: components["schemas"]["ProfileRename"][];
+            /**
+             * @description A profile moved unchanged, but its `extraArgs` or `env` still
+             *     names the old path. One plain sentence each, naming the
+             *     profile; empty when none does.
+             */
+            warnings: string[];
         };
         /**
          * @description * `weights` — the file named on the launch line. Exactly one per
@@ -7258,6 +7420,83 @@ export interface operations {
              *     preparing or starting it), or a file is in use, named.
              */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listRelocateCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The candidates, `same` before `likely`; empty when none. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelocateCandidateList"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    relocateModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelocateRequest"];
+            };
+        };
+        responses: {
+            /** @description The profiles moved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelRelocated"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            /**
+             * @description Nothing moved, and the cause is named: this model is still
+             *     where it was, `to` is no longer there or is not present, `to`
+             *     is a different file (the first difference), `to` could not be
+             *     read to check it (the cause), or Eugene cannot prove they are
+             *     the same file and `confirmLikely` was not set.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description The profile storage cannot be written; the problem carries the
+             *     stored cause. Nothing moved.
+             */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
