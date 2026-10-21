@@ -4132,10 +4132,12 @@ export interface components {
             requestId: string;
             /**
              * @description Logs and catalog permit only a check without a model/person token; neither acquires or renews inference. Catalog is only GET /v1/models with X-Eugene-App-Operation set to catalog, for app settings.
+             *
+             *     Search is a web search that names no model (POST /v1/web_search, the door Open WebUI's external search engine calls). It takes the same check, acquire, renew and release as inference, and the same concurrency and rolling-minute limits, but it carries no `model` (a body that names one is refused with 422) and the key's `allowedModels` does not apply. The gateway checks the key's `allowedTools` and `localOnly`, as for every tool.
              * @default inference
              * @enum {string}
              */
-            purpose: "inference" | "logs" | "catalog";
+            purpose: "inference" | "logs" | "catalog" | "search";
             model?: string;
             /**
              * @description Root-issued OIDC access token carried alongside the app key in
