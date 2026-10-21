@@ -251,6 +251,17 @@ export interface paths {
          *     If the root does not answer, this is a **503** saying so.
          *     Sessions already issued keep working, and so does inference.
          *
+         *     **A removed machine (agent#21).** When the root's session does not
+         *     name this machine, the install no longer lists it. The session is
+         *     not returned: this is a **409** that says so. Before it answers,
+         *     the agent asks the root for its trust bundle and machine list;
+         *     when neither lists this machine any more, the machine leaves the
+         *     install by itself (as it does at its next minute's trust pull)
+         *     and the 409 says it is standalone now, so the next sign-in uses
+         *     this machine's own passphrase. A machine with **no passphrase of
+         *     its own** does not leave by itself: standalone, the first caller
+         *     to set one would own it.
+         *
          *     **Standalone** (not enrolled), this agent verifies the Argon2id
          *     hash set during the first-run wizard and mints the session
          *     itself.
@@ -1810,6 +1821,32 @@ export interface paths {
          *     **This logs out every session on this node**, exactly as
          *     enrollment does and for the same reason: the authority those
          *     sessions were signed by is no longer trusted here.
+         *
+         *     **Leaving by passphrase, with no session (agent#21).** A machine
+         *     the install removed, or one whose root is gone, can get no
+         *     session its own agent accepts: sessions come from the root. So
+         *     a body with `passphrase` and no `Authorization` header is
+         *     checked against **this machine's own** stored passphrase (the
+         *     sign-in rate limit applies), and then the agent asks the root
+         *     for its trust bundle:
+         *
+         *     - the bundle no longer lists this machine's key: it leaves
+         *       (nothing is owed at the root, so `controlNotified` is true);
+         *     - the root does not answer, or answers with no bundle this
+         *       machine can trust: it leaves, and `controlNotified` is false;
+         *     - the root still has the machine registered: **409**. Leave
+         *       with a session, or remove the machine at the install first;
+         *     - the root answered with a bundle this machine does not take
+         *       (not signed by its root, older than the one held, a fenced
+         *       epoch): **409**, and the agent's log says why.
+         *
+         *     The machine that runs the install's active control root never
+         *     leaves this way (409).
+         *
+         *     A machine with no passphrase of its own cannot leave this way
+         *     (409); it still leaves by itself at its next trust pull once the
+         *     root no longer lists it. The root is never told on this path:
+         *     there is no session to forward.
          */
         post: operations["unenrollNode"];
         delete?: never;
@@ -3838,6 +3875,12 @@ export interface components {
              * @default true
              */
             notifyControl: boolean;
+            /**
+             * @description Leave with no session, by this machine's own passphrase
+             *     (agent#21). Only when no `Authorization` header is sent; see
+             *     the operation for when it is allowed. The root is not told.
+             */
+            passphrase?: string;
         };
         UnenrollResult: {
             identity: components["schemas"]["NodeIdentity"];
@@ -8110,6 +8153,18 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /**
+             * @description The install no longer lists this machine (it was removed).
+             *     The detail says whether it has left the install already.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Rate-limited. */
             429: {
                 headers: {
@@ -9938,8 +9993,22 @@ export interface operations {
                 };
             };
             401: components["responses"]["Problem"];
-            /** @description This agent is not enrolled, so there is nothing to leave. */
+            /**
+             * @description This agent is not enrolled, so there is nothing to leave; or,
+             *     leaving by passphrase: the install still lists this machine,
+             *     the root's answer was refused, this machine runs the root, or
+             *     it has no passphrase of its own.
+             */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Leaving by passphrase, rate-limited as sign-in is. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

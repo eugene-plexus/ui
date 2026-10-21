@@ -304,6 +304,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/models/{id}/special-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The spellings this model's engine reads as special tokens in text.
+         * @description DI4 (`docs/design/deepinfer-lessons.md`). llama-server tokenizes a
+         *     rendered chat template with special-token parsing on, so a message
+         *     holding one of these spellings reaches the model as a real control
+         *     token: an end of turn, a new system turn. The gateway breaks each
+         *     spelling in user and tool content before it is sent.
+         *
+         *     Read from the GGUF vocabulary on request (`tokenizer.ggml.tokens`
+         *     with `tokenizer.ggml.token_type` control, user-defined or unknown),
+         *     never kept with the model's metadata. Only spellings that look like
+         *     markup are listed: at least three characters, not all whitespace,
+         *     and holding one of `< > [ ] |` or the full-width bar. A whitespace
+         *     or word token marked user-defined is left out, because breaking it
+         *     would change ordinary text. Known turn spellings (`<|im_end|>`,
+         *     `<|eot_id|>`, `<end_of_turn>` and others) are listed whatever their
+         *     type, because llama.cpp makes them control tokens at load. A model
+         *     that is not a GGUF answers an empty list; a GGUF whose vocabulary
+         *     cannot be read is a 503, never an empty list.
+         */
+        get: operations["getModelSpecialTokens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/models/{id}/deletion": {
         parameters: {
             query?: never;
@@ -1911,6 +1949,13 @@ export interface components {
             temperature?: number;
             topK?: number;
             topP?: number;
+        };
+        SpecialTokens: {
+            /**
+             * @description Each spelling once, longest first, so a matcher that tries them
+             *     in order never breaks a long spelling at a shorter one inside it.
+             */
+            tokens: string[];
         };
         ModelProfileList: {
             profiles: components["schemas"]["ModelProfile"][];
@@ -7133,6 +7178,30 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getModelSpecialTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The spellings, longest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecialTokens"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     planModelDeletion: {
