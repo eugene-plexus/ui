@@ -16,7 +16,7 @@ import type {
   RuntimeStatus,
 } from "./types";
 import { labelOf } from "@/lib/nodeLabels";
-import { hasSessionToken } from "./session";
+import { getSessionToken } from "./session";
 
 export type RunStep = RunProtocol["schemas"]["Operation"]["step"];
 /** Where a preparation is, as the engine's node reports it (LS5). */
@@ -242,17 +242,24 @@ export async function refreshRuns(): Promise<void> {
   // No session, no read: a 401 here sends the browser to sign-in before
   // the page's setup gate has decided, and a half-set-up install belongs
   // on setup, not sign-in (CX2-C1). The poll picks up once signed in.
-  if (!hasSessionToken()) return;
+  const session = getSessionToken();
+  if (session === null) return;
+  // Carried as a supplied bearer, so a refusal fails this poll and does
+  // not end the session: setup changes the session over when the machine
+  // enrolls, and a poll still holding the old one is not a sign-out. The
+  // page's own reads still end a session that has really ended.
+  const options = { bearer: session };
   const currentEpoch = epoch;
   const beforeWrite = revision;
   if (localName === undefined) {
     try {
-      localName = (await api.get<{ name?: string | null }>("agent", "/v1/node")).name ?? null;
+      localName =
+        (await api.get<{ name?: string | null }>("agent", "/v1/node", options)).name ?? null;
     } catch {
       /* retry identity next time */
     }
   }
-  const response = await api.get<{ operations: RunOperation[] }>("library", BASE);
+  const response = await api.get<{ operations: RunOperation[] }>("library", BASE, options);
   if (currentEpoch !== epoch) return;
   if (beforeWrite !== revision) return;
   const ids = new Set(response.operations.map((r) => r.id));
@@ -271,17 +278,23 @@ function startPolling(): void {
   if (polling) return;
   polling = true;
   const currentEpoch = epoch;
+  // Asked before each read, not after: a page that has gone (Home, left
+  // for setup) must not leave one more read behind it.
+  const wanted = () =>
+    listeners.size > 0 || pending.size > 0 || [...tasks.values()].some((r) => !isTerminal(r.step));
   const poll = async () => {
     if (currentEpoch !== epoch) return;
+    if (!wanted()) {
+      polling = false;
+      return;
+    }
     try {
       await refreshRuns();
     } catch {
       /* the server continues working while unreachable */
     }
     if (currentEpoch !== epoch) return;
-    if (listeners.size || pending.size || [...tasks.values()].some((r) => !isTerminal(r.step)))
-      timer = setTimeout(() => void poll(), 1500);
-    else polling = false;
+    timer = setTimeout(() => void poll(), 1500);
   };
   void poll();
 }
