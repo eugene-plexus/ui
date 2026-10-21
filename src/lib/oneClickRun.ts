@@ -16,6 +16,7 @@ import type {
   RuntimeStatus,
 } from "./types";
 import { labelOf } from "@/lib/nodeLabels";
+import { hasSessionToken } from "./session";
 
 export type RunStep = RunProtocol["schemas"]["Operation"]["step"];
 /** Where a preparation is, as the engine's node reports it (LS5). */
@@ -238,6 +239,10 @@ function preparingOf(intent: RunOperation["intent"]): RunPreparation | null {
 
 /** Public for explicit refreshes and tests; transient read failures keep the last view. */
 export async function refreshRuns(): Promise<void> {
+  // No session, no read: a 401 here sends the browser to sign-in before
+  // the page's setup gate has decided, and a half-set-up install belongs
+  // on setup, not sign-in (CX2-C1). The poll picks up once signed in.
+  if (!hasSessionToken()) return;
   const currentEpoch = epoch;
   const beforeWrite = revision;
   if (localName === undefined) {

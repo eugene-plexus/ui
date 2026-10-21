@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
+import { setSessionToken } from "./session";
 import {
   describeRunDetail,
   findPreparation,
@@ -51,6 +52,7 @@ const HERE: TargetNode = {
 let records: RunOperation[];
 
 beforeEach(() => {
+  setSessionToken("session");
   vi.useFakeTimers();
   resetRunsForTests();
   records = [];
