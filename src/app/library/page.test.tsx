@@ -501,6 +501,8 @@ describe("forgetting a model whose file has gone", () => {
       ok({ models: [{ ...libraryModel(), status: "missing" }] }),
     );
     handlers.set("DELETE library/v1/models/gemma", () => ({ status: 204 }));
+    // Where its file may have gone (row 22): nowhere, so Forget is the choice.
+    handlers.set("GET library/v1/models/gemma/relocate-candidates", () => ok({ candidates: [] }));
   });
 
   it("asks first, and one click drops nothing", async () => {

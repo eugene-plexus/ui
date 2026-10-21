@@ -13,6 +13,9 @@
  * does, and reads `document.title`.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -121,6 +124,25 @@ async function titleFor(): Promise<string> {
 }
 
 describe("one machine", () => {
+  it("uses the website's steel rim on the header logo", async () => {
+    await titleFor();
+    const brand = within(screen.getByRole("banner")).getByRole("link", { name: "Eugene Plexus" });
+    const logo = within(brand).getByRole("presentation");
+    expect(logo).toHaveAttribute("src", "/eugene-icon.svg");
+
+    // The website draws the rim in the SVG, so inspect the asset used by
+    // the rendered header rather than adding a CSS effect to the image.
+    const svg = new DOMParser().parseFromString(
+      readFileSync(join(__dirname, "../../public", logo.getAttribute("src")!), "utf8"),
+      "image/svg+xml",
+    );
+    const silhouette = svg.getElementById("hair-and-glasses-silhouette");
+    expect(silhouette?.getAttribute("stroke")).toBe("#9fb3c8");
+    expect(silhouette?.getAttribute("stroke-width")).toBe("30");
+    expect(silhouette?.getAttribute("stroke-linejoin")).toBe("round");
+    expect(silhouette?.getAttribute("paint-order")).toBe("stroke");
+  });
+
   it("opens the glossary from The system and returns focus when closed", async () => {
     await titleFor();
     const toggle = screen.getByRole("button", { name: "The system" });

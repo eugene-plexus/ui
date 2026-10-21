@@ -198,6 +198,22 @@ export function topicRank(id: string): number {
 
 /* ─────────────────────────────── search ────────────────────────────── */
 
+/** Browser settings use the same search terms in the page and the header. */
+export const APPEARANCE_SEARCH_TEXTS = [
+  "Appearance",
+  "Theme",
+  "Font size",
+  "About",
+  "this browser",
+  "dark",
+  "light",
+  "plexus",
+  "modern",
+  "editorial",
+  "licence",
+  "version",
+] as const;
+
 /**
  * Every word of the query appears somewhere in the texts, case-folded.
  * An empty query matches everything. Words rather than a substring of
@@ -424,6 +440,8 @@ export interface ElsewhereEntry {
   label: string;
   description: string;
   href: string;
+  /** The page name shown by the header search. */
+  pageLabel?: string;
   /** Words the search should also match, beyond the two above. */
   keywords: readonly string[];
   /** The topic card that shows this as a "see also" line, when one does. */
@@ -475,6 +493,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     label: "Library folders, and where each machine finds them",
     description: "Which folders hold models, and the path each machine opens them by.",
     href: "/library/folders?sel=library",
+    pageLabel: "Library · Folders",
     keywords: ["model roots", "mount", "share", "path", "directory", "override", "nas"],
     topic: "models",
   },
@@ -484,6 +503,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     description:
       "Context size, GPU layers and answer defaults for one model, which fill before these do: open it in the Library.",
     href: "/library?sel=library",
+    pageLabel: "Library",
     keywords: ["profile", "context", "gpu layers", "offload", "temperature", "max tokens", "top-p"],
     topic: "answers",
   },
@@ -492,6 +512,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     label: "Priority lists",
     description: "Which backends answer a model name, and what is tried when one fails.",
     href: "/routing?sel=gateway",
+    pageLabel: "Gateway · Routing",
     keywords: ["model slots", "failover", "tier", "alias", "fallback", "cascade"],
     topic: "serving",
   },
@@ -501,6 +522,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     description:
       "Add a SearXNG, Brave or Google (Gemini key) search account on Backends, and set the order they are tried on Routing.",
     href: "/backends/search?sel=backends",
+    pageLabel: "Backends · Search accounts",
     keywords: [
       "google",
       "gemini",
@@ -519,6 +541,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     label: "Keys for your apps",
     description: "Make, limit and revoke the keys your apps use, on Connect apps.",
     href: "/connect",
+    pageLabel: "Connect apps",
     keywords: ["client key", "api key", "token", "revoke", "limits", "connect", "base url"],
     topic: "access",
   },
@@ -527,6 +550,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     label: "Reach it from other devices",
     description: "Answer on your network, and check the firewall, on Home.",
     href: "/#reach",
+    pageLabel: "Home · Reach",
     keywords: ["advertise", "lan", "firewall", "phone", "tailnet", "remote", "network"],
     topic: "access",
   },
@@ -536,6 +560,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     description:
       "Share Eugene: manage people, permission groups, app access and job-site permissions.",
     href: "/people",
+    pageLabel: "People",
     keywords: [
       "job sites",
       "permissions",
@@ -554,6 +579,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     label: "Add a machine, versions and updates",
     description: "Join tokens, each machine's version and the Update button.",
     href: "/nodes?sel=control",
+    pageLabel: "Machines",
     keywords: ["join", "token", "node", "enroll", "version", "update", "upgrade"],
     topic: "machines",
   },
@@ -563,6 +589,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     description:
       "Keep a copy of the control root on a second machine, ready if this one stops for good: on the Machines page.",
     href: "/nodes?sel=control#standby",
+    pageLabel: "Machines · Standby",
     keywords: ["standby", "backup", "replica", "replication", "failover", "promote", "spare"],
     topic: "machines",
   },
@@ -571,6 +598,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     label: "Add a backend you already run",
     description: "Ollama, LM Studio, an OpenAI-compatible server or a cloud CLI.",
     href: "/backends/add?sel=backends",
+    pageLabel: "Backends · Add a backend",
     keywords: [
       "ollama",
       "lm studio",
@@ -588,6 +616,7 @@ const ELSEWHERE_STATIC: readonly ElsewhereEntry[] = [
     label: "Engine versions",
     description: "Install llama.cpp or pin a build, per machine, on the Backends page.",
     href: "/inference?sel=backends",
+    pageLabel: "Backends",
     keywords: ["llama.cpp", "vllm", "install", "build", "pin", "version"],
     topic: "engines",
   },
@@ -609,6 +638,7 @@ export function elsewhereIndex(backends: readonly BackendRef[] = []): ElsewhereE
     id: `backend:${b.name}@${b.node ?? ""}`,
     label: `${b.name}${b.node ? ` on ${labelOf(b.node)}` : ""}`,
     description: "A backend's provider, model, address and API key.",
+    pageLabel: "Backend settings",
     href: `/config?sel=${encodeURIComponent(
       b.node ? `driver:${b.name}@${b.node}` : `driver:${b.name}`,
     )}`,

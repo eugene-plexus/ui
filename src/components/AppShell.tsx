@@ -36,6 +36,7 @@ import { InstallModeBanner } from "./InstallModeBanner";
 import { TlsProbe } from "./TlsProbe";
 import { IssuesBadge } from "./IssuesBadge";
 import { TasksTray } from "./TasksTray";
+import { SettingsSearch } from "./SettingsSearch";
 import { useNodeLabels } from "@/lib/nodeLabels";
 
 /**
@@ -194,6 +195,7 @@ function AppShellInner({
           <Image src="/eugene-icon.svg" alt="" width={22} height={22} priority />
         </Link>
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <SettingsSearch topology={topology} ready={ready} />
           {/* Background work, from every signed-in screen (hobbyist UX P7):
               a download started on Discover is visible from Config. */}
           <TasksTray />

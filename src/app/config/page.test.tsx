@@ -101,6 +101,14 @@ let patches: { target: string; body: Record<string, unknown> }[];
 /** The backends the root lists: one, by default, on the other machine. */
 let backends: { node: string; name: string }[];
 
+it("updates the Settings search when a header link changes q on the same page", async () => {
+  const { rerender } = render(<ConfigPage />);
+  await screen.findByLabelText("Default temperature");
+  query = "q=log+level";
+  rerender(<ConfigPage />);
+  expect(screen.getByTestId("settings-search")).toHaveValue("log level");
+});
+
 it("preserves edits across searches and saves them even when another topic is being searched", async () => {
   render(<ConfigPage />);
   const temperature = await screen.findByLabelText("Default temperature");
@@ -241,6 +249,32 @@ const sectionsOf = (el: HTMLElement) =>
     .map((s) => s.getAttribute("data-target"));
 
 describe("the Settings page", () => {
+  it("shows a selected component's config once in Settings and one Settings link in the map", async () => {
+    query = "sel=gateway";
+    render(<ConfigPage />);
+    await screen.findByLabelText("Default temperature");
+    expect(screen.getByTestId("page-menu")).toHaveAttribute("data-sel", "gateway");
+    expect(
+      within(screen.getByTestId("page-menu")).getByRole("link", { name: "Settings" }),
+    ).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(screen.getByRole("button", { name: "The system" }));
+    const map = screen.getByTestId("layer-map");
+    const settingsLinks = within(map).getAllByRole("link", { name: "Settings" });
+    expect(settingsLinks).toHaveLength(1);
+    expect(settingsLinks[0]).toHaveAttribute("href", "/config");
+    expect(settingsLinks[0]!.closest("[data-layer]")).toHaveAttribute("data-layer", "agent");
+
+    for (const field of SCHEMAS.gateway!.fields) {
+      const inputs = screen.getAllByLabelText(field.label);
+      expect(inputs).toHaveLength(1);
+      expect(inputs[0]!.closest('[data-testid="settings-section"]')).toHaveAttribute(
+        "data-target",
+        "gateway",
+      );
+    }
+  });
+
   it("shows every owner's settings by topic, the other machine's through its proxy", async () => {
     render(<ConfigPage />);
     const access = await card("access");

@@ -220,6 +220,15 @@ export interface paths {
          *     passphrase already exists, because an endpoint that both creates
          *     and replaces a credential, and is reachable without one, is a
          *     reset endpoint by accident.
+         *
+         *     **A machine that left an install with no passphrase of its own
+         *     (agent#22)** takes one only from the machine itself, until a
+         *     passphrase is set: the real peer (the TCP peer, the HTTPS entry
+         *     point's verified client, or the peer this agent's own proxy saw)
+         *     is loopback, no forwarding header is present, and the Host is a
+         *     loopback name. It still listens where other machines reached it,
+         *     and the first caller on the network would own it. Any other caller
+         *     gets **403**.
          */
         post: operations["initializeAuth"];
         delete?: never;
@@ -259,8 +268,9 @@ export interface paths {
          *     install by itself (as it does at its next minute's trust pull)
          *     and the 409 says it is standalone now, so the next sign-in uses
          *     this machine's own passphrase. A machine with **no passphrase of
-         *     its own** does not leave by itself: standalone, the first caller
-         *     to set one would own it.
+         *     its own** leaves as well, and its first-run wizard then takes a
+         *     passphrase only from the machine itself (agent#22;
+         *     `POST /v1/auth/initialize`).
          *
          *     **Standalone** (not enrolled), this agent verifies the Argon2id
          *     hash set during the first-run wizard and mints the session
@@ -1841,7 +1851,7 @@ export interface paths {
          *       epoch): **409**, and the agent's log says why.
          *
          *     The machine that runs the install's active control root never
-         *     leaves this way (409).
+         *     leaves this way, nor with a session (409).
          *
          *     A machine with no passphrase of its own cannot leave this way
          *     (409); it still leaves by itself at its next trust pull once the
@@ -8109,6 +8119,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthLoginResponse"];
+                };
+            };
+            /**
+             * @description This machine left an install with no passphrase of its own, and
+             *     the caller is not this machine.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Already initialized — log in instead. */

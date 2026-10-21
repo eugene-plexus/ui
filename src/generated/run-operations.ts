@@ -854,7 +854,8 @@ export interface components {
              * Name
              * @description The filename with its extension stripped, the directory
              *     name for safetensors, or the provenance file's name without
-             *     `.eugene-prepared.json` for `prepared`. **Not derived from metadata**: the
+             *     `.eugene-prepared.json` for `prepared`, or the first Ollama tag
+             *     for a model in an Ollama store. **Not derived from metadata**: the
              *     file's own name is what the operator downloaded, what they
              *     call it, and what `Runtime.modelAlias` defaults to — so
              *     plainly-named files mean the obvious name is already the
@@ -938,6 +939,7 @@ export interface components {
             safetensors?: components["schemas"]["SafetensorsDetail"] | null;
             kev?: components["schemas"]["KevCheckpointDetail"] | null;
             prepared?: components["schemas"]["PreparedDetail"] | null;
+            ollama?: components["schemas"]["OllamaDetail"] | null;
             /**
              * Profilecount
              * @description How many launch profiles are saved against this model. On
@@ -962,6 +964,36 @@ export interface components {
              * @description Filesystem mtime of the weights. Part of the incremental-rescan key.
              */
             modifiedAt?: string | null;
+            /**
+             * Fingerprint
+             * @description What the contents were when the scan last read them: `v1:` and
+             *     a SHA-256 over the format, each file's role and size, the first
+             *     1 MiB of each file (a safetensors file's whole JSON header
+             *     instead, up to 100 MiB), eight evenly spaced 64 KiB blocks and
+             *     the last 64 KiB. About 1.6 MiB is read per file, never the whole
+             *     of a model.
+             *
+             *     It is **proof that two files are the same file**, which the
+             *     `id` cannot be: it names no path and no date, so a file that
+             *     moved has the same fingerprint at its new path
+             *     (`POST /v1/models/{id}/relocate`). Sampled, so two files agree
+             *     only when their sizes, headers and samples all agree. Kept on a
+             *     `missing` entry, which is how a moved file is recognised.
+             *     Absent when the files could not be read, and on an entry no
+             *     scan has read since fingerprints began.
+             */
+            fingerprint?: string | null;
+            /**
+             * Movedto
+             * @description On a `missing` entry: the `id` of the one `present` entry with
+             *     the same `fingerprint`, which is where the file went. Absent
+             *     when no entry matches, and when several do (then
+             *     `GET /v1/models/{id}/relocate-candidates` lists them and the
+             *     person picks). Worked out when the list is read, never stored.
+             *     Nothing moves because of it: moving the profiles is
+             *     `POST /v1/models/{id}/relocate`, after a click.
+             */
+            movedTo?: string | null;
             /**
              * Error
              * @description Why this entry is `unreadable` — a header that would not
@@ -1205,12 +1237,41 @@ export interface components {
          *       guesses that a file which vanished from one root and appeared
          *       in another is the same file, because a wrong guess silently
          *       applies one model's tuning to another. The profiles stay here
-         *       to be copied across by hand.
+         *       until the person moves them (`POST /v1/models/{id}/relocate`),
+         *       which needs a `fingerprint` that proves the new file has the
+         *       same contents, or an explicit confirmation when none was saved.
          *     * `unreadable` — the files are there and something about them
          *       did not work. `error` says what.
          * @enum {string}
          */
         ModelStatus: "present" | "missing" | "unreadable";
+        /**
+         * OllamaDetail
+         * @description A model read from an Ollama store (CX9): which of Ollama's names
+         *     point at this file. Present only for a model in a folder of kind
+         *     `ollama`. Its `name` is the first of `tags`, and is what
+         *     `Runtime.modelAlias` is set to, since the file's own name is a
+         *     hash. Ollama manages the file: the library never writes or
+         *     deletes it.
+         */
+        OllamaDetail: {
+            /**
+             * Tags
+             * @description `model:tag` names, as `ollama list` shows them, sorted. Several
+             *     tags can share one file. A model outside Ollama's own library
+             *     keeps its namespace (`user/model:tag`); one from another
+             *     registry keeps its host.
+             */
+            tags: string[];
+            /**
+             * Needsmigration
+             * @description Its family is one Ollama rewrites for llama.cpp
+             *     (`compatmigrate`) and this file is the older layout, so
+             *     upstream llama.cpp may not load it until Ollama has updated
+             *     it. Run is not refused for it.
+             */
+            needsMigration?: boolean | null;
+        };
         /**
          * Operation
          * @description HTTP view; the journal envelope has its own version and schema.
