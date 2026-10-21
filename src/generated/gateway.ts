@@ -3722,6 +3722,14 @@ export interface components {
              */
             runtime?: string;
             backend?: components["schemas"]["BackendKind"];
+            /**
+             * @description What the backend said served this request, verbatim. Provenance,
+             *     never a routing key. Only the decision door sets it today.
+             *     Absent from a decision answer when the backend reported none,
+             *     and null on the doors whose envelope serializes its unset
+             *     fields, as `runtime` is.
+             */
+            reported_model?: string;
             /** @description Gateway-side wall-clock time, including any failed attempts. */
             latency_ms?: number;
             /**
@@ -5198,8 +5206,8 @@ export interface components {
              * @description The public alias that served the request — after a cascade
              *     it names what answered, exactly as the chat doors do. The
              *     backend's own model revision is preserved on the driver's
-             *     `reportedModel` for provenance and surfaced in
-             *     `x_eugene_plexus`.
+             *     `reportedModel` for provenance and surfaced as
+             *     `x_eugene_plexus.reported_model`.
              */
             model: string;
             answers: {

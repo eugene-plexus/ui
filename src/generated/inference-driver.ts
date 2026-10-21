@@ -777,7 +777,8 @@ export interface components {
              *     presencePenalty, parallelToolCalls; since P2c logprobs, logitBias,
              *     reasoningEffort, verbosity, prediction, webSearchOptions). `topLogprobs`
              *     rides with `logprobs`. The hints (`promptCacheKey`,
-             *     `promptCacheRetention`, `serviceTier`, `safetyIdentifier`) are never
+             *     `promptCacheRetention`, `serviceTier`, `safetyIdentifier`,
+             *     `cacheControl`) are never
              *     listed: a backend that cannot carry a hint drops it. The gateway preserves this
              *     list on each fallback attempt, except `reasoningEffort` when the selected
              *     backend does not support it: effort is a preference, omitted and named
@@ -940,6 +941,7 @@ export interface components {
             serviceTier?: components["schemas"]["ServiceTier"];
             /** @description A hint, as `promptCacheKey`. */
             safetyIdentifier?: string;
+            cacheControl?: components["schemas"]["CacheControlHint"];
             /**
              * @description **Internal, from the gateway: never forwarded upstream** (CB4,
              *     2026-10-02). The conversation this turn continues, as the
@@ -976,6 +978,32 @@ export interface components {
              * @default false
              */
             reportProgress: boolean;
+        };
+        /**
+         * @description How long the client asked a cached prompt prefix to be kept:
+         *     Anthropic's `cache_control.ttl`. Absent means the provider's
+         *     own default, which is five minutes.
+         * @enum {string}
+         */
+        CacheTtl: "5m" | "1h";
+        /**
+         * @description The client marked part of the prompt for caching (Anthropic's
+         *     `cache_control`, on the request, the system prompt, a message, a
+         *     tool or a tool result). **Carry the client's, add none**
+         *     (`docs/design/prompt-cache.md`, PC6): a request whose client marked
+         *     nothing has no hint, and pays what it would pay upstream.
+         *
+         *     A hint, like `promptCacheKey`: never listed in `callerSettings`,
+         *     never a routing input. A backend that cannot carry it drops it
+         *     with a warning once. `capabilities.supportedSettings` names
+         *     `cacheControl` for each model whose adapter carries it, so the
+         *     gateway can say which of the client's marks arrived.
+         *
+         *     `ttl` is the longest the client sent on any mark; absent when no
+         *     mark named one.
+         */
+        CacheControlHint: {
+            ttl?: components["schemas"]["CacheTtl"];
         };
         TokenCount: {
             /**
@@ -2108,6 +2136,13 @@ export interface components {
              *     possible value. Absent means unknown; ineligible for requests
              *     requiring explicit settings. The driver still validates before
              *     execution, including after a configuration change.
+             *
+             *     It also names the hint `cacheControl` for each model whose
+             *     adapter carries it (an OpenRouter `anthropic/*` model). A hint
+             *     is never refused, so the name is not for routing: the gateway
+             *     reads it to say, on its ignored-settings header, which of the
+             *     client's `cache_control` marks the answering backend did not
+             *     carry.
              */
             supportedSettings?: string[];
             /**
