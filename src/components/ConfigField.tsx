@@ -6,7 +6,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { CatalogueSourcesInput } from "@/components/CatalogueSources";
 import { FolderPicker } from "@/components/FolderPicker";
 import { Help } from "@/components/Help";
-import { REDACTED, formatValue, readValue, unsetSentence } from "@/lib/configValue";
+import { api, describeError } from "@/lib/api";
+import { REDACTED, formatValue, rawText, readValue, unsetSentence } from "@/lib/configValue";
 import {
   type MountBoxes,
   type MountShape,
@@ -21,6 +22,7 @@ import type {
   ConfigField as ConfigFieldDef,
   LibraryFolder,
   PathMapping,
+  RuntimeList,
 } from "@/lib/types";
 
 /**
@@ -261,6 +263,26 @@ export function ConfigFieldInput({
   // here rather than in the branch that renders it, because hooks
   // cannot live inside `renderInput`.
   const [browsingPath, setBrowsingPath] = useState(false);
+  const [runtimeChoices, setRuntimeChoices] = useState<
+    { names: string[]; error?: never } | { names?: never; error: string } | null
+  >(null);
+
+  useEffect(() => {
+    if (field.valueType !== "runtime_name") return;
+    let cancelled = false;
+    api
+      .get<RuntimeList>("agent", "/v1/runtimes")
+      .then((list) => {
+        if (!cancelled) setRuntimeChoices({ names: list.runtimes.map((runtime) => runtime.name) });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setRuntimeChoices({ error: describeError(err) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [field.valueType]);
+
   // The field's name has to reach its input, or a screen reader announces
   // "edit text, blank" for every row of every Config page and clicking a
   // label focuses nothing. A single control gets `<label htmlFor>`; the
@@ -573,6 +595,35 @@ export function ConfigFieldInput({
       return <ModelSlotsSummary value={value} />;
     }
 
+    if (field.valueType === "runtime_name" && runtimeChoices?.names) {
+      const current = value ?? "";
+      const known =
+        typeof current === "string" && (current === "" || runtimeChoices.names.includes(current));
+      return (
+        <select
+          {...controlProps}
+          value={known ? current : NOT_A_CHOICE}
+          onChange={(e) => {
+            if (e.target.value !== NOT_A_CHOICE) onChange(e.target.value);
+          }}
+          disabled={locked}
+          className={baseInputClass}
+        >
+          {!known && (
+            <option value={NOT_A_CHOICE}>
+              {typeof value === "string" ? value : rawText(value)} (not found)
+            </option>
+          )}
+          <option value="">Not set</option>
+          {runtimeChoices.names.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
     // Peer-reference dropdown: a `componentKindHint` tells us this
     // field points at a agent topology entry of the given kind.
     // Render as a dropdown sourced from the live topology so the
@@ -740,6 +791,11 @@ export function ConfigFieldInput({
         aria-invalid={compound && error ? true : undefined}
       >
         {renderInput()}
+        {field.valueType === "runtime_name" && runtimeChoices?.error != null && (
+          <p className="text-status-warn text-sm">
+            Runtimes unavailable: {runtimeChoices.error}. Type a name.
+          </p>
+        )}
         {error && (
           <p id={errorId} className="text-status-error text-sm" data-testid="config-field-error">
             Not saved: {error}
