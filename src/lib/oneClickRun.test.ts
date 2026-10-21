@@ -18,6 +18,7 @@ import {
   runTask,
   startDownloadAndRun,
   startRun,
+  subscribeRuns,
   type RunOperation,
 } from "./oneClickRun";
 import type { TargetNode } from "./nodeBudget";
@@ -366,6 +367,26 @@ describe("before sign-in", () => {
     expect(api.get).not.toHaveBeenCalled();
     setSessionToken("session");
     await refreshRuns();
-    expect(api.get).toHaveBeenCalledWith("library", "/v1/run-operations");
+    expect(api.get).toHaveBeenCalledWith("library", "/v1/run-operations", { bearer: "session" });
+  });
+
+  // Setup changes the session over when the machine enrolls; a poll
+  // still holding the old one got a 401 that ended the new one mid-setup
+  // (CX4, CX5). Supplied as a bearer, a refusal is not the session's.
+  it("carries the session as a supplied bearer, so a refusal does not end it", async () => {
+    await refreshRuns();
+    for (const call of vi.mocked(api.get).mock.calls)
+      expect(call[2]).toEqual({ bearer: "session" });
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads nothing more once the last page watching has gone", async () => {
+    const stop = subscribeRuns(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    const reads = vi.mocked(api.get).mock.calls.length;
+    expect(reads).toBeGreaterThan(0);
+    stop();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(vi.mocked(api.get).mock.calls.length).toBe(reads);
   });
 });
