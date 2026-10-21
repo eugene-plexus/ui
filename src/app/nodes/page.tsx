@@ -37,6 +37,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { More } from "@/components/Help";
 import { NodeNameCell } from "@/components/NodeNameCell";
 import { NodeUpdateCard } from "@/components/NodeUpdateCard";
+import { LeaveInstall } from "@/components/LeaveInstall";
 import { RemoveMachine } from "@/components/RemoveMachine";
 import { StandbyPanel } from "@/components/StandbyPanel";
 import { UpdateAllPanel } from "@/components/UpdateAllPanel";
@@ -1084,6 +1085,7 @@ export default function NodesPage() {
               </div>
             )}
           </section>
+          <LeaveInstall rootName={rootName} />
         </div>
       </main>
     </AppShell>

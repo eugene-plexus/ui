@@ -29,7 +29,8 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { Attribution } from "@/components/Attribution";
 import { TlsProbe } from "@/components/TlsProbe";
 import { SetupGateScreen } from "@/components/SetupGateScreen";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, describeError } from "@/lib/api";
+import { leaveWithPassphrase, leftMessage, offersLeave } from "@/lib/leaveInstall";
 import { pageTitle, useDocumentTitle } from "@/lib/pageTitle";
 import { setSessionToken } from "@/lib/session";
 import { SETUP_GATE_TIMEOUT_MS, isNoAnswer } from "@/lib/useSetupGate";
@@ -102,6 +103,9 @@ function LoginForm() {
   const [capsLock, setCapsLock] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [canLeave, setCanLeave] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [left, setLeft] = useState<string | null>(null);
   // Probe init state on mount via the public /v1/auth/status endpoint
   // so a fresh install lands directly on /setup without ever rendering
   // the "Unlock — enter your install passphrase" form (which implies
@@ -162,11 +166,26 @@ function LoginForm() {
     field.current?.select();
   }, [error]);
 
+  async function leave() {
+    setLeaving(true);
+    setError(null);
+    try {
+      setLeft(leftMessage(await leaveWithPassphrase(passphrase)));
+      setCanLeave(false);
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setLeaving(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!passphrase) return;
     setSubmitting(true);
     setError(null);
+    setCanLeave(false);
+    setLeft(null);
     try {
       const resp = await api.post<LoginResponse>(
         "agent",
@@ -202,6 +221,9 @@ function LoginForm() {
             ? e.body.detail?.detail || e.body.detail?.title || e.message
             : e.message;
           setError(detail);
+          // A removed machine, or one whose root is gone, can get no session
+          // here: it can leave with its own passphrase instead (ui#20).
+          setCanLeave(offersLeave(e.status, problemTitle(e.body)));
         }
       } else {
         setError(e instanceof Error ? e.message : String(e));
@@ -319,6 +341,26 @@ function LoginForm() {
               className="status-error mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
             >
               {error}
+            </p>
+          )}
+          {canLeave && (
+            <button
+              type="button"
+              onClick={() => void leave()}
+              disabled={leaving || !passphrase}
+              data-testid="leave-with-passphrase"
+              className="action-button font-ui mt-3 w-full rounded-[var(--radius)] border border-[color:var(--border)] px-5 py-2 text-sm disabled:opacity-40"
+            >
+              {leaving ? "Leaving…" : "Leave the install with this machine's passphrase"}
+            </button>
+          )}
+          {left && (
+            <p
+              role="status"
+              data-testid="left-install"
+              className="status-warn mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
+            >
+              {left} Sign in with this machine&apos;s passphrase.
             </p>
           )}
           <button
