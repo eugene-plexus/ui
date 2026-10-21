@@ -2331,6 +2331,12 @@ export interface components {
             revision?: string;
             /** @description Absolute path to `config.json`, the file that made this a model. */
             configPath?: string;
+            /**
+             * @description Author sampling from `generation_config.json`, reported only
+             *     when `do_sample` is true. Greedy decoding contributes no
+             *     sampling defaults.
+             */
+            recommendedSampling?: components["schemas"]["RecommendedSampling"];
         };
         /**
          * @description Present when the directory's `config.json` carries an MLX-style
@@ -2503,21 +2509,31 @@ export interface components {
         };
         /**
          * @description Sampling parameters the model's author put in the file
-         *     (`general.sampling.*` in GGUF). **Reported, never applied.**
+         *     (`general.sampling.*` in GGUF or `generation_config.json` for
+         *     safetensors), applied by the gateway as defaults when neither
+         *     the request nor the default profile sets a value. Author values
+         *     also apply when the model has no profile. A default profile with
+         *     `authorSampling: false` turns them off.
          *
-         *     The locked rule is that the gateway owns every
-         *     LLM-output-affecting parameter and no component substitutes a
-         *     local default; that rule is unchanged. But the file having an
-         *     opinion is real information, and dropping it means the operator
-         *     has to go read the model card to find out. Whether anything can
-         *     adopt these with one click is a gateway decision, not a library
-         *     one.
+         *     The Library only reports these values. The gateway owns and
+         *     sends every sampling value, falling back to its own defaults
+         *     when no request, profile or enabled author value exists. An
+         *     inference driver never substitutes its own defaults. The author's
+         *     repeat penalty is not applied.
          */
         RecommendedSampling: {
             temperature?: number;
             topK?: number;
             topP?: number;
+            minP?: number;
+            source?: components["schemas"]["RecommendedSamplingSource"];
         };
+        /**
+         * @description Where the author stated the sampling values: `general.sampling.*`
+         *     in a GGUF file, or a safetensors model's `generation_config.json`.
+         * @enum {string}
+         */
+        RecommendedSamplingSource: "gguf" | "generation_config";
         SpecialTokens: {
             /**
              * @description Each spelling once, longest first, so a matcher that tries them
@@ -2559,21 +2575,44 @@ export interface components {
             name: string;
             /**
              * @description The profile offered first when launching this model.
-             *     Its maxTokens, temperature and topP also supply omitted
-             *     generation parameters at the gateway, without restarting
-             *     an existing runtime. Explicit request values always win.
+             *     Its maxTokens, temperature, topP, topK and minP also supply
+             *     omitted generation parameters at the gateway, without
+             *     restarting an existing runtime. Explicit request values
+             *     always win.
              *     Setting it clears the flag on whichever profile held it; the
              *     first profile saved for a model gets it whether it asks or
              *     not.
              * @default false
              */
             default: boolean;
+            /**
+             * @description Use the model author's sampling where this default profile
+             *     and the request set none. Absent means true, including for
+             *     stored profiles; no storage migration is needed. Author
+             *     values also apply when the model has no profile. False skips
+             *     author values, so the gateway uses its own defaults where
+             *     the request and profile set none.
+             * @default true
+             */
+            authorSampling: boolean;
             /** @description Maximum output tokens when the request omits a limit. Absent uses the gateway default. */
             maxTokens?: number;
             /** @description Sampling temperature when omitted by the caller. Zero is an explicit value. */
             temperature?: number;
-            /** @description Nucleus sampling cutoff when omitted by the caller. Absent leaves it unspecified. */
+            /** @description Nucleus sampling cutoff when omitted by the caller. Absent uses enabled author values, then the gateway default. */
             topP?: number;
+            /**
+             * @description Sample from only the K most likely tokens when omitted by
+             *     the caller; 0 disables the cut. Absent uses enabled author
+             *     values, then the gateway default.
+             */
+            topK?: number;
+            /**
+             * @description Discard tokens less likely than this fraction of the most
+             *     likely token when omitted by the caller. Absent uses enabled
+             *     author values, then the gateway default.
+             */
+            minP?: number;
             /**
              * @description Which engine these flags are written for. Flags are not
              *     portable between engines, so a profile is only ever offered
@@ -2705,9 +2744,18 @@ export interface components {
             id: string;
             name: string;
             default: boolean;
+            /**
+             * @description Whether to use the model author's sampling for omitted
+             *     values, as saved (`ModelProfileSpec.authorSampling`). Absent
+             *     means true for stored profiles.
+             * @default true
+             */
+            authorSampling: boolean;
             maxTokens?: number;
             temperature?: number;
             topP?: number;
+            topK?: number;
+            minP?: number;
             engine: components["schemas"]["schemas-EngineKind"];
             /** @description What to start the model as, as saved (`ModelProfileSpec.mode`). */
             mode?: components["schemas"]["ProfileMode"];
