@@ -14,8 +14,9 @@
  * in rem-based utilities, with no px width anywhere in either.
  */
 
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TreeNode } from "@/lib/resourceTree";
 
@@ -55,6 +56,134 @@ const TREE: TreeNode = {
   ],
   pages: [],
 };
+
+beforeEach(() => localStorage.clear());
+
+describe("tree keyboard navigation", () => {
+  it("exposes a tree with levels, branch states and the current page", () => {
+    render(<ResourceTree tree={TREE} localNode={null} selected="agent:b" ready />);
+    const tree = screen.getByRole("tree", { name: "Install" });
+    const items = within(tree).getAllByRole("treeitem");
+    expect(items.map((item) => item.getAttribute("aria-level"))).toEqual(["1", "2", "3", "2"]);
+    expect(items[0]).toHaveAttribute("aria-expanded", "true");
+    expect(items[2]).not.toHaveAttribute("aria-expanded");
+    expect(items[3]).toHaveAttribute("aria-selected", "true");
+    expect(within(items[0]!).getAllByRole("group")).toHaveLength(2);
+    expect(items.filter((item) => item.tabIndex === 0)).toEqual([items[3]]);
+  });
+
+  it("Down, Right and Left move focus through visible items and branches", async () => {
+    const user = userEvent.setup();
+    render(<ResourceTree tree={TREE} localNode={null} selected={null} ready />);
+    await user.tab();
+    const root = screen.getByRole("treeitem", { name: "Eugene Plexus" });
+    const branch = screen.getByRole("treeitem", { name: "with-children" });
+    expect(root).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(branch).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    expect(branch).toHaveAttribute("aria-expanded", "false");
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("treeitem", { name: "childless-sibling" })).toHaveFocus();
+    await user.keyboard("{ArrowUp}{ArrowRight}");
+    expect(branch).toHaveFocus();
+    expect(branch).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("treeitem", { name: "grandchild" })).toHaveFocus();
+    await user.keyboard("{ArrowLeft}{ArrowLeft}{ArrowLeft}");
+    expect(root).toHaveFocus();
+  });
+
+  it("Tab enters and leaves once, and Home, End and characters find visible items", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <button>Before</button>
+        <ResourceTree tree={TREE} localNode={null} selected={null} ready />
+        <button>After</button>
+      </>,
+    );
+    await user.tab();
+    await user.tab();
+    await user.keyboard("{End}");
+    expect(screen.getByRole("treeitem", { name: "childless-sibling" })).toHaveFocus();
+    await user.keyboard("{Home}g");
+    expect(screen.getByRole("treeitem", { name: "grandchild" })).toHaveFocus();
+    await user.keyboard("w{ArrowLeft}{Home}g");
+    expect(screen.getByRole("treeitem", { name: "Eugene Plexus" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "After" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole("treeitem", { name: "Eugene Plexus" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "Before" })).toHaveFocus();
+  });
+
+  it("Enter and a mouse click follow the existing link and close the drawer", async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    const tree: TreeNode = {
+      ...TREE,
+      pages: [{ id: "home", label: "Home", route: "/", icon: "Server" }],
+    };
+    render(
+      <ResourceTree
+        tree={tree}
+        localNode={null}
+        selected="install"
+        ready
+        onNavigate={onNavigate}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "Eugene Plexus" });
+    // Keep jsdom on this page while observing actual link activation.
+    link.addEventListener("click", (event) => event.preventDefault());
+    expect(link).toHaveAttribute("href", "/?sel=install");
+    await user.tab();
+    await user.keyboard("{Enter}");
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    await user.click(link);
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+  });
+
+  it("remembers collapsed branches in this browser", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<ResourceTree tree={TREE} localNode={null} selected={null} ready />);
+    await user.tab();
+    await user.keyboard("{ArrowDown}{ArrowLeft}");
+    unmount();
+    render(<ResourceTree tree={TREE} localNode={null} selected={null} ready />);
+    expect(screen.getByRole("treeitem", { name: "with-children" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByRole("treeitem", { name: "grandchild" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a tab stop when topology removes a focused item without taking focus from the page", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ResourceTree tree={TREE} localNode={null} selected={null} ready />,
+    );
+    await user.tab();
+    await user.keyboard("{End}");
+    rerender(
+      <ResourceTree
+        tree={{ ...TREE, children: [TREE.children[0]!] }}
+        localNode={null}
+        selected={null}
+        ready
+      />,
+    );
+    expect(screen.getByRole("treeitem", { name: "Eugene Plexus" })).toHaveFocus();
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    await user.click(outside);
+    rerender(<ResourceTree tree={TREE} localNode={null} selected={null} ready />);
+    expect(outside).toHaveFocus();
+    outside.remove();
+  });
+});
 
 function sizingTokens(className: string): string[] {
   return className.split(/\s+/).filter((t) => /^(h-|w-|min-w|max-w|px-|py-|p-)/.test(t));

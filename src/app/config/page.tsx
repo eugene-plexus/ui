@@ -23,6 +23,7 @@ import {
   type Topology,
 } from "@/lib/resourceTree";
 import {
+  APPEARANCE_SEARCH_TEXTS,
   buildCards,
   elsewhereIndex,
   elsewhereLines,
@@ -82,6 +83,7 @@ function ConfigPageInner() {
   const raw =
     searchParams.get("sel") ?? selectionFromConfigTab(searchParams.get("tab")) ?? "install";
   const selection = parseSelection(raw);
+  const initialQuery = searchParams.get("q") ?? "";
   // The fragment is not a search param and is not on the server; read
   // once the page is in a browser.
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -96,18 +98,14 @@ function ConfigPageInner() {
     read();
     window.addEventListener("hashchange", read);
     return () => window.removeEventListener("hashchange", read);
-  }, []);
+  }, [raw, initialQuery]);
 
   // The body is a child of the shell, because the topology it reads is
   // the shell's: a page rendering the shell is ABOVE the provider, and
   // the first build of this page read an empty topology forever.
   return (
     <AppShell>
-      <ConfigBody
-        selection={selection}
-        initialQuery={searchParams.get("q") ?? ""}
-        focusKey={focusKey}
-      />
+      <ConfigBody selection={selection} initialQuery={initialQuery} focusKey={focusKey} />
     </AppShell>
   );
 }
@@ -193,6 +191,7 @@ function SettingsView({
   const owners = useMemo(() => ownersFor(selection, topology), [selection, topology]);
   const ownerKey = owners.map((o) => o.id).join("\n");
   const [query, setQuery] = useState(initialQuery);
+  useEffect(() => setQuery(initialQuery), [initialQuery]);
   const [schemas, setSchemas] = useState<Map<string, ConfigSchema>>(() => new Map());
   const [docs, setDocs] = useState<Map<string, Record<string, unknown>>>(() => new Map());
   const [failed, setFailed] = useState<Map<string, string>>(() => new Map());
@@ -259,22 +258,12 @@ function SettingsView({
   const allCards = useMemo(() => buildCards(owners, schemas, ""), [owners, schemas]);
 
   const everything = selection.type === "install";
-  const appearance =
-    everything &&
-    matchesQuery(query, [
-      "Appearance",
-      "Theme",
-      "Font size",
-      "About",
-      "this browser",
-      "dark",
-      "light",
-      "plexus",
-      "modern",
-      "editorial",
-      "licence",
-      "version",
-    ]);
+  const appearance = everything && matchesQuery(query, APPEARANCE_SEARCH_TEXTS);
+  useEffect(() => {
+    if (appearance && focusKey === "appearance") {
+      document.getElementById("appearance")?.scrollIntoView({ block: "center" });
+    }
+  }, [appearance, focusKey]);
 
   const backends = useMemo(
     () =>
@@ -422,6 +411,7 @@ function SettingsView({
 
             {appearance && (
               <section
+                id="appearance"
                 data-testid="settings-card"
                 data-topic="appearance"
                 className="section-panel p-0"

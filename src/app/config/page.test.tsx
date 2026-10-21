@@ -101,6 +101,14 @@ let patches: { target: string; body: Record<string, unknown> }[];
 /** The backends the root lists: one, by default, on the other machine. */
 let backends: { node: string; name: string }[];
 
+it("updates the Settings search when a header link changes q on the same page", async () => {
+  const { rerender } = render(<ConfigPage />);
+  await screen.findByLabelText("Default temperature");
+  query = "q=log+level";
+  rerender(<ConfigPage />);
+  expect(screen.getByTestId("settings-search")).toHaveValue("log level");
+});
+
 it("preserves edits across searches and saves them even when another topic is being searched", async () => {
   render(<ConfigPage />);
   const temperature = await screen.findByLabelText("Default temperature");

@@ -6,9 +6,11 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
 } from "react";
 
 import { api } from "@/lib/api";
@@ -225,11 +227,23 @@ export function ResourceTree({
   onNavigate?: () => void;
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [focused, setFocused] = useState<string | null>(null);
+  const rows = useRef(new Map<string, HTMLLIElement>());
+  const hasFocus = useRef(false);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(OPEN_KEY);
-      if (raw) setOpen(JSON.parse(raw) as Record<string, boolean>);
+      if (raw) {
+        const saved: unknown = JSON.parse(raw);
+        if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+          setOpen(
+            Object.fromEntries(
+              Object.entries(saved).filter(([, value]) => typeof value === "boolean"),
+            ),
+          );
+        }
+      }
     } catch {
       // Private mode, or a value from an older shape. Branches open at
       // their defaults, which costs the operator one click.
@@ -239,8 +253,35 @@ export function ResourceTree({
   // A selected leaf's ancestors are opened, so a pasted link lands with
   // its branch already expanded rather than on an invisible selection.
   const forced = useMemo(() => openPath(tree, selected), [tree, selected]);
+  const visible = useMemo(() => {
+    const items: { key: string; parent: string | null; node: TreeNode }[] = [];
+    function walk(node: TreeNode, trail: string[]) {
+      const key = rowKey(node, trail);
+      items.push({ key, parent: trail.at(-1) ?? null, node });
+      if (isOpen(open, forced, key)) node.children.forEach((child) => walk(child, [...trail, key]));
+    }
+    walk(tree, []);
+    return items;
+  }, [tree, open, forced]);
+  const tabStop = visible.some((item) => item.key === focused)
+    ? focused!
+    : (visible.find((item) => item.node.sel === selected)?.key ?? visible[0]!.key);
+
+  // A topology refresh can remove the focused row. Keep focus inside the
+  // tree when that happens, without taking it from someone using the page.
+  useLayoutEffect(() => {
+    if (hasFocus.current && !rows.current.get(tabStop)?.contains(document.activeElement)) {
+      rows.current.get(tabStop)?.focus();
+    }
+  }, [tabStop, visible]);
+
+  function focus(key: string) {
+    setFocused(key);
+    rows.current.get(key)?.focus();
+  }
 
   function toggle(key: string) {
+    focus(key);
     setOpen((prev) => {
       const next = { ...prev, [key]: !isOpen(prev, forced, key) };
       try {
@@ -252,6 +293,55 @@ export function ResourceTree({
     });
   }
 
+  function onKeyDown(key: string, event: KeyboardEvent<HTMLLIElement>) {
+    event.stopPropagation();
+    if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return;
+    const index = visible.findIndex((item) => item.key === key);
+    const item = visible[index];
+    if (!item) return;
+    let next: string | undefined;
+    switch (event.key) {
+      case "ArrowDown":
+        next = visible[index + 1]?.key;
+        break;
+      case "ArrowUp":
+        next = visible[index - 1]?.key;
+        break;
+      case "Home":
+        next = visible[0]?.key;
+        break;
+      case "End":
+        next = visible.at(-1)?.key;
+        break;
+      case "ArrowRight":
+        if (item.node.children.length) {
+          if (isOpen(open, forced, key)) next = visible[index + 1]?.key;
+          else toggle(key);
+        }
+        break;
+      case "ArrowLeft":
+        if (item.node.children.length && isOpen(open, forced, key)) toggle(key);
+        else next = item.parent ?? undefined;
+        break;
+      case "Enter":
+        // Activate the real link, preserving Next's navigation and the
+        // drawer's onNavigate callback. Grouping rows toggle instead.
+        if (firstPageHref(item.node, localNode)) {
+          event.currentTarget.querySelector<HTMLAnchorElement>(":scope > div a")?.click();
+        } else if (item.node.children.length) toggle(key);
+        break;
+      default:
+        if (event.key.length !== 1 || !event.key.trim()) return;
+        next = [...visible.slice(index + 1), ...visible.slice(0, index + 1)].find((candidate) =>
+          candidate.node.label.toLocaleLowerCase().startsWith(event.key.toLocaleLowerCase()),
+        )?.key;
+    }
+    event.preventDefault();
+    if (next) focus(next);
+  }
+
+  const keyboard: TreeKeyboard = { rows: rows.current, tabStop, onFocus: setFocused, onKeyDown };
+
   return (
     <nav
       aria-label="Install"
@@ -259,16 +349,28 @@ export function ResourceTree({
       data-ready={ready ? "true" : "false"}
       className="flex h-full min-w-0 flex-col gap-1 overflow-y-auto border-r border-[color:var(--border)] bg-[color:var(--panel-soft)] p-2"
     >
-      <Row
-        node={tree}
-        depth={0}
-        selected={selected}
-        open={open}
-        forced={forced}
-        onToggle={toggle}
-        onNavigate={onNavigate}
-        localNode={localNode}
-      />
+      <ul
+        role="tree"
+        aria-label="Install"
+        onFocusCapture={() => {
+          hasFocus.current = true;
+        }}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) hasFocus.current = false;
+        }}
+      >
+        <Row
+          node={tree}
+          depth={0}
+          selected={selected}
+          open={open}
+          forced={forced}
+          onToggle={toggle}
+          onNavigate={onNavigate}
+          localNode={localNode}
+          keyboard={keyboard}
+        />
+      </ul>
       {!ready && (
         <p className="font-ui px-2 py-1 text-[0.6875rem] text-[color:var(--muted)]">
           Reading topology…
@@ -310,6 +412,13 @@ function rowKey(node: TreeNode, trail: string[]): string {
   return node.sel ?? `${trail.join("/")}/${node.kind}:${node.label}`;
 }
 
+interface TreeKeyboard {
+  rows: Map<string, HTMLLIElement>;
+  tabStop: string;
+  onFocus: (key: string) => void;
+  onKeyDown: (key: string, event: KeyboardEvent<HTMLLIElement>) => void;
+}
+
 function Row({
   node,
   depth,
@@ -319,6 +428,7 @@ function Row({
   onToggle,
   onNavigate,
   localNode,
+  keyboard,
   trail = [],
 }: {
   node: TreeNode;
@@ -329,6 +439,7 @@ function Row({
   onToggle: (key: string) => void;
   onNavigate?: () => void;
   localNode: string | null;
+  keyboard: TreeKeyboard;
   trail?: string[];
 }) {
   const key = rowKey(node, trail);
@@ -342,11 +453,29 @@ function Row({
   const target = node.sel ? firstPageHref(node, localNode) : null;
 
   return (
-    <div className="min-w-0">
+    <li
+      role="treeitem"
+      aria-label={node.label}
+      aria-level={depth + 1}
+      aria-expanded={expandable ? expanded : undefined}
+      aria-selected={node.sel ? active : undefined}
+      tabIndex={keyboard.tabStop === key ? 0 : -1}
+      ref={(element) => {
+        if (element) keyboard.rows.set(key, element);
+        else keyboard.rows.delete(key);
+      }}
+      onFocus={(event) => {
+        event.stopPropagation();
+        keyboard.onFocus(key);
+      }}
+      onKeyDown={(event) => keyboard.onKeyDown(key, event)}
+      className="min-w-0 list-none outline-none [&:focus-visible>div]:outline-2 [&:focus-visible>div]:outline-offset-[-2px] [&:focus-visible>div]:outline-[color:var(--accent-left)]"
+    >
       <div className="flex min-w-0 items-center gap-0.5" style={{ paddingLeft: `${depth * 12}px` }}>
         {expandable ? (
           <button
             type="button"
+            tabIndex={-1}
             onClick={() => onToggle(key)}
             aria-expanded={expanded}
             aria-label={`${expanded ? "Collapse" : "Expand"} ${node.label}`}
@@ -362,7 +491,11 @@ function Row({
         {target ? (
           <Link
             href={target}
-            onClick={onNavigate}
+            tabIndex={-1}
+            onClick={() => {
+              keyboard.rows.get(key)?.focus();
+              onNavigate?.();
+            }}
             aria-current={active ? "page" : undefined}
             // The whole name on hover. A leaf is about 19 characters wide
             // in the column, and a driver's name is the model's plus a
@@ -393,8 +526,9 @@ function Row({
         ) : (
           <button
             type="button"
+            tabIndex={-1}
             onClick={() => onToggle(key)}
-            aria-expanded={expanded}
+            aria-expanded={expandable ? expanded : undefined}
             title={node.hint ? `${node.label} · ${node.hint}` : node.label}
             data-tree-group={key}
             className="font-ui flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius)] px-1.5 py-1 text-left text-sm text-[color:var(--muted)] transition-colors hover:bg-[color:var(--panel-hover)]"
@@ -415,7 +549,7 @@ function Row({
           tree that hung every driver straight off the type branch passed
           a check called "a driver sits under its machine". */}
       {expanded && (
-        <div data-tree-children={key}>
+        <ul role="group" data-tree-children={key}>
           {node.children.map((child) => (
             <Row
               key={rowKey(child, [...trail, key])}
@@ -427,12 +561,13 @@ function Row({
               onToggle={onToggle}
               onNavigate={onNavigate}
               localNode={localNode}
+              keyboard={keyboard}
               trail={[...trail, key]}
             />
           ))}
-        </div>
+        </ul>
       )}
-    </div>
+    </li>
   );
 }
 
