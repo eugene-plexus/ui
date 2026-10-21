@@ -1932,6 +1932,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node/machine-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Give this machine a new machine key, with no stop in traffic.
+         * @description Starts a change of this node's machine key (row 3,
+         *     `docs/design/rows/row-03.md`). The agent makes a new P-256 key,
+         *     announces both keys to the root (`tlsNextPin`), waits until the
+         *     other machines hold a machine list that names both, then presents
+         *     the new key and drops the old one. Open sessions finish on the old
+         *     key; new handshakes get the new one. On the root, the machine port
+         *     in front of control changes too (`controlPins`).
+         *
+         *     It runs in the background. `GET /v1/node` shows its progress in
+         *     `machine.keyChange`, and the root's `GET /v1/nodes/{name}` shows
+         *     which machines it waits on (`machineKeyChange`). The old private
+         *     key is deleted at the switch.
+         *
+         *     Operator-only.
+         */
+        post: operations["startMachineKeyChange"];
+        /**
+         * Stop a machine key change before the switch.
+         * @description Deletes the next key and announces the current key alone. Only
+         *     before the switch: once this node presents its new key, the old
+         *     private key is gone, and the change finishes by itself.
+         *
+         *     Operator-only.
+         */
+        delete: operations["stopMachineKeyChange"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node/update/check": {
         parameters: {
             query?: never;
@@ -2210,6 +2251,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ollama/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send an Ollama model to its Keep job in the Library.
+         * @description Accept an operator session or a `sub: agent` service token from
+         *     the Library's host, as identified by the install topology. The
+         *     Library calls its local agent with its own service credential;
+         *     that agent sends the request with its machine identity and
+         *     never forwards an operator session to the worker.
+         *     Before reading bytes, fetch `GET /v1/keep-jobs/{job}`
+         *     from this install's Library using this agent's own service
+         *     token. The job must be running, name this machine as `node`, and
+         *     name the requested digest. Find that digest in a detected local
+         *     Ollama store; no supplied filesystem path or destination URL.
+         *
+         *     Send the weights and any projector through that job's Library
+         *     file routes, using the LS10 state, offset and complete protocol
+         *     in chunks of at most 16 MiB. The Library checks each file against
+         *     the report's digest and size. Resume from its received offset.
+         *     This request completes after the send; a failure names its
+         *     observed cause. Nothing in Ollama is changed or deleted.
+         */
+        post: operations["sendOllamaModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/model-copies/clear": {
         parameters: {
             query?: never;
@@ -2290,6 +2367,15 @@ export interface paths {
          *     makes spawned components bind `0.0.0.0` rather than loopback,
          *     because a component that must be reached from another host
          *     cannot bind only to this one; engines are never widened.
+         *
+         *     **`reportOllama`** (`boolean`, default `true`) reports this
+         *     machine's Ollama stores to the Library at start, then checks
+         *     every 60 seconds and reports when the listing changes. It sends
+         *     names, sizes and digests only; bytes move only after Keep. The
+         *     Library's own machine is read locally and does not send a report.
+         *     The machine's page exposes this switch through the config trio;
+         *     turning it off stops reports and leaves the last report's actual
+         *     `readAt` visible so its age stays honest.
          */
         get: operations["getConfig"];
         put?: never;
@@ -3196,6 +3282,58 @@ export interface components {
              *     list. `null` when it holds none.
              */
             listAgeSeconds?: number | null;
+            /**
+             * Format: int64
+             * @description The `version` of the root's signed machine list this node
+             *     holds. The root reads it to tell when every machine holds a
+             *     list that names a machine's next key (`Node.machineKeyChange`).
+             *     `null` when it holds none.
+             */
+            listVersion?: number | null;
+            /**
+             * @description This node's last machine key change (`POST
+             *     /v1/node/machine-key`), or `null` when it never had one.
+             */
+            keyChange?: components["schemas"]["MachineKeyChange"] | null;
+        };
+        /**
+         * @description * `waiting`: the next key is made and announced beside the
+         *       current one; the machine port still presents the current key
+         *       until every machine holds a list that names both.
+         *     * `switched`: the machine port presents the new key, and the old
+         *       private key is deleted. The root has not yet recorded that the
+         *       old key is dropped; until it does, its list keeps both.
+         *     * `done`: the root records the new key alone.
+         *     * `stopped`: an operator stopped it before the switch; the next
+         *       key is deleted.
+         *     * `failed`: the root refused the next key (`error` says why); the
+         *       next key is deleted and nothing changed.
+         * @enum {string}
+         */
+        MachineKeyChangeState: "waiting" | "switched" | "done" | "stopped" | "failed";
+        /**
+         * @description A change of this node's machine key (row 3): two pins across an
+         *     overlap. Kept in `node.yaml`, so a restart resumes it.
+         */
+        MachineKeyChange: {
+            state: components["schemas"]["MachineKeyChangeState"];
+            /**
+             * @description The pin of the key it changes to, while `waiting` or
+             *     `switched`. `null` otherwise.
+             */
+            nextPin?: string | null;
+            /** Format: date-time */
+            startedAt: string;
+            /**
+             * Format: date-time
+             * @description When it reached `done`, `stopped` or `failed`.
+             */
+            finishedAt?: string | null;
+            /**
+             * @description Why it waits (`waiting for the root (connection refused)`),
+             *     or why it failed, in the words of the cause.
+             */
+            error?: string | null;
         };
         /**
          * @description This node's client doors and the certificate they present (LT2,
@@ -5388,6 +5526,16 @@ export interface components {
             files?: number;
             /** @description How many of them are whole on this node's disk so far. */
             filesCopied?: number;
+        };
+        OllamaSendRequest: {
+            /** @description The Library's Keep job id, used to discover the authorized destination. */
+            job: string;
+            digest: string;
+        };
+        OllamaSendResult: {
+            job: string;
+            /** @description Bytes sent in this request, including a projector when present. */
+            bytesSent: number;
         };
         /**
          * @description What `POST /v1/model-copies/clear` managed to delete, and what it
@@ -10156,6 +10304,80 @@ export interface operations {
             };
         };
     };
+    startMachineKeyChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Started; the change as it now stands. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MachineKeyChange"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /**
+             * @description This node cannot start a change now: it is not enrolled, its
+             *     machine port is not listening, a change is already running, or
+             *     the root runs a version that does not take a next key (its
+             *     machine list has no `keyChange`). The detail says which.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    stopMachineKeyChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped; the change as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MachineKeyChange"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description No machine key change is running. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The switch already happened; the change finishes by itself. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     checkNodeUpdate: {
         parameters: {
             query?: never;
@@ -10454,6 +10676,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryFolderReach"];
+                };
+            };
+        };
+    };
+    sendOllamaModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OllamaSendRequest"];
+            };
+        };
+        responses: {
+            /** @description Every file was sent and verified by the Library. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OllamaSendResult"];
+                };
+            };
+            /** @description An operator session is required, or the Keep job belongs to another machine. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The Keep job or the local Ollama digest was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The Keep job is not running, its digest differs, or the source cannot be read. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The Library could not receive or verify the file; detail states its cause. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
