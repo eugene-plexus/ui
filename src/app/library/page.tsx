@@ -12,6 +12,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBreakdown, formatMemory } from "@/components/FitBadge";
 import { MovedModel, MovedNotice, profilesPhrase } from "@/components/MovedModel";
+import { ModelRoleChips } from "@/components/ModelRoles";
 import { ProfileEditor } from "@/components/ProfileEditor";
 import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
@@ -52,7 +53,12 @@ import {
   shareFitQuery,
   useTargetNode,
 } from "@/lib/nodeBudget";
-import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
+import {
+  describeRunning,
+  runningModel,
+  runtimesForModel,
+  type RunningModel,
+} from "@/lib/runningModel";
 import { contextLabel } from "@/lib/starter";
 import { PlannedContextNote } from "@/components/PlannedContextNote";
 import { expertsContextSentence, placementSentence } from "@/lib/fitWords";
@@ -877,6 +883,14 @@ function ModelDetail({
     verdicts?.find((v) => v.engine === engine)?.fit ?? null;
 
   const running = runningModel(model, runtimes);
+  const routingNames = [
+    ...new Set(
+      runtimesForModel(model, runtimes).flatMap((r) => (r.modelAlias ? [r.modelAlias] : [])),
+    ),
+  ];
+  // The Library contract names `name` as the default Runtime.modelAlias.
+  // A custom runtime alias takes precedence; an unstarted model can still hold roles.
+  const roleModels = routingNames.length > 0 ? routingNames : [model.name];
   // LS9: when the preparing engine suits this machine better, Run asks with
   // preparing chosen (Troy's B54 change). Not for a prepared model itself.
   const route =
@@ -950,6 +964,15 @@ function ModelDetail({
         />
       )}
       {model.keptFrom && <p>Kept from Ollama — served as {model.keptFrom.servedName}</p>}
+
+      {roleModels.map((alias) => (
+        <div key={alias}>
+          <p className="text-sm text-[color:var(--muted)]">
+            {routingNames.length > 0 ? "Routing name" : "Default routing name"}: {alias}
+          </p>
+          <ModelRoleChips model={alias} />
+        </div>
+      ))}
 
       {moved && <MovedNotice done={moved} />}
 
