@@ -3930,7 +3930,9 @@ export interface components {
          *       guesses that a file which vanished from one root and appeared
          *       in another is the same file, because a wrong guess silently
          *       applies one model's tuning to another. The profiles stay here
-         *       to be copied across by hand.
+         *       until the person moves them (`POST /v1/models/{id}/relocate`),
+         *       which needs a `fingerprint` that proves the new file has the
+         *       same contents, or an explicit confirmation when none was saved.
          *     * `unreadable` — the files are there and something about them
          *       did not work. `error` says what.
          * @enum {string}
@@ -4690,6 +4692,36 @@ export interface components {
              * @description Filesystem mtime of the weights. Part of the incremental-rescan key.
              */
             modifiedAt?: string | null;
+            /**
+             * Fingerprint
+             * @description What the contents were when the scan last read them: `v1:` and
+             *     a SHA-256 over the format, each file's role and size, the first
+             *     1 MiB of each file (a safetensors file's whole JSON header
+             *     instead, up to 100 MiB), eight evenly spaced 64 KiB blocks and
+             *     the last 64 KiB. About 1.6 MiB is read per file, never the whole
+             *     of a model.
+             *
+             *     It is **proof that two files are the same file**, which the
+             *     `id` cannot be: it names no path and no date, so a file that
+             *     moved has the same fingerprint at its new path
+             *     (`POST /v1/models/{id}/relocate`). Sampled, so two files agree
+             *     only when their sizes, headers and samples all agree. Kept on a
+             *     `missing` entry, which is how a moved file is recognised.
+             *     Absent when the files could not be read, and on an entry no
+             *     scan has read since fingerprints began.
+             */
+            fingerprint?: string | null;
+            /**
+             * Movedto
+             * @description On a `missing` entry: the `id` of the one `present` entry with
+             *     the same `fingerprint`, which is where the file went. Absent
+             *     when no entry matches, and when several do (then
+             *     `GET /v1/models/{id}/relocate-candidates` lists them and the
+             *     person picks). Worked out when the list is read, never stored.
+             *     Nothing moves because of it: moving the profiles is
+             *     `POST /v1/models/{id}/relocate`, after a click.
+             */
+            movedTo?: string | null;
             /**
              * Error
              * @description Why this entry is `unreadable` — a header that would not

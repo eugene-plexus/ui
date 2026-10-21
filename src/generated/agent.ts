@@ -896,6 +896,34 @@ export interface paths {
          *     place while the old one keeps running, then the app restarts on
          *     the new one. The previous environment is kept for rollback.
          *
+         *     **Back up app data before the first start of a new version**
+         *     (row 34). When the target catalogue manifest names `updateBackup`,
+         *     stop the app and copy those paths from `{dataDir}` to
+         *     `<app dir>/backups/<from-version>/` before switching versions or
+         *     starting the new one. The backup must be a consistent snapshot.
+         *     Missing paths are recorded as absent, so restoring also removes
+         *     data the new version created at those paths. Other app data is
+         *     left alone. Never follow a symlink or reparse point out of the
+         *     app's data or backup directory.
+         *
+         *     Check free space before copying: the backup needs 1.2 times the
+         *     total size of the selected paths on its destination volume. A
+         *     failure leaves the current version and its data in place and
+         *     resumes it if it was stopped for the backup. It marks
+         *     `AppInstall.state: failed`, naming the app, required space,
+         *     available space and volume, for example: "The update was not
+         *     started: Open WebUI's data needs 3.1 GB for its backup, and D:
+         *     has 1.2 GB free." A copy failure likewise names its observed cause.
+         *     Keep one backup; the next successful update replaces it. Do not
+         *     discard a usable backup for an incomplete copy.
+         *
+         *     `AppCatalogueEntry.resetsSettings` tells the console before the
+         *     Update click when the new entry resets the app's Admin Settings.
+         *     Chats are kept by the update. A failed new start never rolls back
+         *     automatically: `App.lastError` names its cause and the operator
+         *     may choose `rollbackApp` while `App.updateBackup` and the matching
+         *     `previousVersion` are present.
+         *
          *     On a first install the agent mints the app's client key on the
          *     **caller's** authority, named `app:<id>@<node>`, so it appears in
          *     the install's key list like any other and can be narrowed or
@@ -989,9 +1017,66 @@ export interface paths {
         put?: never;
         /**
          * Restart an installed app.
-         * @description Clears a `crashed` state, like restarting a component.
+         * @description Requires an operator session. Clears a `crashed` state, like
+         *     restarting a component. Without a body, or with `resetSettings:
+         *     false`, this is the existing ordinary restart.
+         *
+         *     With `resetSettings: true`, reset the app's stored Admin Settings
+         *     to Eugene's settings. A manifest without `resetOnConnectionChange`
+         *     answers 409: "This app has no settings for Eugene to reset."
+         *     Otherwise write `connection.sha256` as `reset-requested` before
+         *     restarting. The launcher sees a different digest, sets the named
+         *     reset variable to `true` for one start and writes the real digest.
+         *     Filled model values do not change that digest.
+         *
+         *     Before the request the console confirms: "Reset Open WebUI's
+         *     settings to Eugene's? It restarts, and its Admin Settings go back
+         *     to Eugene's. Chats, people, knowledge, models and tools stay."
          */
         post: operations["restartApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore an app's previous version and its saved data.
+         * @description Requires an operator session. Offered only while a complete
+         *     `App.updateBackup` and its matching `previousVersion` environment
+         *     exist. Returns 409 when either is missing, they do not match, or
+         *     an install or another data-changing app operation is in flight.
+         *
+         *     Stops the app, restores the selected data paths from the backup,
+         *     makes `previousVersion` current and starts that version. Data at
+         *     a backed-up path returns to its pre-update state; a path recorded
+         *     as absent is removed. Anything written there since the backup is
+         *     lost. Other data stays. All source and destination paths must stay
+         *     under the app's backup and data directories, with no symlink or
+         *     reparse-point escape. A restore failure names its observed cause,
+         *     keeps the backup for retry and does not start a version against
+         *     partly restored data. A failed start is reported in `App.lastError`
+         *     and never triggers another automatic version change.
+         *
+         *     Before the request the console confirms the version and backup
+         *     date: "Go back to Open WebUI 0.11.4? Chats and settings return to
+         *     how they were before the update on 21 Oct. Anything written since
+         *     then is lost." After a successful rollback the consumed backup is
+         *     no longer offered as another rollback.
+         */
+        post: operations["rollbackApp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6190,6 +6275,21 @@ export interface components {
              *       notes say which. A change of model is not a change of
              *       connection (`resetOnConnectionChange`): an app's stored
              *       vectors belong to the model that made them;
+             *     * `{imageModel}` — the first model the app's key lists with
+             *       the `image` surface. A local model comes before an external
+             *       one, and within each locality a running model comes before
+             *       a stopped one, using the same readiness fields as above.
+             *       A stopped local model therefore comes before a running
+             *       external model. An external, paid model is allowed when
+             *       there is no local image model: an image prompt goes there
+             *       only when a person asks for an image (OW-IMAGES,
+             *       2026-10-21). The key's `limits.localOnly` still applies:
+             *       the gateway refuses every cloud backend for such a key,
+             *       including fallback targets. When no eligible image model
+             *       is listed, or the listing fails, leave the variable unset
+             *       and say why in the start notes;
+             *     * `{imageModelSet}` — `true` when `{imageModel}` has a value,
+             *       otherwise `false`, including when the listing fails;
              *     * `{clientKey}`, `{oidcClientSecret}`, `{appSecret}` — secrets.
              *       `{appSecret}` is a random value made at its first start and
              *       kept in its data directory.
@@ -6227,7 +6327,19 @@ export interface components {
              *     rotated key, or a setting Eugene corrects, is not silently
              *     ignored. That start also clears what its admin set in it, and
              *     the agent's log says why. A filled-in value that changes
-             *     (`{embeddingModel}`) is not a change.
+             *     (`{embeddingModel}`, `{rerankModel}`, `{imageModel}` or
+             *     `{imageModelSet}`) is not a change. The explicit
+             *     `restartApp` request with `resetSettings: true` also requests
+             *     this one-start reset without changing the manifest.
+             *
+             *     On each start that seeds settings (the first start or a reset
+             *     start), the launcher writes `given.json` under `{dataDir}`:
+             *     the time, whether search was enabled, and the filled image,
+             *     embedding and rerank model values, with no secrets. The agent
+             *     returns it as `App.givenSettings`, so the app page can compare
+             *     what was given with what the gateway now serves. An ordinary
+             *     restart does not overwrite this record: resolving another
+             *     model is not evidence that the app accepted a new setting.
              *
              *     The environment joined on 2026-10-12 (MR6): Open WebUI 0.11.4
              *     points every address it does not get (documents' embeddings,
@@ -6238,6 +6350,19 @@ export interface components {
              *     reset, once.
              */
             resetOnConnectionChange?: string;
+            /**
+             * @description File and directory paths relative to `{dataDir}` to copy
+             *     before an update starts a new version. For Open WebUI:
+             *     `[webui.db, vector_db]`. Absent or empty means no data backup
+             *     and no data rollback is offered. Paths must stay inside the
+             *     app's data directory; absolute paths, drive-qualified paths,
+             *     parent traversal and a symlink or reparse point escaping that
+             *     directory are refused. Apply the same containment checks when
+             *     restoring. A missing path is recorded as absent so a rollback
+             *     also removes data created there by the new version.
+             * @default []
+             */
+            updateBackup: string[];
             /**
              * Format: uri
              * @description Where the app's own licence is read, for an app under a licence
@@ -6329,6 +6454,17 @@ export interface components {
              *     `manifest.version` when an update is available.
              */
             installedVersion?: string;
+            /**
+             * @description True when an installed app's target manifest has
+             *     `resetOnConnectionChange` and its `environment` templates
+             *     differ from the installed manifest's. Filled placeholder
+             *     values are not compared. False for a first install or an
+             *     entry without this reset variable. Older agents omit it.
+             *     The console says before the Update click: "This update
+             *     resets Open WebUI's Admin Settings to Eugene's, once."
+             * @default false
+             */
+            resetsSettings: boolean;
         };
         AppCatalogue: {
             apps: components["schemas"]["AppCatalogueEntry"][];
@@ -6384,6 +6520,41 @@ export interface components {
             /** Format: date-time */
             finishedAt?: string;
         };
+        AppRestartRequest: {
+            /**
+             * @description Reset stored Admin Settings to Eugene's for one start.
+             * @default false
+             */
+            resetSettings: boolean;
+        };
+        /**
+         * @description The non-secret filled settings written to `given.json` on the
+         *     first start or a reset start. This is what Eugene gave the app,
+         *     not a claim about subsequent changes made in its Admin Settings.
+         *     Model fields are absent when no eligible model was given. No
+         *     client key, OIDC secret or app secret is included.
+         */
+        AppGivenSettings: {
+            /** Format: date-time */
+            givenAt: string;
+            webSearchEnabled: boolean;
+            imageModel?: string;
+            embeddingModel?: string;
+            rerankModel?: string;
+        };
+        /**
+         * @description A complete retained backup, with the version and date the console
+         *     needs for the Go back confirmation. The version must match
+         *     `App.previousVersion`; a previous environment alone does not prove
+         *     that a usable data backup exists. Internal filesystem paths are
+         *     not exposed. Restoring also restores that version's given-settings
+         *     record, so the app page describes the settings actually seeded.
+         */
+        AppUpdateBackup: {
+            version: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
         AppList: {
             apps: components["schemas"]["App"][];
         };
@@ -6402,6 +6573,25 @@ export interface components {
             version: string;
             /** @description The environment kept for rollback, when there is one. */
             previousVersion?: string;
+            /**
+             * @description Present only when a complete backup and its matching previous
+             *     environment exist. Its absence means Go back is unavailable.
+             */
+            updateBackup?: components["schemas"]["AppUpdateBackup"];
+            /**
+             * @description Settings last given to the app on its first start or a reset
+             *     start. Absent before a recorded seed or on an older install.
+             */
+            givenSettings?: components["schemas"]["AppGivenSettings"];
+            /**
+             * @description The image model the launcher would select now from the app's key
+             *     listing, using the local-first rule for `{imageModel}`. This
+             *     is a current offer, not the app's stored setting. The console
+             *     compares it with `givenSettings.imageModel` to offer Reset
+             *     when a model was not given. Absent when no eligible model is
+             *     listed or the listing fails; `detail` names the observed cause.
+             */
+            availableImageModel?: string;
             origin: components["schemas"]["AppOrigin"];
             /** @description This node's name, when it has one. */
             node?: string;
@@ -6466,6 +6656,13 @@ export interface components {
             pid?: number;
             /** Format: date-time */
             lastRestart?: string;
+            /**
+             * @description The observed cause of the app's latest failure. If the new
+             *     version passes the crash threshold without becoming healthy,
+             *     the console leads with its version and this cause, then offers
+             *     Go back when `updateBackup` is present. Never roll back
+             *     automatically.
+             */
             lastError?: string;
             /**
              * @description Something the operator should know that is not an error — the
@@ -8997,7 +9194,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AppRestartRequest"];
+            };
+        };
         responses: {
             /** @description The app. */
             200: {
@@ -9008,9 +9209,39 @@ export interface operations {
                     "application/json": components["schemas"]["App"];
                 };
             };
+            400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+        };
+    };
+    rollbackApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The restored version is selected and its start is requested. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
         };
     };
     getAppConfig: {
