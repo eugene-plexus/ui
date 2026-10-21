@@ -249,6 +249,32 @@ const sectionsOf = (el: HTMLElement) =>
     .map((s) => s.getAttribute("data-target"));
 
 describe("the Settings page", () => {
+  it("shows a selected component's config once in Settings and one Settings link in the map", async () => {
+    query = "sel=gateway";
+    render(<ConfigPage />);
+    await screen.findByLabelText("Default temperature");
+    expect(screen.getByTestId("page-menu")).toHaveAttribute("data-sel", "gateway");
+    expect(
+      within(screen.getByTestId("page-menu")).getByRole("link", { name: "Settings" }),
+    ).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(screen.getByRole("button", { name: "The system" }));
+    const map = screen.getByTestId("layer-map");
+    const settingsLinks = within(map).getAllByRole("link", { name: "Settings" });
+    expect(settingsLinks).toHaveLength(1);
+    expect(settingsLinks[0]).toHaveAttribute("href", "/config");
+    expect(settingsLinks[0]!.closest("[data-layer]")).toHaveAttribute("data-layer", "agent");
+
+    for (const field of SCHEMAS.gateway!.fields) {
+      const inputs = screen.getAllByLabelText(field.label);
+      expect(inputs).toHaveLength(1);
+      expect(inputs[0]!.closest('[data-testid="settings-section"]')).toHaveAttribute(
+        "data-target",
+        "gateway",
+      );
+    }
+  });
+
   it("shows every owner's settings by topic, the other machine's through its proxy", async () => {
     render(<ConfigPage />);
     const access = await card("access");

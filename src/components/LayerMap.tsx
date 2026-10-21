@@ -104,7 +104,8 @@ function LayerCard({
   dashed?: boolean;
 }) {
   const homes = SCREENS.filter((s) => s.layer === layer.id);
-  const visitors = SCREENS.filter((s) => s.spans.includes(layer.id));
+  // Settings has one entry under Agent; its component spans share that page.
+  const visitors = SCREENS.filter((s) => s.href !== "/config" && s.spans.includes(layer.id));
 
   return (
     <div
