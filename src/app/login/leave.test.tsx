@@ -75,17 +75,28 @@ async function signIn(passphrase: string) {
   await userEvent.click(screen.getByRole("button", { name: /unlock/i }));
 }
 
+async function confirmLeave() {
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Leave the install with this machine's passphrase" }),
+  );
+  expect(screen.getByTestId("leave-with-passphrase-prompt")).toHaveTextContent(
+    "The install is not told",
+  );
+  expect(calls.some((c) => c.url.endsWith("/v1/node/unenroll"))).toBe(false);
+  await userEvent.click(screen.getByRole("button", { name: "Leave and work on its own" }));
+}
+
 describe("leaving the install from sign-in", () => {
   it("is offered to a removed machine, with its passphrase and no session", async () => {
     await signIn("this machine's own");
-    const button = await screen.findByTestId("leave-with-passphrase");
-    await userEvent.click(button);
+    await confirmLeave();
     expect(await screen.findByTestId("left-install")).toHaveTextContent(
       "This machine left the install at http://10.0.0.1:8083 and works on its own now.",
     );
     const leave = calls.find((c) => c.url.endsWith("/api/proxy/agent/v1/node/unenroll"));
     expect(leave?.body).toEqual({ passphrase: "this machine's own" });
     expect(leave?.authorization).toBeNull();
+    expect(sessionStorage.getItem("eugene-session-token")).toBeNull();
   });
 
   it("is offered when the control root does not answer, and says the root was not told", async () => {
@@ -96,7 +107,7 @@ describe("leaving the install from sign-in", () => {
       detail: "The control root at http://10.0.0.1:8083 did not answer, so it was not told.",
     };
     await signIn("this machine's own");
-    await userEvent.click(await screen.findByTestId("leave-with-passphrase"));
+    await confirmLeave();
     expect(await screen.findByTestId("left-install")).toHaveTextContent("it was not told");
   });
 
@@ -111,7 +122,7 @@ describe("leaving the install from sign-in", () => {
       },
     };
     await signIn("this machine's own");
-    await userEvent.click(await screen.findByTestId("leave-with-passphrase"));
+    await confirmLeave();
     expect(await screen.findByRole("alert")).toHaveTextContent("still lists this machine");
     expect(screen.queryByTestId("left-install")).toBeNull();
   });

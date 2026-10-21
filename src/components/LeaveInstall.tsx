@@ -43,7 +43,7 @@ export function LeaveInstall({ rootName }: { rootName?: string }) {
         <p role="status" className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm">
           {left}{" "}
           <Link href="/login/" className="underline">
-            Sign in with this machine&apos;s passphrase
+            Sign in again
           </Link>
         </p>
       </section>
