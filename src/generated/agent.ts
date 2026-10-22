@@ -2336,6 +2336,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ollama/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send an Ollama model to its Keep job in the Library.
+         * @description Accept an operator session or a `sub: agent` service token from
+         *     the Library's host, as identified by the install topology. The
+         *     Library calls its local agent with its own service credential;
+         *     that agent sends the request with its machine identity and
+         *     never forwards an operator session to the worker.
+         *     Before reading bytes, fetch `GET /v1/keep-jobs/{job}`
+         *     from this install's Library using this agent's own service
+         *     token. The job must be running, name this machine as `node`, and
+         *     name the requested digest. Find that digest in a detected local
+         *     Ollama store; no supplied filesystem path or destination URL.
+         *
+         *     Send the weights and any projector through that job's Library
+         *     file routes, using the LS10 state, offset and complete protocol
+         *     in chunks of at most 16 MiB. The Library checks each file against
+         *     the report's digest and size. Resume from its received offset.
+         *     This request completes after the send; a failure names its
+         *     observed cause. Nothing in Ollama is changed or deleted.
+         */
+        post: operations["sendOllamaModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/model-copies/clear": {
         parameters: {
             query?: never;
@@ -2416,6 +2452,15 @@ export interface paths {
          *     makes spawned components bind `0.0.0.0` rather than loopback,
          *     because a component that must be reached from another host
          *     cannot bind only to this one; engines are never widened.
+         *
+         *     **`reportOllama`** (`boolean`, default `true`) reports this
+         *     machine's Ollama stores to the Library at start, then checks
+         *     every 60 seconds and reports when the listing changes. It sends
+         *     names, sizes and digests only; bytes move only after Keep. The
+         *     Library's own machine is read locally and does not send a report.
+         *     The machine's page exposes this switch through the config trio;
+         *     turning it off stops reports and leaves the last report's actual
+         *     `readAt` visible so its age stays honest.
          */
         get: operations["getConfig"];
         put?: never;
@@ -5568,6 +5613,16 @@ export interface components {
             files?: number;
             /** @description How many of them are whole on this node's disk so far. */
             filesCopied?: number;
+        };
+        OllamaSendRequest: {
+            /** @description The Library's Keep job id, used to discover the authorized destination. */
+            job: string;
+            digest: string;
+        };
+        OllamaSendResult: {
+            job: string;
+            /** @description Bytes sent in this request, including a projector when present. */
+            bytesSent: number;
         };
         /**
          * @description What `POST /v1/model-copies/clear` managed to delete, and what it
@@ -10854,6 +10909,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryFolderReach"];
+                };
+            };
+        };
+    };
+    sendOllamaModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OllamaSendRequest"];
+            };
+        };
+        responses: {
+            /** @description Every file was sent and verified by the Library. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OllamaSendResult"];
+                };
+            };
+            /** @description An operator session is required, or the Keep job belongs to another machine. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The Keep job or the local Ollama digest was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The Keep job is not running, its digest differs, or the source cannot be read. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The Library could not receive or verify the file; detail states its cause. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
