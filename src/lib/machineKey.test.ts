@@ -134,11 +134,56 @@ describe("describeMachineKey", () => {
     expect(failed.canStart).toBe(true);
   });
 
-  it("says a key past its age is changed within a minute", () => {
+  it("says a key past its age is changed within a minute, when it is", () => {
     const view = describeMachineKey(
-      input({ machine: { ...input().machine!, keyChangeDueAt: "2026-10-01T00:00:00Z" } }),
+      input({
+        machine: {
+          ...input().machine!,
+          keyChangeDueAt: "2026-10-01T00:00:00Z",
+          keyChangeNextAttemptAt: "2026-10-22T11:59:30Z",
+        },
+      }),
     )!;
     expect(view.lines[1]?.text).toBe("Due a change; it starts within a minute");
+  });
+
+  it("says when an overdue key's change starts, never sooner than the machine will", () => {
+    // The catch-up after an update, or a day after a Stop: the machine's own
+    // next attempt, not "within a minute" (the review of part 3b).
+    const view = describeMachineKey(
+      input({
+        machine: {
+          ...input().machine!,
+          keyChangeDueAt: "2026-10-01T00:00:00Z",
+          keyChangeNextAttemptAt: "2026-10-25T03:00:00Z",
+        },
+      }),
+    )!;
+    expect(view.lines[1]?.text).toBe("Due a change; it starts [2026-10-25T03:00:00Z]");
+  });
+
+  it("names why a scheduled change could not start, and when it tries again", () => {
+    const view = describeMachineKey(
+      input({
+        machine: {
+          ...input().machine!,
+          keyChangeDueAt: "2026-10-01T00:00:00Z",
+          keyChangeNextAttemptAt: "2026-10-22T13:00:00Z",
+          keyChangeBlocked:
+            "The root runs a version that does not take a next machine key. Update the " +
+            "machine that runs the root first.",
+        },
+      }),
+    )!;
+    expect(view.lines.slice(1)).toEqual([
+      {
+        text:
+          "Key change could not start: The root runs a version that does not take a next " +
+          "machine key. Update the machine that runs the root first.",
+        tone: "bad",
+      },
+      { text: "It is tried again [2026-10-22T13:00:00Z]", tone: "muted" },
+    ]);
   });
 
   it("offers nothing on a machine without a listening machine port", () => {

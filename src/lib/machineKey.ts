@@ -17,7 +17,13 @@ import { formatTimestamp } from "./relativeTime";
 
 export type MachinePortView = Pick<
   AgentComponents["schemas"]["MachinePort"],
-  "listening" | "keyChange" | "keyMadeAt" | "keyChangeDueAt" | "error"
+  | "listening"
+  | "keyChange"
+  | "keyMadeAt"
+  | "keyChangeDueAt"
+  | "keyChangeNextAttemptAt"
+  | "keyChangeBlocked"
+  | "error"
 > & { pin?: string; required?: boolean };
 
 export type ObservedKeyChange = Pick<
@@ -156,13 +162,24 @@ export function describeMachineKey(input: MachineKeyInput): MachineKeyView | nul
   }
 
   if (!running) {
+    // The machine's own next attempt (`keyChangeNextAttemptAt`), never a
+    // promise it will not keep: an overdue key catches up within a week, a
+    // stopped change waits a day, and a start that could not happen is tried
+    // again an hour later, with its cause shown.
     const due = machine.keyChangeDueAt ?? null;
+    const next = machine.keyChangeNextAttemptAt ?? due;
+    const blocked = machine.keyChangeBlocked ?? null;
     if (due === null) {
       lines.push({ text: "Changes only when you ask", tone: "muted" });
-    } else if (Date.parse(due) <= now) {
+    } else if (blocked) {
+      lines.push({ text: `Key change could not start: ${blocked}`, tone: "bad" });
+      if (next) lines.push({ text: `It is tried again ${when(next, now)}`, tone: "muted" });
+    } else if (Date.parse(due) > now) {
+      lines.push({ text: `Next key change: ${monthOf(due)}`, tone: "muted" });
+    } else if (next === null || Date.parse(next) <= now + 60_000) {
       lines.push({ text: "Due a change; it starts within a minute", tone: "muted" });
     } else {
-      lines.push({ text: `Next key change: ${monthOf(due)}`, tone: "muted" });
+      lines.push({ text: `Due a change; it starts ${when(next, now)}`, tone: "muted" });
     }
   }
 

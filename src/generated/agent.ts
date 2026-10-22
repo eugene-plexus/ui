@@ -3312,10 +3312,27 @@ export interface components {
              *     plus a spread of up to a twelfth of it (about a month a year),
              *     drawn from the key itself: the same for one key, different for
              *     each, so the machines of one install do not change on the same
-             *     day. A key past it is changed at the next check, within a
-             *     minute. `null` when the field is 0 (only on request).
+             *     day. `null` when the field is 0 (only on request).
              */
             keyChangeDueAt?: string | null;
+            /**
+             * Format: date-time
+             * @description When this machine next tries to start that change: at
+             *     `keyChangeDueAt`; for a key already overdue when first seen (an
+             *     install updated to this version, a machine that was off), at a
+             *     time up to 7 days later drawn from the key, so the machines of an
+             *     install do not all change at once; a day after a change that was
+             *     stopped or refused; an hour after a start that could not happen
+             *     (`keyChangeBlocked`). `null` when the key does not change by
+             *     itself or a change is under way.
+             */
+            keyChangeNextAttemptAt?: string | null;
+            /**
+             * @description Why the last start of a scheduled change could not happen, in
+             *     the words of the cause (a root older than row 3, a key that
+             *     could not be written). `null` when the last start did not fail.
+             */
+            keyChangeBlocked?: string | null;
         };
         /**
          * @description * `waiting`: the next key is made and announced beside the
