@@ -147,4 +147,36 @@ describe("a group's policies", () => {
       { bearer: undefined },
     );
   });
+
+  it("links each group to its memory servers in Workbench Settings", () => {
+    const settings = "http://box.example:8190/settings#groups";
+    const changed = vi.fn().mockResolvedValue(undefined);
+    render(
+      <PermissionGroups
+        groups={[group("g-desk", "Desk", { policies: UNSET }), group("g-old", "Old")]}
+        clients={[]}
+        people={[]}
+        error={null}
+        onChanged={changed}
+        workbenchSettings={settings}
+      />,
+    );
+    const desk = within(screen.getByTestId("group-g-desk"));
+    expect(desk.getByTestId("group-memory-servers-g-desk")).toHaveTextContent(
+      "Memory servers for this group: Workbench Settings",
+    );
+    expect(desk.getByRole("link", { name: "Workbench Settings" })).toHaveAttribute(
+      "href",
+      settings,
+    );
+    // An older root has no policies, and no Workbench has no Settings to link to.
+    expect(
+      within(screen.getByTestId("group-g-old")).queryByTestId("group-memory-servers-g-old"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("names no Workbench Settings when this install has no Workbench", () => {
+    show([group("g-desk", "Desk", { policies: UNSET })]);
+    expect(screen.queryByTestId("group-memory-servers-g-desk")).not.toBeInTheDocument();
+  });
 });

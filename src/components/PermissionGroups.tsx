@@ -32,6 +32,7 @@ export function PermissionGroups({
   error,
   onChanged,
   bearer,
+  workbenchSettings,
 }: {
   groups: PermissionGroup[] | null;
   clients: OidcClient[];
@@ -40,6 +41,9 @@ export function PermissionGroups({
   onChanged: () => Promise<void>;
   /** Explicit named administration credential; omitted in the owner's console. */
   bearer?: string;
+  /** Row 70c: Workbench's Settings at its groups section, where a group's memory servers are
+   * set; absent when this install has no Workbench. */
+  workbenchSettings?: string | null;
 }) {
   const [adding, setAdding] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -150,6 +154,19 @@ export function PermissionGroups({
               <p className="text-sm" data-testid={`group-summary-${group.id}`}>
                 Summarise long chats at: {summaryPercentLabel(group.policies.summaryContextPercent)}
               </p>
+              {workbenchSettings && (
+                <p className="text-sm" data-testid={`group-memory-servers-${group.id}`}>
+                  Memory servers for this group:{" "}
+                  <a
+                    href={workbenchSettings}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    Workbench Settings
+                  </a>
+                </p>
+              )}
             </>
           )}
           <details className="mt-3 text-sm">

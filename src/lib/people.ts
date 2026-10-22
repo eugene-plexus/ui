@@ -137,6 +137,15 @@ export function policiesSummary(
   };
 }
 
+/**
+ * Row 70c: where a group's memory servers are set, Workbench's Settings at its groups section,
+ * from the address Workbench is opened at; null when this install has no Workbench.
+ */
+export function workbenchGroupsHref(open: string | null | undefined): string | null {
+  if (!open) return null;
+  return `${open.replace(/\/+$/, "")}/settings#groups`;
+}
+
 /** The shortest password the root accepts, the console's passphrase rule. */
 export const MIN_PASSWORD = 12;
 

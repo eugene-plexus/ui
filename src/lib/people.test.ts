@@ -15,6 +15,7 @@ import {
   workbenchMachine,
   workbenchRemovalWords,
   summaryPercentChoices,
+  workbenchGroupsHref,
 } from "./people";
 import type { OidcClient } from "./types";
 
@@ -219,5 +220,15 @@ describe("group policies (row 70)", () => {
       queueBand: "background",
       summaryContextPercent: 70,
     });
+  });
+});
+
+describe("where a group's memory servers are set (row 70c)", () => {
+  it("is Workbench's Settings, at its groups section", () => {
+    expect(workbenchGroupsHref("http://box.example:8190/")).toBe(
+      "http://box.example:8190/settings#groups",
+    );
+    expect(workbenchGroupsHref("https://wb.example")).toBe("https://wb.example/settings#groups");
+    expect(workbenchGroupsHref(null)).toBeNull();
   });
 });

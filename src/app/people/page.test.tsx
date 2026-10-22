@@ -528,6 +528,26 @@ describe("shared permission groups", () => {
     expect(ada.queryByTestId("person-summary-Ada")).not.toBeInTheDocument();
   });
 
+  it("links a group to its memory servers in Workbench's Settings, where Workbench runs", async () => {
+    handlers.set("GET control/v1/permission-groups", () => ({
+      status: 200,
+      body: { groups: [{ ...group, policies: { queueBand: null, summaryContextPercent: null } }] },
+    }));
+    handlers.set("GET agent/v1/node", () => ({ status: 200, body: { name: "box" } }));
+    handlers.set("GET agent/v1/apps", () => ({
+      status: 200,
+      body: {
+        apps: [{ id: "workbench", enabled: true, ui: true, uiUrl: "http://box.example:8190/" }],
+      },
+    }));
+    render(<PeoplePage />);
+    const link = await screen.findByRole("link", { name: "Workbench Settings" });
+    expect(link).toHaveAttribute("href", "http://box.example:8190/settings#groups");
+    expect(screen.getByTestId(`group-memory-servers-${group.id}`)).toHaveTextContent(
+      "Memory servers for this group: Workbench Settings",
+    );
+  });
+
   it("saves an empty selection explicitly and can restore individual policy", async () => {
     const user = userEvent.setup();
     handlers.set("GET control/v1/permission-groups", () => ({
