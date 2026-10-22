@@ -4294,6 +4294,15 @@ export interface components {
             appClientId?: string;
             limits?: components["schemas"]["ClientKeyLimits"];
             leaseSeconds?: number;
+            /**
+             * @description The verified person's queue band from their permission groups
+             *     (row 70): the highest band any of their groups sets. Present only
+             *     when the root verified a person (`personId`) and one of their
+             *     groups sets a band. Absent for a key with no person, a release, or
+             *     a person whose groups set none: the key's own band, or the
+             *     install's default, applies. Never taken from the caller.
+             */
+            queueBand?: components["schemas"]["QueueBand"];
         };
         ClientKey: {
             id: string;
@@ -6925,6 +6934,14 @@ export interface components {
             /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
             retryAfterSeconds?: number;
         };
+        /**
+         * @description Which requests wait or are turned away first when the machines are
+         *     busy. From highest to lowest: `interactive` (a person waiting at a
+         *     chat), `background` (work nobody watches), `sheddable` (refused first
+         *     under load). With no policy the install's default is `interactive`.
+         * @enum {string}
+         */
+        QueueBand: "interactive" | "background" | "sheddable";
         /**
          * @description Issued on successful login. The UI stores `sessionToken` as a
          *     Secure / HttpOnly / SameSite=Strict cookie or in memory; every
