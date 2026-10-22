@@ -267,6 +267,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/client-keys/{keyId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a new token with the same name and limits; the old one stops after an overlap (operator only).
+         * @description The new key copies the old key's name and limits exactly. The old
+         *     token keeps working until `retiresAt` (default one day, or stop it
+         *     now with `overlapSeconds` 0), then new requests on it are refused as
+         *     replaced; running ones finish. During the overlap both tokens share
+         *     one concurrency and rate allowance. The token is shown once.
+         */
+        post: operations["rotateClientKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/client-keys": {
         parameters: {
             query?: never;
@@ -3507,9 +3531,18 @@ export interface components {
             revokedAt?: string;
             /**
              * Format: date-time
-             * @description Reserved; not currently measured.
+             * @description When the authority last admitted a check or acquisition with this key, to the minute. Absent, no use recorded.
              */
             lastUsedAt?: string;
+            /**
+             * Format: date-time
+             * @description Set when the key was rotated. The token works until then, and new requests on it are refused as replaced afterwards. Running requests finish.
+             */
+            retiresAt?: string;
+            /** @description The id of the key this one replaced. */
+            replaces?: string;
+            /** @description The id of the key that replaced this one. */
+            replacedBy?: string;
             /** @description Absent on legacy keys (all models, no per-key limits); new keys receive bounded defaults. */
             limits?: components["schemas"]["ClientKeyLimits"];
         };
@@ -3526,6 +3559,15 @@ export interface components {
             /** @default 365 */
             ttlDays: number;
             limits?: components["schemas"]["ClientKeyLimits"];
+        };
+        ClientKeyRotateRequest: {
+            /**
+             * @description How long the old token keeps working. 0 stops it now. The old and new tokens share one concurrency and rate allowance during the overlap.
+             * @default 86400
+             */
+            overlapSeconds: number;
+            /** @description Lifetime of the new key. Absent, the old key's lifetime. */
+            ttlDays?: number;
         };
         ClientKeyCreated: {
             key: components["schemas"]["ClientKey"];
@@ -7047,6 +7089,54 @@ export interface operations {
                 content?: never;
             };
             /** @description Registry unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rotateClientKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ClientKeyRotateRequest"];
+            };
+        };
+        responses: {
+            /** @description The new key and its one-time token. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyCreated"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description No such key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The key is turned off */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry unavailable or the root is locked. */
             503: {
                 headers: {
                     [name: string]: unknown;
