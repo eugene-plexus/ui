@@ -4,6 +4,7 @@
  */
 
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -35,6 +36,59 @@ const APP = {
 };
 
 let app: Record<string, unknown>;
+
+it("shows given settings and confirms Reset before sending resetSettings", async () => {
+  app = {
+    ...APP,
+    id: "workbench",
+    name: "Open WebUI",
+    configTrio: false,
+    givenSettings: {
+      givenAt: "2026-10-21T12:00:00Z",
+      webSearchEnabled: true,
+      imageModel: "old-image",
+      embeddingModel: "nomic-embed-text",
+    },
+    availableImageModel: "gpt-image-1",
+  };
+  const user = userEvent.setup();
+  render(<AppOverviewPage />);
+  expect(await screen.findByTestId("app-given-settings")).toHaveTextContent("old-image");
+  expect(screen.getByTestId("app-new-image-model")).toHaveTextContent("gpt-image-1");
+  await user.click(screen.getByRole("button", { name: "Reset settings" }));
+  expect(screen.getByText(/Chats, people, knowledge, models and tools stay/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Reset and restart" }));
+  expect(
+    vi
+      .mocked(fetch)
+      .mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith("/restart") &&
+          init?.body === JSON.stringify({ resetSettings: true }),
+      ),
+  ).toBe(true);
+});
+
+it("offers Go back only with a matching backup and confirms data loss", async () => {
+  app = {
+    ...APP,
+    previousVersion: "v0",
+    updateBackup: { version: "v0", createdAt: "2026-10-21T12:00:00Z" },
+    status: "crashed",
+    lastError: "database migration failed",
+  };
+  const user = userEvent.setup();
+  render(<AppOverviewPage />);
+  expect(await screen.findByTestId("app-last-error")).toHaveTextContent(
+    "Workbench v1 did not start: database migration failed",
+  );
+  await user.click(screen.getByRole("button", { name: "Go back to v0" }));
+  expect(screen.getByText(/Anything written since then is lost/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Go back and restore data" }));
+  expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).endsWith("/rollback"))).toBe(
+    true,
+  );
+});
 
 beforeEach(() => {
   app = { ...APP };

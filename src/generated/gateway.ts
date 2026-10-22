@@ -1324,6 +1324,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/web_search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search through the install's accounts for Open WebUI.
+         * @description The shape Open WebUI's external search engine sends and reads
+         *     (row 34). The gateway runs `server_tools.SearchRunner` on the
+         *     install's search accounts in their configured order, with the
+         *     same failover rule as a chat's `web_search`. It maps each result's
+         *     address, title and excerpt to `link`, `title` and `snippet`.
+         *     It shortens the returned list without changing the account's own
+         *     result count or fetching any result page. An empty successful
+         *     search returns `[]`.
+         *
+         *     **Admission is the same as on every front door.** A client key's
+         *     `limits.allowedTools` must permit `web_search` (null permits all;
+         *     empty permits none). A `limits.localOnly` key is refused before
+         *     any account runs, including a search account on the LAN: a query
+         *     goes to the internet. The request counts against the key's rate
+         *     and concurrency limits and is attributed to that key. Refusals
+         *     use `SearchRunner`'s `why_not` wording.
+         *
+         *     **Google accounts are not skipped** (OW-GOOGLE, 2026-10-21).
+         *     A search provider's terms are the account holder's to keep. This
+         *     response carries only links, titles and snippets; it cannot carry
+         *     Search Suggestions or a provider's other display fields.
+         */
+        post: operations["webSearch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/images/generations": {
         parameters: {
             query?: never;
@@ -1340,6 +1380,11 @@ export interface paths {
          *     or not (captured). The model is any with the `image` surface on
          *     `GET /v1/models`: an OpenRouter image model (Gemini's image+text ones
          *     included, measured) or OpenAI's.
+         *
+         *     Open WebUI uses this same door and the same key policy (OW-IMAGES,
+         *     2026-10-21). A paid external model is allowed when its key permits
+         *     it. `limits.localOnly` refuses every cloud backend, including
+         *     fallback targets; an app key has no exception.
          *
          *     **Tiers, as chat** (§5, call #4), filtered at every tier to models
          *     that take what the request asks. **A setting is routed by the model's
@@ -2177,6 +2222,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        WebSearchRequest: {
+            query: string;
+            /**
+             * @description Upper bound on the returned list. Does not raise or replace
+             *     the search account's own result count. Omitted, the account's
+             *     count applies, capped at 20.
+             */
+            count?: number;
+        };
+        WebSearchResult: {
+            /**
+             * Format: uri
+             * @description The result's address.
+             */
+            link: string;
+            title: string;
+            /** @description The search provider's excerpt; no result page is fetched. */
+            snippet: string;
+        };
         RuntimeSwitchRequest: {
             /** @description Node name; absent for the gateway's local node. */
             node?: string;
@@ -7983,6 +8047,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    webSearch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebSearchRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description At most `count` results and at most the account's own result
+             *     count. When `count` is absent, the account's count applies,
+             *     capped at 20. A successful search with no results is `[]`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSearchResult"][];
+                };
+            };
+            /**
+             * @description Invalid request. An invalid query says
+             *     "query: must be 1 to 2000 characters."
+             *     An invalid count names its allowed range, 1 to 20.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /**
+             * @description The key's tool scope or locality refuses the search, with
+             *     `why_not`'s words. For example: "this key is local-only, and
+             *     a web search sends a query made from the prompt to the internet".
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description The key's admission limit or the search provider's rate limit.
+             *     A provider's `Retry-After` is carried through unchanged.
+             */
+            429: {
+                headers: {
+                    /** @description The provider's retry hint, or the key's admission retry delay. */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description No usable search account, or every account failed. With no
+             *     account: "no search account is set up; add one under Backends,
+             *     then Add a search account". An account that is not ready names
+             *     what it needs. When all accounts fail, the detail carries each
+             *     account's observed cause from `SearchRunner`'s `reasons`.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

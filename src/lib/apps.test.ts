@@ -91,9 +91,11 @@ describe("updateAvailable", () => {
       signInCallbackPath: "/oidc/callback",
       healthPath: "/healthz",
       uses: ["inference"],
+      updateBackup: [],
     },
     origin: "catalogue",
     installedVersion: installed,
+    resetsSettings: false,
   });
 
   it("offers an update only for an installed app on another version", () => {

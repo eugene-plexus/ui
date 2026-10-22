@@ -193,7 +193,7 @@ describe("adding a Google search account", () => {
     expect(notes).toContain("$14 per 1,000");
     expect(notes).toContain("as of 2026-10");
     expect(notes).toContain(
-      "Google's terms bind the key's owner: Google's answer and sources are shown unmodified, with Google's Search Suggestions, to the person who asked. Workbench shows them; other apps may not.",
+      "Google's terms bind the key's owner: Google's answer and sources are shown unmodified, with Google's Search Suggestions, to the person who asked. Workbench shows them; Open WebUI may use this account but cannot show Search Suggestions. Check the provider's terms for the apps you use.",
     );
     // The notes are Google's alone.
     await user.click(screen.getByTestId("search-provider-brave"));

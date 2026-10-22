@@ -39,6 +39,7 @@ import { NodeNameCell } from "@/components/NodeNameCell";
 import { NodeUpdateCard } from "@/components/NodeUpdateCard";
 import { ReportOllama } from "@/components/OllamaKeep";
 import { LeaveInstall } from "@/components/LeaveInstall";
+import { MachineKeyCard } from "@/components/MachineKeyCard";
 import { RemoveMachine } from "@/components/RemoveMachine";
 import { StandbyPanel } from "@/components/StandbyPanel";
 import { UpdateAllPanel } from "@/components/UpdateAllPanel";
@@ -107,6 +108,14 @@ interface NodeRow {
   /** LT1: its TLS door, and how the root last reached it. */
   machineUrl?: string | null;
   machineTls?: { state: MachineLinkState; detail?: string | null } | null;
+  /** Row 3: the keys its machine port may present, and a change under way. */
+  tlsPins?: string[] | null;
+  machineKeyChange?: {
+    nextPin: string;
+    waitingOn: string[];
+    unreachable: string[];
+    notReady?: string[] | null;
+  } | null;
 }
 
 /** What a node serves, from the two views that know: the control root's
@@ -811,6 +820,41 @@ export default function NodesPage() {
                     />
                   );
                 })}
+              </div>
+            </section>
+          )}
+
+          {/* Row 3 and part 3b: each machine's key, changed by itself once a
+              year or here on request, through that machine's own agent. */}
+          {!locked && nodes && nodes.some((n) => (n.tlsPins?.length ?? 0) > 0) && (
+            <section className="section-panel mb-6" data-testid="machine-keys">
+              <h2 className="section-heading font-ui text-base font-semibold">Machine keys</h2>
+              <p className="mb-3 text-sm text-[color:var(--muted)]">
+                Each machine proves itself to the others with its own key. A key changes by itself
+                once a year; the others take the new key first, so nothing stops.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {nodes
+                  .filter((n) => (n.tlsPins?.length ?? 0) > 0)
+                  .map((n) => {
+                    const reading = readings[n.name];
+                    return (
+                      <MachineKeyCard
+                        key={n.name}
+                        name={n.name}
+                        label={n.label}
+                        target={reading?.target ?? `node:${n.name}`}
+                        identity={reading?.identity ?? null}
+                        observed={n.machineKeyChange ?? null}
+                        runsRoot={n.role === "control"}
+                        others={
+                          nodes.filter((o) => o.name !== n.name && (o.tlsPins?.length ?? 0) > 0)
+                            .length
+                        }
+                        onChanged={refreshVersions}
+                      />
+                    );
+                  })}
               </div>
             </section>
           )}
