@@ -23,6 +23,7 @@ export function MachineKeyCard({
   identity,
   observed,
   others,
+  runsRoot = false,
   onChanged,
 }: {
   name: string;
@@ -34,6 +35,8 @@ export function MachineKeyCard({
   observed: ObservedKeyChange | null | undefined;
   /** How many other machines hold a machine key. */
   others: number;
+  /** This machine runs the install's root (its change waits for old agents). */
+  runsRoot?: boolean;
   onChanged: () => void | Promise<void>;
 }) {
   const labelOf = useNodeLabels();
@@ -45,6 +48,7 @@ export function MachineKeyCard({
     machine: identity?.machine ?? null,
     observed: observed ?? null,
     others,
+    runsRoot,
     labelOf: (n) => labelOf(n) ?? n,
   });
   if (!view) return null;

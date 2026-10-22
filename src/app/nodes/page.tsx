@@ -846,6 +846,7 @@ export default function NodesPage() {
                         target={reading?.target ?? `node:${n.name}`}
                         identity={reading?.identity ?? null}
                         observed={n.machineKeyChange ?? null}
+                        runsRoot={n.role === "control"}
                         others={
                           nodes.filter((o) => o.name !== n.name && (o.tlsPins?.length ?? 0) > 0)
                             .length

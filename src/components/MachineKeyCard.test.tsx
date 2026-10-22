@@ -44,7 +44,7 @@ describe("MachineKeyCard", () => {
         onChanged={onChanged}
       />,
     );
-    expect(screen.getByTestId("machine-key-nas")).toHaveTextContent(/Changes by itself on/);
+    expect(screen.getByTestId("machine-key-nas")).toHaveTextContent(/Next key change: /);
     await user.click(screen.getByRole("button", { name: "Change NAS's key now" }));
     expect(screen.getByText(/The others take it within a few minutes; nothing stops/)).toBeTruthy();
     expect(post).not.toHaveBeenCalled();

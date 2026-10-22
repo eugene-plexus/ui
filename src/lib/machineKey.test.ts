@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { describeMachineKey, type MachineKeyInput } from "./machineKey";
 
 const when = (iso: string | null | undefined) => (iso ? `[${iso}]` : null);
+const monthOf = (iso: string) => `{${iso.slice(0, 7)}}`;
 const NOW = Date.parse("2026-10-22T12:00:00Z");
 
 function input(over: Partial<MachineKeyInput> = {}): MachineKeyInput {
@@ -20,6 +21,7 @@ function input(over: Partial<MachineKeyInput> = {}): MachineKeyInput {
     labelOf: (name) => name.toUpperCase(),
     now: NOW,
     when,
+    monthOf,
     ...over,
   };
 }
@@ -29,7 +31,7 @@ describe("describeMachineKey", () => {
     const view = describeMachineKey(input())!;
     expect(view.lines.map((l) => l.text)).toEqual([
       "Machine key made [2026-01-01T00:00:00Z]",
-      "Changes by itself on [2027-01-01T00:00:00Z]",
+      "Next key change: {2027-01}",
     ]);
     expect(view.canStart).toBe(true);
     expect(view.canStop).toBe(false);
@@ -146,5 +148,46 @@ describe("describeMachineKey", () => {
     )!;
     expect(down.canStart).toBe(false);
     expect(down.lines[0]?.text).toBe("No machine key change: its machine port is not listening");
+  });
+});
+
+describe("describeMachineKey, the machine that runs the root", () => {
+  it("names each machine that must be updated or removed first", () => {
+    const view = describeMachineKey(
+      input({
+        runsRoot: true,
+        machine: {
+          ...input().machine!,
+          keyChange: {
+            state: "waiting",
+            startedAt: "2026-10-22T11:59:00Z",
+            nextPin: "n",
+            error: "waiting: old-nas runs a version that cannot take this machine's new key",
+          },
+        },
+        observed: { nextPin: "n", waitingOn: [], unreachable: [], notReady: ["old-nas", "pi"] },
+      }),
+    )!;
+    const texts = view.lines.map((l) => l.text);
+    expect(texts).toContain(
+      "OLD-NAS and PI must be updated or removed first: they run a version that cannot " +
+        "take the new key if they miss the change",
+    );
+    // Said once, not again in the agent's words.
+    expect(texts.filter((t) => t.includes("old-nas") || t.includes("OLD-NAS"))).toHaveLength(1);
+  });
+
+  it("does not hold another machine's change for them", () => {
+    const view = describeMachineKey(
+      input({
+        runsRoot: false,
+        machine: {
+          ...input().machine!,
+          keyChange: { state: "waiting", startedAt: "2026-10-22T11:59:00Z", nextPin: "n" },
+        },
+        observed: { nextPin: "n", waitingOn: [], unreachable: [], notReady: ["old-nas"] },
+      }),
+    )!;
+    expect(view.lines.map((l) => l.text).join(" ")).not.toMatch(/updated or removed/);
   });
 });

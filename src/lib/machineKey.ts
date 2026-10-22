@@ -39,6 +39,11 @@ export interface MachineKeyInput {
   now?: number;
   /** How a time is written; the console's own format by default. */
   when?: (iso: string | null | undefined, now?: number) => string | null;
+  /** How the month of the next change is written ("March 2027"). */
+  monthOf?: (iso: string) => string;
+  /** This machine runs the install's root: its change waits for every
+   * machine whose agent cannot take its new key after missing the change. */
+  runsRoot?: boolean;
 }
 
 export interface MachineKeyLine {
@@ -58,6 +63,10 @@ function sentence(text: string): string {
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
 }
 
+function monthYear(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
 function listed(names: string[]): string {
   if (names.length <= 1) return names.join("");
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -68,6 +77,7 @@ export function describeMachineKey(input: MachineKeyInput): MachineKeyView | nul
   if (!machine) return null;
   const now = input.now ?? Date.now();
   const when = input.when ?? formatTimestamp;
+  const monthOf = input.monthOf ?? monthYear;
   const label = input.labelOf ?? ((name: string) => name);
   const change = machine.keyChange ?? null;
   const lines: MachineKeyLine[] = [];
@@ -128,8 +138,20 @@ export function describeMachineKey(input: MachineKeyInput): MachineKeyView | nul
     lines.push({ text: `Machine key made ${when(machine.keyMadeAt, now)}`, tone: "muted" });
   }
 
-  // What the change waits for, in the machine's own words.
-  if (running && change?.error) {
+  // The root's change waits for every machine that cannot take its new key
+  // after missing the change: named, with what to do (Troy's call).
+  const notReady = input.runsRoot ? (input.observed?.notReady ?? []).map(label) : [];
+  if (change?.state === "waiting" && notReady.length > 0) {
+    const one = notReady.length === 1;
+    lines.push({
+      text:
+        `${listed(notReady)} must be updated or removed first: ` +
+        `${one ? "it runs" : "they run"} a version that cannot take the new key if ` +
+        `${one ? "it misses" : "they miss"} the change`,
+      tone: "bad",
+    });
+  } else if (running && change?.error) {
+    // What the change waits for, in the machine's own words.
     lines.push({ text: sentence(change.error), tone: "bad" });
   }
 
@@ -140,7 +162,7 @@ export function describeMachineKey(input: MachineKeyInput): MachineKeyView | nul
     } else if (Date.parse(due) <= now) {
       lines.push({ text: "Due a change; it starts within a minute", tone: "muted" });
     } else {
-      lines.push({ text: `Changes by itself on ${when(due, now)}`, tone: "muted" });
+      lines.push({ text: `Next key change: ${monthOf(due)}`, tone: "muted" });
     }
   }
 

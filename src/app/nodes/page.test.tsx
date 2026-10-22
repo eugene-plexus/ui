@@ -1017,7 +1017,7 @@ describe("nodes page, machine keys (row 3, part 3b)", () => {
     const user = userEvent.setup();
     render(<NodesPage />);
     const card = await screen.findByTestId("machine-key-Amish_Station");
-    await waitFor(() => expect(card).toHaveTextContent(/Changes by itself on/));
+    await waitFor(() => expect(card).toHaveTextContent(/Next key change: /));
     await user.click(within(card).getByRole("button", { name: "Change Amish_Station's key now" }));
     expect(posted).toEqual([]);
     expect(card).toHaveTextContent("The others take it within a few minutes; nothing stops.");
