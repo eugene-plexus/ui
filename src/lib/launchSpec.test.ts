@@ -17,6 +17,7 @@ const MODEL: LibraryModel = {
 };
 
 const DEFAULT: ModelProfile = {
+  authorSampling: true,
   id: "p1",
   name: "default",
   default: true,
@@ -90,6 +91,7 @@ describe("defaultProfileSpec", () => {
       name: "default",
       engine: "llama_cpp",
       default: true,
+      authorSampling: true,
       flags: { contextSize: 75_520 },
       extraArgs: [],
       env: {},

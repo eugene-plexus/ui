@@ -7,6 +7,7 @@ import { CatalogueSourcesInput } from "@/components/CatalogueSources";
 import { FolderPicker } from "@/components/FolderPicker";
 import { Help } from "@/components/Help";
 import { api, describeError } from "@/lib/api";
+import { roleChoiceLabel } from "@/lib/modelRoles";
 import { REDACTED, formatValue, rawText, readValue, unsetSentence } from "@/lib/configValue";
 import {
   type MountBoxes,
@@ -189,7 +190,12 @@ function SuggestedStringInput({
         )}
         {suggestions.map((suggestion, i) => (
           <option key={suggestion} value={`choice-${i}`}>
-            {suggestion === "auto" ? "Automatic (auto)" : suggestion === "off" ? "Off" : suggestion}
+            {roleChoiceLabel(suggestion) ??
+              (suggestion === "auto"
+                ? "Automatic (auto)"
+                : suggestion === "off"
+                  ? "Off"
+                  : suggestion)}
           </option>
         ))}
         <option value="manual">Enter manually…</option>

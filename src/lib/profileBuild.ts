@@ -230,6 +230,7 @@ export function builtSpec(args: {
     name,
     engine: "llama_cpp",
     default: replacing ? (base?.default ?? false) : false,
+    authorSampling: base?.authorSampling !== false,
     flags: { ...kept, ...chosen },
     builtBy: builtByRecord(build, candidate, chosen),
   };
@@ -239,6 +240,8 @@ export function builtSpec(args: {
   if (base?.maxTokens != null) spec.maxTokens = base.maxTokens;
   if (base?.temperature != null) spec.temperature = base.temperature;
   if (base?.topP != null) spec.topP = base.topP;
+  if (base?.topK != null) spec.topK = base.topK;
+  if (base?.minP != null) spec.minP = base.minP;
   return spec;
 }
 

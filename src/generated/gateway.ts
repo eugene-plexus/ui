@@ -32,6 +32,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every model role and its assigned models in order.
+         * @description Every `ModelRole`, including roles with no models, with its label,
+         *     required capability and models in the effective `modelSlots`
+         *     configured order. Assignments come from slots named `role:<role>`;
+         *     other slots are not roles. This is one list per role for the whole
+         *     install. Edit assignments through `PATCH /v1/config`.
+         *
+         *     Each model reports whether it has the required capability: `yes`,
+         *     `no` or `unknown`, with the cause of a negative or unknown finding.
+         *     A configured model whose capability cannot be established stays in
+         *     the list as `unknown`. Capability findings warn; they never block
+         *     role assignment. An untested capability is not evidence of a lack.
+         */
+        get: operations["listRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/models": {
         parameters: {
             query?: never;
@@ -51,6 +81,11 @@ export interface paths {
          *     reachable. Two drivers serving the same model produce one entry,
          *     not two — replicas are a routing detail, and a client should not
          *     have to know how many GPUs are behind a name.
+         *
+         *     Each role with assigned models also appears as `role:<name>`,
+         *     with `x_eugene_plexus.role` giving its role and label. A role with
+         *     no models is omitted. These names use the same slot routing and
+         *     fallback as other `modelSlots` entries.
          */
         get: operations["listModels"];
         put?: never;
@@ -1945,6 +1980,19 @@ export interface paths {
          *       ordered list of `{model, targets}`; see
          *       `ConfigValueType.model_slots` for the shape and why targets
          *       are model ids rather than driver names.
+         *
+         *       Names `role:<ModelRole>` are reserved for model roles, using
+         *       `components/common.yaml#/components/schemas/ModelRole`. Their
+         *       `targets` are the role's assigned models in configured order.
+         *       They use the same slot resolution, fallback and refusals as
+         *       other slots. Capability checks warn; they never block assignment.
+         *       Other slot names retain their existing meaning. `GET /v1/roles`
+         *       shows every role's effective list, including an empty list.
+         *
+         *       A request for a role with no assigned model returns 404 with
+         *       `model_not_found` and a message naming the role and where to
+         *       assign one, for example: "No model has the role Reads pages.
+         *       Give one that role under Routing > Model roles."
          *     * **`conversationAffinity`** (`boolean`, default on; CB1, since
          *       2026-10-02) — a request that continues a conversation goes to
          *       the replica its earlier turns went to, because only that
@@ -2039,6 +2087,14 @@ export interface paths {
          *     errors are reported per-key without aborting the whole
          *     request — valid changes are applied, invalid ones are
          *     rejected and surfaced in the response.
+         *
+         *     For `modelSlots`, a name starting with `role:` must be
+         *     `role:<ModelRole>` from
+         *     `components/common.yaml#/components/schemas/ModelRole`. Any other
+         *     `role:` name (including `role:` alone) rejects the `modelSlots`
+         *     field with the list of valid roles. Capability findings only warn
+         *     and never block an assignment. Edits to role slots keep every other
+         *     slot; clients save the complete list they read with their edits.
          *
          *     Some fields require a process restart to take effect (see
          *     `ConfigField.requiresRestart`). The response indicates whether
@@ -2227,6 +2283,60 @@ export interface components {
              */
             error?: string;
         };
+        ModelRoleList: {
+            /** @description Every ModelRole in enum order, including roles with no assigned models. */
+            roles: components["schemas"]["ModelRoleDefinition"][];
+        };
+        ModelRoleDefinition: {
+            role: components["schemas"]["ModelRole"];
+            /** @description The role's display label, as listed in the /v1/roles example. */
+            label: string;
+            requiredCapability: components["schemas"]["ModelRoleCapability"];
+            /**
+             * @description Models from the effective role slot's targets in configured
+             *     order, including models with negative or unknown capability
+             *     findings. An unassigned role has an empty list.
+             */
+            models: components["schemas"]["ModelRoleModel"][];
+        };
+        /**
+         * @description The capability a role needs, using the driver's capability or
+         *     surface names. `chat` needs chat; `agentic` needs chat with
+         *     `toolCalling`; `vision` and `reads-pages` need chat with
+         *     `imageInput`; `image` needs image generation; `speech-to-text`
+         *     needs transcription; `text-to-speech` needs speech; `music`
+         *     needs audio generation (`audioOutput`); `embeddings` needs
+         *     embeddings; `rerank` needs rerank; `decision` needs a decision
+         *     backend. These findings advise the owner, never gate assignment.
+         * @enum {string}
+         */
+        ModelRoleCapability: "chat" | "toolCalling" | "imageInput" | "image" | "transcription" | "speech" | "audioOutput" | "embeddings" | "rerank" | "decision";
+        ModelRoleModel: {
+            /** @description The assigned model id, as stored in the role slot's targets. */
+            model: string;
+            capability: components["schemas"]["ModelRoleCapabilityStatus"];
+            /**
+             * @description Null for `yes`. For `no`, the observed cause: a backend's
+             *     refusal or an explicit capability listing, in words. For
+             *     `unknown`, why the capability could not be established,
+             *     such as an unreachable driver or a listing that does not say.
+             *     An untested capability alone is never reported as `no`.
+             */
+            reason: string | null;
+        };
+        /**
+         * @description `yes` means the required capability is supported; `no` means
+         *     evidence says it is not; `unknown` means it has not been
+         *     established. All three allow the owner to assign the role.
+         * @enum {string}
+         */
+        ModelRoleCapabilityStatus: "yes" | "no" | "unknown";
+        /** @description The role represented by a role:<name> model-list entry. */
+        ModelRoleInfo: {
+            role: components["schemas"]["ModelRole"];
+            /** @description The same display label returned by /v1/roles. */
+            label: string;
+        };
         ModelList: {
             /** @constant */
             object: "list";
@@ -2279,6 +2389,10 @@ export interface components {
              *     so two accounts never collide and one model through two
              *     providers stays two ids.
              *
+             *     An assigned model role is listed as `role:<ModelRole>`, with
+             *     its role and label in `x_eugene_plexus.role`. It resolves
+             *     through the role's model slot.
+             *
              *     Listed only when a door serves one of the model's surfaces
              *     (P1-4): an account's speech, image, video and transcription
              *     models appear as their doors are built, under the ids they
@@ -2305,6 +2419,8 @@ export interface components {
          *     operator can see that a name is backed by two replicas.
          */
         ModelRoutingInfo: {
+            /** @description Present on role:<name> entries only; absent on ordinary model entries. */
+            role?: components["schemas"]["ModelRoleInfo"];
             /** @description Names of the inference-drivers currently serving this model. */
             drivers?: string[];
             /** @description Distinct wire protocols behind this model. */
@@ -5785,6 +5901,17 @@ export interface components {
             message?: string;
         };
         /**
+         * @description An install-wide job assigned to models through the gateway's
+         *     `modelSlots`. A client requests `role:<ModelRole>` rather than
+         *     a particular model. The list is closed: a new role is a contract
+         *     change, and an unknown `role:` name is refused when saved.
+         *
+         *     These are routing roles, separate from a conversation's `Role`.
+         *     Capability checks warn; they never block role assignment.
+         * @enum {string}
+         */
+        ModelRole: "chat" | "agentic" | "vision" | "reads-pages" | "image" | "speech-to-text" | "text-to-speech" | "music" | "embeddings" | "rerank" | "decision";
+        /**
          * @description Which wire protocol an inference-driver instance speaks to its
          *     backend. Reported by the driver's `/v1/info` so the gateway can
          *     log it and the UI can render a label.
@@ -6678,6 +6805,114 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every role, including unassigned roles, with effective assignments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "roles": [
+                     *         {
+                     *           "role": "chat",
+                     *           "label": "Chat",
+                     *           "requiredCapability": "chat",
+                     *           "models": []
+                     *         },
+                     *         {
+                     *           "role": "agentic",
+                     *           "label": "Agentic (tools and code)",
+                     *           "requiredCapability": "toolCalling",
+                     *           "models": []
+                     *         },
+                     *         {
+                     *           "role": "vision",
+                     *           "label": "Sees images",
+                     *           "requiredCapability": "imageInput",
+                     *           "models": []
+                     *         },
+                     *         {
+                     *           "role": "reads-pages",
+                     *           "label": "Reads pages (OCR)",
+                     *           "requiredCapability": "imageInput",
+                     *           "models": [
+                     *             {
+                     *               "model": "vision-unchecked",
+                     *               "capability": "unknown",
+                     *               "reason": "No reachable driver reports capabilities for vision-unchecked."
+                     *             },
+                     *             {
+                     *               "model": "vision-local",
+                     *               "capability": "yes",
+                     *               "reason": null
+                     *             },
+                     *             {
+                     *               "model": "text-only",
+                     *               "capability": "no",
+                     *               "reason": "The provider lists text input only for text-only."
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "role": "image",
+                     *           "label": "Makes images",
+                     *           "requiredCapability": "image",
+                     *           "models": []
+                     *         },
+                     *         {
+                     *           "role": "speech-to-text",
+                     *           "label": "Hears speech",
+                     *           "requiredCapability": "transcription",
+                     *           "models": []
+                     *         },
+                     *         {
+                     *           "role": "text-to-speech",
+                     *           "label": "Speaks",
+                     *           "requiredCapability": "speech",
+                     *           "models": []
+                     *         },
+                     *         {
+                     *           "role": "music",
+                     *           "label": "Makes music",
+                     *           "requiredCapability": "audioOutput",
+                     *           "models": []
+                     *         },
+                     *         {
+                     *           "role": "embeddings",
+                     *           "label": "Embeddings",
+                     *           "requiredCapability": "embeddings",
+                     *           "models": []
+                     *         },
+                     *         {
+                     *           "role": "rerank",
+                     *           "label": "Reranks",
+                     *           "requiredCapability": "rerank",
+                     *           "models": []
+                     *         },
+                     *         {
+                     *           "role": "decision",
+                     *           "label": "Decisions (yes/no)",
+                     *           "requiredCapability": "decision",
+                     *           "models": []
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelRoleList"];
+                };
             };
         };
     };

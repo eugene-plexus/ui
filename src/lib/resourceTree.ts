@@ -227,6 +227,7 @@ const PAGES: Record<string, PageRef[]> = {
     // failure mode — a misspelled target — needs the routing table on
     // screen while editing (2026-09-21).
     { id: "routing", label: "Routing", route: "/routing", icon: "Route" },
+    { id: "model-roles", label: "Model roles", route: "/routing/roles", icon: "Route" },
     SETTINGS,
   ],
   library: [
@@ -1065,6 +1066,7 @@ export function defaultSelectionFor(
     case "/connect":
     case "/metrics":
     case "/routing":
+    case "/routing/roles":
       return "gateway";
     case "/library":
     case "/library/folders":
