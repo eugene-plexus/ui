@@ -5202,6 +5202,15 @@ export interface components {
              *     complaint we answer. Values here are engine *launch* flags;
              *     sampling parameters that ride on each request are the
              *     gateway's, not these.
+             *
+             *     For llama.cpp and vLLM, `missingCard` is the agent's "If a
+             *     card is missing" setting, exposed in the engine's GUI
+             *     `flagSchema`. `start-on-cards-left` is the default: refit for
+             *     the cards present and report any temporary context or RAM
+             *     offload changes. `do-not-start` refuses the launch and names
+             *     the missing card. The profile is not changed; the next start
+             *     uses its saved settings when all cards are back. This setting
+             *     controls the agent's launch check, not an engine CLI flag.
              */
             flags?: {
                 [key: string]: unknown;
@@ -5449,9 +5458,53 @@ export interface components {
              *     Cleared on a successful start.
              */
             lastError?: string;
+            /**
+             * @description UUIDs of the cards used at the last successful start, recorded
+             *     by the agent. An observation, never a profile setting or a
+             *     replacement for its saved device pins. Kept across stops and
+             *     failed starts, and updated only after a successful start.
+             *     Absent before a successful start has been observed; an empty
+             *     list means no device UUIDs were available or used.
+             */
+            readonly lastDevices?: string[];
+            /**
+             * @description The last successful start used fewer cards because one or
+             *     more expected cards were missing. Names those cards and the
+             *     launch changes actually applied. Null when there is no such
+             *     observation. Kept until a successful start with every
+             *     expected card clears it; a returning card does not restart a
+             *     running runtime automatically. The profile stays unchanged.
+             */
+            readonly startedOnFewerCards?: components["schemas"]["RuntimeStartedOnFewerCards"] | null;
             loadProgress?: components["schemas"]["LoadProgress"];
             speculation?: components["schemas"]["RuntimeSpeculation"];
             promptCache?: components["schemas"]["RuntimePromptCache"];
+        };
+        /**
+         * @description Observed result of a successful start on the cards left. The
+         *     console keeps a warning until a start with every expected card
+         *     clears it, and offers a restart so the person can use a returned
+         *     card. Never written back to a profile.
+         */
+        RuntimeStartedOnFewerCards: {
+            missing: components["schemas"]["RuntimeMissingDevice"][];
+            /**
+             * @description One sentence per launch change actually applied, such as a
+             *     smaller context, more of the model in RAM, a changed tensor
+             *     split or reduced tensor parallelism. Empty when only the
+             *     device selection changed. These describe values in effect,
+             *     not suggestions from fit that were never used.
+             */
+            changes: string[];
+        };
+        /** @description A missing card, identified from the agent's last observation. */
+        RuntimeMissingDevice: {
+            /** @description Stable vendor UUID of the missing card. */
+            uuid: string;
+            /** @description Device name when the card was last present. */
+            name: string;
+            /** @description Device index when the card was last present, before renumbering. */
+            lastIndex: number;
         };
         /**
          * @description The memory this runtime's engine keeps for recent conversations, as
@@ -8103,6 +8156,28 @@ export interface components {
          */
         ComputeDeviceKind: "cuda" | "rocm" | "xpu" | "metal" | "vulkan" | "cpu";
         /**
+         * @description Current and supported PCIe link measurements for one card. Each
+         *     measurement is null independently when its probe fails, so a
+         *     readable width survives an unreadable generation.
+         */
+        ComputeDevicePcieLink: {
+            /** @description Current PCIe generation. Null when unreadable. */
+            generation: number | null;
+            /** @description Current PCIe lane count. Null when unreadable. */
+            width: number | null;
+            /** @description Maximum PCIe generation the card supports. Null when unreadable. */
+            maxGeneration: number | null;
+            /** @description Maximum PCIe lane count the card supports. Null when unreadable. */
+            maxWidth: number | null;
+        };
+        /**
+         * @description An observed reason a card is slowing down. `thermal` is a heat
+         *     limit, `power-cap` a power limit, `hardware-slowdown` another
+         *     hardware slowdown signal, and `other` another active NVML reason.
+         * @enum {string}
+         */
+        ComputeDeviceThrottleReason: "thermal" | "power-cap" | "hardware-slowdown" | "other";
+        /**
          * @description One compute device on one host, as that host's agent detected it.
          *
          *     Shared because it appears on both sides of a join: an agent
@@ -8119,20 +8194,80 @@ export interface components {
          *     describes a host in the singular. This is a device *list*,
          *     because a host with two cards is the case that makes replicas of
          *     one model possible.
+         *
+         *     Health readings are observations, never estimates. Each optional
+         *     health field is null when the platform cannot read it. The agent
+         *     refreshes these with its device list every 600 seconds and on
+         *     each `GET /v1/node` (row 43).
          */
         ComputeDevice: {
             kind: components["schemas"]["ComputeDeviceKind"];
             /** @description Device name as the vendor reports it, e.g. `NVIDIA GeForce RTX 5090`. */
             name?: string;
             /**
-             * @description Device ordinal on its own host — what `CUDA_VISIBLE_DEVICES`
-             *     or `HIP_VISIBLE_DEVICES` in a runtime's `env` selects to pin
-             *     that runtime to one card. For a `vulkan` device it is the
+             * @description Current device ordinal on its own host. It can change when
+             *     another card disappears; `uuid`, when readable, identifies
+             *     the same card across that renumbering. NVIDIA launches use
+             *     the UUID in `CUDA_VISIBLE_DEVICES`, falling back to an index
+             *     when no UUID was read. For a `vulkan` device the index is the
              *     order the operating system lists its adapters in, which is
-             *     not promised to be the order `GGML_VK_VISIBLE_DEVICES`
-             *     counts in.
+             *     not promised to be the order `GGML_VK_VISIBLE_DEVICES` counts
+             *     in.
              */
             index?: number;
+            /**
+             * @description Stable vendor device identifier, used to keep a runtime on
+             *     the same card when indices change. NVIDIA's NVML UUID (for
+             *     example `GPU-...`) or AMD's sysfs `unique_id`, kept as the
+             *     vendor reports it; not necessarily an RFC UUID. Null when
+             *     the platform cannot read it.
+             */
+            uuid?: string | null;
+            /**
+             * @description PCI bus address from NVML or the Linux sysfs device path.
+             *     Null when unreadable. A location, not a stable card identity.
+             */
+            pciBusId?: string | null;
+            /**
+             * @description Observed PCIe link against the card's supported link. Null
+             *     when no link measurements can be read. A lower generation
+             *     is a warning only when this card's utilisation exceeded 50%
+             *     in the last minute of host history: an idle card can lower
+             *     its generation to save power. A narrower width is a warning
+             *     at any time. Compare only measurements that are known.
+             */
+            pcieLink?: components["schemas"]["ComputeDevicePcieLink"] | null;
+            /**
+             * @description Power cap in effect, in watts, from NVML's enforced power
+             *     limit or Linux hwmon `power1_cap`. Null when unreadable.
+             */
+            powerLimitWatts?: number | null;
+            /**
+             * @description The card's default power cap in watts, from NVML or Linux
+             *     hwmon `power1_cap_default`. Null when unreadable.
+             */
+            powerDefaultLimitWatts?: number | null;
+            /**
+             * @description Reasons the card is currently slowing down, read from NVML.
+             *     An empty list means it reported no throttling. Null when
+             *     unreadable, including AMD and other unsupported platforms.
+             */
+            throttleReasons?: components["schemas"]["ComputeDeviceThrottleReason"][] | null;
+            /**
+             * Format: int64
+             * @description Volatile uncorrected ECC memory-error count from NVML, since
+             *     the device's counter was reset. Zero is a measured result.
+             *     Null when ECC is off, unsupported or unreadable.
+             */
+            uncorrectedMemoryErrors?: number | null;
+            /**
+             * @description UUIDs of other cards this card can reach directly by P2P
+             *     reads, as NVML reports it. Directional: the reverse path is
+             *     reported on the other card. An empty list means no peers
+             *     were reachable; null means the peer check was unreadable or
+             *     unsupported. Unknown checks never claim that P2P is absent.
+             */
+            peers?: string[] | null;
             /** Format: int64 */
             memoryTotalBytes?: number;
             /**
