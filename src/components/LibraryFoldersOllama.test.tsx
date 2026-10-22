@@ -33,7 +33,13 @@ beforeEach(() => {
         key === "GET library/v1/folders"
           ? {
               folders: [
-                { path: "/models", mounts: [] },
+                {
+                  path: "/models",
+                  mounts: [],
+                  readOnly: true,
+                  readOnlyReason:
+                    "/models is a link into the Ollama model store. Choose another folder.",
+                },
                 { path: "/home/a/.ollama/models", mounts: [], kind: "ollama", found: true },
               ],
             }
@@ -83,6 +89,13 @@ it("Stop showing turns the library's own look off", async () => {
     expect(sent.find((s) => s.key === "PATCH library/v1/config")?.body).toEqual({
       findOllama: false,
     }),
+  );
+});
+
+it("shows why a linked folder is read-only and keeps derived status out of config", async () => {
+  const g = await grid();
+  expect(await within(g).findByTestId("folder-read-only")).toHaveTextContent(
+    "is a link into the Ollama model store",
   );
 });
 

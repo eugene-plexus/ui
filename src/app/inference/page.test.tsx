@@ -1234,3 +1234,48 @@ describe("a row says its state in a sentence (CX1)", () => {
     expect(installs).toBe(1);
   });
 });
+
+describe("a running model's prompt cache (row 9)", () => {
+  it("says the size it was started with and where it came from", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: {
+        runtimes: [
+          nodeRuntime({
+            promptCache: { bytes: 24 * 1024 ** 3, source: "profile", note: null },
+          }),
+        ],
+      },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    expect(await within(row).findByTestId("prompt-cache")).toHaveTextContent(
+      "Prompt cache: 24 GiB of system memory, set on the profile.",
+    );
+  });
+
+  it("says why a size is not what the profile asked for", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: {
+        runtimes: [
+          nodeRuntime({
+            promptCache: {
+              bytes: null,
+              source: "unsupported",
+              note: "This llama.cpp build has no --cache-ram, so Prompt cache in system memory is not passed.",
+            },
+          }),
+        ],
+      },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    const line = await within(row).findByTestId("prompt-cache");
+    expect(line).toHaveTextContent("Prompt cache: not set");
+    expect(line).toHaveTextContent("This llama.cpp build has no --cache-ram");
+  });
+
+  it("says nothing for a runtime that reports none", async () => {
+    const row = await rowFor("gemma-3-27b");
+    expect(within(row).queryByTestId("prompt-cache")).toBeNull();
+  });
+});
