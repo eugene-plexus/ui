@@ -43,6 +43,28 @@ const MANIFEST = {
   uses: ["inference"],
 };
 
+it("warns that an update resets Admin Settings before it starts", async () => {
+  handlers.set("GET agent/v1/app-catalogue", () => ({
+    status: 200,
+    body: {
+      apps: [
+        { manifest: MANIFEST, origin: "catalogue", installedVersion: "old", resetsSettings: true },
+      ],
+      installable: true,
+      ownAccounts: true,
+    },
+  }));
+  const user = userEvent.setup();
+  render(<AppsPage />);
+  await user.click(await screen.findByRole("button", { name: "Update from old" }));
+  expect(
+    screen.getByText(/This update resets Chat's Admin Settings to Eugene's, once/),
+  ).toBeInTheDocument();
+  expect(calls).not.toContain("POST agent/v1/apps/chat/install");
+  await user.click(screen.getByRole("button", { name: "Update and reset settings" }));
+  await waitFor(() => expect(calls).toContain("POST agent/v1/apps/chat/install"));
+});
+
 function catalogue(installable = true, reason?: string) {
   return {
     status: 200,

@@ -450,6 +450,16 @@ function CatalogueEntry({
         <span className="ml-auto flex items-center gap-2">
           {installedHere ? (
             <span className="font-ui text-sm text-[color:var(--muted)]">Installed</span>
+          ) : update ? (
+            <ConfirmButton
+              className={primaryClass}
+              disabled={!installable || running || needsAccount}
+              label={running ? "Installing…" : `Update from ${entry.installedVersion}`}
+              confirmLabel={entry.resetsSettings ? "Update and reset settings" : "Update"}
+              prompt={`Update ${manifest.name} to ${manifest.version}?${entry.resetsSettings ? ` This update resets ${manifest.name}'s Admin Settings to Eugene's, once.` : ""}`}
+              onConfirm={onInstall}
+              testId={`apps-install-${manifest.id}`}
+            />
           ) : (
             <button
               type="button"
