@@ -165,7 +165,14 @@ export function FolderAccess({
           cancelLabel="Cancel"
           className={button}
           disabled={busy || !path.trim() || !account}
-          prompt={`Give ${principal} ${mode === "write" ? "read and write" : "read"} access to ${path} and everything in it? Everyone granted this folder in Workbench can read it.`}
+          prompt={
+            <>
+              <span>{`Give ${principal} ${mode === "write" ? "read and write" : "read"} access to ${path} and everything in it? Everyone granted this folder in Workbench can read it.`}</span>
+              <span className="block">
+                New files in it follow the folder&apos;s permissions while access is on.
+              </span>
+            </>
+          }
           onConfirm={() =>
             act(async () => {
               const result = await api.post<Grant>(target, base, { path, mode });

@@ -29,6 +29,9 @@ it("defaults to read and confirms the account and everything before a grant", as
   fireEvent.click(screen.getByRole("button", { name: "Give access" }));
   expect(api.post).not.toHaveBeenCalled();
   expect(
+    screen.getByText("New files in it follow the folder's permissions while access is on."),
+  ).toBeTruthy();
+  expect(
     screen.getByText(
       /Give NT SERVICE\\Workbench read access to D:\\Projects\\acme and everything in it/,
     ),
