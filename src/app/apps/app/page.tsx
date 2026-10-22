@@ -17,6 +17,7 @@ import { Suspense, useCallback, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
+import { FolderAccess } from "@/components/FolderAccess";
 import { ApiError, api, describeError } from "@/lib/api";
 import {
   agentTarget,
@@ -163,6 +164,16 @@ function Inner() {
               onRestart={() => act("restart")}
               onUpdate={update}
               onUninstall={uninstall}
+            />
+          )}
+          {app?.id === "workbench" && !gone && target && (
+            <FolderAccess
+              key={`${target}:${app.id}`}
+              target={target}
+              app={app.id}
+              account={app.account ?? ""}
+              initialPath={searchParams.get("path") ?? ""}
+              initialMode={searchParams.get("mode") === "write" ? "write" : "read"}
             />
           )}
         </div>
