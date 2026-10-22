@@ -2,10 +2,133 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LibraryModel, ModelProfile } from "@/lib/types";
+import { clearConfigTrios } from "@/lib/configTrio";
 
 import { ProfileEditor } from "./ProfileEditor";
 
 afterEach(() => vi.unstubAllGlobals());
+
+it("shows author fallbacks in blank fields and saves the switch and sampling cuts", async () => {
+  clearConfigTrios();
+  const writes: Record<string, unknown>[] = [];
+  const profile = { id: "p", name: "Tuned", engine: "llama_cpp", default: true };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        writes.push(JSON.parse(String(init.body)));
+        return Response.json({ ...profile, ...writes.at(-1) });
+      }
+      if (url.endsWith("/gateway/v1/config")) return Response.json({ defaultTemperature: 0.8 });
+      if (url.endsWith("/schema")) return Response.json({ fields: [] });
+      return Response.json({ profiles: [profile] });
+    }),
+  );
+  render(
+    <ProfileEditor
+      model={{
+        ...model,
+        gguf: {
+          recommendedSampling: {
+            temperature: 0.6,
+            topK: 20,
+            minP: 0.05,
+          },
+        },
+      }}
+      engines={[]}
+      node={null}
+      onChanged={() => {}}
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "edit" }));
+  const temperature = screen.getByLabelText("Temperature");
+  expect(temperature).toHaveValue(null);
+  expect(temperature).toHaveAttribute("placeholder", "not set: the model author's 0.6");
+  expect(screen.getByLabelText("Top-k")).toHaveValue(null);
+  expect(screen.getByLabelText("Top-k")).toHaveAttribute(
+    "placeholder",
+    "not set: the model author's 20",
+  );
+  expect(screen.getByLabelText("Min-p")).toHaveAttribute(
+    "placeholder",
+    "not set: the model author's 0.05",
+  );
+  expect(screen.getByLabelText("Top-p")).toHaveAttribute(
+    "placeholder",
+    "not set: not sent; the engine's default applies",
+  );
+  const toggle = screen.getByRole("checkbox", {
+    name: "Use the model author's sampling where this profile sets none",
+  });
+  expect(toggle).toBeChecked();
+  fireEvent.click(toggle);
+  await waitFor(() =>
+    expect(temperature).toHaveAttribute("placeholder", "not set: the gateway's 0.8"),
+  );
+  expect(screen.getByLabelText("Top-k")).toHaveAttribute(
+    "placeholder",
+    "not set: not sent; the engine's default applies",
+  );
+  fireEvent.change(screen.getByLabelText("Top-k"), { target: { value: "0" } });
+  fireEvent.change(screen.getByLabelText("Min-p"), { target: { value: "0" } });
+  fireEvent.click(screen.getByRole("button", { name: "save" }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]).toMatchObject({ authorSampling: false, topK: 0, minP: 0 });
+  expect(writes[0]).not.toHaveProperty("temperature");
+});
+
+it("keeps saved authorSampling and safetensors cuts when the form is opened", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        profiles: [
+          {
+            id: "p",
+            name: "Tuned",
+            engine: "llama_cpp",
+            default: true,
+            authorSampling: false,
+            topK: 17,
+            minP: 0.15,
+          },
+        ],
+      }),
+    ),
+  );
+  render(
+    <ProfileEditor
+      model={{
+        ...model,
+        format: "safetensors",
+        safetensors: {
+          recommendedSampling: { temperature: 0.6, source: "generation_config" },
+        },
+      }}
+      engines={[]}
+      node={null}
+      onChanged={() => {}}
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "edit" }));
+  expect(
+    screen.getByRole("checkbox", {
+      name: "Use the model author's sampling where this profile sets none",
+    }),
+  ).not.toBeChecked();
+  expect(screen.getByLabelText("Top-k")).toHaveValue(17);
+  expect(screen.getByLabelText("Min-p")).toHaveValue(0.15);
+  fireEvent.click(
+    screen.getByRole("checkbox", {
+      name: "Use the model author's sampling where this profile sets none",
+    }),
+  );
+  expect(screen.getByLabelText("Temperature")).toHaveAttribute(
+    "placeholder",
+    "not set: the model author's 0.6",
+  );
+});
 
 const model: LibraryModel = {
   id: "model",
@@ -19,6 +142,7 @@ const model: LibraryModel = {
 
 function setup(flags: Record<string, unknown> = { contextSize: 4096 }) {
   let profile: ModelProfile = {
+    authorSampling: true,
     id: "p",
     name: "Tuned",
     engine: "llama_cpp",
@@ -95,6 +219,7 @@ it.each([
  */
 function setupDelete() {
   const profile: ModelProfile = {
+    authorSampling: true,
     id: "p",
     name: "Tuned",
     engine: "llama_cpp",
@@ -171,6 +296,7 @@ it("refuses invalid generation values before writing", async () => {
 
 it("launches once, however fast the button is pressed twice", async () => {
   const profile: ModelProfile = {
+    authorSampling: true,
     id: "p",
     name: "Tuned",
     engine: "llama_cpp",
@@ -215,7 +341,13 @@ it("launches once, however fast the button is pressed twice", async () => {
 // LS3: a second prepared Strata model is declared stopped, to switch to,
 // rather than loaded beside the first.
 it("adds a runtime stopped, without starting it", async () => {
-  const profile: ModelProfile = { id: "p", name: "default", engine: "strata", default: true };
+  const profile: ModelProfile = {
+    id: "p",
+    name: "default",
+    engine: "strata",
+    default: true,
+    authorSampling: true,
+  };
   const bodies: unknown[] = [];
   vi.stubGlobal(
     "fetch",
@@ -245,6 +377,7 @@ it("adds a runtime stopped, without starting it", async () => {
 // and a profile's engine is shown even when this machine does not offer it.
 it("shows an unset flag as unset, and a profile's own engine as itself", async () => {
   let profile: ModelProfile = {
+    authorSampling: true,
     id: "p",
     name: "Tuned",
     engine: "vllm",
@@ -395,6 +528,7 @@ describe("a new profile for a model that runs with its experts in system memory"
  */
 it("labels the builder's fields while editing, and keeps its record on save", async () => {
   const built: ModelProfile = {
+    authorSampling: true,
     id: "p",
     name: "Built for laptop",
     engine: "llama_cpp",

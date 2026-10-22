@@ -99,6 +99,7 @@ function profile(over: Partial<ModelProfile> = {}): ModelProfile {
     engine: "llama_cpp",
     default: true,
     flags: {},
+    authorSampling: true,
     ...over,
   };
 }

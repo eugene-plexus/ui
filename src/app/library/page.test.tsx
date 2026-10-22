@@ -55,6 +55,85 @@ function libraryModel() {
   };
 }
 
+it.each(["gguf", "safetensors"])(
+  "shows %s author sampling and whether the default profile uses it",
+  async (format) => {
+    const sampling = { temperature: 0.6, topP: 0.95, topK: 20, minP: 0.05 };
+    handlers.set("GET library/v1/models", () =>
+      ok({
+        models: [
+          {
+            ...libraryModel(),
+            format,
+            [format]: { recommendedSampling: sampling },
+          },
+        ],
+      }),
+    );
+    handlers.set("GET library/v1/models/gemma/profiles", () =>
+      ok({
+        profiles: [
+          {
+            id: "p",
+            name: "Tuned",
+            engine: "llama_cpp",
+            default: true,
+            authorSampling: false,
+          },
+        ],
+      }),
+    );
+    render(<LibraryPage />);
+    const row = await screen.findByTestId("author-sampling");
+    expect(row).toHaveTextContent("temperature 0.6, top-p 0.95, top-k 20, min-p 0.05");
+    expect(row).toHaveTextContent("the model author's");
+    await waitFor(() =>
+      expect(row).toHaveTextContent("not used: the default profile turns it off"),
+    );
+  },
+);
+
+it("shows author defaults as used when the model has no profile", async () => {
+  handlers.set("GET library/v1/models", () =>
+    ok({
+      models: [
+        {
+          ...libraryModel(),
+          gguf: { recommendedSampling: { temperature: 0 } },
+        },
+      ],
+    }),
+  );
+  render(<LibraryPage />);
+  const row = await screen.findByTestId("author-sampling");
+  await waitFor(() =>
+    expect(row).toHaveTextContent("used when a request and the default profile set none"),
+  );
+  expect(row).toHaveTextContent("temperature 0");
+});
+
+it("says when author sampling use cannot be confirmed because profiles could not be read", async () => {
+  handlers.set("GET library/v1/models", () =>
+    ok({
+      models: [
+        {
+          ...libraryModel(),
+          gguf: { recommendedSampling: { temperature: 0.6 } },
+        },
+      ],
+    }),
+  );
+  handlers.set("GET library/v1/models/gemma/profiles", () => ({
+    status: 503,
+    body: { detail: "profiles unavailable" },
+  }));
+  render(<LibraryPage />);
+  await screen.findByText("profiles unavailable");
+  expect(screen.getByTestId("author-sampling")).toHaveTextContent(
+    "default profile unavailable; use cannot be confirmed",
+  );
+});
+
 /**
  * The fit as the library computes it with the model already loaded:
  * 22.2 GiB of weights against 5.6 GiB free, because the other 26 are

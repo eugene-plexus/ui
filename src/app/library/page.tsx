@@ -66,6 +66,7 @@ import type {
   LibraryModel,
   LibraryModelList,
   ModelFit,
+  ModelProfile,
   ModelRelocated,
   PreparedDetail,
   Runtime,
@@ -853,6 +854,7 @@ function ModelDetail({
   // a profile that has since been edited (MR3).
   const [profilesVersion, setProfilesVersion] = useState(0);
   const [keepFinished, setKeepFinished] = useState(false);
+  const [modelProfiles, setModelProfiles] = useState<ModelProfile[] | null | undefined>(undefined);
 
   // Which engines could load this model at all, and which of those are
   // installed here. Two different answers with two different fixes.
@@ -991,7 +993,7 @@ function ModelDetail({
         </p>
       )}
 
-      <Facts model={model} />
+      <Facts model={model} profiles={modelProfiles} />
 
       {model.status === "present" && model.format === "prepared" && (
         // The Library does not read an engine's prepared files, and
@@ -1179,6 +1181,7 @@ function ModelDetail({
       <ProfileEditor
         key={keepFinished ? "kept" : "original"}
         model={model}
+        onProfilesLoaded={setModelProfiles}
         engines={usable.length > 0 ? usable : capable}
         node={node}
         onChanged={() => {
@@ -1595,7 +1598,13 @@ function EngineFitNote({
  * elements read as what they are, and JSX pushed into an array is a
  * shape React tooling has to be told is safe.
  */
-function Facts({ model }: { model: LibraryModel }) {
+function Facts({
+  model,
+  profiles,
+}: {
+  model: LibraryModel;
+  profiles: ModelProfile[] | null | undefined;
+}) {
   const caps = model.capabilities;
   const capabilityList = caps
     ? [
@@ -1606,12 +1615,13 @@ function Facts({ model }: { model: LibraryModel }) {
         caps.chatTemplate && "chat template",
       ].filter(Boolean)
     : [];
-  const sampling = model.gguf?.recommendedSampling;
+  const sampling = model.gguf?.recommendedSampling ?? model.safetensors?.recommendedSampling;
   const samplingParts = sampling
     ? [
-        sampling.temperature != null && `temp ${sampling.temperature}`,
-        sampling.topK != null && `top_k ${sampling.topK}`,
-        sampling.topP != null && `top_p ${round(sampling.topP)}`,
+        sampling.temperature != null && `temperature ${sampling.temperature}`,
+        sampling.topP != null && `top-p ${sampling.topP}`,
+        sampling.topK != null && `top-k ${sampling.topK}`,
+        sampling.minP != null && `min-p ${sampling.minP}`,
       ].filter(Boolean)
     : [];
 
@@ -1726,13 +1736,18 @@ function Facts({ model }: { model: LibraryModel }) {
 
       {capabilityList.length > 0 && <Row label="capabilities">{capabilityList.join(", ")}</Row>}
 
-      {/* Reported, never applied. The gateway owns every parameter that
-          affects output; this exists so the operator doesn't have to go
-          read the model card to learn the file had an opinion. */}
       {samplingParts.length > 0 && (
-        <Row label="author suggests">
-          {samplingParts.join(" · ")}
-          <span className="ml-2 text-[color:var(--muted)]">not applied automatically</span>
+        <Row label="sampling">
+          <span data-testid="author-sampling">
+            {samplingParts.join(", ")} · the model author&apos;s ·{" "}
+            {profiles === undefined
+              ? "checking the default profile"
+              : profiles === null
+                ? "default profile unavailable; use cannot be confirmed"
+                : profiles.find((profile) => profile.default)?.authorSampling === false
+                  ? "not used: the default profile turns it off"
+                  : "used when a request and the default profile set none"}
+          </span>
         </Row>
       )}
     </dl>
@@ -1830,10 +1845,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 /** Engine names as a person says them. */
 function engineName(engine: string): string {
   return engine === "llama_cpp" ? "llama.cpp" : engine === "vllm" ? "vLLM" : engine;
-}
-
-function round(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function relativeAge(iso: string): string {
