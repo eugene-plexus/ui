@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ExperimentalModels } from "@/components/ExperimentalModels";
 import { ModelName } from "@/components/ModelName";
+import { ServingMeasurements } from "@/components/ServingMeasurements";
 import { ApiError, api, describeError } from "@/lib/api";
 import { offeredOnThisNode } from "@/lib/engineCompat";
 import { describeControlRoot } from "@/lib/controlRoot";
@@ -759,6 +760,7 @@ function RowView({
   marked?: boolean;
 }) {
   const status = row.runtimeStatus as RuntimeStatus | null;
+  const selectedMeasurement = useSearchParams().get("measurement");
   const known = status !== null && status in STATUS_TONE;
   // While remove asks, start, stop and restart step aside: the question and
   // its two answers take the action cell rather than widening it (ui#14).
@@ -895,6 +897,14 @@ function RowView({
         </div>
       </td>
       <td className="block min-w-0 space-y-1.5 px-3 py-2 align-top xl:table-cell xl:py-5">
+        {row.runtime && (
+          <ServingMeasurements
+            runtime={row.runtime}
+            node={row.node}
+            slots={own?.capabilities?.parallelSlots ?? 1}
+            openId={selectedMeasurement}
+          />
+        )}
         {row.runtime && status ? (
           <span
             className="inline-flex flex-wrap items-center gap-1.5 rounded-full border border-current/20 px-2.5 py-0.5 text-xs font-medium"
