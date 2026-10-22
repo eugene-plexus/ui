@@ -124,6 +124,30 @@ describe("the builder's drafting choice", () => {
 });
 
 describe("a running model's drafting line", () => {
+  it.each(["dflash", "dspark", "eagle3"])(
+    "labels a %s companion and names its file on the run",
+    (kind) => {
+      const label = { dflash: "DFlash", dspark: "DSpark", eagle3: "EAGLE3" }[kind];
+      const path = `/models/helper-${kind}.gguf`;
+      const shown = speculationFields(FIELDS, model({ draftFiles: [{ path, kind }] }), {
+        draftWith: "companion",
+      });
+      expect(shown.find((f) => f.key === "draftModelPath")?.enumLabels).toEqual([
+        `helper-${kind}.gguf (${label})`,
+      ]);
+      expect(
+        speculationLine({
+          types: [`draft-${kind}`],
+          draftModelPath: path,
+          draftedTokens: 100,
+          acceptedTokens: 61,
+        })?.text,
+      ).toBe(
+        `Drafting with ${label} (helper-${kind}.gguf) · 61% of drafted tokens kept (61 of 100)`,
+      );
+    },
+  );
+
   it("states the acceptance rate as a fact", () => {
     expect(
       speculationLine({
