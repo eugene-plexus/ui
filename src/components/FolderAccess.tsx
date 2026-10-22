@@ -31,6 +31,8 @@ export function FolderAccess({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const linuxUser = account.match(/^eapp-[0-9a-f]{12}(?=\s|$)/)?.[0];
+  const principal = linuxUser ? `group ${linuxUser}-files` : account;
   const base = `/v1/apps/${encodeURIComponent(app)}/folder-access`;
   const load = useCallback(async () => {
     try {
@@ -163,7 +165,7 @@ export function FolderAccess({
           cancelLabel="Cancel"
           className={button}
           disabled={busy || !path.trim() || !account}
-          prompt={`Give ${account} ${mode === "write" ? "read and write" : "read"} access to ${path} and everything in it? Everyone granted this folder in Workbench can read it.`}
+          prompt={`Give ${principal} ${mode === "write" ? "read and write" : "read"} access to ${path} and everything in it? Everyone granted this folder in Workbench can read it.`}
           onConfirm={() =>
             act(async () => {
               const result = await api.post<Grant>(target, base, { path, mode });

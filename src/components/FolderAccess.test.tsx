@@ -74,3 +74,16 @@ it("reports write pending restart and changed permissions in the agent's words",
     expect(api.post).toHaveBeenCalledWith("agent", "/v1/apps/workbench/restart", {}),
   );
 });
+
+it("confirms the Linux file group that receives the ACL", async () => {
+  render(
+    <FolderAccess
+      target="agent"
+      app="workbench"
+      account="eapp-123456789abc (the dynamic user of eugene-plexus-app@workbench.service)"
+      initialPath="/srv/acme"
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Give access" }));
+  expect(await screen.findByText(/Give group eapp-123456789abc-files read access/)).toBeTruthy();
+});
