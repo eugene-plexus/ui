@@ -680,7 +680,7 @@ export interface paths {
          *     ### The envelope does not go in the body
          *
          *     `x_eugene_plexus` rides on **response headers**
-         *     (`x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     (`x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier`, `-swapped-in`,
          *     `-waited-ms`, `-context-length`, `-prompt-truncated`) rather
          *     than in the response object. Anthropic's wire is typed events
@@ -989,7 +989,7 @@ export interface paths {
          *     ### The envelope does not go in the body
          *
          *     `x_eugene_plexus` rides on response headers, as on `/v1/messages`
-         *     (`x-eugene-plexus-driver`, `-runtime`, `-backend`, `-latency-ms`,
+         *     (`x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`, `-latency-ms`,
          *     `-attempts`, `-tier`, `-swapped-in`, `-waited-ms`,
          *     `-context-length`, `-prompt-truncated`), and
          *     `x-eugene-plexus-ignored-settings` names every accepted setting
@@ -1218,7 +1218,7 @@ export interface paths {
          *     is refused: raw bytes are the stream.
          *
          *     **What served it rides response headers** (U4, 2026-09-28), as on
-         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier` and the rest of
          *     `x_eugene_plexus`, because the body is the audio and has nowhere to carry them.
          */
@@ -1272,7 +1272,7 @@ export interface paths {
          *     that a model without the surface is never asked.
          *
          *     **What served it rides response headers** (U4, 2026-09-28), as on
-         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier` and the rest of
          *     `x_eugene_plexus`, because `text` has no body to carry them; every format carries them alike.
          */
@@ -1313,7 +1313,7 @@ export interface paths {
          *     here, and `srt`/`vtt` refused.
          *
          *     **What served it rides response headers** (U4, 2026-09-28), as on
-         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier` and the rest of
          *     `x_eugene_plexus`, because `text` has no body to carry them; every format carries them alike.
          */
@@ -3909,6 +3909,14 @@ export interface components {
              *     no runtime of ours.
              */
             runtime?: string;
+            /**
+             * @description Name of the machine whose runtime answered, as the root's node
+             *     registry names it. Null when the backend is not a machine's
+             *     runtime, such as a cloud provider. Where the `x_eugene_plexus`
+             *     envelope rides on headers, this field rides as the
+             *     `x-eugene-plexus-node` header.
+             */
+            node?: string | null;
             backend?: components["schemas"]["BackendKind"];
             /**
              * @description What the backend said served this request, verbatim. Provenance,

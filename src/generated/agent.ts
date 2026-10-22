@@ -1136,6 +1136,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/serving-measurements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent measurements of people served by a runtime on this node.
+         * @description Operator-only. Newest first, including an active job. Keeps the
+         *     newest 20 runs per node and the newest completed run per runtime,
+         *     across agent restarts. A runtime's newest completed run is retained
+         *     even when it is outside the newest 20. Computes `current` and
+         *     `staleBecause` on read against the running runtime's provenance.
+         *     An optional runtime name filters the list, including stopped runtimes.
+         */
+        get: operations["listServingMeasurements"];
+        put?: never;
+        /**
+         * Measure how many people this running runtime serves at a speed.
+         * @description Operator-only. An agent job, started through the node proxy and
+         *     polled through the list, using the gateway's streamed OpenAI door.
+         *     Does not launch the measured runtime, change its settings, download
+         *     a model or install an engine. One measurement job per node, shared
+         *     with benchmarks and profile builds. A stopped runtime is a 422,
+         *     naming the runtime and node and asking the operator to start it.
+         *
+         *     Uses the caller's own credential to mint a client key, as app
+         *     installs do: `localOnly`, `allowedModels: [alias]`, concurrency 64,
+         *     10,000 requests a minute, `ttlDays: 1`, named
+         *     "Measurement <runtime> <date>". The raw key stays only in memory;
+         *     it is never returned or persisted. It cannot reach a cloud tier
+         *     or a fallback model. The key is revoked when the run ends, whether
+         *     completed, failed or cancelled, using the caller's credential.
+         *     A failed revocation reports the observed cause and leaves
+         *     `keyLive: true` until revocation or expiry is confirmed; the console
+         *     retries through cancel. One day is a backstop, not the end-of-run
+         *     revocation policy (Troy's MEASURE-KEY call).
+         *
+         *     Rechecks the gateway's routing view before sending work. The
+         *     console asks for consent before submitting `stopReplicas`; the
+         *     job stops exactly those other ready replicas through their agents
+         *     with the caller's credential, and restarts what it stopped after
+         *     completion, failure or cancellation. Another ready replica not
+         *     listed in `stopReplicas` returns 409; no replica is stopped
+         *     implicitly. Unrelated runtimes are reported, not stopped.
+         *     Restart outcomes, including refusals and their observed cause,
+         *     are kept in `restarts`. Check X-Eugene-Plexus-Runtime on every
+         *     answer; an answer from another runtime stops the run and names
+         *     the answering runtime and node, and the intended runtime and node.
+         *
+         *     Levels are 1, 2, 4, 8 and so on, with `maxPeople` as the final
+         *     level if it is not a power of two. Stops one level past the knee,
+         *     at 5% request errors, or at TTFT p50 above 60 s. Requests in flight
+         *     at a window's end finish and count; cancellation aborts them.
+         *     Warm-up requests do not count. Records the effective request,
+         *     actual output tokens, gateway wait, cache reuse, foreign requests
+         *     when counters exist, watts when host history has them, and loop
+         *     lag. Missing observations never block a run; they are unknown.
+         *     Failures name their observed cause, including the control root's
+         *     words when it could not mint the key. Keeps partial results.
+         */
+        post: operations["startServingMeasurement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/serving-measurements/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What measuring this runtime would affect, and roughly how long it takes.
+         * @description Operator-only. Reads the gateway's routing view using the caller's
+         *     credential. Names other ready replicas of the same alias, with
+         *     node and runtime identities so the console can ask for consent
+         *     before stopping them through their agents. Lists other running
+         *     runtimes on the measured node that may share its resources.
+         *     Changes nothing: does not mint a key, stop a replica or send work.
+         *     `problems` names observed reasons the job cannot start; missing
+         *     counters, untested engines and unknown readings never block it.
+         *     The estimate covers the requested levels and windows, excluding
+         *     an unknown drain time for requests still in flight.
+         */
+        post: operations["preflightServingMeasurement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/serving-measurements/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop this measurement and revoke its key, keeping partial results.
+         * @description Operator-only. Stops an active run within 5 s and revokes its key
+         *     with the caller's credential. On a finished run it only revokes
+         *     any key still live; it does not change the finished state or
+         *     repeat replica restarts. Idempotent after revocation. The console
+         *     calls this for a finished run with `keyLive: true`, including a
+         *     run failed by an agent restart. A failed revocation names the
+         *     observed cause and leaves `keyLive: true`; never reports a key as
+         *     revoked without confirmation. Partial levels are retained.
+         */
+        post: operations["cancelServingMeasurement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/benchmarks": {
         parameters: {
             query?: never;
@@ -2565,6 +2690,255 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description A person is one top-level session, not a stream or sub-agent.
+         *     `agents` uses growing histories, the published pauses and bursts,
+         *     and an uncounted warm start at a random turn. `chat` uses short
+         *     questions and reading pauses. `streams` is closed loop with no
+         *     pause or history growth, comparable with a concurrency sweep.
+         *     All use the profile builder's bundled corpus and seeded sampling.
+         * @enum {string}
+         */
+        ServingWorkload: "agents" | "chat" | "streams";
+        ServingMeasurementRequest: {
+            /** @description The name of an existing runtime on this node; it must be ready. */
+            runtime: string;
+            /** @default agents */
+            workload: components["schemas"]["ServingWorkload"];
+            /** @description Defaults to min(256, 4 * parallelSlots) of the running runtime. */
+            maxPeople?: number;
+            /**
+             * @description Per level. Defaults to 300 for agents and chat, 120 for streams.
+             *     With `full: true` the effective window is 3,600 seconds, even
+             *     when a different window was supplied. Requests still in flight
+             *     at the window's end finish and count, adding drain time.
+             */
+            windowSeconds?: number;
+            /**
+             * @description Use a one-hour window at each level.
+             * @default false
+             */
+            full: boolean;
+            /**
+             * @description Seed for workload sampling; does not promise identical model output.
+             * @default 0
+             */
+            seed: number;
+            /**
+             * @description The owner's first-token ceiling, in milliseconds; editable on
+             *     the run page. Troy's MEASURE-KNEE-2 call sets the default to
+             *     first content after more than one second.
+             * @default 1000
+             */
+            ttftThresholdMs: number;
+            /**
+             * @description Minimum per-person median speed as a fraction of level 1's;
+             *     editable on the run page. Default is two thirds (Troy's
+             *     MEASURE-KNEE-2 call). A speed below this crosses the knee.
+             * @default 0.6666666666666666
+             */
+            speedRatioThreshold: number;
+            /**
+             * @description The other replicas the operator agreed to stop after seeing
+             *     the preflight, identified by node, runtime and model alias.
+             *     Only replicas of the measured alias may be listed, never the
+             *     measured runtime. The job calls their agents to stop them,
+             *     then restarts exactly those it stopped when the run ends.
+             *     An unlisted ready replica is a 409, including one that became
+             *     ready after the preflight. Already stopped entries are not
+             *     restarted by this job.
+             * @default []
+             */
+            stopReplicas: components["schemas"]["ServingRuntime"][];
+        };
+        ServingRuntime: {
+            /** @description Node identity used by the node proxy. */
+            node: string;
+            runtime: string;
+            /** @description The model alias exposed by the gateway. */
+            model: string;
+        };
+        ServingMeasurementPreflight: {
+            /** @description Other ready replicas of the same alias, including replicas on other nodes. */
+            otherReplicas: components["schemas"]["ServingRuntime"][];
+            /** @description Other running runtimes on this node; informational, never stopped implicitly. */
+            otherRuntimes: components["schemas"]["ServingRuntime"][];
+            /** @description Observed causes that prevent starting, one sentence each. Empty when it can start. */
+            problems: string[];
+            /** @description Estimated total of the level windows; null when it cannot be estimated. */
+            estimateSeconds: number | null;
+        };
+        /**
+         * @description One tested number of people, including all requests begun in its
+         *     window and their drain time. Excludes warm-up requests. Unknown
+         *     observations are null, never fabricated zeroes. Latencies are
+         *     client-side through the gateway; speed after the first content
+         *     token excludes TTFT. A level remains readable with no successful
+         *     requests, including a failed or cancelled partial level.
+         */
+        ServingLevel: {
+            people: number;
+            /** @description Time-weighted mean requests in flight, including sub-agents. */
+            streamsMean: number;
+            /** @description Peak requests in flight, including sub-agents. */
+            streamsPeak: number;
+            /** @description Counted requests attempted, including requests that failed. */
+            requests: number;
+            errors: number;
+            /** @description Counts by observed cause, including the engine or gateway's error words. */
+            errorCauses: {
+                [key: string]: number;
+            };
+            /** @description Median time to first content token; null when no request produced content. */
+            ttftP50Ms: number | null;
+            ttftP90Ms: number | null;
+            /** @description Median inter-token latency; null when there are no measured intervals. */
+            itlP50Ms: number | null;
+            itlP90Ms: number | null;
+            /** @description Median per-request decode speed after the first content token, not total speed divided by people. */
+            tokensPerSecondEachP50: number | null;
+            tokensPerSecondEachP10: number | null;
+            /** @description Actual counted output tokens divided by durationSeconds; null if output usage is unavailable. */
+            tokensPerSecondTotal: number | null;
+            /** @description Sum of reported prompt usage; missing usage is named in the job's detail. */
+            promptTokens: number;
+            /** @description Sum of reported cached prompt usage; missing usage is named in the job's detail. */
+            cachedTokens: number;
+            /** @description Median X-Eugene-Plexus-Waited-Ms; null when the header was unavailable. */
+            waitedP50Ms: number | null;
+            /** @description Engine request-counter delta minus this job's requests; null means others' use is unknown. */
+            foreignRequests: number | null;
+            /** @description Mean GPU power from host history over the level; null when history has no power readings. */
+            watts: number | null;
+            /** @description Actual reported output tokens, including any output from failed requests; never max_tokens. */
+            outputTokens: number;
+            /** @description Observed duration including drain time; permits interpreting total throughput on partial levels. */
+            durationSeconds: number;
+            /** @description Fraction of prompt tokens reused as an unchanged prefix between turns; null when not observed. */
+            promptReuse: number | null;
+            /** @description Largest measured event-loop scheduling delay during this level. */
+            loopLagMaxMs: number;
+            /** @description True when loopLagMaxMs exceeds 50 ms; marks a potentially load-generator-limited level. */
+            loopLagged: boolean;
+        };
+        /**
+         * @description The last level before TTFT p50 exceeds request.ttftThresholdMs
+         *     or per-request median speed falls below request.speedRatioThreshold
+         *     times level 1's. These owner-editable thresholds follow Troy's
+         *     MEASURE-KNEE-2 call. `found: false` means the limit was not reached;
+         *     `people` and speeds then describe the largest tested usable level,
+         *     not an extrapolation. An unfinished or unusable run has a null knee.
+         */
+        ServingKnee: {
+            found: boolean;
+            people: number;
+            tokensPerSecondEach: number;
+            ttftP50Ms: number;
+        };
+        ServingGpu: {
+            name: string;
+            /** @description Stable device identity when available. */
+            uuid: string | null;
+            memoryBytes: number | null;
+        };
+        /**
+         * @description Snapshot of the engine, effective launch, model file and hardware
+         *     measured. Unknown identity fields are null and remain visible as
+         *     unknown; their absence never makes an untested engine unsupported.
+         *     Model identity is its local path, size and mtime, not a model hash.
+         *     Does not hold prompts, answers, credentials or raw client keys.
+         */
+        ServingProvenance: {
+            engine: string;
+            engineBuild: string | null;
+            /** @description sha256 of the running engine binary, when readable. */
+            binaryHash: string | null;
+            /** @description Effective engine launch argv at measurement time, with credentials redacted. */
+            launchArgv: string[];
+            modelPath: string;
+            modelSizeBytes: number | null;
+            /** Format: date-time */
+            modelModifiedAt: string | null;
+            /** @description GPUs used by the runtime, in stable device order; empty for CPU-only. */
+            gpus: components["schemas"]["ServingGpu"][];
+            /** @description GPU driver version or versions, in stable device order. */
+            driver: string | null;
+            cpu: string | null;
+            ramBytes: number | null;
+            agentCommit: string | null;
+            gatewayCommit: string | null;
+        };
+        /**
+         * @description Drafting in effect during this run, for comparing on and off
+         *     records of the same model and machine. No automatic off pass.
+         *     Acceptance is an observation and is not part of provenanceKey;
+         *     drafting configuration is captured by the effective launch argv.
+         */
+        ServingDrafting: {
+            /** @description Engine's drafting type, off when disabled, null when unknown. */
+            type: string | null;
+            /** @description Draft model path or identity; null when no separate draft model is used or it is unknown. */
+            model: string | null;
+            /** @description Accepted draft tokens divided by proposed draft tokens; null when not observed. */
+            acceptance: number | null;
+        };
+        ServingMeasurementRestart: {
+            node: string;
+            runtime: string;
+            state: components["schemas"]["MeasurementRestartState"];
+            /** @description Observed cause of a refusal or failed restart; null when no explanation is needed. */
+            detail: string | null;
+        };
+        /**
+         * @description A serving measurement kept on the runtime's node for rows 11,
+         *     13, 14 and 69 and the speed nudge. Agent restart marks an unfinished
+         *     run failed and names that cause; it keeps partial levels and never
+         *     resumes load silently. Final records keep their state when cancel
+         *     is used only to revoke a key. Does not persist prompts or answers.
+         */
+        ServingMeasurement: {
+            id: string;
+            node: string;
+            runtime: string;
+            /** @description The measured gateway model alias. */
+            model: string;
+            state: components["schemas"]["BenchmarkState"];
+            /**
+             * @description The effective request, including resolved workload, maxPeople,
+             *     windowSeconds, full, seed, both knee thresholds and stopReplicas.
+             *     Returned settings always describe the values in effect, including
+             *     the one-hour window when full overrides a supplied shorter one.
+             */
+            request: components["schemas"]["ServingMeasurementRequest"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: string | null;
+            progress: number;
+            /** @description One sentence of progress, or the observed cause of a failure, including the upstream's words. */
+            detail: string;
+            levels: components["schemas"]["ServingLevel"][];
+            knee: components["schemas"]["ServingKnee"] | null;
+            provenance: components["schemas"]["ServingProvenance"];
+            /**
+             * @description Lowercase sha256 of provenance as UTF-8 JSON with sorted object
+             *     keys, compact separators and unescaped Unicode. Array order is
+             *     preserved. Includes null identity fields; excludes observations
+             *     such as drafting acceptance and the request's workload seed.
+             */
+            provenanceKey: string;
+            /** @description Recomputed on read; true only when the runtime's present provenance matches this record. */
+            current: boolean;
+            /** @description What changed since measurement, with old and new values; empty when current. A missing runtime is named. */
+            staleBecause: string[];
+            /** @description True until the control root confirms revocation or expiry; a failed revocation is named in detail. */
+            keyLive: boolean;
+            restarts: components["schemas"]["ServingMeasurementRestart"][];
+            drafting: components["schemas"]["ServingDrafting"];
+        };
+        ServingMeasurementList: {
+            measurements: components["schemas"]["ServingMeasurement"][];
+        };
         BenchmarkRequest: {
             modelId: string;
             profileId: string;
@@ -9605,6 +9979,114 @@ export interface operations {
             401: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listServingMeasurements: {
+        parameters: {
+            query?: {
+                runtime?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Measurements and their current provenance status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServingMeasurementList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
+    startServingMeasurement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServingMeasurementRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted; poll this node's measurements for progress. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServingMeasurement"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    preflightServingMeasurement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServingMeasurementRequest"];
+            };
+        };
+        responses: {
+            /** @description Replicas to ask about, other load, start problems and a time estimate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServingMeasurementPreflight"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    cancelServingMeasurement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped or already finished, with the observed key and restart status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServingMeasurement"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };
     };
