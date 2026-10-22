@@ -170,7 +170,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Every model in the library.
+         * List models, with optional pagination.
          * @description The library browser's source of truth. One entry per
          *     *launchable* model: a projector, the second through Nth shard
          *     of a split GGUF, and an older revision inside a HuggingFace
@@ -184,9 +184,18 @@ export interface paths {
          *     which are the one thing here that cannot be recovered by
          *     looking at the disk again.
          *
-         *     Unpaginated. Dozens to low hundreds of entries is the expected
-         *     scale; pagination is a backwards-compatible addition if
-         *     somebody turns up with thousands.
+         *     Without `limit` or `cursor`, returns every model as before.
+         *     With `limit`, returns up to that many models in the same stable
+         *     order as the full list (by lower-case model name). A response
+         *     has `nextCursor` only when more models remain; pass it as
+         *     `cursor` to continue after the last model in this page. If
+         *     `limit` is omitted, returns all remaining models.
+         *
+         *     The cursor records the last model's sort key, not an offset.
+         *     It remains valid if a rescan adds or removes models, including
+         *     if that last model is removed. Continue strictly after that
+         *     key, without repeating or skipping models because list
+         *     positions changed.
          */
         get: operations["listModels"];
         put?: never;
@@ -1561,6 +1570,13 @@ export interface components {
         LibraryModelList: {
             models: components["schemas"]["LibraryModel"][];
             /**
+             * @description Opaque continuation token to pass as `cursor` for the next
+             *     page. Present only when more models remain. Omitted on the
+             *     last page, on an unpaginated response, and for a `path`
+             *     lookup.
+             */
+            nextCursor?: string;
+            /**
              * Format: date-time
              * @description When the walk that produced this list finished. Omitted
              *     before the first scan. Present here as well as on `Scan` so
@@ -2288,17 +2304,9 @@ export interface components {
          *       block and no first block (`--spec-type draft-mtp`).
          *     * `simple` — a whole small model named as a draft (`draft-*.gguf`)
          *       (`--spec-type draft-simple`).
-         *     * `dflash` — a DFlash drafter (`--spec-type draft-dflash`).
-         *     * `dspark` — a DSpark drafter (`--spec-type draft-dspark`).
-         *     * `eagle3` — an EAGLE3 drafter (`--spec-type draft-eagle3`).
-         *
-         *     DFlash, DSpark and EAGLE3 are bound to a target model by their
-         *     header: `general.architecture`, `<arch>.target_layers` and
-         *     `<arch>.target_hidden_size`. DSpark uses the `dflash` architecture
-         *     with a `markov_w1.weight` tensor.
          * @enum {string}
          */
-        DraftKind: "mtp" | "simple" | "dflash" | "dspark" | "eagle3";
+        DraftKind: "mtp" | "simple";
         /**
          * @description Safetensors-specific metadata. Present iff `format` is
          *     `safetensors`. **No quant tier** — a safetensors model is
@@ -3374,8 +3382,6 @@ export interface components {
              */
             gitBlobSha1?: string;
             role?: components["schemas"]["ModelFileRole"];
-            /** @description For a file in CatalogueModel.draftFiles, its kind by its name prefix (mtp-, draft-, dflash-, dspark-, eagle3-). The scan reads the header after the download, and the header decides. */
-            draftKind?: components["schemas"]["DraftKind"] | null;
             /**
              * @description Whether upstream stores this through LFS. Decides which
              *     digest is present, and also which redirect shape the
@@ -4572,17 +4578,9 @@ export interface components {
          *       block and no first block (`--spec-type draft-mtp`).
          *     * `simple` — a whole small model named as a draft (`draft-*.gguf`)
          *       (`--spec-type draft-simple`).
-         *     * `dflash` — a DFlash drafter (`--spec-type draft-dflash`).
-         *     * `dspark` — a DSpark drafter (`--spec-type draft-dspark`).
-         *     * `eagle3` — an EAGLE3 drafter (`--spec-type draft-eagle3`).
-         *
-         *     DFlash, DSpark and EAGLE3 are bound to a target model by their
-         *     header: `general.architecture`, `<arch>.target_layers` and
-         *     `<arch>.target_hidden_size`. DSpark uses the `dflash` architecture
-         *     with a `markov_w1.weight` tensor.
          * @enum {string}
          */
-        "schemas-DraftKind": "mtp" | "simple" | "dflash" | "dspark" | "eagle3";
+        "schemas-DraftKind": "mtp" | "simple";
         /** DraftFile */
         "schemas-DraftFile": {
             /**
@@ -6088,6 +6086,46 @@ export interface components {
             shared: boolean;
         };
         /**
+         * @description Error response shape, modeled on RFC 7807 (problem+json). Every
+         *     Eugene Plexus component returns this for 4xx / 5xx responses.
+         */
+        Problem: {
+            /**
+             * @description A URI reference identifying the problem type, per RFC 7807.
+             *     Modeled as a plain string rather than `format: uri` to keep
+             *     sentinel values like `about:blank` and ergonomic at call sites.
+             * @default about:blank
+             */
+            type: string;
+            /** @description Short human-readable summary. */
+            title: string;
+            /** @description HTTP status code. */
+            status: number;
+            /** @description Human-readable explanation specific to this occurrence. */
+            detail?: string;
+            /**
+             * @description A URI reference identifying the specific occurrence. Modeled
+             *     as a plain string for the same reason as `type`.
+             */
+            instance?: string;
+            /**
+             * @description Eugene Plexus component name that originated the error
+             *     (e.g. `"gateway"`, `"inference-driver:left"`).
+             */
+            component?: string;
+            /**
+             * @description Safe means this attempt did not accept application work and may
+             *     be replayed before any output. Terminal means the request must
+             *     be corrected. Indeterminate means work may have occurred; do not
+             *     replay automatically. Missing classification on a server failure
+             *     is indeterminate, never implicit permission to retry.
+             * @enum {string}
+             */
+            retryDisposition?: "safe" | "terminal" | "indeterminate";
+            /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
+            retryAfterSeconds?: number;
+        };
+        /**
          * @description A model not in the library yet, judged by its facts
          *     (library-sources-and-engines.md, LS2): a version in a catalogue
          *     repo, a starter entry, or a search row. The library's catalogue
@@ -6654,46 +6692,6 @@ export interface components {
             files?: components["schemas"]["schemas-PreparedFile"][];
         } & {
             [key: string]: unknown;
-        };
-        /**
-         * @description Error response shape, modeled on RFC 7807 (problem+json). Every
-         *     Eugene Plexus component returns this for 4xx / 5xx responses.
-         */
-        Problem: {
-            /**
-             * @description A URI reference identifying the problem type, per RFC 7807.
-             *     Modeled as a plain string rather than `format: uri` to keep
-             *     sentinel values like `about:blank` and ergonomic at call sites.
-             * @default about:blank
-             */
-            type: string;
-            /** @description Short human-readable summary. */
-            title: string;
-            /** @description HTTP status code. */
-            status: number;
-            /** @description Human-readable explanation specific to this occurrence. */
-            detail?: string;
-            /**
-             * @description A URI reference identifying the specific occurrence. Modeled
-             *     as a plain string for the same reason as `type`.
-             */
-            instance?: string;
-            /**
-             * @description Eugene Plexus component name that originated the error
-             *     (e.g. `"gateway"`, `"inference-driver:left"`).
-             */
-            component?: string;
-            /**
-             * @description Safe means this attempt did not accept application work and may
-             *     be replayed before any output. Terminal means the request must
-             *     be corrected. Indeterminate means work may have occurred; do not
-             *     replay automatically. Missing classification on a server failure
-             *     is indeterminate, never implicit permission to retry.
-             * @enum {string}
-             */
-            retryDisposition?: "safe" | "terminal" | "indeterminate";
-            /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
-            retryAfterSeconds?: number;
         };
         /**
          * @description What the library reads in a folder (CX9, 2026-10-20). `folder`:
@@ -7829,8 +7827,24 @@ export interface operations {
                  *     path does not have to reproduce the `id` derivation to find
                  *     the entry. The runtime dashboard uses it to link a running
                  *     `Runtime.modelPath` back to its library entry.
+                 *
+                 *     A path lookup ignores `limit` and `cursor`, even if invalid,
+                 *     and never returns `nextCursor`.
                  */
                 path?: string;
+                /**
+                 * @description Maximum number of models in this page. No default limit:
+                 *     omitting it returns all models after `cursor`, or every
+                 *     model if no cursor is supplied. Ignored when `path` is set.
+                 */
+                limit?: number;
+                /**
+                 * @description Opaque continuation token from the previous page's
+                 *     `nextCursor`. Resume strictly after its sort key, even if
+                 *     that model is no longer in the Library. Clients pass this
+                 *     token unchanged. Ignored when `path` is set.
+                 */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -7838,13 +7852,26 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Every known model. */
+            /** @description Every known model, the requested page, or the path lookup result. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryModelList"];
+                };
+            };
+            /**
+             * @description With no `path` lookup, `limit` is not an integer between 1
+             *     and 500, or `cursor` is unknown or malformed. The problem's
+             *     `detail` is a sentence that names the observed cause.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
