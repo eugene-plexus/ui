@@ -15,6 +15,7 @@ import { MovedModel, MovedNotice, profilesPhrase } from "@/components/MovedModel
 import { ProfileEditor } from "@/components/ProfileEditor";
 import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
+import { KeepModel, OtherOllama } from "@/components/OllamaKeep";
 import { PrepareControl, entryForFile } from "@/components/PrepareModel";
 import { RunButton } from "@/components/RunButton";
 import { RunsAsNote } from "@/components/RunsAsNote";
@@ -405,6 +406,7 @@ function LibraryPageInner() {
           </div>
         )}
 
+        <OtherOllama onChanged={() => void loadModels()} />
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:grid sm:grid-cols-[minmax(220px,320px)_minmax(0,1fr)] sm:overflow-hidden">
           <ModelList
             models={models}
@@ -850,6 +852,7 @@ function ModelDetail({
   // Counts the profile saves under this model, so the line under Run is never about
   // a profile that has since been edited (MR3).
   const [profilesVersion, setProfilesVersion] = useState(0);
+  const [keepFinished, setKeepFinished] = useState(false);
 
   // Which engines could load this model at all, and which of those are
   // installed here. Two different answers with two different fixes.
@@ -933,7 +936,18 @@ function ModelDetail({
         </div>
       </div>
 
-      {model.ollama && <OllamaNote ollama={model.ollama} />}
+      {model.ollama && <OllamaNote ollama={model.ollama} name={model.name} />}
+      {model.ollama && model.status === "present" && (
+        <KeepModel
+          model={model.id}
+          onChanged={() => {
+            setKeepFinished(true);
+            setProfilesVersion((n) => n + 1);
+            onChanged();
+          }}
+        />
+      )}
+      {model.keptFrom && <p>Kept from Ollama — served as {model.keptFrom.servedName}</p>}
 
       {moved && <MovedNotice done={moved} />}
 
@@ -1163,6 +1177,7 @@ function ModelDetail({
           .map((v) => preparation(v))}
 
       <ProfileEditor
+        key={keepFinished ? "kept" : "original"}
         model={model}
         engines={usable.length > 0 ? usable : capable}
         node={node}
@@ -1186,8 +1201,14 @@ function ModelDetail({
 
 /** A model read from Ollama's store: its source, its other names, and the
  * one thing that may stop it loading (CX9). */
-function OllamaNote({ ollama }: { ollama: NonNullable<LibraryModel["ollama"]> }) {
-  const others = ollama.tags.slice(1);
+function OllamaNote({
+  ollama,
+  name,
+}: {
+  ollama: NonNullable<LibraryModel["ollama"]>;
+  name: string;
+}) {
+  const others = ollama.tags.filter((tag) => tag !== name);
   return (
     <div data-testid="ollama-note" className="space-y-1 text-sm">
       <p>

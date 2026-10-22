@@ -196,7 +196,7 @@ export type DirectoryEntry = AgentComponents["schemas"]["DirectoryEntry"];
 // answers per folder what the node would open and which rule said so.
 // From the library document: agent.yaml never references the schema, so the
 // agent's generated types do not carry it.
-export type LibraryFolder = LibraryComponents["schemas"]["LibraryFolder"];
+export type LibraryFolder = LibraryComponents["schemas"]["LibraryFolderStatus"];
 export type LibraryFolderReach = AgentComponents["schemas"]["LibraryFolderReach"];
 export type LogLine = AgentComponents["schemas"]["LogLine"];
 export type LogPage = AgentComponents["schemas"]["LogPage"];

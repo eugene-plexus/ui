@@ -38,6 +38,7 @@ import { useIssues } from "@/lib/useIssues";
 import { useServedContexts } from "@/lib/useServedContexts";
 import { usePolling } from "@/lib/usePolling";
 import { stopReasonWords } from "@/lib/runningModel";
+import { promptCacheLine } from "@/lib/promptCache";
 import { speculationLine } from "@/lib/speculation";
 import { expertHint } from "@/lib/vocabulary";
 import type {
@@ -806,6 +807,8 @@ function RowView({
   );
   // SD1: what it drafts with and how much it keeps, a fact and no advice (S3).
   const drafting = speculationLine(own?.speculation);
+  // PC7: the prompt cache it was started with, from its command line (settings never lie).
+  const promptCache = promptCacheLine(own?.promptCache);
   const prefix = `${row.node ?? ""}/${row.runtime ?? ""}:`;
   // What a row's buttons say they act on, for a screen reader that hears
   // the buttons without the row around them.
@@ -1028,6 +1031,12 @@ function RowView({
           <div className="text-[0.6875rem] text-[color:var(--muted)]" data-testid="speculation">
             {drafting.text}
             {drafting.note && <div className="text-status-warn">{drafting.note}</div>}
+          </div>
+        )}
+        {promptCache && (
+          <div className="text-[0.6875rem] text-[color:var(--muted)]" data-testid="prompt-cache">
+            {promptCache.text}
+            {promptCache.note && <div className="text-status-warn">{promptCache.note}</div>}
           </div>
         )}
         {compute && (

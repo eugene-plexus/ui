@@ -175,6 +175,8 @@ function install(): Map<string, Handler> {
 
 beforeEach(() => {
   handlers = install();
+  handlers.set("GET library/v1/nodes/ollama", () => ok({ nodes: [] }));
+  handlers.set("GET library/v1/folders", () => ok({ folders: [] }));
   posted = [];
   bodies = new Map();
   gets = [];
@@ -414,8 +416,33 @@ function listedNames(): string[] {
 
 describe("a model read from Ollama's store", () => {
   function ollamaModel(ollama: { tags: string[]; needsMigration?: boolean }) {
-    return () => ok({ models: [{ ...libraryModel(), ollama }], lastScanAt: null });
+    return () =>
+      ok({ models: [{ ...libraryModel(), name: ollama.tags[0], ollama }], lastScanAt: null });
   }
+
+  it("keeps the served name out of the other tags when a new tag sorts first", async () => {
+    handlers.set("GET library/v1/models", () =>
+      ok({
+        models: [
+          {
+            ...libraryModel(),
+            name: "llama3:latest",
+            ollama: { tags: ["llama3:8b", "llama3:latest"] },
+          },
+        ],
+        lastScanAt: null,
+      }),
+    );
+    render(<LibraryPage />);
+    const row = await screen.findByRole("button", { name: /llama3:latest/i });
+    await act(async () => {
+      row.click();
+    });
+    const note = await screen.findByTestId("ollama-note");
+    expect(note).toHaveTextContent("also: llama3:8b");
+    expect(note).not.toHaveTextContent("also: llama3:latest");
+    expect(screen.getByRole("button", { name: "Keep in the Library" })).toBeInTheDocument();
+  });
 
   it("shows the Ollama source, its other tags and no Delete", async () => {
     handlers.set("GET library/v1/models", ollamaModel({ tags: ["gemma3:27b", "gemma3:latest"] }));

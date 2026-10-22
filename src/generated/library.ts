@@ -3035,6 +3035,50 @@ export interface components {
          */
         StarterSetSource: "shipped" | "configured";
         /**
+         * @description A CPU measurement on the named test machine, using the recorded
+         *     engine build. These rates do not predict speed on the caller's
+         *     machine. The monthly review measures files up to 8 GiB and keeps
+         *     a proof only while the repo, file, size and engine tag are unchanged.
+         *     Larger files need a hand measurement. If those inputs change,
+         *     their proof returns to architecture-only with a note that a new
+         *     hand measurement is needed.
+         * @example {
+         *       "decodeTokensPerSecond": 13.85,
+         *       "promptTokensPerSecond": 175.4,
+         *       "promptTokens": 512,
+         *       "decodeTokens": 128,
+         *       "threads": 16,
+         *       "machine": "AMD Ryzen 9 9950X (16 cores), Troy's workstation",
+         *       "engine": "llama_cpp b10948",
+         *       "measuredOn": "2026-10-21"
+         *     }
+         */
+        CpuProof: {
+            /** @description Mean decode speed in tok/s across the benchmark runs. */
+            decodeTokensPerSecond: number;
+            /** @description Mean prompt processing speed in tok/s across the benchmark runs. */
+            promptTokensPerSecond: number;
+            /** @description Number of prompt tokens per benchmark run, normally 512. */
+            promptTokens: number;
+            /** @description Number of generated tokens per benchmark run, normally 128. */
+            decodeTokens: number;
+            /** @description Number of CPU threads used by llama-bench. */
+            threads: number;
+            /**
+             * @description The machine on which the speed was measured, including its
+             *     processor name and core count. The monthly review reads the
+             *     processor name at run time.
+             */
+            machine: string;
+            /** @description The pinned engine and build used, e.g. `llama_cpp b10948`. */
+            engine: string;
+            /**
+             * Format: date
+             * @description Date on which this speed was measured.
+             */
+            measuredOn: string;
+        };
+        /**
          * @description One entry: a base model, the repo a quant of it comes from, the
          *     one file to fetch, and everything a fit needs -- measured once by
          *     the review, carried here so no upstream call is required.
@@ -3093,6 +3137,13 @@ export interface components {
              *     one, because this endpoint makes no upstream call.
              */
             downloads30d?: number;
+            /**
+             * @description Measured CPU speed on the named test machine. Absent or null
+             *     when only the architecture was checked. A mixture-of-experts
+             *     entry without a proof is never recommended on a machine with
+             *     no graphics card.
+             */
+            cpuProof?: components["schemas"]["CpuProof"] | null;
             fit?: components["schemas"]["Fit"];
             /**
              * @description The largest context this entry fits entirely in GPU memory
@@ -3138,8 +3189,16 @@ export interface components {
              *     and the cache, and system memory holds the experts. It wins
              *     only over a dense entry of a smaller size class; between two
              *     entries of one class that both fit, the dense one is
-             *     recommended. The prose names what goes where. No speed is
-             *     predicted.
+             *     recommended. The prose names what goes where.
+             *
+             *     On a machine with no graphics card, the largest entry that
+             *     fits in memory and whose `cpuProof.decodeTokensPerSecond`
+             *     is at or above `starterCpuFloorTokensPerSecond` (default 4 tok/s,
+             *     configurable from 1 to 100). The speed is the test machine's,
+             *     and the reason names that machine. No speed is predicted for this machine.
+             *     If no entry that fits has a proof at or above the floor,
+             *     recommend the smallest dense entry that fits and explain
+             *     the lack of qualifying measurements, using tokens and tok/s.
              */
             reason: string;
         };

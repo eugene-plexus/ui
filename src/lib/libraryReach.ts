@@ -83,6 +83,11 @@ export function parseFolders(value: unknown): LibraryFolder[] {
         mounts,
         ...(record.kind === "ollama" ? { kind: "ollama" as const } : {}),
         ...(record.found === true ? { found: true } : {}),
+        ...(record.readOnly === true ? { readOnly: true } : {}),
+        ...(typeof record.readOnlyReason === "string"
+          ? { readOnlyReason: record.readOnlyReason }
+          : {}),
+        ...(typeof record.error === "string" ? { error: record.error } : {}),
       },
     ];
   });

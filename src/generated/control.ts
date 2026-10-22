@@ -3538,9 +3538,23 @@ export interface components {
              * @description The keys this node's machine port may present, registered
              *     under its signature. Every other machine refuses a connection
              *     that presents any other. Empty on a node without a machine
-             *     port.
+             *     port. Two while its machine key changes (`tlsNextPin`, row 3):
+             *     the current key and the next, and both again after the switch
+             *     until the node announces the new key alone.
              */
             tlsPins?: components["schemas"]["TlsPin"][];
+            /**
+             * @description The one of `tlsPins` the node announced as its next key
+             *     (`NodeAddressAnnouncement.tlsNextPin`). `null` outside a
+             *     machine key change.
+             */
+            tlsNextPin?: components["schemas"]["TlsPin"] | null;
+            /**
+             * @description While the node announces a next key: which machines this root
+             *     sees holding a list that names it. An observation, never
+             *     replicated. `null` outside a change.
+             */
+            machineKeyChange?: components["schemas"]["NodeMachineKeyChange"] | null;
             machineTls?: components["schemas"]["MachineLink"];
             /**
              * @description Names the owner listed for this node (LT2,
@@ -3681,6 +3695,44 @@ export interface components {
          */
         TlsPin: string;
         /**
+         * @description A machine key change seen from this root (row 3): the node
+         *     announced a next key, and it switches once every machine that can
+         *     reach it holds a machine list naming both keys. An observation of
+         *     this root's last poll: a standby has seen none of it.
+         */
+        NodeMachineKeyChange: {
+            nextPin: components["schemas"]["TlsPin"];
+            /**
+             * Format: int64
+             * @description The first machine list `version` that names both keys (and,
+             *     for the machine that runs this root, both in `controlPins`).
+             *     `null` until this root has signed one.
+             */
+            listVersion?: number | null;
+            /**
+             * @description Machines this root reached that hold an older list, or that
+             *     report no list version (a version before row 3), or that it
+             *     has not polled yet. The node waits for none of them after 3
+             *     minutes.
+             */
+            waitingOn: string[];
+            /**
+             * @description Machines this root could not reach on its last poll. The node
+             *     does not wait for them: each fetches the list when it is back.
+             */
+            unreachable: string[];
+            /**
+             * @description Machines with a machine key that this root has never seen
+             *     report a machine list version: they run an agent older than
+             *     row 3, which cannot take the root's new key by itself if it
+             *     misses the change. A change of the key of the machine that
+             *     runs this root does not switch while any is listed (update
+             *     them, or remove a machine that is gone). Another machine's
+             *     change is not held up by them.
+             */
+            notReady?: string[];
+        };
+        /**
          * @description How this root last reached the node, as an observation: never
          *     replicated, and absent until it has polled.
          */
@@ -3751,6 +3803,12 @@ export interface components {
              *     these.
              */
             controlPins: components["schemas"]["TlsPin"][];
+            /**
+             * @description This root takes `NodeAddressAnnouncement.tlsNextPin` (row 3):
+             *     a node may change its machine key. Absent from an older
+             *     root's list, and a node then offers no change.
+             */
+            keyChange?: boolean;
             nodes: components["schemas"]["MachineListNode"][];
         };
         MachineListNode: {
@@ -3982,7 +4040,8 @@ export interface components {
              *     "tlsPin": …, "url": …}`, keys sorted, holding exactly the
              *     ones the body holds. An announcement without either signs
              *     the three fields above, so an older node's announcement
-             *     verifies as before.
+             *     verifies as before. `tlsNextPin` (row 3) joins the signed
+             *     object under its own name in the same way.
              *
              *     **Verified against the raw request body, never against a
              *     parsed `url`.** An OpenAPI `format: uri` becomes a URL type
@@ -3998,6 +4057,16 @@ export interface components {
             signature: string;
             machineUrl?: components["schemas"]["MachineUrl"];
             tlsPin?: components["schemas"]["TlsPin"];
+            /**
+             * @description The node's next machine key, while it changes keys (row 3).
+             *     Only with `tlsPin`, and not equal to it. The root records both
+             *     in `Node.tlsPins` and lists both, so every machine accepts
+             *     either key across the switch; the node then announces
+             *     `tlsPin` alone, and the old key leaves the list. A replay of
+             *     an announcement that carried the old key is refused by
+             *     `sequence`.
+             */
+            tlsNextPin?: components["schemas"]["TlsPin"];
         };
         NodeAddressAck: {
             name: string;
