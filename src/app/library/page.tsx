@@ -138,6 +138,8 @@ export default function LibraryPage() {
 
 function LibraryPageInner() {
   const [models, setModels] = useState<LibraryModel[] | null>(null);
+  const [loadingMoreModels, setLoadingMoreModels] = useState(false);
+  const modelsLoad = useRef<AbortController | null>(null);
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
   const [scan, setScan] = useState<Scan | null>(null);
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
@@ -189,15 +191,33 @@ function LibraryPageInner() {
   }, [appliedRequest, requestedModel]);
 
   const loadModels = useCallback(async () => {
+    modelsLoad.current?.abort();
+    const controller = new AbortController();
+    modelsLoad.current = controller;
+    setLoadingMoreModels(false);
     try {
-      const list = await api.get<LibraryModelList>("library", "/v1/models");
-      setModels(list.models ?? []);
-      setLastScanAt(list.lastScanAt ?? null);
-      setError(null);
+      let cursor: string | undefined;
+      let loaded: LibraryModel[] = [];
+      do {
+        const params = new URLSearchParams({ limit: "200" });
+        if (cursor) params.set("cursor", cursor);
+        const list = await api.get<LibraryModelList>("library", `/v1/models?${params}`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        loaded = [...loaded, ...(list.models ?? [])];
+        setModels(loaded);
+        setLastScanAt(list.lastScanAt ?? null);
+        setError(null);
+        cursor = list.nextCursor;
+        setLoadingMoreModels(Boolean(cursor));
+      } while (cursor);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) return;
+      if (controller.signal.aborted || (err instanceof ApiError && err.status === 401)) return;
       // The library's own sentence, not `err.message`'s status line.
       setError(describeError(err));
+    } finally {
+      if (!controller.signal.aborted) setLoadingMoreModels(false);
     }
   }, []);
 
@@ -214,6 +234,7 @@ function LibraryPageInner() {
   useEffect(() => {
     void loadModels();
     void loadScan();
+    return () => modelsLoad.current?.abort();
   }, [loadModels, loadScan]);
 
   // Engines change only when an operator installs one, so this is a
@@ -396,6 +417,12 @@ function LibraryPageInner() {
         )}
 
         <ScanBanner scan={scan} />
+
+        {loadingMoreModels && (
+          <p role="status" className="px-4 py-2 text-sm text-[color:var(--muted)]">
+            Loading more models…
+          </p>
+        )}
 
         {downloads.length > 0 && (
           <div className="max-h-[30vh] overflow-y-auto border-b border-[color:var(--border)] bg-[color:var(--panel-soft)] px-4 py-2">
