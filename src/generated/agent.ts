@@ -1168,11 +1168,13 @@ export interface paths {
          *     or node's key, an ordinary client key, an operator session, a
          *     service token and a gateway token. This route never adds access.
          *
-         *     Workbench calls this when no other grant names the folder.
-         *     Match the path against this app's own records and remove only
-         *     what Eugene added. Never act on another app's records or on an
-         *     unrecorded path. With no recorded access, return an empty grants
-         *     list: releasing again is safe. Preexisting and by-hand rights
+         *     Workbench calls this when no other grant names the folder or a
+         *     descendant. Send path to look up this app's own covering records
+         *     without changing permissions. Then send id to remove only what Eugene added
+         *     for that access record. Exactly one of path or id is required.
+         *     Never act on another app's records. With no recorded access,
+         *     return 404 with the observed cause. A removed id is safe to release again.
+         *     Preexisting and by-hand rights
          *     stay, with the same identity and permission checks as
          *     removeFolderAccess. No folder or file is deleted.
          *
@@ -6755,10 +6757,12 @@ export interface components {
              */
             mode: "read" | "write";
         };
-        /** @description A folder the authenticated app no longer uses; never an instruction to add access. */
+        /** @description Send path to look up covering records, or id to release one record. Exactly one is required. Never adds access. */
         FolderAccessReleaseRequest: {
-            /** @description Match this path to this app's own recorded folder access on this node. */
-            path: string;
+            /** @description Look up this app's covering access records without changing permissions. */
+            path?: string;
+            /** @description Release this app's access record by its stable id. */
+            id?: string;
         };
         /**
          * @description One persisted access record. Internal folder identity and the
@@ -9776,7 +9780,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Removal outcomes for this app's path; empty when none was recorded. */
+            /** @description Matching access records for a path lookup, or the removal outcome for an id. */
             200: {
                 headers: {
                     [name: string]: unknown;
