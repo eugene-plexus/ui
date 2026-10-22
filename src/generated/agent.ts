@@ -5171,7 +5171,59 @@ export interface components {
             lastError?: string;
             loadProgress?: components["schemas"]["LoadProgress"];
             speculation?: components["schemas"]["RuntimeSpeculation"];
+            promptCache?: components["schemas"]["RuntimePromptCache"];
         };
+        /**
+         * @description The memory this runtime's engine keeps for recent conversations, as
+         *     it was started with it (row 9, `docs/design/prompt-cache.md` PC7).
+         *     llama.cpp's RAM prompt cache (`--cache-ram`) and vLLM's CPU KV
+         *     offload (`--kv-offloading-size`). Read from the command line the
+         *     engine was launched with, so it is the value in effect and never the
+         *     profile's wish: a setting a build does not offer reads
+         *     `unsupported`, and a size typed into `extraArgs` or the runtime's
+         *     `env` reads `extra_args`.
+         *
+         *     An engine's prompt cache fills over time, so this is a limit and
+         *     not a reading of what is held. Admission counts the whole limit
+         *     against system memory for as long as the runtime holds memory.
+         *
+         *     Absent for a runtime that is not starting or running, for a search
+         *     model (an embedder or a reranker keeps no prompt cache), and for an
+         *     engine with no such setting.
+         */
+        RuntimePromptCache: {
+            /**
+             * Format: int64
+             * @description The limit in bytes. `0` when it is off. Null when the build
+             *     offers no such setting (`unsupported`), and when `extraArgs` asks
+             *     for no limit (`--cache-ram -1`): then the cache grows until
+             *     memory runs out, and `note` says so.
+             */
+            bytes?: number | null;
+            source: components["schemas"]["PromptCacheSource"];
+            /**
+             * @description Why the size is not what the profile asked for or what is
+             *     unusual about it: a build that does not offer a setting, a size
+             *     from `extraArgs` that overrides the profile's. Null when the
+             *     size is what the profile says.
+             */
+            note?: string | null;
+        };
+        /**
+         * @description Where a runtime's prompt cache size comes from. `profile` is the
+         *     runtime's own setting (the profile's `cacheRam` for llama.cpp,
+         *     `kvOffloadGb` for vLLM). `engine_default` is the default the setting
+         *     shows when the profile leaves it unset, which Eugene always passes so
+         *     that an upstream change of default cannot make the setting wrong.
+         *     `extra_args` is a size typed into `extraArgs`, which comes after the
+         *     profile on the command line and wins, or set in the runtime's `env`
+         *     (`LLAMA_ARG_CACHE_RAM`), which Eugene does not override with its
+         *     default. `off` is a cache of zero bytes.
+         *     `unsupported` is a build that does not list the flag, so nothing was
+         *     passed.
+         * @enum {string}
+         */
+        PromptCacheSource: "profile" | "engine_default" | "extra_args" | "off" | "unsupported";
         /**
          * @description Speculative decoding as this runtime was started with it, and how
          *     much of what it drafted the model kept (SD1,
@@ -5701,6 +5753,19 @@ export interface components {
              *     this; a refusal offers it as a one-click fix.
              */
             maxContextLength?: number | null;
+            /**
+             * Format: int64
+             * @description The prompt cache this launch would keep in system memory
+             *     (llama.cpp's `--cache-ram`, vLLM's CPU KV offload), from the
+             *     profile's setting or the default it shows, in bytes. `0` when it
+             *     is off. Null when the engine has none, and for a search model.
+             *
+             *     Row 9. Other runtimes' prompt caches count against system memory
+             *     when this launch needs some, whole, because a cache fills over
+             *     time: the memory they hold is named in `reason` and each holder is
+             *     in `blockers`. A launch's own cache is not counted against itself.
+             */
+            promptCacheBytes?: number | null;
             /**
              * @description Runtimes holding memory on that device, or on their way to
              *     holding it, most idle first. `copying` counts: no process

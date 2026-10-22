@@ -163,6 +163,31 @@ describe("people", () => {
     ).toBeNull();
   });
 
+  it.each([
+    [
+      "days",
+      "Their chats, notes and documents in Workbench are kept hidden for 30 days, then deleted.",
+    ],
+    ["none", "Their chats, notes and documents in Workbench are deleted now, within the hour."],
+  ])(
+    "Delete account says what Workbench does with their data when it keeps it %s",
+    async (retention, words) => {
+      handlers.set("GET agent/v1/node", () => ({ status: 200, body: { name: "box" } }));
+      handlers.set("GET agent/v1/apps/workbench/config", () => ({
+        status: 200,
+        body: { removedPeopleRetention: retention, removedPeopleDays: 30 },
+      }));
+      render(<PeoplePage />);
+      await openAda();
+      const actions = screen.getByRole("region", { name: "Account actions" });
+      await waitFor(() =>
+        expect(calls.map((c) => c.key)).toContain("GET agent/v1/apps/workbench/config"),
+      );
+      await userEvent.click(within(actions).getByRole("button", { name: "Delete Ada" }));
+      expect(await within(actions).findByText(new RegExp(words.replace(".", "\\.")))).toBeVisible();
+    },
+  );
+
   it("keeps a rejected password reset available to retry and reports success only after saving", async () => {
     handlers.set("PUT control/v1/people/p-ada/password", () => ({
       status: 503,
