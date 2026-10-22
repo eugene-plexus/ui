@@ -483,12 +483,14 @@ export interface paths {
          *
          *     **The ID token's cap (row 70c).** An app may keep the ID token in a
          *     cookie, and a browser drops a cookie over 4 KB. So in the ID token
-         *     the two claims together take at most 1024 bytes (their compact JSON,
-         *     UTF-8). Past that, the ID token lists the groups that fit, in name
-         *     order, keeps every policy value, keeps in `setBy` only the groups it
-         *     lists, and adds `eugene_groups_truncated: true`. An app that needs
-         *     every group then reads this answer, which is never cut (at most 64
-         *     groups). Without the flag, the ID token holds every group.
+         *     the two claims together take at most 1024 bytes, counted as the
+         *     token's payload carries them: compact JSON with every non-ASCII
+         *     character escaped (one emoji is 12 bytes). Past that, the ID token
+         *     lists the groups that fit, in name order, keeps every policy value,
+         *     keeps in `setBy` only the groups it lists, and adds
+         *     `eugene_groups_truncated: true`. An app that needs every group then
+         *     reads this answer, which is never cut (at most 64 groups). Without
+         *     the flag, the ID token holds every group.
          */
         get: operations["oidcUserinfo"];
         put?: never;
@@ -514,6 +516,10 @@ export interface paths {
          *     as Workbench's group memory servers, which its owner sets before any
          *     member signs in. It says nothing of who is in a group: a person's
          *     groups come only in their own sign-in claims.
+         *
+         *     Bounded: 5 wrong secrets from one address, or 60 reads by one app,
+         *     in 60 seconds, then 429 `slow_down` with `Retry-After`. The list
+         *     has no fixed length; a person's own groups are at most 64.
          */
         get: operations["oidcGroups"];
         put?: never;
@@ -7472,6 +7478,15 @@ export interface operations {
             };
             /** @description `invalid_client`. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `slow_down`: too many wrong secrets from this address, or reads by this app. Wait `Retry-After` seconds. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
