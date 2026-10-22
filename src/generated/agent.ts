@@ -1956,6 +1956,11 @@ export interface paths {
          *     which machines it waits on (`machineKeyChange`). The old private
          *     key is deleted at the switch.
          *
+         *     A machine also starts a change by itself when its key is older
+         *     than the `machineKeyChangeDays` config field (365 by default, 0
+         *     for only on request; R3-SCHEDULE, part 3b). This route starts one
+         *     now, whatever the key's age (`reason: requested`).
+         *
          *     Operator-only.
          */
         post: operations["startMachineKeyChange"];
@@ -3295,6 +3300,22 @@ export interface components {
              *     /v1/node/machine-key`), or `null` when it never had one.
              */
             keyChange?: components["schemas"]["MachineKeyChange"] | null;
+            /**
+             * Format: date-time
+             * @description When the key the machine port presents was made (part 3b).
+             */
+            keyMadeAt?: string | null;
+            /**
+             * Format: date-time
+             * @description When this machine changes its key by itself next: `keyMadeAt`
+             *     plus the `machineKeyChangeDays` config field (365 by default),
+             *     plus a spread of up to a twelfth of it (about a month a year),
+             *     drawn from the key itself: the same for one key, different for
+             *     each, so the machines of one install do not change on the same
+             *     day. A key past it is changed at the next check, within a
+             *     minute. `null` when the field is 0 (only on request).
+             */
+            keyChangeDueAt?: string | null;
         };
         /**
          * @description * `waiting`: the next key is made and announced beside the
@@ -3312,11 +3333,19 @@ export interface components {
          */
         MachineKeyChangeState: "waiting" | "switched" | "done" | "stopped" | "failed";
         /**
+         * @description * `requested`: an operator asked for it (`POST /v1/node/machine-key`).
+         *     * `scheduled`: the key was older than `machineKeyChangeDays`, and the
+         *       machine started the change by itself (part 3b).
+         * @enum {string}
+         */
+        MachineKeyChangeReason: "requested" | "scheduled";
+        /**
          * @description A change of this node's machine key (row 3): two pins across an
          *     overlap. Kept in `node.yaml`, so a restart resumes it.
          */
         MachineKeyChange: {
             state: components["schemas"]["MachineKeyChangeState"];
+            reason?: components["schemas"]["MachineKeyChangeReason"];
             /**
              * @description The pin of the key it changes to, while `waiting` or
              *     `switched`. `null` otherwise.

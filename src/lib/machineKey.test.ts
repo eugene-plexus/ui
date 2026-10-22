@@ -1,0 +1,150 @@
+import { describe, expect, it } from "vitest";
+
+import { describeMachineKey, type MachineKeyInput } from "./machineKey";
+
+const when = (iso: string | null | undefined) => (iso ? `[${iso}]` : null);
+const NOW = Date.parse("2026-10-22T12:00:00Z");
+
+function input(over: Partial<MachineKeyInput> = {}): MachineKeyInput {
+  return {
+    who: "NAS",
+    machine: {
+      pin: "p".repeat(43),
+      listening: true,
+      required: true,
+      keyMadeAt: "2026-01-01T00:00:00Z",
+      keyChangeDueAt: "2027-01-01T00:00:00Z",
+    },
+    observed: null,
+    others: 2,
+    labelOf: (name) => name.toUpperCase(),
+    now: NOW,
+    when,
+    ...over,
+  };
+}
+
+describe("describeMachineKey", () => {
+  it("says when the key was made and when it changes by itself", () => {
+    const view = describeMachineKey(input())!;
+    expect(view.lines.map((l) => l.text)).toEqual([
+      "Machine key made [2026-01-01T00:00:00Z]",
+      "Changes by itself on [2027-01-01T00:00:00Z]",
+    ]);
+    expect(view.canStart).toBe(true);
+    expect(view.canStop).toBe(false);
+  });
+
+  it("says a key set to change only on request", () => {
+    const view = describeMachineKey(
+      input({ machine: { ...input().machine!, keyChangeDueAt: null } }),
+    )!;
+    expect(view.lines[1]?.text).toBe("Changes only when you ask");
+  });
+
+  it("counts the machines that have the new key, and names the offline ones", () => {
+    const view = describeMachineKey(
+      input({
+        others: 3,
+        machine: {
+          ...input().machine!,
+          keyChange: { state: "waiting", startedAt: "2026-10-22T11:59:00Z", nextPin: "n" },
+        },
+        observed: { nextPin: "n", waitingOn: ["gpu"], unreachable: ["laptop"], notReady: [] },
+      }),
+    )!;
+    expect(view.lines.map((l) => l.text)).toEqual([
+      "Changing machine key: 1 of 3 machines have the new key",
+      "LAPTOP is offline; it takes the new key when it returns",
+    ]);
+    expect(view.canStart).toBe(false);
+    expect(view.canStop).toBe(true);
+  });
+
+  it("says what a change waits for, in the machine's own words", () => {
+    const view = describeMachineKey(
+      input({
+        machine: {
+          ...input().machine!,
+          keyChange: {
+            state: "waiting",
+            startedAt: "2026-10-22T11:59:00Z",
+            nextPin: "n",
+            error: "waiting for the root (connection refused)",
+          },
+        },
+      }),
+    )!;
+    expect(view.lines.map((l) => l.text)).toContain("Waiting for the root (connection refused)");
+  });
+
+  it("says a change is no longer stoppable after the switch", () => {
+    const view = describeMachineKey(
+      input({
+        machine: {
+          ...input().machine!,
+          keyChange: { state: "switched", startedAt: "2026-10-22T11:59:00Z", nextPin: "n" },
+        },
+      }),
+    )!;
+    expect(view.lines[0]?.text).toBe(
+      "Changing machine key: NAS presents its new key; the root drops the old one next",
+    );
+    expect(view.canStop).toBe(false);
+    expect(view.canStart).toBe(false);
+  });
+
+  it("says when a change finished, and why one failed", () => {
+    const done = describeMachineKey(
+      input({
+        machine: {
+          ...input().machine!,
+          keyChange: {
+            state: "done",
+            reason: "scheduled",
+            startedAt: "2026-10-22T11:00:00Z",
+            finishedAt: "2026-10-22T11:03:00Z",
+          },
+        },
+      }),
+    )!;
+    expect(done.lines[0]).toEqual({
+      text: "Machine key changed by itself [2026-10-22T11:03:00Z]",
+      tone: "good",
+    });
+    const failed = describeMachineKey(
+      input({
+        machine: {
+          ...input().machine!,
+          keyChange: {
+            state: "failed",
+            startedAt: "2026-10-22T11:00:00Z",
+            finishedAt: "2026-10-22T11:00:05Z",
+            error: "the root refused it (Machine port cannot be a node's)",
+          },
+        },
+      }),
+    )!;
+    expect(failed.lines[0]).toEqual({
+      text: "Machine key not changed: the root refused it (Machine port cannot be a node's)",
+      tone: "bad",
+    });
+    expect(failed.canStart).toBe(true);
+  });
+
+  it("says a key past its age is changed within a minute", () => {
+    const view = describeMachineKey(
+      input({ machine: { ...input().machine!, keyChangeDueAt: "2026-10-01T00:00:00Z" } }),
+    )!;
+    expect(view.lines[1]?.text).toBe("Due a change; it starts within a minute");
+  });
+
+  it("offers nothing on a machine without a listening machine port", () => {
+    expect(describeMachineKey(input({ machine: null }))).toBeNull();
+    const down = describeMachineKey(
+      input({ machine: { ...input().machine!, listening: false, error: "port 8083 is in use" } }),
+    )!;
+    expect(down.canStart).toBe(false);
+    expect(down.lines[0]?.text).toBe("No machine key change: its machine port is not listening");
+  });
+});

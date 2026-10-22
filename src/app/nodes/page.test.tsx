@@ -952,3 +952,78 @@ describe("removing a machine (CX6)", () => {
     );
   });
 });
+
+describe("nodes page, machine keys (row 3, part 3b)", () => {
+  let posted: string[];
+
+  beforeEach(() => {
+    sealed = false;
+    posted = [];
+    const keyed = {
+      nodes: [
+        {
+          name: "unraid",
+          role: "control",
+          reachable: true,
+          url: "http://192.168.16.252:8283",
+          tlsPins: ["r".repeat(43)],
+        },
+        {
+          name: "Amish_Station",
+          role: "worker",
+          reachable: true,
+          url: "http://192.168.16.75:8079",
+          tlsPins: ["a".repeat(43)],
+        },
+      ],
+    };
+    const identityOf = (made: string) => ({
+      enrolled: true,
+      machine: {
+        pin: "a".repeat(43),
+        listening: true,
+        required: true,
+        keyMadeAt: made,
+        keyChangeDueAt: "2027-06-01T00:00:00Z",
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        const json = (body: unknown, status = 200) =>
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { "content-type": "application/json" },
+          });
+        if (method === "POST" && url.endsWith("/v1/node/machine-key")) {
+          posted.push(url);
+          return json({ state: "waiting", startedAt: new Date().toISOString() }, 202);
+        }
+        if (url.includes("/node:Amish_Station/v1/node")) {
+          return json(identityOf("2026-06-01T00:00:00Z"));
+        }
+        if (url.includes("/agent/v1/node")) return json(identityOf("2026-05-01T00:00:00Z"));
+        if (url.includes("/v1/nodes/join-tokens")) return json({ tokens: [] });
+        if (url.includes("/v1/nodes")) return json(keyed);
+        if (url.includes("/v1/control/status")) return json({ role: "control", epoch: 1 });
+        return json({});
+      }),
+    );
+  });
+
+  it("changes another machine's key through its own agent, after asking", async () => {
+    const user = userEvent.setup();
+    render(<NodesPage />);
+    const card = await screen.findByTestId("machine-key-Amish_Station");
+    await waitFor(() => expect(card).toHaveTextContent(/Changes by itself on/));
+    await user.click(within(card).getByRole("button", { name: "Change Amish_Station's key now" }));
+    expect(posted).toEqual([]);
+    expect(card).toHaveTextContent("The others take it within a few minutes; nothing stops.");
+    await user.click(within(card).getByRole("button", { name: "Change the key" }));
+    await waitFor(() =>
+      expect(posted).toEqual(["/api/proxy/node:Amish_Station/v1/node/machine-key"]),
+    );
+  });
+});
