@@ -263,7 +263,10 @@ export default function RoutingPage() {
       <main data-testid="routing-scroll" className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-6 py-8">
           <p className="text-sm text-[color:var(--muted)]">
-            A priority list gives a model name ordered fallbacks.
+            <Link href="/routing/roles" className="underline">
+              Model roles
+            </Link>
+            {" · "}A priority list gives a model name ordered fallbacks.
           </p>
           <More label="priority lists" className="mb-2">
             <p className="text-sm text-[color:var(--muted)]">

@@ -497,6 +497,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/oidc/subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Which of these people Eugene still has (row 7)
+         * @description `client_secret_basic`, as `/oidc/revoke`. An app sends the `sub`s it
+         *     has seen sign in; each comes back `known` (a person record exists,
+         *     turned on or off, or it is the owner) or `unknown` (the person was
+         *     deleted). It answers only for the ids sent, so it cannot list people.
+         *     An app hides a removed person's data, and deletes it later
+         *     (`docs/design/rows/row-07.md`).
+         */
+        post: operations["oidcSubjects"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/audit": {
         parameters: {
             query?: never;
@@ -4747,6 +4772,17 @@ export interface components {
             error: string;
             error_description?: string;
         };
+        OidcSubjectsRequest: {
+            subjects: components["schemas"]["OidcSubject"][];
+        };
+        /** @description A person's `sub`, as their ID token carries it. */
+        OidcSubject: string;
+        OidcSubjectsResponse: {
+            /** @description Ids Eugene has a person record for (on or off), or the owner's. */
+            known: string[];
+            /** @description Ids Eugene has no person for. Each one was deleted, or never was Eugene's. */
+            unknown: string[];
+        };
         PromoteRequest: {
             /**
              * Format: password
@@ -7320,6 +7356,57 @@ export interface operations {
             };
             /** @description `invalid_client`. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+        };
+    };
+    oidcSubjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OidcSubjectsRequest"];
+            };
+        };
+        responses: {
+            /** @description Every id sent, in `known` or in `unknown`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcSubjectsResponse"];
+                };
+            };
+            /** @description `invalid_request`: not 1 to 500 ids, or an id that is not a string. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `invalid_client`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `temporarily_unavailable`: the root is locked, or is a standby. Nothing can be said of anyone. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

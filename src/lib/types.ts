@@ -73,6 +73,9 @@ export type ConfigValueType = GatewayComponents["schemas"]["ConfigValueType"];
 // field name differs. Don't camelCase these on the way through.
 
 export type ModelList = GatewayComponents["schemas"]["ModelList"];
+export type ModelRole = GatewayComponents["schemas"]["ModelRole"];
+export type ModelRoleDefinition = GatewayComponents["schemas"]["ModelRoleDefinition"];
+export type ModelRoleList = GatewayComponents["schemas"]["ModelRoleList"];
 export type Model = GatewayComponents["schemas"]["Model"];
 export type ModelRoutingInfo = GatewayComponents["schemas"]["ModelRoutingInfo"];
 export type MessageContent = GatewayComponents["schemas"]["MessageContent"];

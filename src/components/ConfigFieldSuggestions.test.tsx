@@ -52,6 +52,28 @@ function Editor({
 }
 
 describe("discovered model dropdowns", () => {
+  it("lists the install's Embeddings role first and preserves an explicit model", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <Editor
+        field={{ ...EMBEDDING, suggestions: ["role:embeddings", ...EMBEDDING.suggestions!] }}
+        initial="qwen-embedding"
+        onChange={onChange}
+      />,
+    );
+    const select = screen.getByRole("combobox");
+    expect(screen.getAllByRole("option")[0]).toHaveTextContent(
+      "Use the install's Embeddings model (role)",
+    );
+    expect(select).toHaveDisplayValue("qwen-embedding");
+    expect(onChange).not.toHaveBeenCalled();
+    await user.selectOptions(
+      select,
+      screen.getByRole("option", { name: "Use the install's Embeddings model (role)" }),
+    );
+    expect(onChange).toHaveBeenLastCalledWith("role:embeddings");
+  });
   it.each([EMBEDDING, SORTER])(
     "$key shows all choices while auto is selected and saves the model ID",
     async (field) => {

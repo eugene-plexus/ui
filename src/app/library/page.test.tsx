@@ -40,6 +40,11 @@ vi.mock("@/components/AppShell", () => ({
 }));
 
 const MODEL_PATH = "Y:\\models\\gemma-3-27b-it-Q6_K_L.gguf";
+vi.mock("@/components/ModelRoles", () => ({
+  ModelRoleChips: ({ model }: { model: string }) => (
+    <div data-testid="model-role-chips">{model}</div>
+  ),
+}));
 const GIB = 1024 ** 3;
 
 function libraryModel() {
@@ -296,6 +301,18 @@ async function openTheModel() {
 }
 
 describe("a model that is running on the picked node", () => {
+  it("edits roles for its runtime's routing name", async () => {
+    await openTheModel();
+    expect(await screen.findByTestId("model-role-chips")).toHaveTextContent("gemma-3-27b");
+  });
+
+  it("can give an unstarted model roles under its default routing name", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ok({ runtimes: [] }));
+    await openTheModel();
+    expect(await screen.findByTestId("model-role-chips")).toHaveTextContent(
+      "gemma-3-27b-it-Q6_K_L",
+    );
+  });
   it("says so, instead of offering to start it", async () => {
     await openTheModel();
     const panel = await screen.findByTestId("model-running");
