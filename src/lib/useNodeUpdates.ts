@@ -42,6 +42,7 @@ export function useNodeUpdates(names: string[] | null, updating: boolean) {
   );
   return {
     readings,
+    hardware: facts,
     refresh: reload,
     localName,
     checkingUpdates,
