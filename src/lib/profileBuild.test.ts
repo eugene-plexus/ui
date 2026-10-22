@@ -159,6 +159,9 @@ describe("saving a real High build", () => {
       env: { CUDA_VISIBLE_DEVICES: "0" },
       maxTokens: 400,
       temperature: 0.7,
+      authorSampling: false,
+      topK: 0,
+      minP: 0.05,
     } as ModelProfile;
     const spec = builtSpec({
       base,
@@ -181,6 +184,9 @@ describe("saving a real High build", () => {
       env: { CUDA_VISIBLE_DEVICES: "0" },
       maxTokens: 400,
       temperature: 0.7,
+      authorSampling: false,
+      topK: 0,
+      minP: 0.05,
     });
     // Replacing keeps the base's default flag.
     expect(

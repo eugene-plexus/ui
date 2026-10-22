@@ -12,6 +12,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { DownloadsPanel, useDownloads } from "@/components/DownloadsPanel";
 import { FitBreakdown, formatMemory } from "@/components/FitBadge";
 import { MovedModel, MovedNotice, profilesPhrase } from "@/components/MovedModel";
+import { ModelRoleChips } from "@/components/ModelRoles";
 import { ProfileEditor } from "@/components/ProfileEditor";
 import { AppShell } from "@/components/AppShell";
 import { NodePicker } from "@/components/NodePicker";
@@ -52,7 +53,12 @@ import {
   shareFitQuery,
   useTargetNode,
 } from "@/lib/nodeBudget";
-import { describeRunning, runningModel, type RunningModel } from "@/lib/runningModel";
+import {
+  describeRunning,
+  runningModel,
+  runtimesForModel,
+  type RunningModel,
+} from "@/lib/runningModel";
 import { contextLabel } from "@/lib/starter";
 import { PlannedContextNote } from "@/components/PlannedContextNote";
 import { expertsContextSentence, placementSentence } from "@/lib/fitWords";
@@ -66,6 +72,7 @@ import type {
   LibraryModel,
   LibraryModelList,
   ModelFit,
+  ModelProfile,
   ModelRelocated,
   PreparedDetail,
   Runtime,
@@ -853,6 +860,7 @@ function ModelDetail({
   // a profile that has since been edited (MR3).
   const [profilesVersion, setProfilesVersion] = useState(0);
   const [keepFinished, setKeepFinished] = useState(false);
+  const [modelProfiles, setModelProfiles] = useState<ModelProfile[] | null | undefined>(undefined);
 
   // Which engines could load this model at all, and which of those are
   // installed here. Two different answers with two different fixes.
@@ -875,6 +883,14 @@ function ModelDetail({
     verdicts?.find((v) => v.engine === engine)?.fit ?? null;
 
   const running = runningModel(model, runtimes);
+  const routingNames = [
+    ...new Set(
+      runtimesForModel(model, runtimes).flatMap((r) => (r.modelAlias ? [r.modelAlias] : [])),
+    ),
+  ];
+  // The Library contract names `name` as the default Runtime.modelAlias.
+  // A custom runtime alias takes precedence; an unstarted model can still hold roles.
+  const roleModels = routingNames.length > 0 ? routingNames : [model.name];
   // LS9: when the preparing engine suits this machine better, Run asks with
   // preparing chosen (Troy's B54 change). Not for a prepared model itself.
   const route =
@@ -949,6 +965,15 @@ function ModelDetail({
       )}
       {model.keptFrom && <p>Kept from Ollama — served as {model.keptFrom.servedName}</p>}
 
+      {roleModels.map((alias) => (
+        <div key={alias}>
+          <p className="text-sm text-[color:var(--muted)]">
+            {routingNames.length > 0 ? "Routing name" : "Default routing name"}: {alias}
+          </p>
+          <ModelRoleChips model={alias} />
+        </div>
+      ))}
+
       {moved && <MovedNotice done={moved} />}
 
       {model.status === "missing" && (
@@ -991,7 +1016,7 @@ function ModelDetail({
         </p>
       )}
 
-      <Facts model={model} />
+      <Facts model={model} profiles={modelProfiles} />
 
       {model.status === "present" && model.format === "prepared" && (
         // The Library does not read an engine's prepared files, and
@@ -1179,6 +1204,7 @@ function ModelDetail({
       <ProfileEditor
         key={keepFinished ? "kept" : "original"}
         model={model}
+        onProfilesLoaded={setModelProfiles}
         engines={usable.length > 0 ? usable : capable}
         node={node}
         onChanged={() => {
@@ -1595,7 +1621,13 @@ function EngineFitNote({
  * elements read as what they are, and JSX pushed into an array is a
  * shape React tooling has to be told is safe.
  */
-function Facts({ model }: { model: LibraryModel }) {
+function Facts({
+  model,
+  profiles,
+}: {
+  model: LibraryModel;
+  profiles: ModelProfile[] | null | undefined;
+}) {
   const caps = model.capabilities;
   const capabilityList = caps
     ? [
@@ -1606,12 +1638,13 @@ function Facts({ model }: { model: LibraryModel }) {
         caps.chatTemplate && "chat template",
       ].filter(Boolean)
     : [];
-  const sampling = model.gguf?.recommendedSampling;
+  const sampling = model.gguf?.recommendedSampling ?? model.safetensors?.recommendedSampling;
   const samplingParts = sampling
     ? [
-        sampling.temperature != null && `temp ${sampling.temperature}`,
-        sampling.topK != null && `top_k ${sampling.topK}`,
-        sampling.topP != null && `top_p ${round(sampling.topP)}`,
+        sampling.temperature != null && `temperature ${sampling.temperature}`,
+        sampling.topP != null && `top-p ${sampling.topP}`,
+        sampling.topK != null && `top-k ${sampling.topK}`,
+        sampling.minP != null && `min-p ${sampling.minP}`,
       ].filter(Boolean)
     : [];
 
@@ -1726,13 +1759,18 @@ function Facts({ model }: { model: LibraryModel }) {
 
       {capabilityList.length > 0 && <Row label="capabilities">{capabilityList.join(", ")}</Row>}
 
-      {/* Reported, never applied. The gateway owns every parameter that
-          affects output; this exists so the operator doesn't have to go
-          read the model card to learn the file had an opinion. */}
       {samplingParts.length > 0 && (
-        <Row label="author suggests">
-          {samplingParts.join(" · ")}
-          <span className="ml-2 text-[color:var(--muted)]">not applied automatically</span>
+        <Row label="sampling">
+          <span data-testid="author-sampling">
+            {samplingParts.join(", ")} · the model author&apos;s ·{" "}
+            {profiles === undefined
+              ? "checking the default profile"
+              : profiles === null
+                ? "default profile unavailable; use cannot be confirmed"
+                : profiles.find((profile) => profile.default)?.authorSampling === false
+                  ? "not used: the default profile turns it off"
+                  : "used when a request and the default profile set none"}
+          </span>
         </Row>
       )}
     </dl>
@@ -1830,10 +1868,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 /** Engine names as a person says them. */
 function engineName(engine: string): string {
   return engine === "llama_cpp" ? "llama.cpp" : engine === "vllm" ? "vLLM" : engine;
-}
-
-function round(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function relativeAge(iso: string): string {

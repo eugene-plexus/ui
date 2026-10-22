@@ -21,6 +21,7 @@ const model: LibraryModel = {
   files: [],
 };
 const profile: ModelProfile = {
+  authorSampling: true,
   id: "p",
   name: "Tuned",
   engine: "llama_cpp",
