@@ -854,8 +854,11 @@ export interface components {
              * Name
              * @description The filename with its extension stripped, the directory
              *     name for safetensors, or the provenance file's name without
-             *     `.eugene-prepared.json` for `prepared`, or the first Ollama tag
-             *     for a model in an Ollama store. **Not derived from metadata**: the
+             *     `.eugene-prepared.json` for `prepared`. An Ollama model keeps
+             *     the tag it was first listed under while that tag exists;
+             *     if it disappears, use the first remaining tag and log the
+             *     change. A kept copy retains `keptFrom.servedName`.
+             *     **Not derived from metadata**: the
              *     file's own name is what the operator downloaded, what they
              *     call it, and what `Runtime.modelAlias` defaults to — so
              *     plainly-named files mean the obvious name is already the
@@ -940,6 +943,7 @@ export interface components {
             kev?: components["schemas"]["KevCheckpointDetail"] | null;
             prepared?: components["schemas"]["PreparedDetail"] | null;
             ollama?: components["schemas"]["OllamaDetail"] | null;
+            keptFrom?: components["schemas"]["OllamaKept"] | null;
             /**
              * Profilecount
              * @description How many launch profiles are saved against this model. On
@@ -1003,6 +1007,11 @@ export interface components {
              */
             error?: string | null;
         };
+        /**
+         * Method
+         * @enum {string}
+         */
+        Method: "link" | "copy";
         /**
          * MlxQuantization
          * @description Present when the directory's `config.json` carries an MLX-style
@@ -1261,9 +1270,11 @@ export interface components {
          * OllamaDetail
          * @description A model read from an Ollama store (CX9): which of Ollama's names
          *     point at this file. Present only for a model in a folder of kind
-         *     `ollama`. Its `name` is the first of `tags`, and is what
-         *     `Runtime.modelAlias` is set to, since the file's own name is a
-         *     hash. Ollama manages the file: the library never writes or
+         *     `ollama`. Its `name` is the tag it was first listed under,
+         *     while that tag exists. If it disappears, take the first remaining
+         *     tag and log the change. Adding a tag never renames a model.
+         *     `Runtime.modelAlias` is set to `name`, since the file's own name
+         *     is a hash. Ollama manages the file: the library never writes or
          *     deletes it.
          */
         OllamaDetail: {
@@ -1283,6 +1294,41 @@ export interface components {
              *     it. Run is not refused for it.
              */
             needsMigration?: boolean | null;
+        };
+        /**
+         * OllamaKept
+         * @description Provenance stored against the kept file's path and reapplied on
+         *     scans. The ordinary Library model keeps `servedName` as `name`
+         *     and `Runtime.modelAlias`, even if Ollama removes every tag.
+         *     The Library never opens a kept file for writing: a link shares
+         *     Ollama's bytes. A node only holds a copy of this Library file.
+         */
+        OllamaKept: {
+            /** Servedname */
+            servedName: string;
+            /** Tags */
+            tags: string[];
+            /**
+             * Digest
+             * @description Ollama's weights digest, used to verify copies and match a node's blob.
+             */
+            digest: string;
+            /**
+             * Store
+             * @description Absolute path of the source Ollama store on its machine.
+             */
+            store: string;
+            /**
+             * Node
+             * @description Source machine for a remote Keep; absent for the Library's own machine.
+             */
+            node?: string | null;
+            /**
+             * Keptat
+             * Format: date-time
+             */
+            keptAt: string;
+            method: components["schemas"]["Method"];
         };
         /**
          * Operation
