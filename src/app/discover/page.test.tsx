@@ -78,7 +78,7 @@ function asked(path: string): number {
  */
 interface ModelBodyOptions {
   projectors?: { path: string; sizeBytes: number; role: string }[];
-  draftFiles?: { path: string; sizeBytes: number; role: string }[];
+  draftFiles?: { path: string; sizeBytes: number; role: string; draftKind?: string }[];
   alreadyOwned?: { modelId: string; path: string; root?: string; folder?: string };
   warnings?: string[];
   chatTemplate?: boolean;
@@ -426,8 +426,18 @@ describe("vision pairing", () => {
 
 describe("drafting companion (library#13)", () => {
   const DRAFTS = [
-    { path: "mtp-Qwen3.8-27B-Q8_0.gguf", sizeBytes: 3_164_000_000, role: "draft" },
-    { path: "mtp-Qwen3.8-27B-Q4_0.gguf", sizeBytes: 1_680_000_000, role: "draft" },
+    {
+      path: "mtp-Qwen3.8-27B-Q8_0.gguf",
+      sizeBytes: 3_164_000_000,
+      role: "draft",
+      draftKind: "mtp",
+    },
+    {
+      path: "mtp-Qwen3.8-27B-Q4_0.gguf",
+      sizeBytes: 1_680_000_000,
+      role: "draft",
+      draftKind: "mtp",
+    },
   ];
   const withDrafts = (extra: ModelBodyOptions = {}): ModelBodyOptions => ({
     draftFiles: DRAFTS,
@@ -437,6 +447,52 @@ describe("drafting companion (library#13)", () => {
 
   beforeEach(() => {
     handlers.set("POST library/v1/downloads", () => ok({ id: "d1" }));
+  });
+
+  it("offers separate MTP and DFlash boxes, off with the smallest precision of each chosen", async () => {
+    useModel(
+      withDrafts({
+        draftFiles: [
+          ...DRAFTS,
+          {
+            path: "dflash-Q8_0.gguf",
+            sizeBytes: 1_850_000_000,
+            role: "draft",
+            draftKind: "dflash",
+          },
+          {
+            path: "dflash-BF16.gguf",
+            sizeBytes: 3_470_000_000,
+            role: "draft",
+            draftKind: "dflash",
+          },
+        ],
+      }),
+    );
+    await openTheRepo();
+    const mtp = screen.getByRole("checkbox", { name: "Also get the MTP head" });
+    const dflash = screen.getByRole("checkbox", { name: "Also get the DFlash drafter" });
+    expect(mtp).not.toBeChecked();
+    expect(dflash).not.toBeChecked();
+    expect(
+      screen.getByText(
+        "DFlash proposes up to 15 tokens at once. It needs llama.cpp b11719 or newer.",
+      ),
+    ).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(mtp);
+      fireEvent.click(dflash);
+    });
+    expect(screen.getByRole("radio", { name: /mtp-Qwen3.8-27B-Q4_0/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /dflash-Q8_0/ })).toBeChecked();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("repo-recommended-download"));
+    });
+    expect(lastDownloadBody().files).toEqual([
+      "Qwen3.8-27B-Q4_K_M.gguf",
+      "mtp-Qwen3.8-27B-Q4_0.gguf",
+      "dflash-Q8_0.gguf",
+    ]);
   });
 
   it("is off by default, and the download is the quant alone", async () => {
@@ -450,6 +506,49 @@ describe("drafting companion (library#13)", () => {
       fireEvent.click(button);
     });
     expect(lastDownloadBody().files).toEqual(["Qwen3.8-27B-Q4_K_M.gguf"]);
+  });
+
+  it("fetches a chosen DFlash precision beside an owned model independently of MTP", async () => {
+    useModel(
+      withDrafts({
+        alreadyOwned: { modelId: "m1", path: "/models/q/x.gguf", root: "/models", folder: "q" },
+        draftFiles: [
+          ...DRAFTS,
+          {
+            path: "dflash-Q8_0.gguf",
+            sizeBytes: 1_850_000_000,
+            role: "draft",
+            draftKind: "dflash",
+          },
+          {
+            path: "dflash-BF16.gguf",
+            sizeBytes: 3_470_000_000,
+            role: "draft",
+            draftKind: "dflash",
+          },
+        ],
+      }),
+    );
+    await openTheRepo();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("checkbox", { name: "Also get the DFlash drafter" }));
+    });
+    const box = screen
+      .getAllByTestId("draft-pairing")
+      .find((box) => within(box).queryByRole("checkbox", { name: "Also get the DFlash drafter" }));
+    if (!box) throw new Error("DFlash box missing");
+    await act(async () => {
+      fireEvent.click(within(box).getByRole("radio", { name: /dflash-BF16/ }));
+    });
+    expect(screen.getByRole("checkbox", { name: "Also get the MTP head" })).not.toBeChecked();
+    await act(async () => {
+      fireEvent.click(within(box).getByTestId("draft-beside-Q4_K_M"));
+    });
+    expect(lastDownloadBody()).toMatchObject({
+      files: ["dflash-BF16.gguf"],
+      root: "/models",
+      subdirectory: "q",
+    });
   });
 
   it("checked, the smallest precision rides along and the button says its size", async () => {

@@ -16,6 +16,14 @@ import type { ConfigField, LibraryModel, ProfileBuild, Runtime } from "./types";
 type DraftTrial = AgentComponents["schemas"]["DraftTrial"];
 type RuntimeSpeculation = NonNullable<Runtime["speculation"]>;
 
+const DRAFT_WORDS = {
+  mtp: "MTP head",
+  simple: "draft model",
+  dflash: "DFlash",
+  dspark: "DSpark",
+  eagle3: "EAGLE3",
+};
+
 export const REUSE_TEXT_KEY = "reuseRepeatedText";
 export const DRAFT_WITH_KEY = "draftWith";
 export const DRAFT_MODEL_KEY = "draftModelPath";
@@ -70,9 +78,7 @@ export function speculationFields(
       const chosen =
         typeof flags[DRAFT_MODEL_KEY] === "string" ? String(flags[DRAFT_MODEL_KEY]) : null;
       const paths = files.map((f) => f.path);
-      const labels = files.map(
-        (f) => `${basename(f.path)} (${f.kind === "mtp" ? "MTP head" : "draft model"})`,
-      );
+      const labels = files.map((f) => `${basename(f.path)} (${DRAFT_WORDS[f.kind]})`);
       if (chosen && !paths.includes(chosen)) {
         paths.push(chosen);
         labels.push(`${basename(chosen)} (not in this model's folder now)`);
@@ -150,6 +156,10 @@ function acceptance(accepted: number, drafted: number): string {
 const TYPE_WORDS: Record<string, string> = {
   "ngram-mod": "repeated text",
   "draft-simple": "draft model",
+  "draft-mtp": "MTP head",
+  "draft-dflash": "DFlash",
+  "draft-dspark": "DSpark",
+  "draft-eagle3": "EAGLE3",
 };
 
 /** What a running model drafts with, and how much it keeps, as a fact (S3). */
@@ -157,13 +167,13 @@ export function speculationLine(
   speculation: RuntimeSpeculation | null | undefined,
 ): { text: string; note: string | null } | null {
   if (!speculation) return null;
-  const names = speculation.types.map((t) =>
-    t === "draft-mtp"
-      ? speculation.draftModelPath
-        ? `MTP head (${basename(speculation.draftModelPath)})`
-        : "MTP head"
-      : (TYPE_WORDS[t] ?? t),
-  );
+  const names = speculation.types.map((t) => {
+    const name = TYPE_WORDS[t] ?? t;
+    return ["draft-mtp", "draft-dflash", "draft-dspark", "draft-eagle3"].includes(t) &&
+      speculation.draftModelPath
+      ? `${name} (${basename(speculation.draftModelPath)})`
+      : name;
+  });
   if (names.length === 0) {
     return speculation.note ? { text: "Speculative decoding: off", note: speculation.note } : null;
   }

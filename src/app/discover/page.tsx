@@ -1101,8 +1101,8 @@ function RepoDetail({
   // The drafting companion (library#13). Off by default: it speeds the
   // model up only once its profile drafts with it (SD1, S1), and takes
   // memory of its own when it does.
-  const [draft, setDraft] = useState<string | null>(null);
-  const [withDraft, setWithDraft] = useState(false);
+  const [draft, setDraft] = useState<Partial<Record<DraftKind, string>>>({});
+  const [withDraft, setWithDraft] = useState<Partial<Record<DraftKind, boolean>>>({});
   const [preflights, setPreflights] = useState<Record<string, CataloguePreflight>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -1176,13 +1176,6 @@ function RepoDetail({
         setDetail(body);
         setError(null);
         setProjector((current) => current ?? (body.projectors ?? [])[0]?.path ?? null);
-        // The smallest precision: the one measured (SD1), and the least memory.
-        setDraft(
-          (current) =>
-            current ??
-            [...(body.draftFiles ?? [])].sort((a, b) => a.sizeBytes - b.sizeBytes)[0]?.path ??
-            null,
-        );
       } catch (err) {
         if (id !== requestId.current) return;
         if (err instanceof ApiError && err.status === 401) return;
@@ -1195,6 +1188,14 @@ function RepoDetail({
     // `hubParam` and `pinned` follow `source` and the entry, which the key fixes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo, contextLength, budget]);
+
+  const draftGroups = groupDraftFiles(detail?.draftFiles ?? []);
+  const chosenDraft = (kind: DraftKind, files: CatalogueFile[]) =>
+    files.find((file) => file.path === draft[kind]) ?? files[0];
+  const selectedDrafts = draftGroups.flatMap(({ kind, files }) => {
+    const file = chosenDraft(kind, files);
+    return withDraft[kind] && file ? [file] : [];
+  });
 
   async function preflight(candidate: CatalogueCandidate) {
     const weights = candidate.files[0]?.path;
@@ -1231,7 +1232,7 @@ function RepoDetail({
       // directory — which is what pairs it: the scan finds a projector
       // beside its model and the launch line picks it up unaided.
       if (withVision && projector) files.push(projector);
-      if (withDraft && draft) files.push(draft);
+      files.push(...selectedDrafts.map((file) => file.path));
       const created = await api.post<Download>("library", "/v1/downloads", {
         repo,
         // Named only when it is not the default hub.
@@ -1249,9 +1250,9 @@ function RepoDetail({
   }
 
   /** The companion alone, into the folder of a version already on the disk. */
-  async function downloadDraftBeside(candidate: CatalogueCandidate) {
+  async function downloadDraftBeside(candidate: CatalogueCandidate, path: string) {
     const owned = candidate.alreadyOwned;
-    if (!draft || !owned?.root || !owned.folder) return;
+    if (!owned?.root || !owned.folder) return;
     setBusy(`draft:${candidate.label}`);
     setActionError(null);
     try {
@@ -1259,7 +1260,7 @@ function RepoDetail({
         repo,
         ...hubParam,
         revision: detail?.resolvedCommit ?? detail?.revision ?? "main",
-        files: [draft],
+        files: [path],
         root: owned.root,
         subdirectory: owned.folder,
       });
@@ -1299,8 +1300,6 @@ function RepoDetail({
 
   const projectors = detail.projectors ?? [];
   const projectorFile = projectors.find((p) => p.path === projector) ?? null;
-  const draftFiles = detail.draftFiles ?? [];
-  const draftFile = draftFiles.find((p) => p.path === draft) ?? null;
 
   // The library's multimodal warning is API prose — it says "listed
   // under `projectors`", a field name — and the vision box below now
@@ -1312,7 +1311,8 @@ function RepoDetail({
   const downloadLabel = (candidate: CatalogueCandidate) => {
     let label = `Download ${formatBytes(candidate.sizeBytes)}`;
     if (withVision && projectorFile) label += ` + ${formatBytes(projectorFile.sizeBytes)} vision`;
-    if (withDraft && draftFile) label += ` + ${formatBytes(draftFile.sizeBytes)} drafting`;
+    if (selectedDrafts.length > 0)
+      label += ` + ${formatBytes(selectedDrafts.reduce((sum, file) => sum + file.sizeBytes, 0))} drafting`;
     return label;
   };
 
@@ -1326,7 +1326,7 @@ function RepoDetail({
         files: [
           ...candidate.files.map((file) => file.path),
           ...(withVision && projector ? [projector] : []),
-          ...(withDraft && draft ? [draft] : []),
+          ...selectedDrafts.map((file) => file.path),
         ],
         label: candidate.files[0]?.path.split("/").pop() ?? repo,
       }}
@@ -1520,18 +1520,23 @@ function RepoDetail({
         />
       )}
 
-      {draftFiles.length > 0 && (
+      {draftGroups.map(({ kind, files }) => (
         <DraftPairing
-          files={draftFiles}
-          chosen={draft}
-          onChoose={setDraft}
-          enabled={withDraft}
-          onEnabled={setWithDraft}
+          key={kind}
+          kind={kind}
+          files={files}
+          chosen={chosenDraft(kind, files)?.path ?? null}
+          onChoose={(path) => setDraft((current) => ({ ...current, [kind]: path }))}
+          enabled={withDraft[kind] ?? false}
+          onEnabled={(enabled) => setWithDraft((current) => ({ ...current, [kind]: enabled }))}
           owned={detail.candidates.filter((c) => c.alreadyOwned?.root && c.alreadyOwned.folder)}
           busy={busy !== null}
-          onFetchBeside={(candidate) => void downloadDraftBeside(candidate)}
+          onFetchBeside={(candidate) => {
+            const file = chosenDraft(kind, files);
+            if (file) void downloadDraftBeside(candidate, file.path);
+          }}
         />
-      )}
+      ))}
 
       {actionError && (
         <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm" role="alert">
@@ -1914,14 +1919,28 @@ function VisionPairing({
   );
 }
 
-/**
- * The drafting companion (library#13): an MTP file the repository ships
- * beside the model, with which llama.cpp drafts a few tokens ahead (SD1).
- * Downloaded beside the model, the scan pairs it; the profile's "Draft
- * with" uses it, and the settings builder tries it. A version already on
- * the disk gets it into its own folder.
- */
+type DraftKind = NonNullable<CatalogueFile["draftKind"]>;
+
+const DRAFT_LABELS: Record<DraftKind, string> = {
+  mtp: "MTP head",
+  simple: "draft model",
+  dflash: "DFlash drafter",
+  dspark: "DSpark drafter",
+  eagle3: "EAGLE3 drafter",
+};
+
+function groupDraftFiles(files: CatalogueFile[]) {
+  return (Object.keys(DRAFT_LABELS) as DraftKind[]).flatMap((kind) => {
+    const group = files
+      .filter((file) => (file.draftKind ?? "simple") === kind)
+      .sort((a, b) => a.sizeBytes - b.sizeBytes);
+    return group.length ? [{ kind, files: group }] : [];
+  });
+}
+
+/** One kind of drafting companion, downloaded beside a new or owned version. */
 function DraftPairing({
+  kind,
   files,
   chosen,
   onChoose,
@@ -1931,6 +1950,7 @@ function DraftPairing({
   busy,
   onFetchBeside,
 }: {
+  kind: DraftKind;
   files: CatalogueFile[];
   chosen: string | null;
   onChoose: (path: string) => void;
@@ -1953,13 +1973,18 @@ function DraftPairing({
           checked={enabled}
           onChange={(event) => onEnabled(event.target.checked)}
         />
-        Also get the drafting part, for faster answers
+        Also get the {DRAFT_LABELS[kind]}
       </label>
       <p className="mt-0.5 text-[color:var(--muted)]">
         A small file that proposes a few tokens ahead for the model to check. It downloads beside
         the version you pick and needs memory of its own. The model&rsquo;s profile uses it when
         Draft with is set to Companion file, and the settings builder tries it.
       </p>
+      {kind === "dflash" && (
+        <p className="mt-0.5 text-[color:var(--muted)]">
+          DFlash proposes up to 15 tokens at once. It needs llama.cpp b11719 or newer.
+        </p>
+      )}
       {files.length > 1 && enabled && (
         <div className="mt-2 space-y-1">
           <p className="text-[color:var(--muted)]">
@@ -1969,7 +1994,7 @@ function DraftPairing({
             <label key={file.path} className="flex items-center gap-2">
               <input
                 type="radio"
-                name="draft-file"
+                name={`draft-file-${kind}`}
                 checked={chosen === file.path}
                 onChange={() => onChoose(file.path)}
               />
