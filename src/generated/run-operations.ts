@@ -544,9 +544,17 @@ export interface components {
          *       block and no first block (`--spec-type draft-mtp`).
          *     * `simple` — a whole small model named as a draft (`draft-*.gguf`)
          *       (`--spec-type draft-simple`).
+         *     * `dflash` — a DFlash drafter (`--spec-type draft-dflash`).
+         *     * `dspark` — a DSpark drafter (`--spec-type draft-dspark`).
+         *     * `eagle3` — an EAGLE3 drafter (`--spec-type draft-eagle3`).
+         *
+         *     DFlash, DSpark and EAGLE3 are bound to a target model by their
+         *     header: `general.architecture`, `<arch>.target_layers` and
+         *     `<arch>.target_hidden_size`. DSpark uses the `dflash` architecture
+         *     with a `markov_w1.weight` tensor.
          * @enum {string}
          */
-        DraftKind: "mtp" | "simple";
+        DraftKind: "mtp" | "simple" | "dflash" | "dspark" | "eagle3";
         /**
          * EngineKind
          * @description Which engine adapter constructs the argv and interprets
