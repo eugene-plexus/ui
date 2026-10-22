@@ -273,7 +273,11 @@ export function LibraryFolders({ nodeName }: { nodeName: string | null | undefin
       const result = await api.patch<{ applied?: string[]; rejected?: { message?: string }[] }>(
         "library",
         "/v1/config",
-        { modelRoots: draft.filter((f) => !f.found) },
+        {
+          modelRoots: draft
+            .filter((f) => !f.found)
+            .map((f) => ({ path: f.path, mounts: f.mounts, ...(f.kind ? { kind: f.kind } : {}) })),
+        },
       );
       if (result.rejected && result.rejected.length > 0) {
         setFailure(result.rejected.map((r) => r.message ?? "rejected").join("; "));
@@ -847,6 +851,12 @@ function FolderGrid({
                     {folder.found ? " · found on this machine" : ""}
                   </p>
                 )}
+                {folder.readOnlyReason && (
+                  <p className="mt-1 text-sm" data-testid="folder-read-only">
+                    {folder.readOnlyReason}
+                  </p>
+                )}
+                {folder.error && <p role="alert">{folder.error}</p>}
               </td>
               <MountCell
                 value={boxesFor(index).posix}
