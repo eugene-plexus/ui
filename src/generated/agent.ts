@@ -2706,8 +2706,8 @@ export interface components {
          *       the others on the node (S1).
          *     * `mtpHead` — the model's own MTP head (`--spec-type draft-mtp`).
          *     * `companion` — a companion file (`draftModelPath`) with
-         *       `--spec-draft-model`, as `draft-mtp` or `draft-simple` by the
-         *       file's own tensors.
+         *       `--spec-draft-model`, by the file's own header: `draft-mtp`,
+         *       `draft-simple`, `draft-dflash`, `draft-dspark` or `draft-eagle3`.
          * @enum {string}
          */
         DraftWith: "off" | "mtpHead" | "companion";

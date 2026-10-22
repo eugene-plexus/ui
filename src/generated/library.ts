@@ -2288,9 +2288,17 @@ export interface components {
          *       block and no first block (`--spec-type draft-mtp`).
          *     * `simple` — a whole small model named as a draft (`draft-*.gguf`)
          *       (`--spec-type draft-simple`).
+         *     * `dflash` — a DFlash drafter (`--spec-type draft-dflash`).
+         *     * `dspark` — a DSpark drafter (`--spec-type draft-dspark`).
+         *     * `eagle3` — an EAGLE3 drafter (`--spec-type draft-eagle3`).
+         *
+         *     DFlash, DSpark and EAGLE3 are bound to a target model by their
+         *     header: `general.architecture`, `<arch>.target_layers` and
+         *     `<arch>.target_hidden_size`. DSpark uses the `dflash` architecture
+         *     with a `markov_w1.weight` tensor.
          * @enum {string}
          */
-        DraftKind: "mtp" | "simple";
+        DraftKind: "mtp" | "simple" | "dflash" | "dspark" | "eagle3";
         /**
          * @description Safetensors-specific metadata. Present iff `format` is
          *     `safetensors`. **No quant tier** — a safetensors model is
@@ -3366,6 +3374,8 @@ export interface components {
              */
             gitBlobSha1?: string;
             role?: components["schemas"]["ModelFileRole"];
+            /** @description For a file in CatalogueModel.draftFiles, its kind by its name prefix (mtp-, draft-, dflash-, dspark-, eagle3-). The scan reads the header after the download, and the header decides. */
+            draftKind?: components["schemas"]["DraftKind"] | null;
             /**
              * @description Whether upstream stores this through LFS. Decides which
              *     digest is present, and also which redirect shape the
@@ -4562,9 +4572,17 @@ export interface components {
          *       block and no first block (`--spec-type draft-mtp`).
          *     * `simple` — a whole small model named as a draft (`draft-*.gguf`)
          *       (`--spec-type draft-simple`).
+         *     * `dflash` — a DFlash drafter (`--spec-type draft-dflash`).
+         *     * `dspark` — a DSpark drafter (`--spec-type draft-dspark`).
+         *     * `eagle3` — an EAGLE3 drafter (`--spec-type draft-eagle3`).
+         *
+         *     DFlash, DSpark and EAGLE3 are bound to a target model by their
+         *     header: `general.architecture`, `<arch>.target_layers` and
+         *     `<arch>.target_hidden_size`. DSpark uses the `dflash` architecture
+         *     with a `markov_w1.weight` tensor.
          * @enum {string}
          */
-        "schemas-DraftKind": "mtp" | "simple";
+        "schemas-DraftKind": "mtp" | "simple" | "dflash" | "dspark" | "eagle3";
         /** DraftFile */
         "schemas-DraftFile": {
             /**
