@@ -202,9 +202,13 @@ describe("group policies (row 70)", () => {
   });
 
   it("offers steps of five and keeps any other percent the root holds", () => {
-    expect(summaryPercentChoices(null)).toEqual([50, 55, 60, 65, 70, 75, 80, 85, 90, 95]);
-    expect(summaryPercentChoices(72)).toContain(72);
-    expect(summaryPercentChoices(70)).toHaveLength(10);
+    // Every value the root accepts (50-95) can be chosen, 72 included.
+    const all = summaryPercentChoices(null);
+    expect(all[0]).toBe(50);
+    expect(all[all.length - 1]).toBe(95);
+    expect(all).toHaveLength(46);
+    expect(all).toContain(72);
+    expect(summaryPercentChoices(72)).toHaveLength(46);
   });
 
   it("knows a root has policies only from what it answered", () => {

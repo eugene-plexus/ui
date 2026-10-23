@@ -74,10 +74,10 @@ export const QUEUE_BANDS: readonly { id: QueueBand; label: string }[] = [
 export const SUMMARY_PERCENT_MIN = 50;
 export const SUMMARY_PERCENT_MAX = 95;
 
-/** The summary percents the console offers: steps of five, and any other value the root holds. */
+/** The summary percents the console offers: every whole percent the root accepts. */
 export function summaryPercentChoices(current: number | null | undefined): number[] {
   const steps: number[] = [];
-  for (let p = SUMMARY_PERCENT_MIN; p <= SUMMARY_PERCENT_MAX; p += 5) steps.push(p);
+  for (let p = SUMMARY_PERCENT_MIN; p <= SUMMARY_PERCENT_MAX; p += 1) steps.push(p);
   if (current != null && !steps.includes(current)) steps.push(current);
   return steps.sort((a, b) => a - b);
 }
