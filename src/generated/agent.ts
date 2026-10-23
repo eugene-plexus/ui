@@ -8632,7 +8632,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The key is turned off */
+            /** @description The key is turned off or expired, or already replaced. The message says which. */
             409: {
                 headers: {
                     [name: string]: unknown;
