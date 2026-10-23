@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 
 import {
   appsSummary,
+  groupPoliciesBody,
   jobSitesSummary,
   installedByAgent,
   newPersonProblem,
   ownerLabel,
   parseReturnAddresses,
+  policiesSummary,
   returnAddressProblem,
+  rootKnowsPolicies,
   signInAddress,
   workbenchMachine,
   workbenchRemovalWords,
+  summaryPercentChoices,
+  workbenchGroupsHref,
 } from "./people";
 import type { OidcClient } from "./types";
 
@@ -160,5 +165,74 @@ describe("a removed person's data in Workbench (row 7)", () => {
     expect(workbenchRemovalWords("unreadable")).toBe(
       "Their chats, notes and documents in Workbench are deleted as Workbench's settings say.",
     );
+  });
+});
+
+describe("group policies (row 70)", () => {
+  const groups = [
+    { id: "g-desk", name: "Desk" },
+    { id: "g-night", name: "Night shift" },
+  ];
+
+  it("says each value in effect and the groups that set it", () => {
+    expect(
+      policiesSummary(
+        {
+          policiesInEffect: {
+            queueBand: "interactive",
+            summaryContextPercent: 85,
+            setBy: { queueBand: ["g-desk", "g-night"], summaryContextPercent: ["g-gone"] },
+          },
+        },
+        groups,
+      ),
+    ).toEqual({
+      queue: "Interactive (from Desk, Night shift)",
+      // A group the page has not loaded is named by its id, never dropped.
+      summary: "85% (from g-gone)",
+    });
+  });
+
+  it("says Not set for a policy no group sets, and nothing for an older root", () => {
+    expect(policiesSummary({ policiesInEffect: {} }, groups)).toEqual({
+      queue: "Not set",
+      summary: "Not set",
+    });
+    expect(policiesSummary({}, groups)).toBeNull();
+  });
+
+  it("offers steps of five and keeps any other percent the root holds", () => {
+    // Every value the root accepts (50-95) can be chosen, 72 included.
+    const all = summaryPercentChoices(null);
+    expect(all[0]).toBe(50);
+    expect(all[all.length - 1]).toBe(95);
+    expect(all).toHaveLength(46);
+    expect(all).toContain(72);
+    expect(summaryPercentChoices(72)).toHaveLength(46);
+  });
+
+  it("knows a root has policies only from what it answered", () => {
+    expect(rootKnowsPolicies([], [])).toBe(false);
+    expect(rootKnowsPolicies(null, [{}])).toBe(false);
+    expect(rootKnowsPolicies([{ policies: { queueBand: null } }], [])).toBe(true);
+    expect(rootKnowsPolicies([], [{ policiesInEffect: {} }])).toBe(true);
+  });
+
+  it("sends every policy, null when not set", () => {
+    expect(groupPoliciesBody("", null)).toEqual({ queueBand: null, summaryContextPercent: null });
+    expect(groupPoliciesBody("background", 70)).toEqual({
+      queueBand: "background",
+      summaryContextPercent: 70,
+    });
+  });
+});
+
+describe("where a group's memory servers are set (row 70c)", () => {
+  it("is Workbench's Settings, at its groups section", () => {
+    expect(workbenchGroupsHref("http://box.example:8190/")).toBe(
+      "http://box.example:8190/settings#groups",
+    );
+    expect(workbenchGroupsHref("https://wb.example")).toBe("https://wb.example/settings#groups");
+    expect(workbenchGroupsHref(null)).toBeNull();
   });
 });

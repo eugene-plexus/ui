@@ -480,8 +480,48 @@ export interface paths {
          *       each. Empty when no group sets a policy.
          *     An app reads a change after its next token refresh (the ID token
          *     lives 10 minutes).
+         *
+         *     **The ID token's cap (row 70c).** An app may keep the ID token in a
+         *     cookie, and a browser drops a cookie over 4 KB. So in the ID token
+         *     the two claims together take at most 1024 bytes, counted as the
+         *     token's payload carries them: compact JSON with every non-ASCII
+         *     character escaped (one emoji is 12 bytes). Past that, the ID token
+         *     lists the groups that fit, in name order, keeps every policy value,
+         *     keeps in `setBy` only the groups it lists, and adds
+         *     `eugene_groups_truncated: true`. An app that needs every group then
+         *     reads this answer, which is never cut (at most 64 groups). Without
+         *     the flag, the ID token holds every group.
          */
         get: operations["oidcUserinfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The permission groups that give this app (row 70c)
+         * @description `client_secret_basic`, as `/oidc/revoke`. The groups whose apps
+         *     include the calling app (or every app), as `{id, name}`, sorted by
+         *     name. An app uses it to attach settings of its own to a group, such
+         *     as Workbench's group memory servers, which its owner sets before any
+         *     member signs in. It says nothing of who is in a group: a person's
+         *     groups come only in their own sign-in claims.
+         *
+         *     Bounded: 5 wrong secrets from one address, or 60 reads by one app,
+         *     in 60 seconds, then 429 `slow_down` with `Retry-After`. The list
+         *     has no fixed length; a person's own groups are at most 64.
+         */
+        get: operations["oidcGroups"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4909,6 +4949,14 @@ export interface components {
             /** @description Ids Eugene has no person for. Each one was deleted, or never was Eugene's. */
             unknown: string[];
         };
+        OidcGroup: {
+            id: string;
+            name: string;
+        };
+        OidcGroupsResponse: {
+            /** @description The permission groups that give the calling app, sorted by name. */
+            groups: components["schemas"]["OidcGroup"][];
+        };
         PromoteRequest: {
             /**
              * Format: password
@@ -7505,6 +7553,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    oidcGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The groups, possibly none. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcGroupsResponse"];
+                };
+            };
+            /** @description `invalid_client`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `slow_down`: too many wrong secrets from this address, or reads by this app. Wait `Retry-After` seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `temporarily_unavailable`: the root is a standby; ask the active one. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
             };
         };
     };

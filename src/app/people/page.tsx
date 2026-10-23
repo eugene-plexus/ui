@@ -30,7 +30,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { PermissionGroups, PersonGroups } from "@/components/PermissionGroups";
 import { CopyButton } from "@/components/CopyButton";
 import { api, describeError } from "@/lib/api";
-import { agentTarget } from "@/lib/apps";
+import { agentTarget, workbenchLink } from "@/lib/apps";
 import {
   MIN_PASSWORD,
   appsSummary,
@@ -43,13 +43,16 @@ import {
   newPersonProblem,
   ownerLabel,
   parseReturnAddresses,
+  policiesSummary,
   returnAddressProblem,
   signInAddress,
+  workbenchGroupsHref,
   workbenchMachine,
   workbenchRemovalWords,
 } from "@/lib/people";
 import { ownerSitesHref, siteCountsByOwner } from "@/lib/sites";
 import type {
+  AppList,
   NodeIdentity,
   OidcClient,
   OidcClientCreated,
@@ -160,6 +163,7 @@ export default function PeoplePage() {
 
 function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () => Promise<void> }) {
   const { people, operatorName, clients, sites } = loaded;
+  const workbenchSettings = useWorkbenchGroupsLink(clients);
   return (
     <PeopleDirectory
       people={people}
@@ -204,6 +208,7 @@ function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () =>
         people={people}
         error={loaded.groupsError}
         onChanged={onChanged}
+        workbenchSettings={workbenchSettings}
       />
       <AppsSection loaded={loaded} onChanged={onChanged} />
       <ExternalSignIn />
@@ -216,6 +221,39 @@ function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () =>
       />
     </PeopleDirectory>
   );
+}
+
+/**
+ * Where a group's memory servers are set (row 70c): Workbench's Settings at its groups section,
+ * on the machine that runs Workbench, at the address its Open link uses. Null while it loads,
+ * and when no machine runs Workbench.
+ */
+function useWorkbenchGroupsLink(clients: OidcClient[]): string | null {
+  const machine = workbenchMachine(clients);
+  const [href, setHref] = useState<string | null>(null);
+  useEffect(() => {
+    if (machine === null) {
+      setHref(null);
+      return;
+    }
+    let live = true;
+    void (async () => {
+      const here = await api
+        .get<NodeIdentity>("agent", "/v1/node")
+        .then((node) => node.name ?? null)
+        .catch(() => null);
+      const listed = await api
+        .get<AppList>(agentTarget(machine, here), "/v1/apps")
+        .then((list) => list.apps ?? [])
+        .catch(() => []);
+      const host = typeof window === "undefined" ? "localhost" : window.location.hostname;
+      if (live) setHref(workbenchGroupsHref(workbenchLink(listed, host)?.href));
+    })();
+    return () => {
+      live = false;
+    };
+  }, [machine]);
+  return href;
 }
 
 /**
@@ -335,6 +373,7 @@ function PersonRow({
               <span data-testid={`person-apps-${person.name}`}>{appsSummary(person, clients)}</span>
             </p>
             <JobSitesLine person={person} />
+            <PoliciesLines person={person} groups={groups} />
             {person.groups != null && (
               <p className="break-words">
                 <span className="text-[color:var(--muted)]">Access from groups: </span>
@@ -435,6 +474,28 @@ function PersonRow({
         </p>
       )}
     </article>
+  );
+}
+
+/**
+ * Row 70: the group policies that apply to a person now, and the groups
+ * that set each, read from the root's `policiesInEffect`. Nothing for an
+ * older root, which has no policies.
+ */
+function PoliciesLines({ person, groups }: { person: Person; groups: PermissionGroup[] | null }) {
+  const summary = policiesSummary(person, groups);
+  if (!summary) return null;
+  return (
+    <>
+      <p className="text-sm break-words" data-testid={`person-queue-${person.name}`}>
+        <span className="text-[color:var(--muted)]">Queue priority: </span>
+        {summary.queue}
+      </p>
+      <p className="text-sm break-words" data-testid={`person-summary-${person.name}`}>
+        <span className="text-[color:var(--muted)]">Summarise long chats at: </span>
+        {summary.summary}
+      </p>
+    </>
   );
 }
 
