@@ -22,6 +22,7 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly statusText: string,
     public readonly body: unknown,
+    public readonly target?: ProxyTarget,
   ) {
     super(`HTTP ${status} ${statusText}`);
     this.name = "ApiError";
@@ -78,10 +79,62 @@ export function problemMessage(body: unknown): string | null {
 /** What to put on screen when a call failed: the component's own
  * sentence when it wrote one, and the status line when it did not. */
 export function describeError(e: unknown): string {
+  const outage = libraryOutage(e);
+  if (outage) return outage.message;
   if (e instanceof ApiError) {
     return problemMessage(e.body) ?? `${e.status} ${e.statusText}`;
   }
   return e instanceof Error ? e.message : String(e);
+}
+
+export type DisplayFailure = string | ApiError;
+
+export function displayFailure(error: unknown): DisplayFailure {
+  return error instanceof ApiError ? error : describeError(error);
+}
+
+export function libraryOutage(error: unknown): { message: string; cause: string } | null {
+  if (
+    !(error instanceof ApiError) ||
+    error.target !== "library" ||
+    ![0, 502, 503, 504].includes(error.status)
+  )
+    return null;
+  const cause = problemMessage(error.body) ?? `${error.status} ${error.statusText}`;
+  const body = error.body as
+    | { detail?: { title?: string; component?: string; cause?: string } }
+    | undefined;
+  if (
+    body?.detail?.component === "library" ||
+    (body?.detail?.title &&
+      ![
+        "Upstream unreachable",
+        "Library not answering",
+        "Target not on this node",
+        "Target not in topology",
+      ].includes(body.detail.title))
+  )
+    return null;
+  if (cause.startsWith("The Library") && cause.includes("Running models keep serving"))
+    return { message: cause, cause: body?.detail?.cause ?? cause };
+  if (
+    !/library at .*did not answer|connection refused|actively refused|proxy.*(502|503|504)/i.test(
+      cause,
+    ) &&
+    !["Upstream unreachable", "Target not on this node", "Target not in topology"].includes(
+      body?.detail?.title ?? "",
+    )
+  )
+    return null;
+  const observed = /connection refused|actively refused/i.test(cause)
+    ? "connection refused"
+    : /timed? out|timeout/i.test(cause)
+      ? "the check timed out"
+      : `the request failed (${error.status || "no answer"})`;
+  return {
+    message: `The Library is not answering (${observed}). Running models keep serving, and machines start models from their own copies.`,
+    cause,
+  };
 }
 
 interface RequestOptions {
@@ -251,7 +304,7 @@ async function openStream(
     } catch {
       // keep the raw text
     }
-    throw new ApiError(response.status, response.statusText, parsed);
+    throw new ApiError(response.status, response.statusText, parsed, target);
   }
   return response;
 }
@@ -286,9 +339,14 @@ async function jsonRequest<T>(
     response = await fetch(url, { cache: "no-store", ...init, headers });
   } catch (e) {
     if (timedOut) {
-      throw new ApiError(0, "request timed out", {
-        detail: `Request to ${target}${path} exceeded ${options.timeoutMs}ms — the upstream component is hung or unreachable.`,
-      });
+      throw new ApiError(
+        0,
+        "request timed out",
+        {
+          detail: `Request to ${target}${path} exceeded ${options.timeoutMs}ms — the upstream component is hung or unreachable.`,
+        },
+        target,
+      );
     }
     throw e;
   } finally {
@@ -308,7 +366,7 @@ async function jsonRequest<T>(
     sessionRefused(sent);
   }
   if (!response.ok) {
-    throw new ApiError(response.status, response.statusText, parsed);
+    throw new ApiError(response.status, response.statusText, parsed, target);
   }
   return parsed as T;
 }

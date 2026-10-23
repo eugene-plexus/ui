@@ -352,12 +352,19 @@ describe("Home when the library is down", () => {
   it("says so in one plain sentence with a way onward, and raises no error banner", async () => {
     handlers.set("GET library/v1/models", () => ({
       status: 503,
-      body: { detail: { title: "Service Unavailable", detail: "library restarting" } },
+      body: {
+        detail: {
+          title: "Upstream unreachable",
+          detail: "library at http://nas:1234 did not answer: connection refused",
+        },
+      },
     }));
     render(<HomePage />);
     const card = await screen.findByTestId("home-first-model");
     expect(card).toHaveAttribute("data-state", "library-unreachable");
-    expect(card).toHaveTextContent(/the library did not answer/i);
+    expect(card).toHaveTextContent(
+      "The Library is not answering (connection refused). Running models keep serving, and machines start models from their own copies.",
+    );
     expect(within(card).getByRole("link", { name: "See what is running" })).toHaveAttribute(
       "href",
       "/inference",
