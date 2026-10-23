@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { ConfigEditor, type SectionHandle } from "@/components/ConfigEditor";
 import { saveSections } from "@/lib/saveSections";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { EXEC_APPROVALS_SEARCH_TEXTS, ExecApprovals } from "@/components/ExecApprovals";
 import { useSharedTopology } from "@/components/ResourceTree";
 import { UIPreferences } from "@/components/UIPreferences";
 import { api, describeError } from "@/lib/api";
@@ -259,6 +260,13 @@ function SettingsView({
 
   const everything = selection.type === "install";
   const appearance = everything && matchesQuery(query, APPEARANCE_SEARCH_TEXTS);
+  const approvalMachines = useMemo(
+    () =>
+      owners
+        .filter((o) => o.component === "agent")
+        .map((o) => ({ target: o.target, label: o.label })),
+    [owners],
+  );
   useEffect(() => {
     if (appearance && focusKey === "appearance") {
       document.getElementById("appearance")?.scrollIntoView({ block: "center" });
@@ -418,6 +426,11 @@ function SettingsView({
               >
                 <UIPreferences />
               </section>
+            )}
+
+            {/* Programs an owner approved for Eugene's own account (row 8c). */}
+            {approvalMachines.length > 0 && matchesQuery(query, EXEC_APPROVALS_SEARCH_TEXTS) && (
+              <ExecApprovals machines={approvalMachines} />
             )}
 
             {[...failed.entries()].map(([id, error]) => {

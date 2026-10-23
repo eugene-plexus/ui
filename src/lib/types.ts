@@ -136,6 +136,10 @@ export type RuntimeCapabilities = AgentComponents["schemas"]["RuntimeCapabilitie
 export type EngineKind = AgentComponents["schemas"]["EngineKind"];
 export type EngineList = AgentComponents["schemas"]["EngineList"];
 export type EngineDescriptor = AgentComponents["schemas"]["EngineDescriptor"];
+// What Eugene's own account did not run, and an owner's approvals (row 8c).
+export type ExecTrust = AgentComponents["schemas"]["ExecTrust"];
+export type ExecApproval = AgentComponents["schemas"]["ExecApproval"];
+export type ExecApprovalList = AgentComponents["schemas"]["ExecApprovalList"];
 
 // The host itself: which control root it answers to, and what it can
 // compute on. `devices` is the cross-host inventory M3 deferred and M7
