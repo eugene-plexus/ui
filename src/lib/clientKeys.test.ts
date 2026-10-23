@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { blockers, clientKeyTarget, curlLine, keyLabel, keyStatus, recipes } from "./clientKeys";
+import {
+  ROTATE_OVERLAPS,
+  appKeyNode,
+  blockers,
+  clientKeyTarget,
+  curlLine,
+  keyLabel,
+  keyStatus,
+  lastUsedText,
+  recipes,
+  rotationNote,
+} from "./clientKeys";
 import type { ComponentPlacementList } from "./types";
 
 // A JWT's shape, with no entropy in it. The obvious fixture --
@@ -513,5 +524,42 @@ describe("blockers", () => {
   it("explains a missing address rather than showing a blank box", () => {
     const lines = blockers({ baseUrl: null, key: "y", model: "z" });
     expect(lines[0]).toContain("gateway");
+  });
+});
+
+describe("row 24: last use and rotation", () => {
+  const now = new Date("2026-10-22T12:00:00Z");
+
+  it("says when a key was last used, to the minute", () => {
+    expect(lastUsedText(undefined, now)).toBe("no use recorded");
+    expect(lastUsedText("2026-10-22T11:57:00Z", now)).toBe("last used 3 min ago");
+    expect(lastUsedText("2026-10-22T12:00:00Z", now)).toBe("last used just now");
+    expect(lastUsedText("2026-10-22T09:00:00Z", now)).toBe("last used 3 h ago");
+    expect(lastUsedText("2026-10-19T12:00:00Z", now)).toBe("last used 3 days ago");
+  });
+
+  it("names the replacement and the end of the overlap", () => {
+    const old = {
+      id: "old",
+      tail: "k9Q0Xz",
+      retiresAt: "2026-10-23T12:00:00Z",
+      replacedBy: "new",
+    };
+    const next = { id: "new", tail: "x7Yb2c" };
+    const keys = [old, next];
+    expect(rotationNote(old, keys, now)).toContain("replaced by …x7Yb2c, works until");
+    const past = rotationNote({ ...old, retiresAt: "2026-10-22T11:00:00Z" }, keys, now);
+    expect(past).toContain("replaced by …x7Yb2c, stopped");
+    expect(rotationNote(next, keys, now)).toBeNull();
+  });
+
+  it("offers Stop now, and one day is the default", () => {
+    expect(ROTATE_OVERLAPS.map((o) => o.seconds)).toEqual([0, 3600, 86400, 604800, 2592000]);
+    expect(ROTATE_OVERLAPS[0]?.label).toBe("Stop now");
+  });
+
+  it("finds the machine an app's key belongs to", () => {
+    expect(appKeyNode("app:open-webui@nas")).toBe("nas");
+    expect(appKeyNode("Continue on the laptop")).toBeNull();
   });
 });
