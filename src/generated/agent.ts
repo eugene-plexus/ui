@@ -5496,6 +5496,7 @@ export interface components {
             /** @description Version reported by the binary that is actually running. */
             engineVersion?: string;
             capabilities?: components["schemas"]["RuntimeCapabilities"];
+            readonly chatTemplate?: components["schemas"]["RuntimeChatTemplate"];
             /** Format: date-time */
             lastRestart?: string;
             /**
@@ -5551,6 +5552,62 @@ export interface components {
             name: string;
             /** @description Device index when the card was last present, before renumbering. */
             lastIndex: number;
+        };
+        /**
+         * @description The chat template the running engine reports in effect, not a
+         *     saved setting or a Library fallback recommendation. Publish only
+         *     after the engine reports its effective template text; the digest
+         *     is SHA-256 of those exact UTF-8 bytes, without whitespace or line
+         *     ending normalization. The source is not inferred from argv alone.
+         *
+         *     Omit on stopped runtimes, while the effective template is
+         *     unconfirmed, and on engines that do not report it. Clear this
+         *     observation on stop and before each new start, so a changed
+         *     setting cannot leave a previous process's template on display.
+         *     Missing information does not block a launch or inference.
+         * @example {
+         *       "source": "engine",
+         *       "name": "Engine chat template",
+         *       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+         *     }
+         */
+        RuntimeChatTemplate: {
+            /**
+             * @description * `embedded` — the reported text matches the model file's
+             *       embedded template and no operator override selected it.
+             *     * `eugene` — the reported text matches the Eugene fallback
+             *       captured at launch, with no operator override in effect.
+             *     * `override` — the reported text matches the operator's
+             *       explicit template override captured at launch. This takes
+             *       precedence even when its contents match a bundled template.
+             *     * `engine` — the engine reports the text but its origin is
+             *       unknown, or it does not match the captured selection.
+             *       Never label an unconfirmed fallback as `eugene`.
+             * @enum {string}
+             */
+            source: "embedded" | "eugene" | "override" | "engine";
+            /**
+             * @description Human-readable name of the effective template. Use an engine
+             *     template label when the origin is unknown; never the name of
+             *     a saved override or fallback that was not confirmed.
+             */
+            name: string;
+            /** @description Digest of the effective template text returned by the engine. */
+            sha256: string;
+            /**
+             * @description The Library's `ChatTemplateFallback.id` when source is
+             *     `eugene`; omitted for other sources. The digest identifies
+             *     the exact template revision in effect.
+             */
+            id?: string;
+            /**
+             * @description Template file on this runtime's node, captured at launch and
+             *     reported only when its captured contents match the engine's
+             *     effective template. Absent for embedded and engine templates,
+             *     and for inline overrides. A later edit to this file does not
+             *     change the running process's template or digest.
+             */
+            path?: string;
         };
         /**
          * @description The memory this runtime's engine keeps for recent conversations, as
