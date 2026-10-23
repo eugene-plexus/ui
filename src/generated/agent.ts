@@ -5449,6 +5449,17 @@ export interface components {
              *     Cleared on a successful start.
              */
             lastError?: string;
+            /**
+             * @description The program this runtime's `binary` names, when the agent runs
+             *     in Eugene's own account and will not run it because someone
+             *     other than root or that account could change it (row 8):
+             *     `lastError` says who. The way out a console offers is to clear
+             *     `binary` (`PATCH /v1/runtimes/{name}` with the spec without it),
+             *     so the runtime runs Eugene's own build of the engine, installed
+             *     first with `POST /v1/engines/{engine}/install` when there is
+             *     none. Absent otherwise; cleared on a successful start.
+             */
+            refusedBinary?: string;
             loadProgress?: components["schemas"]["LoadProgress"];
             speculation?: components["schemas"]["RuntimeSpeculation"];
             promptCache?: components["schemas"]["RuntimePromptCache"];
