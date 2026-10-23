@@ -49,7 +49,7 @@ export const SEARCH_PROVIDERS: ReadonlyArray<{
 export const GOOGLE_BILLING =
   "On Gemini 3, the first 5,000 searches a month are free, counted across all Gemini 3 models. After that, Google charges $14 per 1,000 searches. These are Google's prices as of 2026-10.";
 export const GOOGLE_TERMS =
-  "Google's terms bind the key's owner: Google's answer and sources are shown unmodified, with Google's Search Suggestions, to the person who asked. Workbench shows them; other apps may not.";
+  "Google's terms bind the key's owner: Google's answer and sources are shown unmodified, with Google's Search Suggestions, to the person who asked. Workbench shows them; Open WebUI may use this account but cannot show Search Suggestions. Check the provider's terms for the apps you use.";
 export const GOOGLE_MODEL =
   "It searches through the cheapest Gemini model your key can use. You can change that model in the account's settings.";
 

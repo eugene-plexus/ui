@@ -58,6 +58,8 @@ function Inner() {
   const [busy, setBusy] = useState(false);
   const [purge, setPurge] = useState(false);
   const [catalogueVersion, setCatalogueVersion] = useState<string | null>(null);
+  const [resetsSettings, setResetsSettings] = useState(false);
+  const [canReset, setCanReset] = useState(false);
   const [accountsReason, setAccountsReason] = useState<string | null>(null);
   const [install, setInstall] = useState<AppInstall | null>(null);
 
@@ -82,16 +84,18 @@ function Inner() {
     const catalogue = await api.get<AppCatalogue>(t, "/v1/app-catalogue").catch(() => null);
     const entry = catalogue?.apps.find((a) => a.manifest.id === appId);
     setCatalogueVersion(entry && updateAvailable(entry) ? entry.manifest.version : null);
+    setResetsSettings(entry?.resetsSettings === true);
+    setCanReset(!!entry?.manifest.resetOnConnectionChange);
     setAccountsReason(catalogue?.ownAccountsReason ?? null);
   }, [appId, node, localNode]);
   usePolling(load, 3000);
 
-  async function act(path: string) {
+  async function act(path: string, body: object = {}) {
     if (!target || !appId) return;
     setBusy(true);
     setError(null);
     try {
-      setApp(await api.post<App>(target, `/v1/apps/${appId}/${path}`, {}));
+      setApp(await api.post<App>(target, `/v1/apps/${appId}/${path}`, body));
     } catch (e) {
       setError(describeError(e));
     } finally {
@@ -155,6 +159,8 @@ function Inner() {
               busy={busy}
               pageHost={pageHost}
               catalogueVersion={catalogueVersion}
+              resetsSettings={resetsSettings}
+              canReset={canReset}
               accountsReason={accountsReason}
               install={install}
               purge={purge}
@@ -162,6 +168,8 @@ function Inner() {
               onStart={() => act("start")}
               onStop={() => act("stop")}
               onRestart={() => act("restart")}
+              onReset={() => act("restart", { resetSettings: true })}
+              onRollback={() => act("rollback")}
               onUpdate={update}
               onUninstall={uninstall}
             />
@@ -188,6 +196,8 @@ function Overview({
   busy,
   pageHost,
   catalogueVersion,
+  resetsSettings,
+  canReset,
   accountsReason,
   install,
   purge,
@@ -195,6 +205,8 @@ function Overview({
   onStart,
   onStop,
   onRestart,
+  onReset,
+  onRollback,
   onUpdate,
   onUninstall,
 }: {
@@ -204,6 +216,8 @@ function Overview({
   busy: boolean;
   pageHost: string;
   catalogueVersion: string | null;
+  resetsSettings: boolean;
+  canReset: boolean;
   accountsReason: string | null;
   install: AppInstall | null;
   purge: boolean;
@@ -211,12 +225,17 @@ function Overview({
   onStart: () => void;
   onStop: () => void;
   onRestart: () => void;
+  onReset: () => void;
+  onRollback: () => void;
   onUpdate: () => void;
   onUninstall: () => void;
 }) {
   const state = describeApp(app);
   const open = openTarget(app, pageHost);
   const updating = install !== null && !installFinished(install);
+  const backup = app.updateBackup?.version === app.previousVersion ? app.updateBackup : undefined;
+  const date = (value: string) =>
+    new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short" });
   return (
     <>
       <div className="flex flex-wrap items-center gap-3">
@@ -246,7 +265,9 @@ function Overview({
           role="alert"
           data-testid="app-last-error"
         >
-          {app.lastError}{" "}
+          {app.status === "crashed"
+            ? `${app.name} ${app.version} did not start: ${app.lastError}`
+            : app.lastError}{" "}
           <Link
             href={logsHref({ node, source: `app: ${app.id}` })}
             className="underline"
@@ -346,6 +367,34 @@ function Overview({
         )}
       </dl>
 
+      {app.givenSettings && (
+        <p className="text-sm" data-testid="app-given-settings">
+          Eugene gave {app.name} its settings on {date(app.givenSettings.givenAt)}:
+          {app.givenSettings.webSearchEnabled ? " search through Eugene" : " search off"}
+          {app.givenSettings.imageModel
+            ? `, images with ${app.givenSettings.imageModel}`
+            : ", images off"}
+          {app.givenSettings.embeddingModel
+            ? `, documents with ${app.givenSettings.embeddingModel}`
+            : ""}
+          {app.givenSettings.rerankModel
+            ? `, results sorted with ${app.givenSettings.rerankModel}`
+            : ""}
+          .
+        </p>
+      )}
+      {app.availableImageModel && app.availableImageModel !== app.givenSettings?.imageModel && (
+        <p className="status-warn text-sm" data-testid="app-new-image-model">
+          Eugene now serves {app.availableImageModel}, which {app.name} was not given. Reset{" "}
+          {app.name}&rsquo;s settings.
+        </p>
+      )}
+      {app.id === "open-webui" && app.isolation === "own_account" && (
+        <p className="text-sm">
+          Tools and functions: on. They run in Open WebUI&rsquo;s own account.
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2">
         {app.enabled ? (
           <>
@@ -362,15 +411,35 @@ function Overview({
           </button>
         )}
         {catalogueVersion && (
-          <button
-            type="button"
+          <ConfirmButton
             className={buttonClass}
-            disabled={updating}
-            onClick={onUpdate}
-            data-testid="app-update"
-          >
-            {updating ? "Updating…" : `Update to ${catalogueVersion}`}
-          </button>
+            disabled={busy || updating}
+            onConfirm={onUpdate}
+            testId="app-update"
+            label={updating ? "Updating…" : `Update to ${catalogueVersion}`}
+            confirmLabel={resetsSettings ? "Update and reset settings" : "Update"}
+            prompt={`Update ${app.name} to ${catalogueVersion}?${resetsSettings ? ` This update resets ${app.name}'s Admin Settings to Eugene's, once.` : ""}`}
+          />
+        )}
+        {(canReset || app.givenSettings) && (
+          <ConfirmButton
+            label="Reset settings"
+            confirmLabel="Reset and restart"
+            disabled={busy || updating || !app.enabled}
+            className={buttonClass}
+            prompt={`Reset ${app.name}'s settings to Eugene's? It restarts, and its Admin Settings go back to Eugene's. Chats, people, knowledge, models and tools stay.`}
+            onConfirm={onReset}
+          />
+        )}
+        {backup && (
+          <ConfirmButton
+            label={`Go back to ${backup.version}`}
+            confirmLabel="Go back and restore data"
+            disabled={busy || updating}
+            className={buttonClass}
+            prompt={`Go back to ${app.name} ${backup.version}? Chats and settings return to how they were before the update on ${date(backup.createdAt)}. Anything written since then is lost.`}
+            onConfirm={onRollback}
+          />
         )}
       </div>
       {install && (

@@ -189,7 +189,7 @@ function runtime(over: Record<string, unknown> = {}) {
 }
 
 type Result = { status: number; body?: unknown };
-type Handler = () => Result;
+type Handler = (params: URLSearchParams) => Result | Promise<Result>;
 let handlers: Map<string, Handler>;
 let posted: string[];
 /** The JSON body of each non-GET request, by `METHOD path`. */
@@ -280,7 +280,9 @@ beforeEach(() => {
       } else gets.push(route);
       if (hanging.has(`${method} ${path}`)) return new Promise<Response>(() => {});
       const handler = handlers.get(`${method} ${path}`);
-      const result = handler ? handler() : { status: 418, body: { detail: `?? ${path}` } };
+      const result = handler
+        ? await handler(new URLSearchParams(route.split("?")[1]))
+        : { status: 418, body: { detail: `?? ${path}` } };
       return new Response(result.body === undefined ? null : JSON.stringify(result.body), {
         status: result.status,
         statusText: String(result.status),
@@ -509,6 +511,117 @@ function listedNames(): string[] {
     .map((b) => b.querySelector("span")?.textContent ?? "")
     .filter((n) => n !== "");
 }
+
+function pendingPage() {
+  let resolve!: (result: Result) => void;
+  const promise = new Promise<Result>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+describe("paged model loading", () => {
+  it("shows each page at once, requests 200, and keeps loading until the final page", async () => {
+    const second = pendingPage();
+    const third = pendingPage();
+    const cursor = "opaque +/&=?";
+    handlers.set("GET library/v1/models", (params) => {
+      if (params.get("cursor") === cursor) return second.promise;
+      if (params.get("cursor") === "last-page") return third.promise;
+      return ok({ models: manyModels(), nextCursor: cursor });
+    });
+    render(<LibraryPage />);
+    await waitFor(() => expect(listedNames()).toHaveLength(7));
+    expect(gets).toContain("library/v1/models?limit=200");
+    expect(await screen.findByText("Loading more models…")).toHaveAttribute("role", "status");
+    await waitFor(() => {
+      const pages = gets.filter((path) => path.startsWith("library/v1/models?"));
+      expect(pages).toHaveLength(2);
+      expect(new URLSearchParams(pages[1]!.split("?")[1]).get("cursor")).toBe(cursor);
+      expect(new URLSearchParams(pages[1]!.split("?")[1]).get("limit")).toBe("200");
+    });
+    await act(async () => {
+      second.resolve(ok({ models: [listed("Later", "/later.gguf")], nextCursor: "last-page" }));
+    });
+    expect(listedNames()).toHaveLength(8);
+    expect(screen.getByText("Loading more models…")).toBeInTheDocument();
+    await act(async () => {
+      third.resolve(ok({ models: [listed("Final", "/final.gguf")] }));
+    });
+    expect(listedNames()).toHaveLength(9);
+    expect(screen.queryByText("Loading more models…")).toBeNull();
+    expect(gets.filter((path) => path.startsWith("library/v1/models?"))).toHaveLength(3);
+  });
+
+  it("keeps the current name and folder filter over all pages as they arrive", async () => {
+    const second = pendingPage();
+    const third = pendingPage();
+    handlers.set("GET library/v1/models", (params) => {
+      if (params.get("cursor") === "second") return second.promise;
+      if (params.get("cursor") === "third") return third.promise;
+      return ok({ models: manyModels(), nextCursor: "second" });
+    });
+    render(<LibraryPage />);
+    const filter = await screen.findByLabelText("Filter models");
+    fireEvent.change(filter, { target: { value: "QWEN" } });
+    expect(listedNames()).toHaveLength(2);
+    await act(async () => {
+      second.resolve(ok({ models: [listed("Qwen-later", "/later.gguf")], nextCursor: "third" }));
+    });
+    expect(listedNames()).toHaveLength(3);
+    expect(screen.getByTestId("model-filter-count")).toHaveTextContent("3 of 8 models");
+    fireEvent.change(filter, { target: { value: "archive" } });
+    expect(listedNames()).toEqual(["big-model"]);
+    await act(async () => {
+      third.resolve(ok({ models: [listed("Last", "/archive/last.gguf")] }));
+    });
+    expect(listedNames()).toEqual(["big-model", "Last"]);
+    expect(screen.getByTestId("model-filter-count")).toHaveTextContent("2 of 9 models");
+    fireEvent.change(filter, { target: { value: "" } });
+    expect(listedNames()).toHaveLength(9);
+  });
+
+  it("keeps loaded models and shows the cause when a later page fails", async () => {
+    const second = pendingPage();
+    handlers.set("GET library/v1/models", (params) =>
+      params.has("cursor") ? second.promise : ok({ models: manyModels(), nextCursor: "next" }),
+    );
+    render(<LibraryPage />);
+    await screen.findByText("Loading more models…");
+    await act(async () => {
+      second.resolve({ status: 400, body: { detail: { detail: "The cursor is unknown." } } });
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("The cursor is unknown.");
+    expect(listedNames()).toHaveLength(7);
+    expect(screen.queryByText("Loading more models…")).toBeNull();
+  });
+
+  it("discards an old continuation after a completed scan starts a fresh list", async () => {
+    const oldPage = pendingPage();
+    let refreshed = false;
+    handlers.set("GET library/v1/models", (params) => {
+      if (params.has("cursor")) return oldPage.promise;
+      return refreshed
+        ? ok({ models: [libraryModel()] })
+        : ok({ models: manyModels(), nextCursor: "old" });
+    });
+    handlers.set("POST library/v1/scan", () => {
+      refreshed = true;
+      return ok({ state: "scanning" });
+    });
+    handlers.set("GET library/v1/scan", () => ok({ state: refreshed ? "completed" : "idle" }));
+    render(<LibraryPage />);
+    await screen.findByText("Loading more models…");
+    fireEvent.click(screen.getByRole("button", { name: /^scan$/ }));
+    await waitFor(() => expect(listedNames()).toHaveLength(1), { timeout: 5000 });
+    await act(async () => {
+      oldPage.resolve(ok({ models: [listed("Stale", "/stale.gguf")], nextCursor: "stale" }));
+    });
+    expect(listedNames()).toEqual([libraryModel().name]);
+    expect(screen.queryByText("Loading more models…")).toBeNull();
+    expect(gets.some((path) => path.includes("cursor=stale"))).toBe(false);
+  });
+});
 
 describe("a model read from Ollama's store", () => {
   function ollamaModel(ollama: { tags: string[]; needsMigration?: boolean }) {
