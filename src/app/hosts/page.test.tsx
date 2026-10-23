@@ -56,6 +56,7 @@ function history() {
       gpu("gpuMemoryTotal", "bytes", { latest: 32 * GiB }),
       gpu("gpuMemoryEugene", "bytes", { latest: 6 * GiB }),
       gpu("gpuUtilization", "percent", { latest: 55 }),
+      gpu("gpuPower", "watts", { latest: 170 }),
       gpu("gpuTemperature", "celsius", {
         unavailable: NO_SENSORS,
         min: [null, null, null, null],
@@ -117,10 +118,13 @@ describe("the Hosts page", () => {
     await waitFor(() => expect(within(fleet).getByText("RTX 5090")).toBeTruthy());
     expect(within(fleet).getByText("8.0 GiB of 32.0 GiB")).toBeTruthy();
     expect(within(fleet).getByText("6.0 GiB")).toBeTruthy();
+    expect(within(fleet).getByRole("columnheader", { name: "Power" })).toBeTruthy();
+    expect(within(fleet).getByText("170 W")).toBeTruthy();
     expect(within(fleet).getByText(/Not answering: .*connection refused/)).toBeTruthy();
     // The fleet asks only for what it draws.
     const fleetRead = urls.find((u) => u.includes("/v1/node/history") && u.includes("metric="));
     expect(fleetRead).toContain("metric=gpuTemperature");
+    expect(fleetRead).toContain("metric=gpuPower");
   });
 
   it("says not reported, with the reason, where a machine cannot read a series", async () => {
