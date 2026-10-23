@@ -1547,6 +1547,14 @@ export interface components {
          *     in config.
          */
         LibraryFolderList: {
+            /**
+             * @description True when the Library ignores its saved config and runs in
+             *     safe mode. These folders may be defaults with no saved mounts.
+             *     Agents keep their saved folder list instead of saving this
+             *     answer. Absent means false for older Libraries.
+             * @default false
+             */
+            readonly safeMode: boolean;
             folders: components["schemas"]["LibraryFolderStatus"][];
         };
         LibraryFolderStatus: components["schemas"]["LibraryFolder"] & {
