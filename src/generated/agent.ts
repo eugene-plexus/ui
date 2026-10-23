@@ -2266,6 +2266,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node/machine-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a newer machine list from the control root, and follow a promoted root.
+         * @description The mirror of `POST /v1/node/trust-bundle` for the signed machine
+         *     list (`control.yaml`, `MachineList`; row 4). A root pushes it after
+         *     a promotion, and to any node whose `epoch` or `controlUrlEpoch` it
+         *     sees lower than its own, at most once a minute. The agent also
+         *     pulls it every minute (`GET /v1/trust/machines`).
+         *
+         *     **The credential is the signature, not a bearer token**: a JWS
+         *     signed by the root identity this agent pinned at enrolment. A list
+         *     that does not verify, or reaches an agent that has not enrolled, is
+         *     refused with 401.
+         *
+         *     **Following a promoted root** (R4-MOVE, Troy 2026-10-21). The agent
+         *     writes the list's `control.url` as its `controlUrl` only when the
+         *     list is newer than the one it holds, its `control.epoch` is above
+         *     this node's `controlUrlEpoch`, and at least the epoch it holds. It
+         *     then holds that epoch, rebuilds its machine table, announces its
+         *     address to the new root, pulls the bundle there, and logs *the
+         *     install's root moved to <node> (epoch N)*. The same epoch never
+         *     moves a node.
+         */
+        post: operations["pushMachineList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/directories": {
         parameters: {
             query?: never;
@@ -2996,6 +3034,15 @@ export interface components {
          * @enum {string}
          */
         ComponentStatus: "starting" | "running" | "safe_mode" | "exited" | "crashed" | "unreachable";
+        SignedMachineList: {
+            /**
+             * @description A JWS compact serialization with header
+             *     `{"alg": "EdDSA", "typ": "ep-machines+jwt"}` whose payload is a
+             *     `MachineList` (`control.yaml`), signed with the root identity
+             *     this node pinned at enrolment.
+             */
+            jws: string;
+        };
         /**
          * @description The warm standby this agent runs because its node holds the
          *     `standby` grant (`docs/design/warm-standby.md`, SB3). Absent when it
@@ -3184,7 +3231,25 @@ export interface components {
              * @description The control root this node answers to.
              */
             controlUrl?: string;
+            /**
+             * Format: int64
+             * @description The epoch `controlUrl` came with (row 4): the epoch at
+             *     enrolment, or of the promoted root this node moved to. A node
+             *     moves only for a signed machine list at a higher epoch. Set to
+             *     the epoch held when a node updated to row 4 first starts, so an
+             *     update never moves a node. Absent until enrolled.
+             */
+            controlUrlEpoch?: number;
             standby?: components["schemas"]["LocalStandby"];
+            /**
+             * @description This machine runs the install's control root, and it is locked:
+             *     nothing can be signed until the owner signs in with the
+             *     passphrase (row 4). Home says so. Common after a restart under
+             *     `prompt_on_startup`, and after a promoted copy restarts before
+             *     any other machine heard of the promotion. Absent when this
+             *     machine runs no root, or its state is not known yet.
+             */
+            rootLocked?: boolean;
             /**
              * @description This agent supervises the install's active control root. The
              *     root reads it from its probe of each node to know its own
@@ -10883,6 +10948,53 @@ export interface operations {
             /**
              * @description Refused: the bundle's `epoch` or `version` is lower than the
              *     one this agent holds. `detail` names both numbers.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    pushMachineList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignedMachineList"];
+            };
+        };
+        responses: {
+            /** @description Taken, or the same list again. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description The signature does not verify against the pinned
+             *     `controlPublicKey`, or this agent has not enrolled.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description Refused: the list's `version` is lower than the one this agent
+             *     holds, or its `control.epoch` is lower than the epoch it holds
+             *     (a superseded root). `detail` names both numbers.
              */
             409: {
                 headers: {

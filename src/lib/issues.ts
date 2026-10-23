@@ -275,13 +275,21 @@ function sealedRootIssue(sources: IssueSources): Issue[] {
     sources.controlRoot?.reachable === false &&
     typeof sources.controlRoot.error === "string" &&
     /locked/i.test(sources.controlRoot.error);
-  if (!sources.controlLocked && !fromGateway) return [];
+  // Row 4: the machine that runs the root says so itself (`rootLocked`),
+  // which is the one witness when no other machine knows where the root
+  // is yet: a standby promoted and restarted before it told anyone.
+  const holder = rootAnswered
+    ? undefined
+    : sources.perNode.find((n) => n.identity?.rootLocked === true);
+  if (!sources.controlLocked && !fromGateway && !holder) return [];
   return [
     {
       id: "control-sealed",
       kind: "control-sealed",
       severity: "blocking",
-      title: "The control root is locked",
+      title: holder
+        ? `The control root on ${holder.label} is locked`
+        : "The control root is locked",
       detail:
         "It is waiting for the passphrase, as after every restart of a machine with no key " +
         "store. Nothing is lost, but nothing else works until it is unlocked.",
