@@ -10,9 +10,13 @@ vi.mock("@/lib/api", () => ({
 }));
 
 it("keeps the effective model unset while offering advice and an expert choice", async () => {
-  vi.mocked(api.get).mockResolvedValue({
-    data: [{ id: "untested", x_eugene_plexus: { surfaces: ["chat"] } }],
-  });
+  vi.mocked(api.get).mockImplementation(async (_target, path) =>
+    path === "/v1/apps/hindsight"
+      ? { settings: { memoryModel: "my-untested-model" }, status: "starting" }
+      : {
+          data: [{ id: "untested", x_eugene_plexus: { surfaces: ["chat"] } }],
+        },
+  );
   let finish!: (value: { memoryModel: string }) => void;
   vi.mocked(api.patch).mockReturnValue(
     new Promise((resolve) => {
@@ -25,6 +29,7 @@ it("keeps the effective model unset while offering advice and an expert choice",
       target="node:box"
       appId="hindsight"
       settings={{ memoryModel: null }}
+      status="exited"
       onSaved={saved}
     />,
   );
@@ -41,20 +46,28 @@ it("keeps the effective model unset while offering advice and an expert choice",
     }),
   );
   finish({ memoryModel: "my-untested-model" });
-  await waitFor(() => expect(saved).toHaveBeenCalledWith({ memoryModel: "my-untested-model" }));
+  await waitFor(() =>
+    expect(saved).toHaveBeenCalledWith({ memoryModel: "my-untested-model" }, "starting"),
+  );
+  expect(screen.getByTestId("memory-model-effective")).toHaveTextContent(
+    "Saved: my-untested-model. Starting.",
+  );
 });
 
 it("reads the effective selection after a failure and names its cause", async () => {
   vi.mocked(api.get).mockResolvedValue({ data: [] });
   vi.mocked(api.patch).mockRejectedValue(new Error("pg0 stop refused: permission denied"));
   vi.mocked(api.get).mockImplementation(async (_target, path) =>
-    path.endsWith("/settings") ? { memoryModel: "old" } : { data: [] },
+    path === "/v1/apps/hindsight"
+      ? { settings: { memoryModel: "old" }, status: "running" }
+      : { data: [] },
   );
   render(
     <AppMemoryModel
       target="agent"
       appId="hindsight"
       settings={{ memoryModel: "old" }}
+      status="running"
       onSaved={vi.fn()}
     />,
   );
@@ -62,4 +75,50 @@ it("reads the effective selection after a failure and names its cause", async ()
   fireEvent.click(screen.getByRole("button", { name: "Apply model" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("permission denied");
   expect(screen.getByTestId("memory-model-effective")).toHaveTextContent("old");
+});
+
+it("shows a saved model as stopped", () => {
+  vi.mocked(api.get).mockResolvedValue({ data: [] });
+  render(
+    <AppMemoryModel
+      target="agent"
+      appId="hindsight"
+      settings={{ memoryModel: "saved" }}
+      status="exited"
+      onSaved={vi.fn()}
+    />,
+  );
+  expect(screen.getByTestId("memory-model-effective")).toHaveTextContent(
+    "Saved: saved. Not running.",
+  );
+  expect(screen.queryByText("Model in effect: saved")).not.toBeInTheDocument();
+});
+
+it("reads running state after a restart failure instead of presenting the saved model as effective", async () => {
+  vi.mocked(api.get).mockImplementation(async (_target, path) =>
+    path === "/v1/apps/hindsight"
+      ? { settings: { memoryModel: "new" }, status: "crashed" }
+      : path.endsWith("/settings")
+        ? { memoryModel: "new" }
+        : { data: [] },
+  );
+  vi.mocked(api.patch).mockRejectedValue(new Error("Restart failed: address in use"));
+  render(
+    <AppMemoryModel
+      target="agent"
+      appId="hindsight"
+      settings={{ memoryModel: "old" }}
+      status="running"
+      onSaved={vi.fn()}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Model id (expert)"), { target: { value: "new" } });
+  fireEvent.click(screen.getByRole("button", { name: "Apply model" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("address in use");
+  await waitFor(() =>
+    expect(screen.getByTestId("memory-model-effective")).toHaveTextContent(
+      "Saved: new. Not running.",
+    ),
+  );
+  expect(screen.queryByText("Model in effect: new")).not.toBeInTheDocument();
 });

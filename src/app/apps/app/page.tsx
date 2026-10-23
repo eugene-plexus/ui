@@ -179,8 +179,9 @@ function Inner() {
               target={target}
               appId={app.id}
               settings={app.settings}
-              onSaved={(settings) =>
-                setApp((current) => (current ? { ...current, settings } : current))
+              status={app.status}
+              onSaved={(settings, status) =>
+                setApp((current) => (current ? { ...current, settings, status } : current))
               }
             />
           )}

@@ -4,29 +4,33 @@ import { useEffect, useId, useState } from "react";
 
 import { api, describeError } from "@/lib/api";
 import type { ProxyTarget } from "@/lib/config";
-import type { AppLauncherSettings, ModelList } from "@/lib/types";
+import type { App, AppLauncherSettings, ComponentStatus, ModelList } from "@/lib/types";
 
 export function AppMemoryModel({
   target,
   appId,
   settings,
+  status,
   onSaved,
 }: {
   target: ProxyTarget;
   appId: string;
   settings: AppLauncherSettings;
-  onSaved: (value: AppLauncherSettings) => void;
+  status: ComponentStatus;
+  onSaved: (value: AppLauncherSettings, status: ComponentStatus) => void;
 }) {
   const uid = useId();
   const [models, setModels] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [effective, setEffective] = useState<AppLauncherSettings | null>(settings);
+  const [observedStatus, setObservedStatus] = useState<ComponentStatus | null>(status);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listingError, setListingError] = useState<string | null>(null);
   useEffect(() => {
     setEffective(settings);
-  }, [settings]);
+    setObservedStatus(status);
+  }, [settings, status]);
   useEffect(() => {
     let active = true;
     api
@@ -51,23 +55,24 @@ export function AppMemoryModel({
     setBusy(true);
     setError(null);
     try {
-      const value = await api.patch<AppLauncherSettings>(target, `/v1/apps/${appId}/settings`, {
+      await api.patch<AppLauncherSettings>(target, `/v1/apps/${appId}/settings`, {
         memoryModel: model,
       });
-      setEffective(value);
-      onSaved(value);
       setDraft("");
     } catch (failure) {
       setError(describeError(failure));
+    } finally {
       try {
-        const value = await api.get<AppLauncherSettings>(target, `/v1/apps/${appId}/settings`);
-        setEffective(value);
-        onSaved(value);
+        const app = await api.get<App>(target, `/v1/apps/${appId}`);
+        if (!app.settings) throw new Error("The saved model could not be read.");
+        setEffective(app.settings);
+        setObservedStatus(app.status);
+        onSaved(app.settings, app.status);
       } catch (readFailure) {
         setEffective(null);
-        setError(`${describeError(failure)} ${describeError(readFailure)}`);
+        setObservedStatus(null);
+        setError((previous) => [previous, describeError(readFailure)].filter(Boolean).join(" "));
       }
-    } finally {
       setBusy(false);
     }
   }
@@ -81,7 +86,11 @@ export function AppMemoryModel({
         {effective === null
           ? "The model in effect could not be read."
           : effective.memoryModel
-            ? `Model in effect: ${effective.memoryModel}`
+            ? observedStatus === "running"
+              ? `Model in effect: ${effective.memoryModel}`
+              : observedStatus === "starting"
+                ? `Saved: ${effective.memoryModel}. Starting.`
+                : `Saved: ${effective.memoryModel}. Not running.`
             : "Choose the model Hindsight reads your chats with"}
       </p>
       <p className="text-sm text-[color:var(--muted)]">
