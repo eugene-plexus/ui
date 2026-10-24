@@ -60,8 +60,34 @@ export function sweepLine(report: SweepReport | null | undefined): string | null
       : `The last sweep deleted ${report.files} file${report.files === 1 ? "" : "s"} and ${report.uploads} upload${report.uploads === 1 ? "" : "s"} (${formatBytes(report.freedBytes)})`;
   const removal = report.removal;
   if (removal?.error) return `${what}. Removed people were not checked: ${removal.error}`;
-  if (removal && removal.removed > 0) {
-    return `${what}, including everything ${removal.removed} removed ${removal.removed === 1 ? "person" : "people"} kept.`;
+  const lines = [
+    removal && removal.deleted > 0
+      ? `${what}, including everything ${removal.deleted} removed ${removal.deleted === 1 ? "person" : "people"} kept.`
+      : `${what}.`,
+  ];
+  if (removal && removal.hidden > 0) {
+    lines.push(
+      `${removal.hidden} removed ${removal.hidden === 1 ? "person's" : "people's"} files are now hidden.`,
+    );
   }
-  return `${what}.`;
+  if (removal && removal.restored > 0) {
+    lines.push(
+      `${removal.restored} ${removal.restored === 1 ? "person" : "people"} Eugene has again ${removal.restored === 1 ? "has their" : "have their"} files back.`,
+    );
+  }
+  return lines.join(" ");
+}
+
+/** A day, as the console writes one: "20 Oct 2026". */
+export function shortDate(seconds: number): string {
+  return new Date(seconds * 1000).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/** The owners whose files are hidden because Eugene removed them (row 7's rules). */
+export function removedOwners(list: StoreOwnerList): StoreOwner[] {
+  return list.owners.filter((o) => o.deleteAt != null);
 }

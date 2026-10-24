@@ -36,7 +36,7 @@ describe("the store's owners, as a person reads them", () => {
         parts: 3,
         blobs: 2,
         freedBytes: 2048,
-        removal: { checked: 2, removed: 1, held: [] },
+        removal: { checked: 2, hidden: 0, restored: 0, deleted: 1 },
       }),
     ).toBe(
       "The last sweep deleted 2 files and 1 upload (2.0 KiB), including everything 1 removed person kept.",
@@ -49,9 +49,28 @@ describe("the store's owners, as a person reads them", () => {
         parts: 0,
         blobs: 0,
         freedBytes: 0,
-        removal: { checked: 1, removed: 0, held: [], error: "the control root is locked" },
+        removal: {
+          checked: 1,
+          hidden: 0,
+          restored: 0,
+          deleted: 0,
+          error: "the control root is locked",
+        },
       }),
     ).toContain("Removed people were not checked: the control root is locked");
+    expect(
+      sweepLine({
+        at,
+        files: 0,
+        uploads: 0,
+        parts: 0,
+        blobs: 0,
+        freedBytes: 0,
+        removal: { checked: 3, hidden: 2, restored: 1, deleted: 0 },
+      }),
+    ).toBe(
+      "Nothing had ended at the last sweep. 2 removed people's files are now hidden. 1 person Eugene has again has their files back.",
+    );
   });
 });
 
@@ -73,14 +92,18 @@ describe("Settings -> Files apps keep", () => {
       fields: [
         { key: "filesEnabled", label: "Keep files", valueType: "boolean", category: "files" },
         { key: "ownerQuotaGiB", label: "Space", valueType: "integer", category: "quotas" },
-        { key: "removalBrake", label: "Hold", valueType: "integer", category: "people" },
+        { key: "removedPeopleDays", label: "Days", valueType: "integer", category: "people" },
         { key: "logLevel", label: "Log level", valueType: "enum", category: "logging" },
       ],
     } as ConfigSchema;
     const cards = buildCards([store!], new Map([["store", schema]]), "");
     const files = cards.find((c) => c.topic === "files");
     expect(files?.label).toBe("Files apps keep");
-    expect(files?.sections[0]?.keys).toEqual(["filesEnabled", "ownerQuotaGiB", "removalBrake"]);
+    expect(files?.sections[0]?.keys).toEqual([
+      "filesEnabled",
+      "ownerQuotaGiB",
+      "removedPeopleDays",
+    ]);
     expect(cards.find((c) => c.topic === "metrics-logs")?.sections[0]?.keys).toEqual(["logLevel"]);
   });
 });

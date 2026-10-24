@@ -7,6 +7,8 @@ import { api, describeError } from "@/lib/api";
 import {
   formatBytes,
   ownerLabel,
+  removedOwners,
+  shortDate,
   sweepLine,
   type OwnerNames,
   type StoreOwnerList,
@@ -17,9 +19,10 @@ import {
  * What the store keeps, per owner: counts and bytes, never names of files
  * or their content (row 53). Shown under Settings → Files apps keep.
  *
- * Removed people the store holds (several were removed at once, so it
- * waits for the owner) are listed with the one action that deletes what
- * they kept.
+ * A person Eugene removed has their files hidden from everyone, the owner
+ * included, and deleted on their date (row 7's rules, R53-REMOVE): they
+ * are listed apart, with the date and Delete now, which deletes at once
+ * and for good.
  */
 export function StoreOwners() {
   const [owners, setOwners] = useState<StoreOwnerList | null>(null);
@@ -60,9 +63,9 @@ export function StoreOwners() {
     void load();
   }, [load]);
 
-  async function release() {
+  async function deleteNow(owner: string) {
     try {
-      await api.post("store", "/v1/removals/release", {});
+      await api.post("store", "/v1/removals/delete", { owner });
       await load();
     } catch (e) {
       setError(describeError(e));
@@ -77,12 +80,13 @@ export function StoreOwners() {
     );
   }
   if (!owners || !status) return null;
-  const held = status.held ?? [];
+  const removed = removedOwners(owners);
+  const kept = owners.owners.filter((o) => o.deleteAt == null);
   const line = sweepLine(status.lastSweep);
   return (
     <div data-testid="store-owners" className="mt-4 flex flex-col gap-2 text-sm">
       <h3 className="font-ui font-semibold">What is kept, by whom</h3>
-      {owners.owners.length === 0 ? (
+      {kept.length === 0 ? (
         <p className="text-[color:var(--muted)]">No app has kept a file yet.</p>
       ) : (
         <table className="w-full text-left">
@@ -94,7 +98,7 @@ export function StoreOwners() {
             </tr>
           </thead>
           <tbody>
-            {owners.owners.map((o) => (
+            {kept.map((o) => (
               <tr key={o.owner} data-testid="store-owner">
                 <td>{ownerLabel(o.owner, names)}</td>
                 <td>
@@ -112,19 +116,36 @@ export function StoreOwners() {
         You see how much each owner keeps, never what.
       </p>
       {line && <p data-testid="store-sweep">{line}</p>}
-      {held.length > 0 && (
-        <div data-testid="store-held" className="section-panel border-dashed">
-          <p>
-            {held.length} removed {held.length === 1 ? "person's" : "people's"} files are kept until
-            you choose: Eugene no longer knows {held.length === 1 ? "this person" : "them"}, and so
-            many at once can mean a restored or wrong control root.
+      {removed.length > 0 && (
+        <div data-testid="store-removed" className="section-panel flex flex-col gap-2">
+          <h3 className="font-ui font-semibold">Removed people</h3>
+          <p className="text-[color:var(--muted)]">
+            Eugene removed {removed.length === 1 ? "this person" : "these people"}: their files are
+            hidden from everyone, you included, and deleted on the date shown. If Eugene has them
+            again first, their files come back.
           </p>
-          <ConfirmButton
-            label="Delete their files"
-            prompt="Their files are deleted for good. People Eugene knows again are kept."
-            onConfirm={release}
-            testId="store-release"
-          />
+          <ul className="flex flex-col gap-2">
+            {removed.map((o) => (
+              <li
+                key={o.owner}
+                data-testid="store-removed-person"
+                className="flex flex-wrap items-center justify-between gap-2"
+              >
+                <span>
+                  {ownerLabel(o.owner, names)} · {o.files} file{o.files === 1 ? "" : "s"},{" "}
+                  {formatBytes(o.bytes)} · removed {shortDate(o.removedAt ?? 0)} · deleted on{" "}
+                  {shortDate(o.deleteAt ?? 0)}
+                </span>
+                <ConfirmButton
+                  label="Delete now"
+                  prompt="Their files are deleted now, with every copy. This cannot be undone."
+                  onConfirm={() => deleteNow(o.owner)}
+                  ariaLabel={`Delete now: ${ownerLabel(o.owner, names)}`}
+                  testId="store-delete-now"
+                />
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
