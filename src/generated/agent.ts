@@ -1262,6 +1262,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{app}/folder-access/{id}/unknown/{entry}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+                /** @description The recorded folder access id, scoped to this app on this node. */
+                id: string;
+                /** @description The id of one entry in the record's unknown list. */
+                entry: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove or keep one access entry that Eugene did not add.
+         * @description Requires an operator session. A service token, gateway token or
+         *     client key is refused, including the app's own key.
+         *
+         *     A removal that finds access for the app's account that Eugene
+         *     did not add stops at incomplete and lists each such entry in
+         *     unknown. The owner decides each one (R23-UNKNOWN). Remove: the
+         *     agent checks the entry again (the same item, the same entry)
+         *     and deletes only that entry, then finishes the removal. Keep:
+         *     the entry stays, the app keeps that access, and the record says
+         *     so. Either way the removal runs again; when no entry waits, the
+         *     record reads removed and lists the kept entries.
+         *
+         *     An entry that changed since the agent found it, or that the
+         *     agent cannot change, is not removed; the response names the
+         *     observed cause.
+         */
+        post: operations["decideFolderAccessEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{app}/folder-access/release": {
         parameters: {
             query?: never;
@@ -7132,9 +7173,12 @@ export interface components {
              *     Changed_outside means the folder identity or recorded rights
              *     differ, so nothing was changed. Failed names its cause in
              *     message; it does not imply that all additions were removed.
+             *     Incomplete means removal found access for the app's account
+             *     that Eugene did not add; each such entry waits in unknown
+             *     for the owner's decision, and the app may still use it.
              * @enum {string}
              */
-            state: "applying" | "ready" | "removing" | "removed" | "changed_outside" | "failed";
+            state: "applying" | "ready" | "removing" | "removed" | "changed_outside" | "failed" | "incomplete";
             /** @description The account already had the requested rights; nothing added and nothing to take back. */
             preexisting: boolean;
             /** @description Items inside the folder that keep their own permissions; their permissions are left as they are. */
@@ -7150,7 +7194,48 @@ export interface components {
             addedAt: string;
             /** @description The operator identity that requested access, derived from the session. */
             addedBy: string;
+            /**
+             * @description Access for the app's account that removal found and Eugene did
+             *     not add. A pending entry waits for the owner's decision; a kept
+             *     entry stays, and the app still has that access through it.
+             *     Absent or empty when there is none.
+             */
+            unknown?: components["schemas"]["FolderAccessUnknown"][];
         };
+        /** @description One entry that lets the app's account in and that Eugene did not add. */
+        FolderAccessUnknown: {
+            /** @description Stable id of this entry within its record. */
+            id: string;
+            /** @description The file or folder that holds the entry. */
+            path: string;
+            kind: components["schemas"]["FolderAccessUnknownKind"];
+            /** @description The entry in words, as the console shows it. */
+            entry: string;
+            decision: components["schemas"]["FolderAccessUnknownDecision"];
+        };
+        /**
+         * @description entry is a permission entry for the app's account. null_dacl is
+         *     a Windows item with no permission list, which lets everyone
+         *     in. owner means the app's account owns the item, so it can
+         *     change the item's permissions. unreadable means Eugene cannot
+         *     read the item's permissions.
+         * @enum {string}
+         */
+        FolderAccessUnknownKind: "entry" | "null_dacl" | "owner" | "unreadable";
+        /**
+         * @description Pending waits for the owner; kept means the owner chose to keep it.
+         * @enum {string}
+         */
+        FolderAccessUnknownDecision: "pending" | "kept";
+        /** @description The owner's decision about one unknown entry. */
+        FolderAccessDecision: {
+            action: components["schemas"]["FolderAccessDecisionAction"];
+        };
+        /**
+         * @description Remove deletes only this entry after checking it again; keep leaves it.
+         * @enum {string}
+         */
+        FolderAccessDecisionAction: "remove" | "keep";
         /** @description This app's recorded folder access on this node, including removal outcomes. */
         FolderAccessList: {
             /** @description Empty when there is no matching recorded access. */
@@ -7162,11 +7247,13 @@ export interface components {
          *     reparse point in the path; drive_root includes mount roots;
          *     network includes UNC paths and mapped network drives. System,
          *     Eugene and home refusals also cover ancestors containing those
-         *     folders. Unavailable means the app shares Eugene's own account
-         *     and is reported with 409; path refusals use 400.
+         *     folders. unsafe_parent means a parent folder can be changed by
+         *     accounts other than root (Linux), and applies only when no other
+         *     refusal does. Unavailable means the app shares Eugene's own
+         *     account and is reported with 409; path refusals use 400.
          * @enum {string}
          */
-        FolderAccessRefusal: "not_a_folder" | "link" | "drive_root" | "network" | "system" | "eugene" | "home" | "unavailable";
+        FolderAccessRefusal: "not_a_folder" | "link" | "drive_root" | "network" | "system" | "eugene" | "home" | "unsafe_parent" | "unavailable";
         /** @description A Problem with the observed folder-access refusal and its cause. */
         FolderAccessProblem: components["schemas"]["Problem"] & {
             refusal: components["schemas"]["FolderAccessRefusal"];
@@ -10325,6 +10412,82 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["FolderAccessProblem"];
+                };
+            };
+        };
+    };
+    decideFolderAccessEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+                /** @description The recorded folder access id, scoped to this app on this node. */
+                id: string;
+                /** @description The id of one entry in the record's unknown list. */
+                entry: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FolderAccessDecision"];
+            };
+        };
+        responses: {
+            /** @description The record after the decision and the removal that follows it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderAccess"];
+                };
+            };
+            /** @description The entry could not be removed; detail names the observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The credential is missing, invalid or expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The credential is valid but is not an operator session. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The app, the record or the entry was not found on this node. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The entry is not waiting for a decision, or the record is changing. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

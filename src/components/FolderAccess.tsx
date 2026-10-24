@@ -58,6 +58,18 @@ export function FolderAccess({
     }
   }
 
+  // R23-UNKNOWN: the owner removes or keeps access that Eugene did not add.
+  function decide(grant: string, entry: string, action: "remove" | "keep") {
+    return act(async () => {
+      const result = await api.post<Grant>(
+        target,
+        `${base}/${encodeURIComponent(grant)}/unknown/${encodeURIComponent(entry)}`,
+        { action },
+      );
+      setMessage(result.message);
+    });
+  }
+
   return (
     <section className="section-panel flex flex-col gap-3" aria-label="Folders Workbench can open">
       <h3 className="section-heading font-ui text-sm font-semibold">Folders Workbench can open</h3>
@@ -87,6 +99,35 @@ export function FolderAccess({
             · {grant.state}
           </p>
           <p>{grant.message}</p>
+          {(grant.unknown ?? []).map((found) =>
+            found.decision === "pending" ? (
+              <div key={found.id} className="flex flex-col gap-1">
+                <p>{`Workbench can still open ${found.path}: ${found.entry}. Eugene did not add this entry.`}</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={busy}
+                    onClick={() => decide(grant.id, found.id, "remove")}
+                  >
+                    Remove this entry too
+                  </button>
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={busy}
+                    onClick={() => decide(grant.id, found.id, "keep")}
+                  >
+                    Keep it
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p key={found.id}>
+                {`Workbench can still open ${found.path} through an entry Eugene did not add: ${found.entry}.`}
+              </p>
+            ),
+          )}
           {grant.restartNeeded && grant.state === "ready" && (
             <ConfirmButton
               label="Restart Workbench"

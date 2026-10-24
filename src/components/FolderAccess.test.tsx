@@ -90,3 +90,76 @@ it("confirms the Linux file group that receives the ACL", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Give access" }));
   expect(await screen.findByText(/Give group eapp-123456789abc-files read access/)).toBeTruthy();
 });
+
+it("asks the owner about access Eugene did not add, and says so when it is kept", async () => {
+  // R23-UNKNOWN (Troy, 2026-10-24): prompt; Keep leaves it, and the card says so.
+  vi.mocked(api.get).mockResolvedValue({
+    grants: [
+      {
+        id: "g1",
+        path: "/srv/acme",
+        mode: "read",
+        state: "incomplete",
+        restartNeeded: false,
+        message:
+          "Workbench's account can still open /srv/acme/sub through an entry Eugene did not add.",
+        unknown: [
+          {
+            id: "e1",
+            path: "/srv/acme/sub",
+            kind: "entry",
+            entry: "group eapp-123456789abc-files has rwx, set outside Eugene",
+            decision: "pending",
+          },
+        ],
+      },
+      {
+        id: "g2",
+        path: "/srv/old",
+        mode: "read",
+        state: "removed",
+        restartNeeded: false,
+        message: "Eugene's additions were removed.",
+        unknown: [
+          {
+            id: "e2",
+            path: "/srv/old/notes",
+            kind: "entry",
+            entry: "group eapp-123456789abc-files has r--, set outside Eugene",
+            decision: "kept",
+          },
+        ],
+      },
+    ],
+  });
+  vi.mocked(api.post).mockResolvedValue({ state: "removed", message: "Done." });
+  render(<FolderAccess target="agent" app="workbench" account="files" />);
+  expect(
+    await screen.findByText(
+      "Workbench can still open /srv/acme/sub: group eapp-123456789abc-files has rwx, set outside Eugene. Eugene did not add this entry.",
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(
+      "Workbench can still open /srv/old/notes through an entry Eugene did not add: group eapp-123456789abc-files has r--, set outside Eugene.",
+    ),
+  ).toBeTruthy();
+  // The kept entry asks nothing; the pending one offers both answers.
+  expect(screen.getAllByRole("button", { name: "Keep it" })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Remove this entry too" }));
+  await waitFor(() =>
+    expect(api.post).toHaveBeenCalledWith(
+      "agent",
+      "/v1/apps/workbench/folder-access/g1/unknown/e1",
+      { action: "remove" },
+    ),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
+  await waitFor(() =>
+    expect(api.post).toHaveBeenCalledWith(
+      "agent",
+      "/v1/apps/workbench/folder-access/g1/unknown/e1",
+      { action: "keep" },
+    ),
+  );
+});
