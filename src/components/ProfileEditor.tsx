@@ -7,7 +7,8 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { ApiError, api, describeError } from "@/lib/api";
+import { LibraryFailure } from "@/components/LibraryFailure";
+import { ApiError, api, describeError, displayFailure, type DisplayFailure } from "@/lib/api";
 import { loadConfigTrio } from "@/lib/configTrio";
 import { formatValue } from "@/lib/configValue";
 import { type ContextSuggestion, suggestContext } from "@/lib/contextSuggestion";
@@ -101,7 +102,7 @@ export function ProfileEditor({
   const [profiles, setProfiles] = useState<ModelProfile[] | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayFailure | null>(null);
   const [launched, setLaunched] = useState<string | null>(null);
   // Declared and left stopped (autoStart false), not started.
   const [launchedStopped, setLaunchedStopped] = useState(false);
@@ -126,7 +127,7 @@ export function ProfileEditor({
     } catch (err) {
       onProfilesLoaded?.(null);
       if (err instanceof ApiError && err.status === 401) return;
-      setError(describeError(err));
+      setError(displayFailure(err));
     }
   }, [model.id, onProfilesLoaded]);
 
@@ -192,7 +193,7 @@ export function ProfileEditor({
       await load();
       onChanged();
     } catch (err) {
-      setError(describeError(err));
+      setError(displayFailure(err));
     }
   }
 
@@ -206,7 +207,7 @@ export function ProfileEditor({
       await load();
       onChanged();
     } catch (err) {
-      setError(describeError(err));
+      setError(displayFailure(err));
     }
   }
 
@@ -243,7 +244,7 @@ export function ProfileEditor({
         setLaunched(runtime.name);
       }
     } catch (err) {
-      setError(describeError(err));
+      setError(displayFailure(err));
     } finally {
       setLaunching(null);
     }
@@ -303,7 +304,7 @@ export function ProfileEditor({
           className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
           role="alert"
         >
-          {error}
+          {error && <LibraryFailure error={error} />}
         </p>
       )}
       {/* From M6 a launch ends routable: the agent declares a companion
@@ -735,7 +736,7 @@ function ProfileForm({
   });
   const [authorSampling, setAuthorSampling] = useState(existing?.authorSampling !== false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayFailure | null>(null);
 
   const descriptor = engines.find((e) => e.engine === engine);
   const schema = descriptor?.flagSchema;
@@ -807,7 +808,7 @@ function ProfileForm({
       }
       await onSaved();
     } catch (err) {
-      setError(describeError(err));
+      setError(displayFailure(err));
     } finally {
       setSaving(false);
     }
@@ -820,7 +821,7 @@ function ProfileForm({
           className="status-error mb-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
           role="alert"
         >
-          {error}
+          {error && <LibraryFailure error={error} />}
         </p>
       )}
 

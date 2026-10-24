@@ -37,6 +37,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { More } from "@/components/Help";
 import { NodeNameCell } from "@/components/NodeNameCell";
 import { NodeUpdateCard } from "@/components/NodeUpdateCard";
+import { LibraryServices } from "@/components/LibraryServices";
 import { ReportOllama } from "@/components/OllamaKeep";
 import { LeaveInstall } from "@/components/LeaveInstall";
 import { MachineKeyCard } from "@/components/MachineKeyCard";
@@ -677,6 +678,7 @@ export default function NodesPage() {
                           ) : null}
                           <MachineLinkCell node={n} />
                           <ReportOllama node={n.name} />
+                          <LibraryServices target={`node:${n.name}`} />
                           {/* Every machine but the root's own (CX6); more
                             plainly on one that is down. */}
                           {n.role !== "control" && (

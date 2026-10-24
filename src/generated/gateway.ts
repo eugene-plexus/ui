@@ -607,14 +607,24 @@ export interface paths {
          *
          *     Profile reads go through the gateway's own agent's Library proxy
          *     using its service credential. They are cached for profileCacheSeconds
-         *     (30 by default). During an unavailable or invalid Library response,
-         *     last-known values are usable for profileMaxStaleSeconds (300 by
-         *     default) after expiry, then gateway defaults apply. Failures are
+         *     (30 by default). During a transport error, a proxy 502/503/504, or
+         *     a timeout, last-known values remain in effect with no time limit.
+         *     profileMaxStaleSeconds is null by default, meaning no limit while
+         *     the Library cannot answer. An explicit number limits stale reuse
+         *     to that many seconds after cache expiry, then gateway defaults
+         *     apply. Zero disables stale reuse. Failures are
          *     retried no more often than every five seconds and logged with the
-         *     fallback decision. A successful empty result clears old defaults.
+         *     fallback decision. Every successful answer replaces the saved
+         *     values; a successful empty result clears old defaults.
          *     Setting either cache duration to zero takes effect on the next
          *     request. Profile edits take effect on subsequent requests after
          *     cache expiry and do not restart engines.
+         *
+         *     Profile and special-token caches survive a gateway restart in
+         *     `library-cache.json` beside its config file. They are written at
+         *     most once a minute, only when changed, and loaded as stale, never
+         *     fresh. `GET /v1/info` reports Library reachability and how many
+         *     models currently use saved profile settings.
          *
          *     **Audio and files ride the image path (P2, 2026-09-28).** An
          *     `input_audio` part (WAV or MP3) and a `file` part (a PDF, inline
@@ -1058,7 +1068,7 @@ export interface paths {
          *     ### The envelope does not go in the body
          *
          *     `x_eugene_plexus` rides on **response headers**
-         *     (`x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     (`x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier`, `-swapped-in`,
          *     `-waited-ms`, `-context-length`, `-prompt-truncated`) rather
          *     than in the response object. Anthropic's wire is typed events
@@ -1412,7 +1422,7 @@ export interface paths {
          *     ### The envelope does not go in the body
          *
          *     `x_eugene_plexus` rides on response headers, as on `/v1/messages`
-         *     (`x-eugene-plexus-driver`, `-runtime`, `-backend`, `-latency-ms`,
+         *     (`x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`, `-latency-ms`,
          *     `-attempts`, `-tier`, `-swapped-in`, `-waited-ms`,
          *     `-context-length`, `-prompt-truncated`), and
          *     `x-eugene-plexus-ignored-settings` names every accepted setting
@@ -1683,7 +1693,7 @@ export interface paths {
          *     is refused: raw bytes are the stream.
          *
          *     **What served it rides response headers** (U4, 2026-09-28), as on
-         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier` and the rest of
          *     `x_eugene_plexus`, because the body is the audio and has nowhere to carry them.
          */
@@ -1737,7 +1747,7 @@ export interface paths {
          *     that a model without the surface is never asked.
          *
          *     **What served it rides response headers** (U4, 2026-09-28), as on
-         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier` and the rest of
          *     `x_eugene_plexus`, because `text` has no body to carry them; every format carries them alike.
          */
@@ -1778,7 +1788,7 @@ export interface paths {
          *     here, and `srt`/`vtt` refused.
          *
          *     **What served it rides response headers** (U4, 2026-09-28), as on
-         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier` and the rest of
          *     `x_eugene_plexus`, because `text` has no body to carry them; every format carries them alike.
          */
@@ -2866,6 +2876,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The gateway's observed Library state and saved settings use.
+         * @description Reports the last Library check without waiting for another one.
+         *     A Library outage does not stop routing or running models. Saved
+         *     profile defaults stay in effect under profileMaxStaleSeconds;
+         *     this view counts only models whose saved defaults are in effect.
+         */
+        get: operations["getInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -2887,6 +2920,45 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description The gateway's observed Library state and use of saved model settings. */
+        GatewayInfo: {
+            library: components["schemas"]["GatewayLibraryStatus"];
+        };
+        /**
+         * @description Library reachability observed by profile and special-token reads.
+         *     Loading saved caches after a restart does not establish whether
+         *     the Library can answer. A successful Library answer clears the
+         *     outage time and cause, including an answer with no profile.
+         */
+        GatewayLibraryStatus: {
+            /**
+             * @description True after a successful Library answer. False after a
+             *     transport error, a proxy 502/503/504, or a timeout. Null
+             *     before the first check, including after a gateway restart.
+             */
+            reachable: boolean | null;
+            /**
+             * Format: date-time
+             * @description When the current outage was first observed, in UTC. Further
+             *     failed checks keep this time. Null while reachable or before
+             *     the first check.
+             */
+            since: string | null;
+            /**
+             * @description The latest observed cause of the failed Library check, such
+             *     as connection refused, proxy HTTP 502/503/504, or a timeout.
+             *     Null while reachable or before the first check.
+             */
+            cause: string | null;
+            /**
+             * @description Number of distinct model paths currently using saved profile
+             *     defaults after cache expiry, including values loaded after a restart.
+             *     Counts each path once. Excludes fresh profiles, saved values
+             *     that are not in effect, and values excluded by an explicit
+             *     profileMaxStaleSeconds limit.
+             */
+            modelsOnSavedSettings: number;
+        };
         /**
          * @description Native Gemini request translated onto the shared chat path. Unsupported settings are refused
          *     by field name. Untested capabilities are attempted rather than blocked by an unmeasured
@@ -4856,6 +4928,14 @@ export interface components {
              *     no runtime of ours.
              */
             runtime?: string;
+            /**
+             * @description Name of the machine whose runtime answered, as the root's node
+             *     registry names it. Null when the backend is not a machine's
+             *     runtime, such as a cloud provider. Where the `x_eugene_plexus`
+             *     envelope rides on headers, this field rides as the
+             *     `x-eugene-plexus-node` header.
+             */
+            node?: string | null;
             backend?: components["schemas"]["BackendKind"];
             /**
              * @description What the backend said served this request, verbatim. Provenance,
@@ -11900,6 +11980,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigTestResult"];
+                };
+            };
+        };
+    };
+    getInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current observations, including an unknown state before the first check. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayInfo"];
                 };
             };
         };

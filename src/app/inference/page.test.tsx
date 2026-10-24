@@ -125,7 +125,11 @@ beforeEach(() => {
       const route = String(input).replace(/^\/api\/proxy\//, "");
       const key = `${init?.method ?? "GET"} ${route}`;
       const handler = handlers.get(key);
-      const result = handler ? handler() : { status: 418, body: { detail: `unhandled: ${key}` } };
+      const result = handler
+        ? handler()
+        : key.endsWith("/v1/serving-measurements")
+          ? { status: 200, body: { measurements: [] } }
+          : { status: 418, body: { detail: `unhandled: ${key}` } };
       return new Response(result.body === undefined ? null : JSON.stringify(result.body), {
         status: result.status,
         statusText: String(result.status),

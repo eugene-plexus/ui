@@ -20,7 +20,8 @@ export interface paths {
          *     limit; larger files come through `/v1/uploads`). The name, the
          *     purpose and the end ride the query, so no multipart is decoded
          *     twice. Answers 413 with the numbers when the owner's quota would
-         *     be passed, and 403 when the owner turned files off.
+         *     be passed, and 403 when the owner turned files off or the owner
+         *     is a person Eugene removed.
          */
         post: operations["createStoredFile"];
         delete?: never;
@@ -191,7 +192,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The last sweep, and removals waiting for the owner. */
+        /** Which parts are on, and the last sweep. */
         get: operations["getStoreStatus"];
         put?: never;
         post?: never;
@@ -222,7 +223,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/removals/release": {
+    "/v1/removals/delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -232,14 +233,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Delete what the held removals own.
-         * @description An operator session only. When `removalBrake` or more people were
-         *     unknown to the root at once, the sweep deleted nothing of theirs
-         *     and held them. This deletes everything those people own here, for
-         *     good, after the root is asked once more: a person it knows again
-         *     is kept.
+         * Delete now, everything a removed person kept here.
+         * @description An operator session only. The owner's Delete now (MRC27): every
+         *     file and upload of a hidden person, at once and for good, with
+         *     their rows in every copy kept before a migration. Only a person
+         *     Eugene removed (one `/v1/owners` lists with `deleteAt`): a person
+         *     Eugene still has keeps their files.
          */
-        post: operations["releaseHeldRemovals"];
+        post: operations["deleteRemovedPersonNow"];
         delete?: never;
         options?: never;
         head?: never;
@@ -416,6 +417,21 @@ export interface components {
             bytes: number;
             /** @description Uploads in progress. */
             uploads: number;
+            /**
+             * @description Unix seconds. Set for a person Eugene removed: their objects
+             *     have been hidden from everyone since then.
+             */
+            removedAt?: number;
+            /**
+             * @description Unix seconds. Set with `removedAt`: when their objects are
+             *     deleted for good, unless Eugene has them again first or the
+             *     owner deletes them now.
+             */
+            deleteAt?: number;
+        };
+        RemovalDeleteRequest: {
+            /** @description The removed person, as `/v1/owners` names them. */
+            owner: string;
         };
         StoreOwnerList: {
             owners: components["schemas"]["StoreOwner"][];
@@ -428,15 +444,19 @@ export interface components {
         RemovalCheck: {
             /** @description How many people who own something here the root was asked about. */
             checked: number;
-            /** @description How many of them the root no longer knows and whose objects were deleted. */
-            removed: number;
+            /** @description People the root no longer has, whose objects were hidden now. */
+            hidden: number;
+            /** @description Hidden people the root has again, whose objects are theirs again. */
+            restored: number;
             /**
-             * @description `person:<id>` owners the root no longer knows, held because
-             *     `removalBrake` or more were unknown at once. Nothing of theirs
-             *     is deleted until the owner releases them.
+             * @description Removed people whose objects were deleted for good: their date
+             *     passed, `removedPeopleRetention` is `none`, or Delete now.
              */
-            held: string[];
-            /** @description Why the root could not be asked; then nothing was deleted for removal. */
+            deleted: number;
+            /**
+             * @description Why the root could not be asked; then nobody was hidden or
+             *     restored. A date that had passed was still kept to.
+             */
             error?: string;
         };
         SweepReport: {
@@ -462,8 +482,6 @@ export interface components {
         StoreStatus: {
             parts: components["schemas"]["StoreParts"];
             lastSweep?: components["schemas"]["SweepReport"];
-            /** @description Removed people whose objects wait for the owner (`POST /v1/removals/release`). */
-            held: string[];
         };
         /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
@@ -1033,7 +1051,9 @@ export interface components {
         };
         /**
          * @description The owner header came with a credential that may not name owners,
-         *     or the owner turned this part of the store off in its settings.
+         *     the owner turned this part of the store off in its settings, or
+         *     the owner named is a person Eugene removed (nothing new is kept
+         *     for them while their objects are hidden).
          */
         Forbidden: {
             headers: {
@@ -1491,14 +1511,18 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
-    releaseHeldRemovals: {
+    deleteRemovedPersonNow: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemovalDeleteRequest"];
+            };
+        };
         responses: {
             /** @description What was deleted. */
             200: {
@@ -1509,9 +1533,10 @@ export interface operations {
                     "application/json": components["schemas"]["SweepReport"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            /** @description The root could not be asked; nothing was deleted. */
-            503: {
+            /** @description The owner named is not a person Eugene removed. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
