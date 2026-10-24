@@ -203,6 +203,23 @@ function ok(body: unknown): Result {
   return { status: 200, body };
 }
 
+it("explains a Library proxy outage and offers its observed cause", async () => {
+  handlers.set("GET library/v1/models", () => ({
+    status: 502,
+    body: {
+      detail: { detail: "library at http://nas:1234/v1/models did not answer: connection refused" },
+    },
+  }));
+  render(<LibraryPage />);
+  expect(
+    await screen.findByText(
+      /Running models keep serving, and machines start models from their own copies/,
+    ),
+  ).toBeVisible();
+  fireEvent.click(screen.getByText("Details"));
+  expect(screen.getByText(/library at http/)).toBeVisible();
+});
+
 function install(): Map<string, Handler> {
   return new Map<string, Handler>([
     ["GET agent/v1/node", () => ok({ enrolled: true, name: "Amish_Station", devices: [] })],

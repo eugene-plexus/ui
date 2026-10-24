@@ -21,7 +21,8 @@ import { PrepareControl, entryForFile } from "@/components/PrepareModel";
 import { RunButton } from "@/components/RunButton";
 import { RunsAsNote } from "@/components/RunsAsNote";
 import { SearchModelsShelf } from "@/components/SearchModelsShelf";
-import { ApiError, api, describeError } from "@/lib/api";
+import { LibraryFailure } from "@/components/LibraryFailure";
+import { ApiError, api, describeError, displayFailure, type DisplayFailure } from "@/lib/api";
 import {
   type EngineFit,
   type EngineFitModel,
@@ -167,7 +168,7 @@ function LibraryPageInner() {
   const [moved, setMoved] = useState<ModelRelocated | null>(null);
   // The detail pane holds the "Add a prepared model" form instead (LS3).
   const [adding, setAdding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const { downloads, reload: reloadDownloads, active: activeDownloads } = useDownloads();
 
@@ -215,7 +216,7 @@ function LibraryPageInner() {
     } catch (err) {
       if (controller.signal.aborted || (err instanceof ApiError && err.status === 401)) return;
       // The library's own sentence, not `err.message`'s status line.
-      setError(describeError(err));
+      setError(displayFailure(err));
     } finally {
       if (!controller.signal.aborted) setLoadingMoreModels(false);
     }
@@ -340,7 +341,7 @@ function LibraryPageInner() {
       setScan(await api.post<Scan>("library", "/v1/scan", { full }));
       setError(null);
     } catch (err) {
-      setError(describeError(err));
+      setError(displayFailure(err));
     } finally {
       setBusy(false);
     }
@@ -351,7 +352,7 @@ function LibraryPageInner() {
     try {
       setScan(await api.delete<Scan>("library", "/v1/scan"));
     } catch (err) {
-      setError(describeError(err));
+      setError(displayFailure(err));
     } finally {
       setBusy(false);
     }
@@ -412,7 +413,7 @@ function LibraryPageInner() {
             className="status-error mx-4 mt-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
             role="alert"
           >
-            {error}
+            {error && <LibraryFailure error={error} />}
           </p>
         )}
 
@@ -882,7 +883,7 @@ function ModelDetail({
   nodes: TargetNode[];
   onDeleted: () => void;
 }) {
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayFailure | null>(null);
   // Counts the profile saves under this model, so the line under Run is never about
   // a profile that has since been edited (MR3).
   const [profilesVersion, setProfilesVersion] = useState(0);
@@ -952,7 +953,7 @@ function ModelDetail({
       await api.delete<void>("library", `/v1/models/${encodeURIComponent(model.id)}`);
       onChanged();
     } catch (err) {
-      setError(describeError(err));
+      setError(displayFailure(err));
     }
   }
 
@@ -1039,7 +1040,7 @@ function ModelDetail({
 
       {error && (
         <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm" role="alert">
-          {error}
+          {error && <LibraryFailure error={error} />}
         </p>
       )}
 
@@ -1313,7 +1314,7 @@ function RunningPanel({
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayFailure | null>(null);
 
   async function stop() {
     if (!node) return;
@@ -1327,7 +1328,7 @@ function RunningPanel({
       );
       onChanged();
     } catch (err) {
-      setError(describeError(err));
+      setError(displayFailure(err));
     } finally {
       setBusy(false);
     }
@@ -1381,7 +1382,7 @@ function RunningPanel({
 
       {error && (
         <p className="status-error mt-2 rounded-[var(--radius)] border px-2 py-1" role="alert">
-          {error}
+          {error && <LibraryFailure error={error} />}
         </p>
       )}
     </div>
@@ -1424,7 +1425,7 @@ function FitPanel({
   fitModel: EngineFitModel;
 }) {
   const [fit, setFit] = useState<ModelFit | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayFailure | null>(null);
   const [open, setOpen] = useState(false);
 
   // Whose memory this is about: the node picked in the header, which is
@@ -1452,7 +1453,7 @@ function FitPanel({
         if (!cancelled) setFit(answer);
       } catch (err) {
         if (cancelled || (err instanceof ApiError && err.status === 401)) return;
-        setError(describeError(err));
+        setError(displayFailure(err));
       }
     })();
     return () => {
@@ -1461,7 +1462,11 @@ function FitPanel({
   }, [model.id, budget, ready, fitModel.kind, fitModel.gpuMemoryUtilization]);
 
   if (error) {
-    return <p className="text-sm text-[color:var(--muted)]">could not measure fit: {error}</p>;
+    return (
+      <p className="text-sm text-[color:var(--muted)]">
+        could not measure fit: {error && <LibraryFailure error={error} />}
+      </p>
+    );
   }
   if (!fit) return null;
 

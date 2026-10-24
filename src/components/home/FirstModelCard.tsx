@@ -3,6 +3,8 @@
 import Link from "next/link";
 
 import { PlannedContextNote } from "@/components/PlannedContextNote";
+import { LibraryFailure } from "@/components/LibraryFailure";
+import type { DisplayFailure } from "@/lib/api";
 import { RunButton } from "@/components/RunButton";
 import { expertsContextSentence, placementSentence, verdictMeaning } from "@/lib/fitWords";
 import type { FirstModelState } from "@/lib/home";
@@ -31,6 +33,7 @@ export function FirstModelCard({
   downloads,
   node,
   onDownloadStarted,
+  libraryError,
 }: {
   state: FirstModelState;
   /** The tray's download tasks, rendered inside the card while any run. */
@@ -40,6 +43,7 @@ export function FirstModelCard({
   /** Refresh the page's reads once a download has been accepted, so the
    * tray picks it up without waiting out a poll. */
   onDownloadStarted?: () => void;
+  libraryError?: DisplayFailure | null;
 }) {
   if (state.kind === "loading" || state.kind === "hidden") return null;
 
@@ -51,7 +55,11 @@ export function FirstModelCard({
             the browser arc reads any error banner on landing as a wall of
             errors. */}
         <p className="text-sm text-[color:var(--muted)]">
-          The library did not answer, so what is on disk is unknown right now.{" "}
+          {libraryError ? (
+            <LibraryFailure error={libraryError} />
+          ) : (
+            "The Library is not answering. Running models keep serving, and machines start models from their own copies."
+          )}{" "}
           <Link href="/inference" className="underline">
             See what is running
           </Link>
