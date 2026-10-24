@@ -13,12 +13,18 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
 import { More } from "@/components/Help";
 import { ApiError, api, describeError } from "@/lib/api";
+import { agentTarget } from "@/lib/apps";
 import { contextOf, contextText, withContext } from "@/lib/modelContext";
 import {
+  DEFAULT_ROTATE_OVERLAP,
+  ROTATE_OVERLAPS,
+  appKeyNode,
   blockers,
   clientKeyTarget,
   keyLabel,
   keyStatus,
+  lastUsedText,
+  rotationNote,
   recipes as buildRecipes,
 } from "@/lib/clientKeys";
 import type { BoundAddressLike, RemapEvidence, Verdict } from "@/lib/gatewayAddress";
@@ -122,6 +128,8 @@ export function UseFromAppsCard({
   const [limits, setLimits] = useState<ClientKeyLimits>(DEFAULT_CLIENT_LIMITS);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editLimits, setEditLimits] = useState<ClientKeyLimits>(DEFAULT_CLIENT_LIMITS);
+  const [rotatingKey, setRotatingKey] = useState<string | null>(null);
+  const [overlap, setOverlap] = useState(DEFAULT_ROTATE_OVERLAP);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [override, setOverride] = useState<string | null>(null);
@@ -188,6 +196,7 @@ export function UseFromAppsCard({
   // address and the model id today, and should not be told to make
   // another just to see them.
   const liveKeys = (keys ?? []).filter((k) => !k.revokedAt);
+  const rotatingName = (keys ?? []).find((k) => k.id === rotatingKey)?.name ?? "";
   const keyString = fresh?.token ?? null;
   // The chosen model's window, for the recipes that tell an app its size
   // (Claude Code, Codex). `null` when the gateway does not say, and the
@@ -319,6 +328,32 @@ export function UseFromAppsCard({
         limits: cleanClientLimits(editLimits),
       });
       setEditingKey(null);
+      await load();
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rotate(event: React.FormEvent) {
+    event.preventDefault();
+    const old = (keys ?? []).find((k) => k.id === rotatingKey);
+    if (!old || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // An app's key is rotated by the agent on the app's machine: it writes the
+      // app's key file. Everything else goes to this machine's agent.
+      const node = appKeyNode(old.name);
+      const target = node ? agentTarget(node, localNode) : where.target;
+      const made = await api.post<ClientKeyCreated>(
+        target,
+        `/v1/auth/client-keys/${encodeURIComponent(old.id)}/rotate`,
+        { overlapSeconds: overlap },
+      );
+      setFresh(made);
+      setRotatingKey(null);
       await load();
     } catch (e) {
       setError(describeError(e));
@@ -549,6 +584,11 @@ export function UseFromAppsCard({
       {fresh && (
         <p className="status-warn mt-2 rounded-[var(--radius)] px-2 py-1 text-[0.6875rem]">
           Copy this now — it is shown once and is not stored anywhere.
+          {fresh.key.replaces && !fresh.key.name.startsWith("app:")
+            ? ` Paste the new key into each app that uses ${keyLabel(
+                (keys ?? []).find((k) => k.id === fresh.key.replaces)?.tail ?? "the old key",
+              )}.`
+            : ""}
         </p>
       )}
 
@@ -619,6 +659,7 @@ export function UseFromAppsCard({
         <ul data-testid="key-list" className="mt-3 flex flex-col gap-1">
           {liveKeys.map((key) => {
             const status = keyStatus(key);
+            const replaced = rotationNote(key, liveKeys);
             return (
               <li
                 key={key.id}
@@ -626,19 +667,77 @@ export function UseFromAppsCard({
               >
                 <span className="font-semibold">{key.name}</span>
                 <code className="font-mono">{keyLabel(key.tail)}</code>
-                <span className="text-[color:var(--muted)]">{status.text}</span>
+                <span className="text-[color:var(--muted)]">{replaced ?? status.text}</span>
+                <span className="text-[color:var(--muted)]" data-testid="last-used">
+                  {lastUsedText(key.lastUsedAt)}
+                </span>
                 <span className="basis-full">{describeClientLimits(key.limits)}</span>
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="underline"
-                  onClick={() => {
-                    setEditingKey(key.id);
-                    setEditLimits(key.limits ?? DEFAULT_CLIENT_LIMITS);
-                  }}
-                >
-                  {key.limits ? "Edit limits" : "Set limits"}
-                </button>
+                {!replaced && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="underline"
+                    onClick={() => {
+                      setEditingKey(key.id);
+                      setEditLimits(key.limits ?? DEFAULT_CLIENT_LIMITS);
+                    }}
+                  >
+                    {key.limits ? "Edit limits" : "Set limits"}
+                  </button>
+                )}
+                {!replaced && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="underline"
+                    onClick={() => {
+                      setRotatingKey(rotatingKey === key.id ? null : key.id);
+                      setOverlap(DEFAULT_ROTATE_OVERLAP);
+                    }}
+                  >
+                    Rotate
+                  </button>
+                )}
+                {rotatingKey === key.id && (
+                  <form
+                    onSubmit={rotate}
+                    data-testid="rotate-form"
+                    className="basis-full space-y-1 py-2"
+                  >
+                    <label className="block">
+                      Make a new key now. This one keeps working for{" "}
+                      <select
+                        value={overlap}
+                        onChange={(e) => setOverlap(Number(e.target.value))}
+                        aria-label="How long the old key keeps working"
+                        className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-1"
+                      >
+                        {ROTATE_OVERLAPS.map((o) => (
+                          <option key={o.seconds} value={o.seconds}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="text-[color:var(--muted)]">
+                      If this key leaked, choose Stop now.
+                      {rotatingName.startsWith("app:open-webui@")
+                        ? " Open WebUI restarts, and settings changed inside it go back to their defaults."
+                        : ""}
+                    </p>
+                    <button type="submit" disabled={busy} className="mr-3 underline">
+                      Make the new key
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="underline"
+                      onClick={() => setRotatingKey(null)}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                )}
                 {editingKey === key.id && (
                   <form onSubmit={saveLimits} className="basis-full space-y-2 py-2">
                     {!key.limits && (
