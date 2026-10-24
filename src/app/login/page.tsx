@@ -63,6 +63,20 @@ function safeNext(raw: string | null): string {
   return "/";
 }
 
+/** The agent's problem `type`, read without trusting its shape. */
+function problemType(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const detail = (body as { detail?: unknown }).detail;
+  if (typeof detail !== "object" || detail === null) return undefined;
+  const type = (detail as { type?: unknown }).type;
+  return typeof type === "string" ? type : undefined;
+}
+
+/** Row 5: this machine was off when the passphrase changed, and is locked. */
+function asksForOldPassphrase(status: number, body: unknown): boolean {
+  return status === 409 && (problemType(body) ?? "").endsWith("old-passphrase-needed");
+}
+
 function problemTitle(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null) return undefined;
   const detail = (body as { detail?: unknown }).detail;
@@ -105,6 +119,9 @@ function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canLeave, setCanLeave] = useState(false);
+  // Row 5: shown when the agent asks once for the passphrase it had before.
+  const [previousNeeded, setPreviousNeeded] = useState<string | null>(null);
+  const [previous, setPrevious] = useState("");
   const [leaving, setLeaving] = useState(false);
   const [left, setLeft] = useState<string | null>(null);
   // Probe init state on mount via the public /v1/auth/status endpoint
@@ -193,7 +210,7 @@ function LoginForm() {
       const resp = await api.post<LoginResponse>(
         "agent",
         "/v1/auth/login",
-        { passphrase },
+        previousNeeded && previous ? { passphrase, previousPassphrase: previous } : { passphrase },
         { skipAuth: true },
       );
       setSessionToken(resp.sessionToken);
@@ -213,10 +230,17 @@ function LoginForm() {
           setSetupRequired(true);
           return;
         }
-        if (e.status === 429) {
+        if (asksForOldPassphrase(e.status, e.body)) {
+          setPreviousNeeded(
+            (isProblemDetail(e.body) && e.body.detail?.detail) ||
+              "This machine was off when the passphrase changed. Enter the old passphrase once to finish.",
+          );
+        } else if (e.status === 429) {
           setError(
             "Too many failed login attempts from this source. Wait 60 seconds and try again.",
           );
+        } else if (e.status === 401 && previousNeeded) {
+          setError("The new passphrase, or the old one, did not match. Try again.");
         } else if (e.status === 401) {
           setError("Passphrase did not match. Try again.");
         } else {
@@ -337,6 +361,33 @@ function LoginForm() {
               Caps Lock is on.
             </p>
           )}
+          {previousNeeded && (
+            <div className="mt-3" data-testid="old-passphrase">
+              <p
+                role="status"
+                className="status-warn rounded-[var(--radius)] border px-3 py-2 text-sm"
+              >
+                {previousNeeded}
+              </p>
+              <label
+                className="font-ui mt-3 mb-1 block text-sm font-medium"
+                htmlFor="previous-passphrase"
+              >
+                Old passphrase
+              </label>
+              <input
+                id="previous-passphrase"
+                type={shown ? "text" : "password"}
+                value={previous}
+                onChange={(e) => setPrevious(e.target.value)}
+                readOnly={submitting}
+                autoFocus
+                autoComplete="off"
+                spellCheck={false}
+                className="font-ui w-full min-w-0 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--panel-soft)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-left)]"
+              />
+            </div>
+          )}
           {error && (
             <p
               id="passphrase-error"
@@ -375,7 +426,7 @@ function LoginForm() {
           )}
           <button
             type="submit"
-            disabled={submitting || !passphrase}
+            disabled={submitting || !passphrase || (previousNeeded !== null && !previous)}
             className="action-button action-button--primary font-ui mt-4 w-full rounded-[var(--radius)] bg-[color:var(--accent-left)] px-5 py-2 text-sm font-medium text-[color:var(--on-accent-left)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting ? "Unlocking…" : "Unlock"}

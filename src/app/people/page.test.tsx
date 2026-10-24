@@ -90,6 +90,16 @@ beforeEach(() => {
       }),
     ],
     ["DELETE control/v1/oidc/clients/c-workbench", () => ({ status: 204 })],
+    [
+      "GET control/v1/oidc/keys",
+      () => ({
+        status: 200,
+        body: {
+          keys: [{ kid: "k-1", createdAt: "2026-10-21T12:00:00Z", signs: true }],
+          nextChangeAt: "2027-01-19T12:00:00Z",
+        },
+      }),
+    ],
   ]);
   sessionStorage.clear();
   sessionStorage.setItem("eugene-session-token", "test-token");
@@ -396,6 +406,99 @@ describe("apps that sign in with Eugene", () => {
       `${window.location.origin}/oidc`,
     );
     expect(within(address).getByRole("link")).toHaveAttribute("href", "/config?sel=control");
+  });
+});
+
+describe("the sign-in key and Eugene's passphrase (row 5)", () => {
+  it("says when the sign-in key changes, and ends every app sign-in after a leak", async () => {
+    handlers.set("POST control/v1/oidc/keys/change", () => ({
+      status: 200,
+      body: { keys: [{ kid: "k-2", createdAt: "2026-11-22T12:00:00Z", signs: true }] },
+    }));
+    const user = userEvent.setup();
+    render(<PeoplePage />);
+    const key = await screen.findByTestId("sign-in-key", {}, { timeout: 5000 });
+    expect(await within(key).findByTestId("sign-in-key-line")).toHaveTextContent(
+      "Sign-in key: made 21 Oct; changes on 19 Jan.",
+    );
+    await user.click(
+      within(key).getByRole("checkbox", {
+        name: "End every app sign-in now (the key may have leaked)",
+      }),
+    );
+    await user.click(within(key).getByRole("button", { name: "Change sign-in key" }));
+    expect(await within(key).findByRole("status")).toHaveTextContent(
+      "Sign-in key changed. Every app signs in again.",
+    );
+    expect(sent("POST control/v1/oidc/keys/change")).toEqual([{ endSignIns: true }]);
+    expect(within(key).getByTestId("sign-in-key-line")).toHaveTextContent(
+      "Sign-in key: made 22 Nov; it does not change by itself.",
+    );
+  });
+
+  it("says, in the root's words, why a routine change waits", async () => {
+    handlers.set("POST control/v1/oidc/keys/change", () => ({
+      status: 409,
+      body: {
+        detail: {
+          title: "Changed too recently",
+          detail:
+            "The sign-in key changed on 12 Oct. Changing it again before 11 Nov ends some app sign-ins. Choose End every app sign-in now to do it anyway.",
+        },
+      },
+    }));
+    const user = userEvent.setup();
+    render(<PeoplePage />);
+    const key = await screen.findByTestId("sign-in-key", {}, { timeout: 5000 });
+    await user.click(within(key).getByRole("button", { name: "Change sign-in key" }));
+    expect(await within(key).findByRole("alert")).toHaveTextContent(
+      "Changing it again before 11 Nov ends some app sign-ins.",
+    );
+    expect(sent("POST control/v1/oidc/keys/change")).toEqual([{ endSignIns: false }]);
+  });
+
+  it("changes Eugene's passphrase from the owner's row and says where each machine stands", async () => {
+    handlers.set("POST agent/v1/auth/passphrase", () => ({
+      status: 200,
+      body: {
+        changedAt: "2026-10-24T12:00:00Z",
+        machines: [
+          { node: "nas", state: "changed" },
+          { node: "box", state: "pending", detail: "Not reached (timed out)." },
+          { node: "old", state: "plain", detail: "It is reached in plain HTTP." },
+        ],
+        passphraseFile: "old",
+      },
+    }));
+    const user = userEvent.setup();
+    render(<PeoplePage />);
+    const owner = await screen.findByTestId("protected-owner", {}, { timeout: 5000 });
+    await user.click(within(owner).getByText("Protected owner"));
+    const form = within(owner).getByTestId("passphrase-change");
+    const submit = within(form).getByRole("button", { name: "Change passphrase" });
+    await user.type(within(form).getByLabelText("Current passphrase"), "the-old-passphrase");
+    await user.type(within(form).getByLabelText("New passphrase"), "a-new-passphrase");
+    await user.type(within(form).getByLabelText("New passphrase again"), "a-new-passphrasX");
+    expect(within(form).getByText("The two new passphrases differ.")).toBeVisible();
+    expect(submit).toBeDisabled();
+    await user.clear(within(form).getByLabelText("New passphrase again"));
+    await user.type(within(form).getByLabelText("New passphrase again"), "a-new-passphrase");
+    await user.click(submit);
+    const changed = await within(form).findByTestId("passphrase-changed");
+    expect(changed).toHaveTextContent("Passphrase changed.");
+    expect(changed).toHaveTextContent("The passphrase file still holds the old passphrase.");
+    expect(
+      within(changed)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual([
+      "nas: changed",
+      "box: changes at its next sign-in",
+      "old: not sent: reached in plain HTTP",
+    ]);
+    expect(sent("POST agent/v1/auth/passphrase")).toEqual([
+      { current: "the-old-passphrase", new: "a-new-passphrase" },
+    ]);
   });
 });
 

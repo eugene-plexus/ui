@@ -162,6 +162,45 @@ describe("signing in", () => {
     expect(field).toHaveAccessibleDescription(/did not match/i);
   });
 
+  it("asks once for the old passphrase on a machine that was off when it changed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const body = init?.body ? JSON.parse(String(init.body)) : null;
+        calls.push({ url, method: init?.method ?? "GET", body, authorization: null });
+        if (url.endsWith("/v1/auth/status")) return Response.json({ initialized: true });
+        if (body?.previousPassphrase === "the old one")
+          return Response.json({ sessionToken: "agent-jwt", expiresAt: "2026-09-27T00:00:00Z" });
+        return Response.json(
+          {
+            detail: {
+              type: "https://github.com/eugene-plexus/agent#old-passphrase-needed",
+              title: "Old passphrase needed",
+              detail:
+                "This machine was off when the passphrase changed. Enter the old passphrase once to finish.",
+              status: 409,
+            },
+          },
+          { status: 409 },
+        );
+      }),
+    );
+    await signIn("the new one");
+    expect(await screen.findByTestId("old-passphrase")).toHaveTextContent(
+      "This machine was off when the passphrase changed. Enter the old passphrase once to finish.",
+    );
+    expect(screen.getByRole("button", { name: /unlock/i })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Old passphrase"), "the old one", { delay: null });
+    await userEvent.click(screen.getByRole("button", { name: /unlock/i }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/nodes"));
+    const logins = calls.filter((c) => c.url.includes("/v1/auth/login"));
+    expect(logins.map((c) => c.body)).toEqual([
+      { passphrase: "the new one" },
+      { passphrase: "the new one", previousPassphrase: "the old one" },
+    ]);
+  });
+
   it("goes nowhere when the passphrase was refused", async () => {
     await signIn("wrong");
     await screen.findByText(/did not match/i);
