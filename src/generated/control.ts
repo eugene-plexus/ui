@@ -1214,7 +1214,9 @@ export interface paths {
          *     there for why.
          *
          *     Each read by the standby records where it is: `after` is the index
-         *     it has applied (`ControlStatus.standbys`).
+         *     it has applied (`ControlStatus.standbys`), and, from its headers,
+         *     the version it runs and whether its copy is this root's
+         *     (`StandbyStatus.version`, `StandbyStatus.matches`; row 4).
          */
         get: operations["readLog"];
         put?: never;
@@ -1259,6 +1261,12 @@ export interface paths {
          *     this root's applied state on every request, so removing the grant
          *     shuts the next pull out while the token still has time left. No
          *     other node, and no other token kind, opens this or the log.
+         *
+         *     **A standby whose copy differs from this root's** (row 4) takes
+         *     one again by itself, at most once in 10 minutes: its copy at this
+         *     root's index has another digest than `LogPage.appliedDigest`. It
+         *     logs *this copy differs from the root at index N; taking a fresh
+         *     snapshot*.
          */
         get: operations["readSnapshot"];
         put?: never;
@@ -1298,6 +1306,19 @@ export interface paths {
          *     announcement learns the epoch when it next pulls the bundle, which
          *     is the bounded, visible window this document accepts in place of
          *     quorum.
+         *
+         *     **Then it announces its address** (row 4): it pushes its signed
+         *     machine list, whose `control` names this root, its node and the
+         *     new epoch (`POST /v1/node/machine-list`, `agent.yaml`), over TLS
+         *     to the keys this copy holds for each node. Each node that takes it
+         *     moves its `controlUrl` here, announces its address again and pulls
+         *     the bundle. This root starts polling the nodes, and pushes the
+         *     bundle and the list again, at most once a minute, to any node
+         *     that reports a lower `epoch` or `controlUrlEpoch`. A node that
+         *     cannot be reached asks the machine that held the `standby` grant
+         *     after 2 minutes of failed pulls. The copy is reached through its
+         *     machine's port (`/control`): its agent marks it promoted once a
+         *     list signed at the new epoch names its machine, with no restart.
          *
          *     **Refusing to promote is a valid outcome.** A standby that cannot
          *     prove its state reports how far behind it is and returns 409;
@@ -3946,7 +3967,48 @@ export interface components {
              *     root's list, and a node then offers no change.
              */
             keyChange?: boolean;
+            control?: components["schemas"]["MachineListControl"];
             nodes: components["schemas"]["MachineListNode"][];
+        };
+        /**
+         * @description Where the install's active control root is, and at which epoch
+         *     (row 4, `docs/design/rows/row-04.md`). Absent from a root older
+         *     than row 4.
+         *
+         *     **A node moves only with a promotion** (R4-MOVE). It writes
+         *     `url` as its `controlUrl` only when all of these hold: the list
+         *     verifies against the root identity it pinned at enrolment; its
+         *     `version` is above the one it holds; `epoch` is above the epoch
+         *     its current `controlUrl` came with (`NodeIdentity.controlUrlEpoch`);
+         *     and `epoch` is at least the epoch it holds. The same epoch never
+         *     moves a node: a node may reach its root at an address the root
+         *     does not know, such as a tailnet address.
+         *
+         *     A list whose `epoch` is below the epoch a node holds comes from a
+         *     superseded root, and the node refuses all of it
+         *     (`POST /v1/node/machine-list` answers 409).
+         */
+        MachineListControl: {
+            /**
+             * Format: int64
+             * @description The epoch of the root that signed this list.
+             */
+            epoch: number;
+            /**
+             * @description The node this root runs on, when it knows its own name. After a
+             *     promotion, the promoted machine.
+             */
+            node?: string | null;
+            /**
+             * @description Where nodes reach this root: the plain form
+             *     `http://<host>:<machine port>` of its machine's port, which a
+             *     node's machine table carries to TLS under `/control`, or the
+             *     root's nodes name when it has no machine port. Taken from the
+             *     machine port its agent describes in the door file, else from
+             *     this root's own node record, else from the nodes name. Null
+             *     when this root knows none of them; a node then does not move.
+             */
+            url?: string | null;
         };
         MachineListNode: {
             name: string;
@@ -4337,6 +4399,25 @@ export interface components {
              *     stopped.
              */
             reachable?: boolean;
+            /**
+             * @description The version of control the standby runs, from the
+             *     `Eugene-Plexus-Version` header of its last pull (row 4). Absent
+             *     from a standby older than row 4. A standby older than the root
+             *     should be updated: it may drop what a newer root writes.
+             */
+            version?: string;
+            /**
+             * @description Whether the standby's copy is the root's, byte for byte (row
+             *     4). Read at a pull made at this root's own applied index, from
+             *     the `Eugene-Plexus-Copy-Digest` header: true when that digest
+             *     is this root's `LogPage.appliedDigest`, false when it differs.
+             *     A standby whose copy differs takes a fresh snapshot by itself
+             *     (at most once in 10 minutes), so false that stays means the
+             *     fresh copy differs too. Absent until a standby on this root's
+             *     version has pulled at this root's index: two versions may write
+             *     the same state in different bytes.
+             */
+            matches?: boolean;
         };
         LogPage: {
             /** @description Oldest first, gapless, strictly increasing `index`. */
@@ -4352,6 +4433,17 @@ export interface components {
              *     behind compaction *before* it tries to read a gap.
              */
             firstAvailableIndex?: number;
+            /**
+             * @description SHA-256, in hex, of the active root's canonical applied state
+             *     at `appliedIndex`: the bytes `GET /v1/control/snapshot` would
+             *     send at that index (row 4). Kept per index, so a caught-up
+             *     standby's pulls cost no hashing. A standby on the same version
+             *     (the `Eugene-Plexus-Version` response header) whose copy at the
+             *     same index has another digest differs from the root, for
+             *     example a copy that applied entries with code too old to know
+             *     all their fields. It takes a fresh snapshot.
+             */
+            appliedDigest?: string;
         };
         AccessAuditEvent: {
             index: number;
@@ -6663,6 +6755,12 @@ export interface components {
          *     none of these.
          */
         SubjectToken: string;
+        /**
+         * @description The version of control the standby runs (row 4). Recorded as
+         *     `StandbyStatus.version`; a standby that does not send it is older
+         *     than row 4.
+         */
+        EugenePlexusVersion: string;
     };
     requestBodies: never;
     headers: never;
@@ -8564,7 +8662,19 @@ export interface operations {
                 after: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description The version of control the standby runs (row 4). Recorded as
+                 *     `StandbyStatus.version`; a standby that does not send it is older
+                 *     than row 4.
+                 */
+                "Eugene-Plexus-Version"?: components["parameters"]["EugenePlexusVersion"];
+                /**
+                 * @description The standby's own `LogPage.appliedDigest`: SHA-256, in hex, of
+                 *     its canonical applied state at `after` (row 4).
+                 */
+                "Eugene-Plexus-Copy-Digest"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8573,6 +8683,12 @@ export interface operations {
             /** @description Entries, oldest first. */
             200: {
                 headers: {
+                    /**
+                     * @description The version of control this root runs. A standby compares
+                     *     `appliedDigest` with its own copy only when it runs the same
+                     *     version.
+                     */
+                    "Eugene-Plexus-Version"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8597,7 +8713,14 @@ export interface operations {
     readSnapshot: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description The version of control the standby runs (row 4). Recorded as
+                 *     `StandbyStatus.version`; a standby that does not send it is older
+                 *     than row 4.
+                 */
+                "Eugene-Plexus-Version"?: components["parameters"]["EugenePlexusVersion"];
+            };
             path?: never;
             cookie?: never;
         };
