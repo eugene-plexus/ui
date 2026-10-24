@@ -454,8 +454,15 @@ export interface components {
              */
             deleted: number;
             /**
-             * @description Why the root could not be asked; then nobody was hidden or
-             *     restored. A date that had passed was still kept to.
+             * @description People the root has again whose date had already passed: they
+             *     were not restored, and what they kept was deleted.
+             */
+            lateRestored: number;
+            /**
+             * @description Why a step could not finish: the root could not be asked (then
+             *     nobody was hidden or restored; a date that had passed was still
+             *     kept to), or a copy kept before a migration could not be purged
+             *     (named, and retried at the next sweep).
              */
             error?: string;
         };
@@ -1537,6 +1544,19 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             /** @description The owner named is not a person Eugene removed. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description Not finished: the person still has an upload being written, or a
+             *     copy kept before a migration could not be purged (the file is
+             *     named). They stay removed, and the next sweep tries again.
+             */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -75,6 +75,11 @@ export function sweepLine(report: SweepReport | null | undefined): string | null
       `${removal.restored} ${removal.restored === 1 ? "person" : "people"} Eugene has again ${removal.restored === 1 ? "has their" : "have their"} files back.`,
     );
   }
+  if (removal && removal.lateRestored > 0) {
+    lines.push(
+      `${removal.lateRestored} ${removal.lateRestored === 1 ? "person" : "people"} Eugene has again came back after ${removal.lateRestored === 1 ? "their" : "the"} delete date, so ${removal.lateRestored === 1 ? "their" : "the"} files were deleted.`,
+    );
+  }
   return lines.join(" ");
 }
 

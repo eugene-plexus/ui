@@ -36,7 +36,7 @@ describe("the store's owners, as a person reads them", () => {
         parts: 3,
         blobs: 2,
         freedBytes: 2048,
-        removal: { checked: 2, hidden: 0, restored: 0, deleted: 1 },
+        removal: { checked: 2, hidden: 0, restored: 0, deleted: 1, lateRestored: 0 },
       }),
     ).toBe(
       "The last sweep deleted 2 files and 1 upload (2.0 KiB), including everything 1 removed person kept.",
@@ -54,10 +54,22 @@ describe("the store's owners, as a person reads them", () => {
           hidden: 0,
           restored: 0,
           deleted: 0,
+          lateRestored: 0,
           error: "the control root is locked",
         },
       }),
     ).toContain("Removed people were not checked: the control root is locked");
+    expect(
+      sweepLine({
+        at,
+        files: 1,
+        uploads: 0,
+        parts: 0,
+        blobs: 1,
+        freedBytes: 10,
+        removal: { checked: 1, hidden: 0, restored: 0, deleted: 1, lateRestored: 1 },
+      }),
+    ).toContain("came back after their delete date, so their files were deleted.");
     expect(
       sweepLine({
         at,
@@ -66,7 +78,7 @@ describe("the store's owners, as a person reads them", () => {
         parts: 0,
         blobs: 0,
         freedBytes: 0,
-        removal: { checked: 3, hidden: 2, restored: 1, deleted: 0 },
+        removal: { checked: 3, hidden: 2, restored: 1, deleted: 0, lateRestored: 0 },
       }),
     ).toBe(
       "Nothing had ended at the last sweep. 2 removed people's files are now hidden. 1 person Eugene has again has their files back.",
