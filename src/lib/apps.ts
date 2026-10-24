@@ -61,6 +61,8 @@ export function updateAvailable(entry: AppCatalogueEntry): boolean {
 /** Plain words for an app's state, and whether it is a problem. */
 export function describeApp(app: App): { text: string; tone: "ok" | "muted" | "warn" | "error" } {
   if (!app.enabled) return { text: "Stopped", tone: "muted" };
+  if (app.provides === "memory-server" && app.settings?.memoryModel === null)
+    return { text: "Choose a model", tone: "muted" };
   switch (app.status) {
     case "running":
       return { text: "Running", tone: "ok" };

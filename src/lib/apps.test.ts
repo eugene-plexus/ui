@@ -22,12 +22,21 @@ function app(overrides: Partial<App> = {}): App {
     status: "running",
     port: 8190,
     ui: true,
+    experimental: false,
     configTrio: true,
     uses: ["inference"],
     uiUrl: "http://192.168.16.75:8190/",
     ...overrides,
   };
 }
+
+it("asks for Hindsight's model while it waits for the owner's choice", () => {
+  expect(
+    describeApp(
+      app({ status: "exited", provides: "memory-server", settings: { memoryModel: null } }),
+    ).text,
+  ).toBe("Choose a model");
+});
 
 describe("agentTarget", () => {
   it("talks to this console's own agent for this machine, and hops for any other", () => {
@@ -85,6 +94,7 @@ describe("updateAvailable", () => {
       entry: "eugene_plexus_chat",
       python: "3.12",
       ui: true,
+      experimental: false,
       configTrio: true,
       localActions: false,
       signIn: false,
