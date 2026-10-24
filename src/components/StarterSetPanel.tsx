@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { EligibilityDot } from "@/components/EligibilityDot";
 import { FitBadge, formatBytes } from "@/components/FitBadge";
-import { ApiError, api, describeError } from "@/lib/api";
+import { LibraryFailure } from "@/components/LibraryFailure";
+import { ApiError, api, displayFailure, libraryOutage, type DisplayFailure } from "@/lib/api";
 import type { EligibilityCandidate } from "@/lib/eligibility";
 import { fitQuery, fitQuestion, type NodeBudget } from "@/lib/nodeBudget";
 import {
@@ -61,7 +62,7 @@ export function StarterSetPanel({
    * request returned, that it had started one. */
   inFlight?: Set<string>;
   /** Why the last Download from this panel was refused. */
-  error?: string | null;
+  error?: DisplayFailure | null;
   onDownload: (model: StarterModel) => void;
   /** Download the pick and run it, as Home's same card does (CX1). Without
    * it, the pick's button only downloads. */
@@ -69,7 +70,7 @@ export function StarterSetPanel({
   onOpenRepo: (repo: string) => void;
 }) {
   const [set, setSet] = useState<StarterSet | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayFailure | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -92,7 +93,7 @@ export function StarterSetPanel({
         if (err instanceof ApiError && err.status === 401) return;
         // Not a page-level error: the search box beside this still
         // works, and it is the thing to fall back to.
-        setError(describeError(err));
+        setError(displayFailure(err));
       }
     })();
     return () => {
@@ -117,7 +118,14 @@ export function StarterSetPanel({
   if (error) {
     return (
       <p role="alert" className="text-sm text-[color:var(--muted)]">
-        The suggested models could not be loaded ({error}). Search above for one by name.
+        {libraryOutage(error) ? (
+          <LibraryFailure error={error} />
+        ) : (
+          <>
+            The suggested models could not be loaded (<LibraryFailure error={error} />
+            ). Search above for one by name.
+          </>
+        )}
         <button
           type="button"
           onClick={() => {
@@ -199,7 +207,7 @@ export function StarterSetPanel({
               data-testid="starter-error"
               className="status-error mt-2 rounded-[var(--radius)] border px-3 py-2 text-sm"
             >
-              {downloadError}
+              <LibraryFailure error={downloadError} />
             </p>
           )}
         </section>
