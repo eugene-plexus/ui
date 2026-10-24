@@ -234,6 +234,10 @@ export type RuntimePlacementList = ControlComponents["schemas"]["RuntimePlacemen
 export type PermissionGroup = ControlComponents["schemas"]["PermissionGroup"];
 export type PermissionGroupWrite = ControlComponents["schemas"]["PermissionGroupWrite"];
 export type PermissionGroupList = ControlComponents["schemas"]["PermissionGroupList"];
+// Row 70: what a group sets for its members, and what applies to a person.
+export type GroupPolicies = ControlComponents["schemas"]["GroupPolicies"];
+export type PoliciesInEffect = ControlComponents["schemas"]["PoliciesInEffect"];
+export type QueueBand = ControlComponents["schemas"]["QueueBand"];
 export type AdministrationGrants = ControlComponents["schemas"]["AdministrationGrants"];
 export type AdministrationSession = ControlComponents["schemas"]["AdministrationSession"];
 export type AdministrationLoginResponse =

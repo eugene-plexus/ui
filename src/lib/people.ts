@@ -11,7 +11,7 @@
  * Pure, so the page's sentences are tested against the wire's shapes.
  */
 
-import type { OidcClient, Person } from "./types";
+import type { GroupPolicies, OidcClient, PermissionGroup, Person, QueueBand } from "./types";
 
 /**
  * What a person may do with job sites (J77, `job-sites-own-enrollment.md`
@@ -57,6 +57,93 @@ export function jobSitesSummary(
     text,
     source: person.groups != null ? "groups" : person.permissions == null ? "defaults" : "own",
   };
+}
+
+/**
+ * Row 70: the queue bands a group may set, highest first. The root returns
+ * a verified person's band in its admission check; the gateway's queue
+ * reads it.
+ */
+export const QUEUE_BANDS: readonly { id: QueueBand; label: string }[] = [
+  { id: "interactive", label: "Interactive" },
+  { id: "background", label: "Background" },
+  { id: "sheddable", label: "Sheddable" },
+];
+
+/** The percents a group may set for summarising, the root's own bounds. */
+export const SUMMARY_PERCENT_MIN = 50;
+export const SUMMARY_PERCENT_MAX = 95;
+
+/** The summary percents the console offers: every whole percent the root accepts. */
+export function summaryPercentChoices(current: number | null | undefined): number[] {
+  const steps: number[] = [];
+  for (let p = SUMMARY_PERCENT_MIN; p <= SUMMARY_PERCENT_MAX; p += 1) steps.push(p);
+  if (current != null && !steps.includes(current)) steps.push(current);
+  return steps.sort((a, b) => a - b);
+}
+
+export function queueBandLabel(band: QueueBand | null | undefined): string {
+  return QUEUE_BANDS.find((b) => b.id === band)?.label ?? "Not set";
+}
+
+export function summaryPercentLabel(percent: number | null | undefined): string {
+  return percent == null ? "Not set" : `${percent}%`;
+}
+
+/** Whether the root's records show it knows group policies (an older root leaves them out). */
+export function rootKnowsPolicies(
+  groups: Pick<PermissionGroup, "policies">[] | null,
+  people: Pick<Person, "policiesInEffect">[],
+): boolean {
+  return (
+    (groups ?? []).some((g) => g.policies !== undefined) ||
+    people.some((p) => p.policiesInEffect !== undefined)
+  );
+}
+
+/** A group's policies as the console sends them: every policy, null when not set. */
+export function groupPoliciesBody(
+  band: QueueBand | "",
+  percent: number | null,
+): Required<GroupPolicies> {
+  return { queueBand: band || null, summaryContextPercent: percent };
+}
+
+/**
+ * What applies to a person now, each value with the groups that set it,
+ * from the root's `policiesInEffect`. Null for an older root, which has
+ * no policies: the page then says nothing rather than "Not set".
+ */
+export function policiesSummary(
+  person: Pick<Person, "policiesInEffect">,
+  groups: Pick<PermissionGroup, "id" | "name">[] | null,
+): { queue: string; summary: string } | null {
+  const effect = person.policiesInEffect;
+  if (effect === undefined) return null;
+  const from = (ids: string[] | undefined) => {
+    const names = (ids ?? []).map((id) => groups?.find((g) => g.id === id)?.name ?? id);
+    return names.length ? ` (from ${names.join(", ")})` : "";
+  };
+  return {
+    queue:
+      effect.queueBand == null
+        ? "Not set"
+        : queueBandLabel(effect.queueBand) + from(effect.setBy?.queueBand),
+    summary:
+      effect.summaryContextPercent == null
+        ? "Not set"
+        : summaryPercentLabel(effect.summaryContextPercent) +
+          from(effect.setBy?.summaryContextPercent),
+  };
+}
+
+/**
+ * Row 70c: where a group's memory servers are set, Workbench's Settings at its groups section,
+ * from the address Workbench is opened at; null when this install has no Workbench.
+ */
+export function workbenchGroupsHref(open: string | null | undefined): string | null {
+  if (!open) return null;
+  return `${open.replace(/\/+$/, "")}/settings#groups`;
 }
 
 /** The shortest password the root accepts, the console's passphrase rule. */

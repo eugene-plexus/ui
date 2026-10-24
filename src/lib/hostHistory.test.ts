@@ -4,6 +4,7 @@ import {
   type HostHistory,
   type HostSeries,
   bucketWord,
+  FLEET_METRICS,
   coverage,
   diskGroups,
   formatValue,
@@ -13,6 +14,10 @@ import {
   ofTotal,
   pointsFrom,
 } from "./hostHistory";
+
+it("requests power for the fleet's Power column", () => {
+  expect(FLEET_METRICS).toContain("gpuPower");
+});
 
 function series(partial: Partial<HostSeries> & Pick<HostSeries, "key" | "metric">): HostSeries {
   return {

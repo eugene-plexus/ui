@@ -466,6 +466,88 @@ describe("shared permission groups", () => {
     expect(screen.getByTestId("protected-owner")).not.toBeVisible();
   });
 
+  it("shows the policies in effect for a person and the groups that set them", async () => {
+    const desk = { ...group, id: "g-desk", name: "Desk" };
+    handlers.set("GET control/v1/permission-groups", () => ({
+      status: 200,
+      body: {
+        groups: [
+          { ...group, policies: { queueBand: "background", summaryContextPercent: null } },
+          { ...desk, policies: { queueBand: "background", summaryContextPercent: 85 } },
+        ],
+      },
+    }));
+    handlers.set("GET control/v1/people", () => ({
+      status: 200,
+      body: {
+        people: [
+          {
+            ...ADA,
+            groups: [group.id, desk.id],
+            appsInEffect: [],
+            permissionsInEffect: [],
+            policiesInEffect: {
+              queueBand: "background",
+              summaryContextPercent: 85,
+              setBy: { queueBand: [group.id, desk.id], summaryContextPercent: [desk.id] },
+            },
+          },
+        ],
+      },
+    }));
+    render(<PeoplePage />);
+    await openAda();
+    const row = within(await screen.findByTestId("person-Ada"));
+    expect(row.getByTestId("person-queue-Ada")).toHaveTextContent(
+      "Queue priority: Background (from Builders, Desk)",
+    );
+    expect(row.getByTestId("person-summary-Ada")).toHaveTextContent(
+      "Summarise long chats at: 85% (from Desk)",
+    );
+  });
+
+  it("says Not set when no group of theirs sets a policy", async () => {
+    handlers.set("GET control/v1/people", () => ({
+      status: 200,
+      body: { people: [{ ...ADA, policiesInEffect: {} }] },
+    }));
+    render(<PeoplePage />);
+    await openAda();
+    const ada = within(await screen.findByTestId("person-Ada"));
+    expect(ada.getByTestId("person-queue-Ada")).toHaveTextContent("Queue priority: Not set");
+    expect(ada.getByTestId("person-summary-Ada")).toHaveTextContent(
+      "Summarise long chats at: Not set",
+    );
+  });
+
+  it("says nothing about policies for an older root, which has none", async () => {
+    render(<PeoplePage />);
+    await openAda();
+    const ada = within(await screen.findByTestId("person-Ada"));
+    expect(ada.queryByTestId("person-queue-Ada")).not.toBeInTheDocument();
+    expect(ada.queryByTestId("person-summary-Ada")).not.toBeInTheDocument();
+  });
+
+  it("links a group to its memory servers in Workbench's Settings, where Workbench runs", async () => {
+    handlers.set("GET control/v1/permission-groups", () => ({
+      status: 200,
+      body: { groups: [{ ...group, policies: { queueBand: null, summaryContextPercent: null } }] },
+    }));
+    handlers.set("GET agent/v1/node", () => ({ status: 200, body: { name: "box" } }));
+    handlers.set("GET agent/v1/apps", () => ({
+      status: 200,
+      body: {
+        apps: [{ id: "workbench", enabled: true, ui: true, uiUrl: "http://box.example:8190/" }],
+      },
+    }));
+    render(<PeoplePage />);
+    const link = await screen.findByRole("link", { name: "Workbench Settings" });
+    expect(link).toHaveAttribute("href", "http://box.example:8190/settings#groups");
+    expect(screen.getByTestId(`group-memory-servers-${group.id}`)).toHaveTextContent(
+      "Memory servers for this group: Workbench Settings",
+    );
+  });
+
   it("saves an empty selection explicitly and can restore individual policy", async () => {
     const user = userEvent.setup();
     handlers.set("GET control/v1/permission-groups", () => ({

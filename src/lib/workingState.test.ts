@@ -156,6 +156,9 @@ describe("isAsleep", () => {
   const model = (info: Model["x_eugene_plexus"]): Model => ({
     id: "m",
     object: "model",
+    // Row 58: the same listing serves Gemini clients.
+    name: "models/m",
+    supportedGenerationMethods: ["generateContent"],
     x_eugene_plexus: info,
   });
 

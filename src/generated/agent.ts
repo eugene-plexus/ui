@@ -166,6 +166,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/client-keys/{keyId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a new token with the same name and limits; the old one stops after an overlap (operator only).
+         * @description The new key copies the old key's name and limits exactly. The old
+         *     token keeps working until `retiresAt` (default one day, or stop it
+         *     now with `overlapSeconds` 0), then new requests on it are refused as
+         *     replaced; running ones finish. During the overlap both tokens share
+         *     one concurrency and rate allowance. The token is shown once.
+         *     An enrolled agent forwards to the root. For an app installed on this
+         *     node, it also writes the new token to the app's key file and restarts
+         *     the app when the app reads its key only at start. A key of an app on
+         *     another machine gets a 409 naming that machine.
+         */
+        post: operations["rotateClientKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/status": {
         parameters: {
             query?: never;
@@ -4362,9 +4390,18 @@ export interface components {
             revokedAt?: string;
             /**
              * Format: date-time
-             * @description Reserved; not currently measured.
+             * @description When the authority last admitted a check or acquisition with this key, to the minute. Absent, no use recorded.
              */
             lastUsedAt?: string;
+            /**
+             * Format: date-time
+             * @description Set when the key was rotated. The token works until then, and new requests on it are refused as replaced afterwards. Running requests finish.
+             */
+            retiresAt?: string;
+            /** @description The id of the key this one replaced. */
+            replaces?: string;
+            /** @description The id of the key that replaced this one. */
+            replacedBy?: string;
             /** @description Absent on legacy keys (all models, no per-key limits); new keys receive bounded defaults. */
             limits?: components["schemas"]["ClientKeyLimits"];
         };
@@ -4381,6 +4418,15 @@ export interface components {
             /** @default 365 */
             ttlDays: number;
             limits?: components["schemas"]["ClientKeyLimits"];
+        };
+        ClientKeyRotateRequest: {
+            /**
+             * @description How long the old token keeps working. 0 stops it now. The old and new tokens share one concurrency and rate allowance during the overlap.
+             * @default 86400
+             */
+            overlapSeconds: number;
+            /** @description Lifetime of the new key. Absent, the old key's lifetime. */
+            ttlDays?: number;
         };
         ClientKeyCreated: {
             key: components["schemas"]["ClientKey"];
@@ -5202,6 +5248,15 @@ export interface components {
              *     complaint we answer. Values here are engine *launch* flags;
              *     sampling parameters that ride on each request are the
              *     gateway's, not these.
+             *
+             *     For llama.cpp and vLLM, `missingCard` is the agent's "If a
+             *     card is missing" setting, exposed in the engine's GUI
+             *     `flagSchema`. `start-on-cards-left` is the default: refit for
+             *     the cards present and report any temporary context or RAM
+             *     offload changes. `do-not-start` refuses the launch and names
+             *     the missing card. The profile is not changed; the next start
+             *     uses its saved settings when all cards are back. This setting
+             *     controls the agent's launch check, not an engine CLI flag.
              */
             flags?: {
                 [key: string]: unknown;
@@ -5441,6 +5496,7 @@ export interface components {
             /** @description Version reported by the binary that is actually running. */
             engineVersion?: string;
             capabilities?: components["schemas"]["RuntimeCapabilities"];
+            readonly chatTemplate?: components["schemas"]["RuntimeChatTemplate"];
             /** Format: date-time */
             lastRestart?: string;
             /**
@@ -5449,9 +5505,109 @@ export interface components {
              *     Cleared on a successful start.
              */
             lastError?: string;
+            /**
+             * @description UUIDs of the cards used at the last successful start, recorded
+             *     by the agent. An observation, never a profile setting or a
+             *     replacement for its saved device pins. Kept across stops and
+             *     failed starts, and updated only after a successful start.
+             *     Absent before a successful start has been observed; an empty
+             *     list means no device UUIDs were available or used.
+             */
+            readonly lastDevices?: string[];
+            /**
+             * @description The last successful start used fewer cards because one or
+             *     more expected cards were missing. Names those cards and the
+             *     launch changes actually applied. Null when there is no such
+             *     observation. Kept until a successful start with every
+             *     expected card clears it; a returning card does not restart a
+             *     running runtime automatically. The profile stays unchanged.
+             */
+            readonly startedOnFewerCards?: components["schemas"]["RuntimeStartedOnFewerCards"] | null;
             loadProgress?: components["schemas"]["LoadProgress"];
             speculation?: components["schemas"]["RuntimeSpeculation"];
             promptCache?: components["schemas"]["RuntimePromptCache"];
+        };
+        /**
+         * @description Observed result of a successful start on the cards left. The
+         *     console keeps a warning until a start with every expected card
+         *     clears it, and offers a restart so the person can use a returned
+         *     card. Never written back to a profile.
+         */
+        RuntimeStartedOnFewerCards: {
+            missing: components["schemas"]["RuntimeMissingDevice"][];
+            /**
+             * @description One sentence per launch change actually applied, such as a
+             *     smaller context, more of the model in RAM, a changed tensor
+             *     split or reduced tensor parallelism. Empty when only the
+             *     device selection changed. These describe values in effect,
+             *     not suggestions from fit that were never used.
+             */
+            changes: string[];
+        };
+        /** @description A missing card, identified from the agent's last observation. */
+        RuntimeMissingDevice: {
+            /** @description Stable vendor UUID of the missing card. */
+            uuid: string;
+            /** @description Device name when the card was last present. */
+            name: string;
+            /** @description Device index when the card was last present, before renumbering. */
+            lastIndex: number;
+        };
+        /**
+         * @description The chat template the running engine reports in effect, not a
+         *     saved setting or a Library fallback recommendation. Publish only
+         *     after the engine reports its effective template text; the digest
+         *     is SHA-256 of those exact UTF-8 bytes, without whitespace or line
+         *     ending normalization. The source is not inferred from argv alone.
+         *
+         *     Omit on stopped runtimes, while the effective template is
+         *     unconfirmed, and on engines that do not report it. Clear this
+         *     observation on stop and before each new start, so a changed
+         *     setting cannot leave a previous process's template on display.
+         *     Missing information does not block a launch or inference.
+         * @example {
+         *       "source": "engine",
+         *       "name": "Engine chat template",
+         *       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+         *     }
+         */
+        RuntimeChatTemplate: {
+            /**
+             * @description * `embedded` — the reported text matches the model file's
+             *       embedded template and no operator override selected it.
+             *     * `eugene` — the reported text matches the Eugene fallback
+             *       captured at launch, with no operator override in effect.
+             *     * `override` — the reported text matches the operator's
+             *       explicit template override captured at launch. This takes
+             *       precedence even when its contents match a bundled template.
+             *     * `engine` — the engine reports the text but its origin is
+             *       unknown, or it does not match the captured selection.
+             *       Never label an unconfirmed fallback as `eugene`.
+             * @enum {string}
+             */
+            source: "embedded" | "eugene" | "override" | "engine";
+            /**
+             * @description Human-readable name of the effective template. Use an engine
+             *     template label when the origin is unknown; never the name of
+             *     a saved override or fallback that was not confirmed.
+             */
+            name: string;
+            /** @description Digest of the effective template text returned by the engine. */
+            sha256: string;
+            /**
+             * @description The Library's `ChatTemplateFallback.id` when source is
+             *     `eugene`; omitted for other sources. The digest identifies
+             *     the exact template revision in effect.
+             */
+            id?: string;
+            /**
+             * @description Template file on this runtime's node, captured at launch and
+             *     reported only when its captured contents match the engine's
+             *     effective template. Absent for embedded and engine templates,
+             *     and for inline overrides. A later edit to this file does not
+             *     change the running process's template or digest.
+             */
+            path?: string;
         };
         /**
          * @description The memory this runtime's engine keeps for recent conversations, as
@@ -8103,6 +8259,28 @@ export interface components {
          */
         ComputeDeviceKind: "cuda" | "rocm" | "xpu" | "metal" | "vulkan" | "cpu";
         /**
+         * @description Current and supported PCIe link measurements for one card. Each
+         *     measurement is null independently when its probe fails, so a
+         *     readable width survives an unreadable generation.
+         */
+        ComputeDevicePcieLink: {
+            /** @description Current PCIe generation. Null when unreadable. */
+            generation: number | null;
+            /** @description Current PCIe lane count. Null when unreadable. */
+            width: number | null;
+            /** @description Maximum PCIe generation the card supports. Null when unreadable. */
+            maxGeneration: number | null;
+            /** @description Maximum PCIe lane count the card supports. Null when unreadable. */
+            maxWidth: number | null;
+        };
+        /**
+         * @description An observed reason a card is slowing down. `thermal` is a heat
+         *     limit, `power-cap` a power limit, `hardware-slowdown` another
+         *     hardware slowdown signal, and `other` another active NVML reason.
+         * @enum {string}
+         */
+        ComputeDeviceThrottleReason: "thermal" | "power-cap" | "hardware-slowdown" | "other";
+        /**
          * @description One compute device on one host, as that host's agent detected it.
          *
          *     Shared because it appears on both sides of a join: an agent
@@ -8119,20 +8297,80 @@ export interface components {
          *     describes a host in the singular. This is a device *list*,
          *     because a host with two cards is the case that makes replicas of
          *     one model possible.
+         *
+         *     Health readings are observations, never estimates. Each optional
+         *     health field is null when the platform cannot read it. The agent
+         *     refreshes these with its device list every 600 seconds and on
+         *     each `GET /v1/node` (row 43).
          */
         ComputeDevice: {
             kind: components["schemas"]["ComputeDeviceKind"];
             /** @description Device name as the vendor reports it, e.g. `NVIDIA GeForce RTX 5090`. */
             name?: string;
             /**
-             * @description Device ordinal on its own host — what `CUDA_VISIBLE_DEVICES`
-             *     or `HIP_VISIBLE_DEVICES` in a runtime's `env` selects to pin
-             *     that runtime to one card. For a `vulkan` device it is the
+             * @description Current device ordinal on its own host. It can change when
+             *     another card disappears; `uuid`, when readable, identifies
+             *     the same card across that renumbering. NVIDIA launches use
+             *     the UUID in `CUDA_VISIBLE_DEVICES`, falling back to an index
+             *     when no UUID was read. For a `vulkan` device the index is the
              *     order the operating system lists its adapters in, which is
-             *     not promised to be the order `GGML_VK_VISIBLE_DEVICES`
-             *     counts in.
+             *     not promised to be the order `GGML_VK_VISIBLE_DEVICES` counts
+             *     in.
              */
             index?: number;
+            /**
+             * @description Stable vendor device identifier, used to keep a runtime on
+             *     the same card when indices change. NVIDIA's NVML UUID (for
+             *     example `GPU-...`) or AMD's sysfs `unique_id`, kept as the
+             *     vendor reports it; not necessarily an RFC UUID. Null when
+             *     the platform cannot read it.
+             */
+            uuid?: string | null;
+            /**
+             * @description PCI bus address from NVML or the Linux sysfs device path.
+             *     Null when unreadable. A location, not a stable card identity.
+             */
+            pciBusId?: string | null;
+            /**
+             * @description Observed PCIe link against the card's supported link. Null
+             *     when no link measurements can be read. A lower generation
+             *     is a warning only when this card's utilisation exceeded 50%
+             *     in the last minute of host history: an idle card can lower
+             *     its generation to save power. A narrower width is a warning
+             *     at any time. Compare only measurements that are known.
+             */
+            pcieLink?: components["schemas"]["ComputeDevicePcieLink"] | null;
+            /**
+             * @description Power cap in effect, in watts, from NVML's enforced power
+             *     limit or Linux hwmon `power1_cap`. Null when unreadable.
+             */
+            powerLimitWatts?: number | null;
+            /**
+             * @description The card's default power cap in watts, from NVML or Linux
+             *     hwmon `power1_cap_default`. Null when unreadable.
+             */
+            powerDefaultLimitWatts?: number | null;
+            /**
+             * @description Reasons the card is currently slowing down, read from NVML.
+             *     An empty list means it reported no throttling. Null when
+             *     unreadable, including AMD and other unsupported platforms.
+             */
+            throttleReasons?: components["schemas"]["ComputeDeviceThrottleReason"][] | null;
+            /**
+             * Format: int64
+             * @description Volatile uncorrected ECC memory-error count from NVML, since
+             *     the device's counter was reset. Zero is a measured result.
+             *     Null when ECC is off, unsupported or unreadable.
+             */
+            uncorrectedMemoryErrors?: number | null;
+            /**
+             * @description UUIDs of other cards this card can reach directly by P2P
+             *     reads, as NVML reports it. Directional: the reverse path is
+             *     reported on the other card. An empty list means no peers
+             *     were reachable; null means the peer check was unreadable or
+             *     unsupported. Unknown checks never claim that P2P is absent.
+             */
+            peers?: string[] | null;
             /** Format: int64 */
             memoryTotalBytes?: number;
             /**
@@ -8546,6 +8784,54 @@ export interface operations {
                 content?: never;
             };
             /** @description Registry unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rotateClientKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ClientKeyRotateRequest"];
+            };
+        };
+        responses: {
+            /** @description The new key and its one-time token. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyCreated"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description No such key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The key is turned off or expired, or already replaced. The message says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry unavailable or the root is locked. */
             503: {
                 headers: {
                     [name: string]: unknown;
