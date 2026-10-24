@@ -496,6 +496,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/people/known": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the root which of these people it still has, for this machine's store (row 53).
+         * @description A service token this machine minted for its own `store` only. The
+         *     agent asks the root's `POST /v1/people/known` with its own node
+         *     token and answers what the root said. A machine that has not
+         *     joined a root, or a root that cannot be asked, answers 503 naming
+         *     the cause: the store then deletes nothing for removal.
+         */
+        post: operations["peopleKnown"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/components": {
         parameters: {
             query?: never;
@@ -4184,13 +4208,13 @@ export interface components {
             commit?: string;
         };
         /**
-         * @description One of the seven packages an install is made of (`tool-driver`
-         *     since P8, 2026-09-29). Named rather than
+         * @description One of the eight packages an install is made of (`tool-driver`
+         *     since P8, 2026-09-29; `store` since row 53, 2026-10-23). Named rather than
          *     inline: an inline enum here renamed the engine install's `State`
          *     to `State1` in the agent's generated models (the S6 trap again).
          * @enum {string}
          */
-        ComponentName: "agent" | "control" | "gateway" | "inference-driver" | "library" | "tool-driver" | "ui";
+        ComponentName: "agent" | "control" | "gateway" | "inference-driver" | "library" | "store" | "tool-driver" | "ui";
         /**
          * @description `stamped`: built from a GitHub archive, `commit` is its commit.
          *     `development`: a git checkout, which keeps the placeholder.
@@ -4980,6 +5004,15 @@ export interface components {
         ClientAdmissionResult: {
             keyId: string;
             keyName: string;
+            /**
+             * @description The id of the first key of this key's rotations (row 24): a
+             *     replacement shares its predecessor's lineage. The store names a
+             *     key's objects by it, so a rotated key keeps its files (row 53).
+             *     Readers take it when present and use `keyId` when absent; the
+             *     authority starts sending it once every reader knows the field,
+             *     because an older reader refuses an unknown one.
+             */
+            lineage?: string;
             /** @description Stable subject verified by the root, never caller supplied. */
             personId?: string;
             appClientId?: string;
@@ -8141,6 +8174,22 @@ export interface components {
             revokedAt?: string;
         };
         /**
+         * @description Which of these people the root still has (row 53). A component
+         *     that keeps people's objects (the store) asks its agent, which asks
+         *     the root with its own node token. Only the ids sent are answered,
+         *     so it cannot list people.
+         */
+        PeopleKnownRequest: {
+            /** @description People's ids, as a person token's `personId` names them. */
+            subjects: string[];
+        };
+        PeopleKnownResult: {
+            /** @description Ids the root has a person for (on or off), or the owner's. */
+            known: string[];
+            /** @description Ids the root has no person for. Each one was deleted, or never was the root's. */
+            unknown: string[];
+        };
+        /**
          * @description Which Eugene Plexus component class a topology entry
          *     represents. Lives in `common.yaml` because more than one
          *     component references it: the agent's `/v1/components`, and
@@ -8166,6 +8215,11 @@ export interface components {
          *     calls a tool-driver when the model uses it. `library` scans the operator's model
          *     directories and holds per-model launch profiles; there is
          *     exactly one, and it is deliberately not in the request path.
+         *     `store` (row 53, 2026-10-23) keeps what the gateway's platform
+         *     doors keep for people -- uploaded files first, then stored
+         *     responses, batches and vector stores -- each object with an owner
+         *     and an end; there is exactly one, on the root by default, and the
+         *     gateway is its only caller (`openapi/store.yaml`).
          *
          *     **The agent is not in this list**, for the same reason engine
          *     runtimes are not: it supervises, it is not supervised. Its
@@ -8176,7 +8230,7 @@ export interface components {
          *     second copy of the supervision machinery.
          * @enum {string}
          */
-        ComponentKind: "control" | "gateway" | "inference-driver" | "library" | "tool-driver";
+        ComponentKind: "control" | "gateway" | "inference-driver" | "library" | "store" | "tool-driver";
         /**
          * @description Acknowledgement returned by `POST /v1/admin/restart`. The
          *     component schedules its own process exit shortly after returning
@@ -10113,6 +10167,32 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    peopleKnown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleKnownRequest"];
+            };
+        };
+        responses: {
+            /** @description The root's answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleKnownResult"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     listComponents: {

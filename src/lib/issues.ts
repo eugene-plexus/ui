@@ -673,6 +673,7 @@ function formatSkew(seconds: number): string {
 const COMPONENT_LABELS: Record<string, string> = {
   gateway: "The gateway",
   library: "The model library",
+  store: "The store that keeps apps' files",
   control: "The control root",
   "inference-driver": "A backend connection",
   "tool-driver": "A search account",
@@ -686,6 +687,8 @@ function componentHref(component: Component): string {
   if (component.kind === "tool-driver") {
     return `/config?sel=${encodeURIComponent(`driver:${component.name}`)}`;
   }
+  // The store's settings are a topic of the install's Settings page (row 53).
+  if (component.kind === "store") return "/config";
   return `/config?sel=${encodeURIComponent(String(component.kind))}`;
 }
 

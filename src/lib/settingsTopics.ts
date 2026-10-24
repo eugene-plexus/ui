@@ -30,6 +30,7 @@ export type TopicId =
   | "engines"
   | "access"
   | "machines"
+  | "files"
   | "apps"
   | "updates"
   | "metrics-logs"
@@ -81,6 +82,12 @@ export const TOPICS: readonly Topic[] = [
     id: "machines",
     label: "Machines",
     blurb: "How the install keeps track of its machines.",
+  },
+  {
+    id: "files",
+    label: "Files apps keep",
+    blurb:
+      "Files your apps upload through the gateway: how long they are kept, how much each person or key may keep, and what happens when a person is removed.",
   },
   { id: "apps", label: "Apps", blurb: "Installing optional apps on a machine." },
   {
@@ -148,6 +155,12 @@ const BY_CATEGORY: Record<string, Record<string, TopicId>> = {
     security: "access",
     replication: "machines",
     topology: "machines",
+    logging: "metrics-logs",
+  },
+  store: {
+    files: "files",
+    quotas: "files",
+    people: "files",
     logging: "metrics-logs",
   },
 };
@@ -251,7 +264,7 @@ export function fieldSearchTexts(
 /* ─────────────────────────────── owners ────────────────────────────── */
 
 /** Which component's settings a section is, and where. */
-export type OwnerComponent = "gateway" | "library" | "control" | "agent";
+export type OwnerComponent = "gateway" | "library" | "store" | "control" | "agent";
 
 /**
  * Whose settings a selection shows.
@@ -289,6 +302,7 @@ export function ownersFor(selection: Selection | null, topology: Topology): Sett
       const out: SettingsOwner[] = [];
       if (has("library")) out.push(singleton("library"));
       if (has("gateway")) out.push(singleton("gateway"));
+      if (has("store")) out.push(singleton("store"));
       if (has("control")) out.push(singleton("control"));
       const rest = topology.nodes
         .filter((n) => n && n !== local)
@@ -313,12 +327,14 @@ export function ownersFor(selection: Selection | null, topology: Topology): Sett
 const SINGLETON_LABEL: Record<Exclude<OwnerComponent, "agent">, string> = {
   gateway: "Gateway",
   library: "Library",
+  store: "Store",
   control: "Machines",
 };
 
 const SINGLETON_HINT: Record<Exclude<OwnerComponent, "agent">, string> = {
   gateway: "gateway",
   library: "library",
+  store: "store",
   control: "control root",
 };
 
@@ -340,8 +356,9 @@ export interface SettingsOwner {
 const OWNER_ORDER: Record<OwnerComponent, number> = {
   library: 0,
   gateway: 1,
-  control: 2,
-  agent: 3,
+  store: 2,
+  control: 3,
+  agent: 4,
 };
 
 export function sortOwners(owners: SettingsOwner[]): SettingsOwner[] {

@@ -729,6 +729,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/people/known": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Which of these people the root still has, for a member node (row 53)
+         * @description A member node's agent only (`sub: agent`, signed by its node's
+         *     key), asking for a component on its machine that keeps people's
+         *     objects: the store. The answer is `/oidc/subjects`' for an app:
+         *     each id `known` (a person record exists, on or off, or it is the
+         *     owner) or `unknown` (deleted). Only the ids sent are answered, so
+         *     it cannot list people. Nothing is said while the root cannot
+         *     vouch for its own list: locked, or a standby.
+         */
+        post: operations["peopleKnown"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/people": {
         parameters: {
             query?: never;
@@ -3557,6 +3583,15 @@ export interface components {
         ClientAdmissionResult: {
             keyId: string;
             keyName: string;
+            /**
+             * @description The id of the first key of this key's rotations (row 24): a
+             *     replacement shares its predecessor's lineage. The store names a
+             *     key's objects by it, so a rotated key keeps its files (row 53).
+             *     Readers take it when present and use `keyId` when absent; the
+             *     authority starts sending it once every reader knows the field,
+             *     because an older reader refuses an unknown one.
+             */
+            lineage?: string;
             /** @description Stable subject verified by the root, never caller supplied. */
             personId?: string;
             appClientId?: string;
@@ -5305,6 +5340,22 @@ export interface components {
             revokedAt?: string;
         };
         /**
+         * @description Which of these people the root still has (row 53). A component
+         *     that keeps people's objects (the store) asks its agent, which asks
+         *     the root with its own node token. Only the ids sent are answered,
+         *     so it cannot list people.
+         */
+        PeopleKnownRequest: {
+            /** @description People's ids, as a person token's `personId` names them. */
+            subjects: string[];
+        };
+        PeopleKnownResult: {
+            /** @description Ids the root has a person for (on or off), or the owner's. */
+            known: string[];
+            /** @description Ids the root has no person for. Each one was deleted, or never was the root's. */
+            unknown: string[];
+        };
+        /**
          * @description What a key in a `TrustBundle` may issue. Checked by every
          *     verifier against the token's `typ`, `sub` and `aud`:
          *
@@ -5533,6 +5584,11 @@ export interface components {
          *     calls a tool-driver when the model uses it. `library` scans the operator's model
          *     directories and holds per-model launch profiles; there is
          *     exactly one, and it is deliberately not in the request path.
+         *     `store` (row 53, 2026-10-23) keeps what the gateway's platform
+         *     doors keep for people -- uploaded files first, then stored
+         *     responses, batches and vector stores -- each object with an owner
+         *     and an end; there is exactly one, on the root by default, and the
+         *     gateway is its only caller (`openapi/store.yaml`).
          *
          *     **The agent is not in this list**, for the same reason engine
          *     runtimes are not: it supervises, it is not supervised. Its
@@ -5543,7 +5599,7 @@ export interface components {
          *     second copy of the supervision machinery.
          * @enum {string}
          */
-        ComponentKind: "control" | "gateway" | "inference-driver" | "library" | "tool-driver";
+        ComponentKind: "control" | "gateway" | "inference-driver" | "library" | "store" | "tool-driver";
         /**
          * @description An operator session signed out anywhere in the install. A
          *     verifier refuses a session whose `jti` is listed, and an
@@ -8064,6 +8120,33 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Problem"];
+        };
+    };
+    peopleKnown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleKnownRequest"];
+            };
+        };
+        responses: {
+            /** @description Every id sent, in `known` or in `unknown`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleKnownResult"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     listPeople: {
