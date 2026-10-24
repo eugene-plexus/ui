@@ -48,6 +48,9 @@ const SPECS = [
   // P8: a search account's /v1/info and its web-search shapes, read by the
   // page that adds one.
   { input: "openapi/tool-driver.yaml", output: "tool-driver.ts" },
+  // Row 53: the store's counts per owner, its last sweep and held removals,
+  // shown under Settings -> Files apps keep.
+  { input: "openapi/store.yaml", output: "store.ts" },
 ];
 
 function fail(msg) {
