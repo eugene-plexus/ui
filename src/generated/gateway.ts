@@ -7058,6 +7058,13 @@ export interface components {
          * @enum {string}
          */
         OpenAIFilePurpose: "assistants" | "batch" | "fine-tune" | "vision" | "user_data" | "evals";
+        /**
+         * @description OpenAI's (deprecated) file status. A file kept here is ready at once.
+         * @enum {string}
+         */
+        OpenAIFileStatus: "processed";
+        /** @enum {string} */
+        OpenAIUploadStatus: "pending" | "completed" | "cancelled" | "expired";
         OpenAIExpiresAfter: {
             /** @constant */
             anchor: "created_at";
@@ -7091,8 +7098,7 @@ export interface components {
             expires_at?: number;
             filename: string;
             purpose: components["schemas"]["OpenAIFilePurpose"];
-            /** @enum {string} */
-            status: "processed";
+            status: components["schemas"]["OpenAIFileStatus"];
             status_details?: string | null;
         };
         OpenAIFileList: {
@@ -7124,8 +7130,7 @@ export interface components {
             created_at: number;
             filename: string;
             purpose: components["schemas"]["OpenAIFilePurpose"];
-            /** @enum {string} */
-            status: "pending" | "completed" | "cancelled" | "expired";
+            status: components["schemas"]["OpenAIUploadStatus"];
             expires_at: number;
             file?: components["schemas"]["OpenAIFile"] | null;
         };
