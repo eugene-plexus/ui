@@ -356,6 +356,29 @@ describe("a sealed control root", () => {
     expect(kinds(issues)).toEqual(["control-sealed"]);
   });
 
+  it("is raised when the machine that runs the root says it is locked", () => {
+    // Row 4: a standby promoted and restarted before it told anyone runs the
+    // root locked, and only its own machine knows where it is.
+    const identity = body<NodeIdentity>('{"enrolled":true,"name":"attic","rootLocked":true}');
+    const issues = issuesFrom({
+      ...NOTHING,
+      perNode: [facts({ name: "attic", label: "attic", identity })],
+    });
+    expect(kinds(issues)).toEqual(["control-sealed"]);
+    expect(issues[0]!.title).toBe("The control root on attic is locked");
+    expect(issues[0]!.action).toBe("unlock-control-root");
+  });
+
+  it("is not raised from a machine's word once the root itself answers", () => {
+    const identity = body<NodeIdentity>('{"enrolled":true,"name":"attic","rootLocked":true}');
+    const issues = issuesFrom({
+      ...NOTHING,
+      nodes: body<ControlNodeRow[]>('[{"name":"attic","reachable":true}]'),
+      perNode: [facts({ name: "attic", label: "attic", identity })],
+    });
+    expect(issues).toEqual([]);
+  });
+
   it("is not raised for a root that simply did not answer", () => {
     // "Unreachable" and "sealed" have different remedies, and the root
     // separates them on purpose: flattening them is how a page came to

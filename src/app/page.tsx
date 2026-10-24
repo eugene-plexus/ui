@@ -12,7 +12,7 @@ import { ReachCard } from "@/components/home/ReachCard";
 import { RunningCard } from "@/components/home/RunningCard";
 import { TryItCard } from "@/components/home/TryItCard";
 import { ConnectAppsSummary } from "@/components/home/ConnectAppsSummary";
-import { api } from "@/lib/api";
+import { api, displayFailure, type DisplayFailure } from "@/lib/api";
 import { PROXY, listModels } from "@/lib/completions";
 import { contextLookup } from "@/lib/modelContext";
 import { CONNECT_APPS_HREF, gatewayAddressGuess } from "@/lib/connectApps";
@@ -100,6 +100,7 @@ export default function HomePage() {
   const [engines, setEngines] = useState<EngineList | null>(null);
   const [library, setLibrary] = useState<LibraryModelList | null>(null);
   const [libraryFailed, setLibraryFailed] = useState(false);
+  const [libraryError, setLibraryError] = useState<DisplayFailure | null>(null);
   const [models, setModels] = useState<ModelList | null>(null);
   const [gatewayFailed, setGatewayFailed] = useState(false);
   const [sources, setSources] = useState<Sources | null>(null);
@@ -122,7 +123,16 @@ export default function HomePage() {
       await Promise.all([
         api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),
         api.get<EngineList>("agent", "/v1/engines").catch(() => null),
-        api.get<LibraryModelList>("library", "/v1/models").catch(() => null),
+        api
+          .get<LibraryModelList>("library", "/v1/models")
+          .then((answer) => {
+            setLibraryError(null);
+            return answer;
+          })
+          .catch((error) => {
+            setLibraryError(displayFailure(error));
+            return null;
+          }),
         listModels(PROXY).catch(() => null),
         api.get<ComponentList>("agent", "/v1/components").catch(() => null),
       ]);
@@ -235,6 +245,7 @@ export default function HomePage() {
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
           <MachineStrip strip={strip} devices={node?.devices} memoryStale={nodeReadFailed} />
           <FirstModelCard
+            libraryError={libraryError}
             state={state}
             downloads={downloads}
             node={here}

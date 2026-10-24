@@ -20,6 +20,7 @@ import type {
   Scan,
 } from "./types";
 import { usePolling } from "./usePolling";
+import { readServingMeasurements } from "./servingMeasurements";
 
 const POLL_MS = 5000;
 
@@ -92,14 +93,16 @@ export function useTasks(): { tasks: Task[]; loaded: boolean; reload: () => Prom
 
   const load = useCallback(async () => {
     if (!hasSessionToken()) return;
-    const [downloads, scan, runtimes, engines, benchmarks, builds] = await Promise.all([
-      api.get<DownloadList>("library", "/v1/downloads").catch(() => null),
-      api.get<Scan>("library", "/v1/scan").catch(() => null),
-      api.get<RuntimePlacementList>("control", "/v1/runtimes").catch(() => null),
-      api.get<EngineList>("agent", "/v1/engines").catch(() => null),
-      readBenchmarks(),
-      readProfileBuilds(),
-    ]);
+    const [downloads, scan, runtimes, engines, benchmarks, builds, measurements] =
+      await Promise.all([
+        api.get<DownloadList>("library", "/v1/downloads").catch(() => null),
+        api.get<Scan>("library", "/v1/scan").catch(() => null),
+        api.get<RuntimePlacementList>("control", "/v1/runtimes").catch(() => null),
+        api.get<EngineList>("agent", "/v1/engines").catch(() => null),
+        readBenchmarks(),
+        readProfileBuilds(),
+        readServingMeasurements(),
+      ]);
     // Without a control root the local agent is the only place runtimes
     // can be read from, and it is read — the Inference screen's rule.
     const localRuntimes =
@@ -131,6 +134,7 @@ export function useTasks(): { tasks: Task[]; loaded: boolean; reload: () => Prom
       installs,
       benchmarks,
       builds,
+      measurements,
     };
     setPolled(tasksFrom(sources));
     setLoaded(true);
