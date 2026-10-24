@@ -409,7 +409,7 @@ export interface components {
             sha256?: string;
         };
         StoreOwner: {
-            /** @description `install`, `person:<id>`, `key:<id>` or `service:<sub>`. */
+            /** @description `install`, `person:<id>`, `key:<id>` or `component:<sub>`. */
             owner: string;
             files: number;
             /** @description The bytes of the owner's files and of its uploads in progress. */

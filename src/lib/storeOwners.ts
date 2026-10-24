@@ -2,7 +2,7 @@
  * Who keeps what in the store (row 53), in words a person reads.
  *
  * The store names an owner `person:<id>`, `key:<id>`, `install` or
- * `service:<sub>`. The console says the person's name, the app key's
+ * `component:<sub>`. The console says the person's name, the app key's
  * name, or "You (this console)", and never more than counts and bytes:
  * the install owner does not read people's files.
  */
@@ -32,7 +32,7 @@ export function ownerLabel(owner: string, names: OwnerNames): string {
     const name = names.keys.get(id);
     return name ? `App key "${name}"` : "An app key that no longer exists";
   }
-  if (kind === "service") return `Eugene's ${id}`;
+  if (kind === "component") return `Eugene's ${id}`;
   return owner;
 }
 
