@@ -61,6 +61,101 @@ const NOTHING: IssueSources = {
   perNode: [],
 };
 
+describe("hardware health", () => {
+  const device = {
+    kind: "cuda",
+    index: 0,
+    name: "RTX",
+    uuid: "GPU-a",
+    pcieLink: { generation: 1, width: 16, maxGeneration: 4, maxWidth: 16 },
+  };
+  const history = (utilization: number, at = new Date().toISOString()) =>
+    body<import("./hostHistory").HostHistory>(
+      JSON.stringify({
+        enabled: true,
+        latestAt: at,
+        stepSeconds: 10,
+        buckets: [{ start: at, samples: 1, expectedSamples: 1 }],
+        series: [
+          {
+            key: "gpu:cuda:0:gpuUtilization",
+            metric: "gpuUtilization",
+            deviceKind: "cuda",
+            deviceIndex: 0,
+            unit: "percent",
+            mean: [utilization],
+            max: [utilization],
+            latest: utilization,
+          },
+        ],
+      }),
+    );
+  const read = (over: Partial<NodeFacts> = {}) =>
+    facts({
+      name: "box",
+      label: "Box",
+      identity: body<NodeIdentity>(JSON.stringify({ devices: [device] })),
+      ...over,
+    });
+
+  it("gpu-link-narrow warns about lower generation only under recent load", () => {
+    const issues = (load: number, at?: string) =>
+      issuesFrom({ ...NOTHING, perNode: [read({ history: history(load, at) })] });
+    expect(kinds(issues(10))).not.toContain("gpu-link-narrow");
+    expect(kinds(issues(70))).toContain("gpu-link-narrow");
+    expect(kinds(issues(70, "2000-01-01T00:00:00Z"))).not.toContain("gpu-link-narrow");
+  });
+
+  it("warns about a narrow width at idle and names the cost and remedy", () => {
+    const narrow = { ...device, pcieLink: { ...device.pcieLink, width: 4 } };
+    const issues = issuesFrom({
+      ...NOTHING,
+      perNode: [read({ identity: body<NodeIdentity>(JSON.stringify({ devices: [narrow] })) })],
+    });
+    const issue = issues.find((i) => i.kind === "gpu-link-narrow")!;
+    expect(issue.title).toContain("x4");
+    expect(issue.detail).toMatch(/riser/);
+  });
+
+  it("reports observed throttling and uncorrected memory errors", () => {
+    const gpu = {
+      ...device,
+      throttleReasons: ["power-cap"],
+      powerLimitWatts: 300,
+      powerDefaultLimitWatts: 450,
+      uncorrectedMemoryErrors: 3,
+    };
+    const issues = issuesFrom({
+      ...NOTHING,
+      perNode: [read({ identity: body<NodeIdentity>(JSON.stringify({ devices: [gpu] })) })],
+    });
+    expect(issues.find((i) => i.kind === "gpu-throttling")?.title).toContain("300 W of 450 W");
+    expect(issues.find((i) => i.kind === "gpu-memory-errors")?.title).toContain("3");
+  });
+
+  it("runtime-on-fewer-cards names the missing card and actual changes until cleared", () => {
+    const runtime = body<Runtime>(
+      JSON.stringify({
+        name: "model",
+        engine: "llama_cpp",
+        modelPath: "/m",
+        status: "ready",
+        startedOnFewerCards: {
+          missing: [{ uuid: "GPU-a", name: "RTX", lastIndex: 2 }],
+          changes: ["Context 32768 → 16384."],
+        },
+      }),
+    );
+    const sources = { ...NOTHING, perNode: [read({ runtimes: { runtimes: [runtime] } })] };
+    const issue = issuesFrom(sources).find((i) => i.kind === "runtime-on-fewer-cards")!;
+    expect(issue.detail).toContain("was #2");
+    expect(issue.detail).toContain("16384");
+    expect(issue.restart).toEqual({ target: "node:box", name: "model" });
+    sources.perNode[0]!.runtimes = { runtimes: [{ ...runtime, startedOnFewerCards: null }] };
+    expect(kinds(issuesFrom(sources))).not.toContain("runtime-on-fewer-cards");
+  });
+});
+
 /** One node's reads, all absent unless a test supplies them. */
 function facts(over: Partial<NodeFacts> & Pick<NodeFacts, "name" | "label">): NodeFacts {
   return {
