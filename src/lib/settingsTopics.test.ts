@@ -176,6 +176,7 @@ describe("every served field has a topic", () => {
       "engines",
       "access",
       "machines",
+      "files",
       "apps",
       "updates",
       "metrics-logs",

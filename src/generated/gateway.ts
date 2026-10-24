@@ -625,7 +625,11 @@ export interface paths {
          *     fallback included. A model that cannot hear or read the
          *     attachment is never asked: with no such backend the request is a
          *     400 saying so, before anything is forwarded or woken. A `file_id`
-         *     is refused; it names a store this install does not have.
+         *     (row 53) is read from the caller's own files in the install's
+         *     store and carried inline: a PDF as `file_data`, an image as an
+         *     image part, text as text; another owner's id is refused as a
+         *     missing one, and a store that is not answering is a 503 naming
+         *     the cause.
          *
          *     **Audio out (P2b, 2026-09-28).** `modalities: ["text", "audio"]`
          *     with `audio: {voice, format}` asks for a spoken answer, and routes
@@ -952,8 +956,10 @@ export interface paths {
          *
          *     A `url` source is refused and never fetched -- the gateway
          *     dialling an address a caller names is the request forgery this
-         *     project closed for node addresses -- and so is a Files API
-         *     `file` source, which names a store that exists only at Anthropic.
+         *     project closed for node addresses. A Files API `file` source
+         *     (row 53) is read from the caller's own files in the install's
+         *     store and carried as a `base64` source; a text file in a
+         *     `document` block becomes a `text` source.
          *     An image on an `assistant` or `system` turn is refused: there is
          *     nowhere on a backend's wire for it. Every image refusal names the
          *     block in the caller's own coordinates
@@ -1321,8 +1327,10 @@ export interface paths {
          *     the chat door's `file` part, and an `input_audio` part as its
          *     `input_audio`, with the same limits and the same routing: only to
          *     a model that confirms that input. `filename` is the name the
-         *     model is shown. A `file_id` or a `file_url` is refused and never
-         *     fetched. `detail` is accepted and, other than `auto`, named on
+         *     model is shown. A `file_id` (row 53) is read from the caller's
+         *     own files in the install's store and carried inline (a PDF as
+         *     `file_data`, an image as an `input_image`, text as text). A
+         *     `file_url` is refused and never fetched. `detail` is accepted and, other than `auto`, named on
          *     the ignored-settings header, as for images.
          *
          *     ### Images
@@ -1331,7 +1339,8 @@ export interface paths {
          *     carried on the image path every door shares: the limits in
          *     `MessageContent`, a check that the bytes are the picture they
          *     claim to be, and routing only to a backend that confirms image
-         *     input. A URL is refused and never fetched, and so is a `file_id`.
+         *     input. A URL is refused and never fetched. A `file_id` (row 53)
+         *     is read from the caller's own files in the install's store.
          *     **`detail` is accepted whatever it says** -- Codex sends
          *     `"high"` on every image (measured), both on a `-i` attachment and
          *     in its `view_image` tool's result -- and a value other than
@@ -1424,7 +1433,7 @@ export interface paths {
          *     run (P8). Refused with a 400 naming the
          *     field: every stateful field above, `top_logprobs` above 0 and the
          *     `message.output_text.logprobs` include, an `input_file` with a
-         *     `file_id` or a `file_url`, `tool_choice` forcing an undeclared or
+         *     `file_url`, `tool_choice` forcing an undeclared or
          *     refused tool, and any top-level field not listed in
          *     `ResponsesRequest`.
          */
@@ -2010,6 +2019,181 @@ export interface paths {
         get: operations["downloadVideoContent"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's own files.
+         * @description OpenAI's `purpose`, `limit` (1 to 10,000), `order` and `after`;
+         *     with `anthropic-version`, Anthropic's `limit` (1 to 1,000, default
+         *     20), `after_id` and `before_id`. Another owner's files are never
+         *     listed.
+         */
+        get: operations["listFiles"];
+        put?: never;
+        /**
+         * Keep a file in this install's store (OpenAI's Files API; Anthropic's too).
+         * @description Row 53. The file is kept by the install's **store**, one per
+         *     install on the root by default, and belongs to the caller: the
+         *     person the root verified (an app's `X-Eugene-Person-Token`), else
+         *     the client key, else the owner's console. Nobody else sees it, the
+         *     install owner included. It ends 30 days after upload by default,
+         *     or at `expires_after` (OpenAI's field; any number of seconds up to
+         *     the install's maximum, 30 days by default), and is then deleted
+         *     for good.
+         *
+         *     **At most 16 MiB here**, the gateway's body limit; a larger file
+         *     comes through `/v1/uploads` in parts. Over the owner's quota (10
+         *     GiB and 10,000 files by default) is a 413 that says the numbers.
+         *
+         *     **Anthropic's Files API is this door too**: a request with
+         *     `anthropic-version` (every Anthropic SDK sends it) is answered in
+         *     Anthropic's shapes (`AnthropicFileMetadata`) and its error
+         *     envelope, and the file is kept as `user_data`.
+         *
+         *     **When the store is not answering**, every files and uploads
+         *     request is a 503 that names the cause ("Eugene's store is not
+         *     answering: ... Chat keeps working; files wait for it."). Chat,
+         *     completions and Messages without a `file_id` never ask the store.
+         *     When the owner turned files off in Settings, a 403 says so.
+         */
+        post: operations["createFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One of the caller's files.
+         * @description **Another owner's file reads as one that does not exist**: the
+         *     same 404 and the same message, so a caller learns nothing of what
+         *     others keep.
+         */
+        get: operations["retrieveFile"];
+        put?: never;
+        post?: never;
+        /** Delete one of the caller's files, for good. */
+        delete: operations["deleteFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{file_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        /** The bytes of one of the caller's files. */
+        get: operations["downloadFileContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start an upload of a file larger than one request (OpenAI's Uploads API).
+         * @description Declare the file (`bytes`, `filename`, `mime_type`, `purpose`),
+         *     add its parts (each at most 16 MiB), then complete it with the
+         *     parts in order and, optionally, its MD5 (OpenAI's field) or
+         *     SHA-256. The parts are joined into a temporary file, the size and
+         *     digest are checked, and only then is it a file. An upload not
+         *     completed within an hour is deleted with its parts.
+         */
+        post: operations["createUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/uploads/{upload_id}/parts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add one part to the caller's upload. */
+        post: operations["addUploadPart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/uploads/{upload_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join the parts, in order, into one of the caller's files. */
+        post: operations["completeUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/uploads/{upload_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop one of the caller's uploads; its parts are deleted. */
+        post: operations["cancelUpload"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6870,6 +7054,119 @@ export interface components {
             clients: components["schemas"]["ClientUsageGroup"][];
         };
         /**
+         * @description OpenAI's upload purposes. Kept as given; nothing here processes a file by its purpose.
+         * @enum {string}
+         */
+        OpenAIFilePurpose: "assistants" | "batch" | "fine-tune" | "vision" | "user_data" | "evals";
+        OpenAIExpiresAfter: {
+            /** @constant */
+            anchor: "created_at";
+            /**
+             * @description Seconds after upload. OpenAI takes 3,600 to 2,592,000; this
+             *     install takes any number up to its maximum (30 days by
+             *     default, `fileMaxDays` in Settings -> Store).
+             */
+            seconds: number;
+        };
+        /**
+         * @description `POST /v1/files`, as the OpenAI SDK sends it. `purpose` is
+         *     required on the OpenAI door and absent on Anthropic's.
+         *     `expires_after` arrives as the two form fields the SDK writes.
+         */
+        FileUploadForm: {
+            /** Format: binary */
+            file: string;
+            purpose?: components["schemas"]["OpenAIFilePurpose"];
+            /** @constant */
+            "expires_after[anchor]"?: "created_at";
+            "expires_after[seconds]"?: number;
+        };
+        OpenAIFile: {
+            id: string;
+            /** @constant */
+            object: "file";
+            bytes: number;
+            created_at: number;
+            /** @description Every file kept here has an end. */
+            expires_at?: number;
+            filename: string;
+            purpose: components["schemas"]["OpenAIFilePurpose"];
+            /** @enum {string} */
+            status: "processed";
+            status_details?: string | null;
+        };
+        OpenAIFileList: {
+            /** @constant */
+            object: "list";
+            data: components["schemas"]["OpenAIFile"][];
+            first_id?: string | null;
+            last_id?: string | null;
+            has_more: boolean;
+        };
+        OpenAIFileDeleted: {
+            id: string;
+            /** @constant */
+            object: "file";
+            deleted: boolean;
+        };
+        OpenAIUploadRequest: {
+            bytes: number;
+            filename: string;
+            mime_type: string;
+            purpose: components["schemas"]["OpenAIFilePurpose"];
+            expires_after?: components["schemas"]["OpenAIExpiresAfter"];
+        };
+        OpenAIUpload: {
+            id: string;
+            /** @constant */
+            object: "upload";
+            bytes: number;
+            created_at: number;
+            filename: string;
+            purpose: components["schemas"]["OpenAIFilePurpose"];
+            /** @enum {string} */
+            status: "pending" | "completed" | "cancelled" | "expired";
+            expires_at: number;
+            file?: components["schemas"]["OpenAIFile"] | null;
+        };
+        OpenAIUploadPart: {
+            id: string;
+            /** @constant */
+            object: "upload.part";
+            created_at: number;
+            upload_id: string;
+        };
+        OpenAIUploadComplete: {
+            part_ids: string[];
+            /** @description The joined file's MD5, checked before it becomes a file. */
+            md5?: string;
+            /** @description Eugene's own check, the joined file's SHA-256. */
+            sha256?: string;
+        };
+        AnthropicFileMetadata: {
+            id: string;
+            /** @constant */
+            type: "file";
+            filename: string;
+            mime_type: string;
+            size_bytes: number;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Always true here; the owner may read back what it kept. */
+            downloadable?: boolean;
+        };
+        AnthropicFileList: {
+            data: components["schemas"]["AnthropicFileMetadata"][];
+            first_id?: string | null;
+            last_id?: string | null;
+            has_more: boolean;
+        };
+        AnthropicFileDeleted: {
+            id: string;
+            /** @constant */
+            type: "file_deleted";
+        };
+        /**
          * @description Acknowledgement returned by `POST /v1/admin/restart`. The
          *     component schedules its own process exit shortly after returning
          *     this response (typically a few hundred ms — long enough for the
@@ -7017,9 +7314,12 @@ export interface components {
              */
             file_data?: string;
             /**
-             * @description Refused with a 400. It names a file uploaded to one
-             *     provider's store, which this install does not have; send
-             *     `file_data`.
+             * @description A file kept in this install's store (`POST /v1/files`, row
+             *     53). The gateway reads it for the caller, from the caller's
+             *     own files only, and carries it as `file_data` (a PDF), an
+             *     image or text, within the limits above; it never reaches a
+             *     backend as an id. Another owner's id is refused as one that
+             *     does not exist.
              */
             file_id?: string;
         };
@@ -7421,6 +7721,11 @@ export interface components {
          *     calls a tool-driver when the model uses it. `library` scans the operator's model
          *     directories and holds per-model launch profiles; there is
          *     exactly one, and it is deliberately not in the request path.
+         *     `store` (row 53, 2026-10-23) keeps what the gateway's platform
+         *     doors keep for people -- uploaded files first, then stored
+         *     responses, batches and vector stores -- each object with an owner
+         *     and an end; there is exactly one, on the root by default, and the
+         *     gateway is its only caller (`openapi/store.yaml`).
          *
          *     **The agent is not in this list**, for the same reason engine
          *     runtimes are not: it supervises, it is not supervised. Its
@@ -7431,7 +7736,7 @@ export interface components {
          *     second copy of the supervision machinery.
          * @enum {string}
          */
-        ComponentKind: "control" | "gateway" | "inference-driver" | "library" | "tool-driver";
+        ComponentKind: "control" | "gateway" | "inference-driver" | "library" | "store" | "tool-driver";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
@@ -10456,6 +10761,446 @@ export interface operations {
                 };
             };
             /** @description The backend that holds the job is not reachable right now. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    listFiles: {
+        parameters: {
+            query?: {
+                purpose?: components["schemas"]["OpenAIFilePurpose"];
+                limit?: number;
+                order?: "asc" | "desc";
+                after?: string;
+                after_id?: string;
+                before_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the caller's files. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIFileList"] | components["schemas"]["AnthropicFileList"];
+                };
+            };
+            /** @description No usable credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The store is not answering; the message names the cause. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    createFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["FileUploadForm"];
+            };
+        };
+        responses: {
+            /** @description The file, kept. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIFile"] | components["schemas"]["AnthropicFileMetadata"];
+                };
+            };
+            /** @description A missing file, an unknown `purpose`, an `expires_after` past the maximum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description No usable credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The owner turned files off in Settings. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description Over 16 MiB, or over the owner's quota (the numbers are in the message). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The store is not answering; the message names the cause. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    retrieveFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIFile"] | components["schemas"]["AnthropicFileMetadata"];
+                };
+            };
+            /** @description No such file for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The store is not answering; the message names the cause. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIFileDeleted"] | components["schemas"]["AnthropicFileDeleted"];
+                };
+            };
+            /** @description No such file for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The store is not answering; the message names the cause. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    downloadFileContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bytes as kept, with the file's media type. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description No such file for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The store is not answering; the message names the cause. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    createUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenAIUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description The upload, `pending`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIUpload"];
+                };
+            };
+            /** @description A missing or wrong field. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description Over the owner's quota (the numbers are in the message). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The store is not answering; the message names the cause. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    addUploadPart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description At most 16 MiB.
+                     */
+                    data: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The part. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIUploadPart"];
+                };
+            };
+            /** @description No such upload for this caller, or it has ended. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description A part over 16 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The store is not answering; the message names the cause. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    completeUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenAIUploadComplete"];
+            };
+        };
+        responses: {
+            /** @description The upload, `completed`, with its `file`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIUpload"];
+                };
+            };
+            /**
+             * @description The parts do not add up to the declared `bytes`, or the MD5 or
+             *     SHA-256 does not match; the upload stays `pending`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description No such upload or part for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The store is not answering; the message names the cause. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    cancelUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upload, `cancelled`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIUpload"];
+                };
+            };
+            /** @description No such upload for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The store is not answering; the message names the cause. */
             503: {
                 headers: {
                     [name: string]: unknown;
