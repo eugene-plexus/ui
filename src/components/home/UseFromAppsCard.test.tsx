@@ -337,3 +337,71 @@ describe("the address check", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("rotating a key (row 24)", () => {
+  const key = {
+    id: "laptop",
+    name: "Laptop",
+    tail: "k9Q0Xz",
+    createdAt: "2026-09-01T00:00:00Z",
+    expiresAt: "2099-09-01T00:00:00Z",
+    lastUsedAt: "2026-09-01T00:03:00Z",
+  };
+
+  it("shows last use, rotates with the chosen overlap and shows the new key once", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [key], scope: "install" });
+    const post = vi.spyOn(api, "post").mockResolvedValue({
+      key: { ...key, id: "new", tail: "x7Yb2c", replaces: "laptop" },
+      token: "new-token-value",
+    });
+    show();
+    const row = within(await screen.findByTestId("key-list"));
+    expect(row.getByTestId("last-used").textContent).toMatch(/^last used/);
+    fireEvent.click(row.getByRole("button", { name: "Rotate" }));
+    expect(row.getByText(/If this key leaked, choose Stop now/)).toBeInTheDocument();
+    fireEvent.change(row.getByLabelText("How long the old key keeps working"), {
+      target: { value: "0" },
+    });
+    fireEvent.click(row.getByRole("button", { name: "Make the new key" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("agent", "/v1/auth/client-keys/laptop/rotate", {
+        overlapSeconds: 0,
+      }),
+    );
+    expect(await screen.findByTestId("fresh-key")).toHaveTextContent("new-token-value");
+    expect(
+      screen.getByText(/Paste the new key into each app that uses …k9Q0Xz/),
+    ).toBeInTheDocument();
+  });
+
+  it("warns that Open WebUI settings reset, and sends an app key to its own machine", async () => {
+    const app = { ...key, id: "owui", name: "app:open-webui@nas" };
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [app], scope: "install" });
+    const post = vi.spyOn(api, "post").mockResolvedValue({
+      key: { ...app, id: "owui2", replaces: "owui" },
+      token: "t",
+    });
+    show();
+    const row = within(await screen.findByTestId("key-list"));
+    fireEvent.click(row.getByRole("button", { name: "Rotate" }));
+    expect(
+      row.getByText(/settings changed inside it go back to their defaults/),
+    ).toBeInTheDocument();
+    fireEvent.click(row.getByRole("button", { name: "Make the new key" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("node:nas", "/v1/auth/client-keys/owui/rotate", {
+        overlapSeconds: 86400,
+      }),
+    );
+  });
+
+  it("lists a replaced key with its replacement and hides Rotate", async () => {
+    const old = { ...key, retiresAt: "2099-01-01T00:00:00Z", replacedBy: "new" };
+    const next = { ...key, id: "new", tail: "x7Yb2c", replaces: "laptop" };
+    vi.spyOn(api, "get").mockResolvedValue({ keys: [next, old], scope: "install" });
+    show();
+    const row = within(await screen.findByTestId("key-list"));
+    expect(await row.findByText(/replaced by …x7Yb2c, works until/)).toBeInTheDocument();
+    expect(row.getAllByRole("button", { name: "Rotate" })).toHaveLength(1);
+  });
+});

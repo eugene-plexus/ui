@@ -54,8 +54,14 @@ import type {
 import { nodeLiveness } from "./nodeLiveness";
 import { describeUpdate, releaseName, versionDifference, type VersionDifference } from "./updates";
 import { labelOf } from "@/lib/nodeLabels";
+import type { HostHistory } from "./hostHistory";
+import { recentlyBusy, throttleText } from "./hardware";
 
 export type IssueKind =
+  | "gpu-link-narrow"
+  | "gpu-throttling"
+  | "gpu-memory-errors"
+  | "runtime-on-fewer-cards"
   | "control-sealed"
   | "component-down"
   | "node-down"
@@ -105,6 +111,7 @@ export interface Issue {
   /** Where the fix is. */
   href: string;
   action?: IssueAction;
+  restart?: { target: string; name: string };
   /** Which machine, when it is about one. */
   node?: string | null;
 }
@@ -114,6 +121,7 @@ export interface Issue {
  * itself: a list that grows when a component is briefly down is a list
  * people learn to ignore. */
 export interface NodeFacts {
+  history?: HostHistory | null;
   /** Install name, or null on a standalone host that has never enrolled. */
   name: string | null;
   /** What to print. */
@@ -227,6 +235,7 @@ export function issuesFrom(sources: IssueSources): Issue[] {
       ...cpuBuildIssues(node),
       ...missingBackendIssues(node),
       ...cpuRuntimeIssues(node),
+      ...hardwareIssues(node),
     );
   }
   return issues.sort(bySeverityThenId);
@@ -236,6 +245,67 @@ export function issuesFrom(sources: IssueSources): Issue[] {
 function bySeverityThenId(a: Issue, b: Issue): number {
   if (a.severity !== b.severity) return a.severity === "blocking" ? -1 : 1;
   return a.id.localeCompare(b.id);
+}
+
+function hardwareIssues(node: NodeFacts): Issue[] {
+  const result: Issue[] = [];
+  for (const d of node.identity?.devices ?? []) {
+    if (d.kind === "cpu") continue;
+    const name = `${d.name ?? "GPU"} #${d.index ?? "?"}`;
+    const base = { severity: "warning" as const, node: node.name, href: "/nodes#hardware" };
+    const link = d.pcieLink;
+    const narrow = link?.width != null && link.maxWidth != null && link.width < link.maxWidth;
+    const slow =
+      link?.generation != null &&
+      link.maxGeneration != null &&
+      link.generation < link.maxGeneration &&
+      recentlyBusy(d, node.history);
+    const key = `${node.name ?? "local"}:${d.uuid ?? `${d.kind}:${d.index}`}`;
+    if (narrow || slow)
+      result.push({
+        ...base,
+        id: `gpu-link-narrow:${key}`,
+        kind: "gpu-link-narrow",
+        title: narrow
+          ? `${name} runs at PCIe x${link!.width}; it supports x${link!.maxWidth}.`
+          : `${name} runs at PCIe Gen ${link!.generation} under load; it supports Gen ${link!.maxGeneration}.`,
+        detail:
+          "Loading models onto it takes longer, and splitting a model across cards is slower. Check its slot or riser.",
+      });
+    if (d.throttleReasons?.length)
+      result.push({
+        ...base,
+        id: `gpu-throttling:${key}`,
+        kind: "gpu-throttling",
+        title: `${name} is slowing down: ${throttleText(d, node.history)}.`,
+        detail: "Check its cooling and power cap on this machine.",
+      });
+    if ((d.uncorrectedMemoryErrors ?? 0) > 0)
+      result.push({
+        ...base,
+        id: `gpu-memory-errors:${key}`,
+        kind: "gpu-memory-errors",
+        title: `${name} reported ${d.uncorrectedMemoryErrors} uncorrected memory errors since it started.`,
+        detail:
+          "Answers on it may be wrong; restart the machine, and replace the card if it keeps happening.",
+      });
+  }
+  for (const runtime of node.runtimes?.runtimes ?? []) {
+    const report = runtime.startedOnFewerCards;
+    if (!report) continue;
+    const missing = report.missing.map((d) => `${d.name} (was #${d.lastIndex})`).join(", ");
+    result.push({
+      id: `runtime-on-fewer-cards:${node.name ?? "local"}:${runtime.name}`,
+      kind: "runtime-on-fewer-cards",
+      severity: "warning",
+      title: `${runtime.modelAlias ?? runtime.name} started on fewer cards.`,
+      detail: `${missing} is missing. ${report.changes.join(" ")} Restart when the card returns to use the saved profile.`,
+      href: "/inference",
+      node: node.name,
+      restart: { target: node.local ? "agent" : `node:${node.name}`, name: runtime.name },
+    });
+  }
+  return result;
 }
 
 export function worstSeverity(issues: Issue[]): IssueSeverity | null {
@@ -275,13 +345,21 @@ function sealedRootIssue(sources: IssueSources): Issue[] {
     sources.controlRoot?.reachable === false &&
     typeof sources.controlRoot.error === "string" &&
     /locked/i.test(sources.controlRoot.error);
-  if (!sources.controlLocked && !fromGateway) return [];
+  // Row 4: the machine that runs the root says so itself (`rootLocked`),
+  // which is the one witness when no other machine knows where the root
+  // is yet: a standby promoted and restarted before it told anyone.
+  const holder = rootAnswered
+    ? undefined
+    : sources.perNode.find((n) => n.identity?.rootLocked === true);
+  if (!sources.controlLocked && !fromGateway && !holder) return [];
   return [
     {
       id: "control-sealed",
       kind: "control-sealed",
       severity: "blocking",
-      title: "The control root is locked",
+      title: holder
+        ? `The control root on ${holder.label} is locked`
+        : "The control root is locked",
       detail:
         "It is waiting for the passphrase, as after every restart of a machine with no key " +
         "store. Nothing is lost, but nothing else works until it is unlocked.",

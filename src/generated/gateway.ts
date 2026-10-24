@@ -86,6 +86,14 @@ export interface paths {
          *     with `x_eugene_plexus.role` giving its role and label. A role with
          *     no models is omitted. These names use the same slot routing and
          *     fallback as other `modelSlots` entries.
+         *
+         *     Gemini SDK compatibility (row 58): the response also carries Gemini model fields; /v1/models
+         *     includes models and nextPageToken alongside the existing OpenAI object/data. Both
+         *     projections describe the same caller-visible page. Unknown limits are omitted. Requests with
+         *     x-goog-api-key or ?key= receive GeminiErrorResponse errors; existing bearer-only catalogue
+         *     errors retain their OpenAI shape. A query key is redacted from every log, error and metrics
+         *     record. The v1beta catalogue always uses Gemini shapes. Model-name mapping never widens key
+         *     scope.
          */
         get: operations["listModels"];
         put?: never;
@@ -112,10 +120,373 @@ export interface paths {
          *     rest of the URL as the id. A model this key may not use is a 404,
          *     as one that does not exist is, so a scoped key learns nothing of
          *     what it cannot reach.
+         *
+         *     Gemini SDK compatibility (row 58): the response also carries Gemini model fields; /v1/models
+         *     includes models and nextPageToken alongside the existing OpenAI object/data. Both
+         *     projections describe the same caller-visible page. Unknown limits are omitted. Requests with
+         *     x-goog-api-key or ?key= receive GeminiErrorResponse errors; existing bearer-only catalogue
+         *     errors retain their OpenAI shape. A query key is redacted from every log, error and metrics
+         *     record. The v1beta catalogue always uses Gemini shapes. Model-name mapping never widens key
+         *     scope.
+         *     Known Eugene ids resolve directly, configured Gemini aliases next, then role:chat. The
+         *     response name describes the requested resource; modelVersion on generation names the actual
+         *     serving model.
          */
         get: operations["retrieveModel"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1beta/models/{model}:generateContent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate a Gemini content response.
+         * @description Gemini API door on the same shared path as Chat Completions, Messages and Responses: the
+         *     same keys, routing, role resolution, failover, metrics and server-run web search. Unknown
+         *     model names resolve to role:chat by default; geminiModelNames overrides them, and a known
+         *     Eugene model id is used directly. Key model scope is checked after resolution, never
+         *     bypassed by an alias. Slashes in Eugene ids are part of {model}.
+         *
+         *     contents text and inlineData images/audio/PDF become shared messages and attachments under
+         *     the existing limits. functionCall and functionResponse become tool calls and results;
+         *     systemInstruction becomes the system message. functionDeclarations takes parameters or
+         *     parametersJsonSchema; toolConfig.functionCallingConfig maps AUTO, ANY, NONE and
+         *     allowedFunctionNames to tools and tool_choice. googleSearch uses the hub's
+         *     web_search_options and the same tool and locality permissions.
+         *
+         *     generationConfig temperature, topP, topK, maxOutputTokens, stopSequences and seed map to
+         *     their shared settings. application/json with responseSchema or responseJsonSchema becomes
+         *     structured output, including the CLI routing classifier. thinkingConfig maps thinkingLevel
+         *     or thinkingBudget to reasoning effort; includeThoughts controls returning thought parts.
+         *     candidateCount greater than one is a 400 naming candidateCount. safetySettings is accepted
+         *     and named in x-eugene-plexus-ignored-settings because no local safety filter runs. Any other
+         *     known setting that cannot be carried is refused naming its field and observed cause; unknown
+         *     or untested model capability never blocks an attempt.
+         *
+         *     The answer reports the actual serving model in modelVersion and the x-eugene-plexus-*
+         *     envelope headers. SAFETY is returned only for an observed content_filter. Query key values
+         *     are redacted from every log, trace, error and metric, including access logs and failures
+         *     before routing. Gemini errors use error.code, message and status. All these front-door
+         *     routes participate in CORS; x-goog-api-key is accepted and envelope headers are exposed, as
+         *     on the other doors.
+         */
+        post: operations["generateGeminiContentBeta"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1beta/models/{model}:streamGenerateContent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stream Gemini content as SSE.
+         * @description Gemini API door on the same shared path as Chat Completions, Messages and Responses: the
+         *     same keys, routing, role resolution, failover, metrics and server-run web search. Unknown
+         *     model names resolve to role:chat by default; geminiModelNames overrides them, and a known
+         *     Eugene model id is used directly. Key model scope is checked after resolution, never
+         *     bypassed by an alias. Slashes in Eugene ids are part of {model}.
+         *
+         *     contents text and inlineData images/audio/PDF become shared messages and attachments under
+         *     the existing limits. functionCall and functionResponse become tool calls and results;
+         *     systemInstruction becomes the system message. functionDeclarations takes parameters or
+         *     parametersJsonSchema; toolConfig.functionCallingConfig maps AUTO, ANY, NONE and
+         *     allowedFunctionNames to tools and tool_choice. googleSearch uses the hub's
+         *     web_search_options and the same tool and locality permissions.
+         *
+         *     generationConfig temperature, topP, topK, maxOutputTokens, stopSequences and seed map to
+         *     their shared settings. application/json with responseSchema or responseJsonSchema becomes
+         *     structured output, including the CLI routing classifier. thinkingConfig maps thinkingLevel
+         *     or thinkingBudget to reasoning effort; includeThoughts controls returning thought parts.
+         *     candidateCount greater than one is a 400 naming candidateCount. safetySettings is accepted
+         *     and named in x-eugene-plexus-ignored-settings because no local safety filter runs. Any other
+         *     known setting that cannot be carried is refused naming its field and observed cause; unknown
+         *     or untested model capability never blocks an attempt.
+         *
+         *     The answer reports the actual serving model in modelVersion and the x-eugene-plexus-*
+         *     envelope headers. SAFETY is returned only for an observed content_filter. Query key values
+         *     are redacted from every log, trace, error and metric, including access logs and failures
+         *     before routing. Gemini errors use error.code, message and status. All these front-door
+         *     routes participate in CORS; x-goog-api-key is accepted and envelope headers are exposed, as
+         *     on the other doors.
+         *
+         *     With alt=sse, each data: JSON frame has GeminiGenerateContentResponse fields (partial during
+         *     streaming); no event: name and no [DONE] sentinel. The final frame carries finishReason and
+         *     available usageMetadata. A tool call is emitted with complete JSON args, buffering shared
+         *     argument fragments as needed. Before the first frame, errors use the HTTP Google error
+         *     shape. After streaming begins, an error frame carries GeminiErrorResponse and the stream
+         *     closes; no STOP is invented. The x-eugene-plexus-* headers report the selected backend, as
+         *     on the Anthropic door.
+         */
+        post: operations["streamGeminiContentBeta"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1beta/models/{model}:countTokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count Gemini prompt tokens without generation.
+         * @description Translate contents or generateContentRequest exactly as generateContent translates the
+         *     prompt, then use /v1/generate/count. Gemini providers use their native countTokens,
+         *     including system instructions, tools and supported attachments. Nothing is generated, woken
+         *     or recorded as inference. The same ready-backend, key scope and localOnly checks as the
+         *     other counting doors apply; no rate or concurrency reservation is taken. A count unavailable
+         *     right now is a 400 naming the observed cause. Model-name mapping and credential redaction
+         *     are the same as generateContent.
+         */
+        post: operations["countGeminiTokensBeta"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1beta/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List routable models in Gemini form.
+         * @description The same caller-filtered routing catalogue as /v1/models, plus configured Gemini aliases.
+         *     Lists truthful methods and limits; unknown capability does not prevent an attempted request.
+         *     A page token is scoped to this caller and current query, never widens its model scope.
+         *     Invalid or stale tokens return 400 naming pageToken. nextPageToken is omitted on the last
+         *     page.
+         */
+        get: operations["listGeminiModelsBeta"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1beta/models/{model}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read one model in Gemini form.
+         * @description Uses the same name resolution as generateContent and the same key-filtered catalogue. Known
+         *     Eugene ids retain their slashes. An unassigned role is 404 naming the role and where to
+         *     assign it. Limits and methods are reported only when known; an untested capability never
+         *     blocks an attempt.
+         */
+        get: operations["retrieveGeminiModelBeta"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/models/{model}:generateContent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate a Gemini content response.
+         * @description Gemini API door on the same shared path as Chat Completions, Messages and Responses: the
+         *     same keys, routing, role resolution, failover, metrics and server-run web search. Unknown
+         *     model names resolve to role:chat by default; geminiModelNames overrides them, and a known
+         *     Eugene model id is used directly. Key model scope is checked after resolution, never
+         *     bypassed by an alias. Slashes in Eugene ids are part of {model}.
+         *
+         *     contents text and inlineData images/audio/PDF become shared messages and attachments under
+         *     the existing limits. functionCall and functionResponse become tool calls and results;
+         *     systemInstruction becomes the system message. functionDeclarations takes parameters or
+         *     parametersJsonSchema; toolConfig.functionCallingConfig maps AUTO, ANY, NONE and
+         *     allowedFunctionNames to tools and tool_choice. googleSearch uses the hub's
+         *     web_search_options and the same tool and locality permissions.
+         *
+         *     generationConfig temperature, topP, topK, maxOutputTokens, stopSequences and seed map to
+         *     their shared settings. application/json with responseSchema or responseJsonSchema becomes
+         *     structured output, including the CLI routing classifier. thinkingConfig maps thinkingLevel
+         *     or thinkingBudget to reasoning effort; includeThoughts controls returning thought parts.
+         *     candidateCount greater than one is a 400 naming candidateCount. safetySettings is accepted
+         *     and named in x-eugene-plexus-ignored-settings because no local safety filter runs. Any other
+         *     known setting that cannot be carried is refused naming its field and observed cause; unknown
+         *     or untested model capability never blocks an attempt.
+         *
+         *     The answer reports the actual serving model in modelVersion and the x-eugene-plexus-*
+         *     envelope headers. SAFETY is returned only for an observed content_filter. Query key values
+         *     are redacted from every log, trace, error and metric, including access logs and failures
+         *     before routing. Gemini errors use error.code, message and status. All these front-door
+         *     routes participate in CORS; x-goog-api-key is accepted and envelope headers are exposed, as
+         *     on the other doors.
+         */
+        post: operations["generateGeminiContentV1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/models/{model}:streamGenerateContent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stream Gemini content as SSE.
+         * @description Gemini API door on the same shared path as Chat Completions, Messages and Responses: the
+         *     same keys, routing, role resolution, failover, metrics and server-run web search. Unknown
+         *     model names resolve to role:chat by default; geminiModelNames overrides them, and a known
+         *     Eugene model id is used directly. Key model scope is checked after resolution, never
+         *     bypassed by an alias. Slashes in Eugene ids are part of {model}.
+         *
+         *     contents text and inlineData images/audio/PDF become shared messages and attachments under
+         *     the existing limits. functionCall and functionResponse become tool calls and results;
+         *     systemInstruction becomes the system message. functionDeclarations takes parameters or
+         *     parametersJsonSchema; toolConfig.functionCallingConfig maps AUTO, ANY, NONE and
+         *     allowedFunctionNames to tools and tool_choice. googleSearch uses the hub's
+         *     web_search_options and the same tool and locality permissions.
+         *
+         *     generationConfig temperature, topP, topK, maxOutputTokens, stopSequences and seed map to
+         *     their shared settings. application/json with responseSchema or responseJsonSchema becomes
+         *     structured output, including the CLI routing classifier. thinkingConfig maps thinkingLevel
+         *     or thinkingBudget to reasoning effort; includeThoughts controls returning thought parts.
+         *     candidateCount greater than one is a 400 naming candidateCount. safetySettings is accepted
+         *     and named in x-eugene-plexus-ignored-settings because no local safety filter runs. Any other
+         *     known setting that cannot be carried is refused naming its field and observed cause; unknown
+         *     or untested model capability never blocks an attempt.
+         *
+         *     The answer reports the actual serving model in modelVersion and the x-eugene-plexus-*
+         *     envelope headers. SAFETY is returned only for an observed content_filter. Query key values
+         *     are redacted from every log, trace, error and metric, including access logs and failures
+         *     before routing. Gemini errors use error.code, message and status. All these front-door
+         *     routes participate in CORS; x-goog-api-key is accepted and envelope headers are exposed, as
+         *     on the other doors.
+         *
+         *     With alt=sse, each data: JSON frame has GeminiGenerateContentResponse fields (partial during
+         *     streaming); no event: name and no [DONE] sentinel. The final frame carries finishReason and
+         *     available usageMetadata. A tool call is emitted with complete JSON args, buffering shared
+         *     argument fragments as needed. Before the first frame, errors use the HTTP Google error
+         *     shape. After streaming begins, an error frame carries GeminiErrorResponse and the stream
+         *     closes; no STOP is invented. The x-eugene-plexus-* headers report the selected backend, as
+         *     on the Anthropic door.
+         */
+        post: operations["streamGeminiContentV1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/models/{model}:countTokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count Gemini prompt tokens without generation.
+         * @description Translate contents or generateContentRequest exactly as generateContent translates the
+         *     prompt, then use /v1/generate/count. Gemini providers use their native countTokens,
+         *     including system instructions, tools and supported attachments. Nothing is generated, woken
+         *     or recorded as inference. The same ready-backend, key scope and localOnly checks as the
+         *     other counting doors apply; no rate or concurrency reservation is taken. A count unavailable
+         *     right now is a 400 naming the observed cause. Model-name mapping and credential redaction
+         *     are the same as generateContent.
+         */
+        post: operations["countGeminiTokensV1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -236,14 +607,24 @@ export interface paths {
          *
          *     Profile reads go through the gateway's own agent's Library proxy
          *     using its service credential. They are cached for profileCacheSeconds
-         *     (30 by default). During an unavailable or invalid Library response,
-         *     last-known values are usable for profileMaxStaleSeconds (300 by
-         *     default) after expiry, then gateway defaults apply. Failures are
+         *     (30 by default). During a transport error, a proxy 502/503/504, or
+         *     a timeout, last-known values remain in effect with no time limit.
+         *     profileMaxStaleSeconds is null by default, meaning no limit while
+         *     the Library cannot answer. An explicit number limits stale reuse
+         *     to that many seconds after cache expiry, then gateway defaults
+         *     apply. Zero disables stale reuse. Failures are
          *     retried no more often than every five seconds and logged with the
-         *     fallback decision. A successful empty result clears old defaults.
+         *     fallback decision. Every successful answer replaces the saved
+         *     values; a successful empty result clears old defaults.
          *     Setting either cache duration to zero takes effect on the next
          *     request. Profile edits take effect on subsequent requests after
          *     cache expiry and do not restart engines.
+         *
+         *     Profile and special-token caches survive a gateway restart in
+         *     `library-cache.json` beside its config file. They are written at
+         *     most once a minute, only when changed, and loaded as stale, never
+         *     fresh. `GET /v1/info` reports Library reachability and how many
+         *     models currently use saved profile settings.
          *
          *     **Audio and files ride the image path (P2, 2026-09-28).** An
          *     `input_audio` part (WAV or MP3) and a `file` part (a PDF, inline
@@ -680,7 +1061,7 @@ export interface paths {
          *     ### The envelope does not go in the body
          *
          *     `x_eugene_plexus` rides on **response headers**
-         *     (`x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     (`x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier`, `-swapped-in`,
          *     `-waited-ms`, `-context-length`, `-prompt-truncated`) rather
          *     than in the response object. Anthropic's wire is typed events
@@ -744,10 +1125,11 @@ export interface paths {
          *     ### When it cannot count, it says so with a 400
          *
          *     A count is answered only by a **ready** backend that can count
-         *     exactly -- llama.cpp today. When none can (the model is asleep,
-         *     its backend is vLLM, Ollama, a hosted provider or an agentic CLI,
-         *     or the request carries an image, whose cost only the projector
-         *     knows), this is a **400** naming the reason, and Claude Code falls
+         *     exactly -- llama.cpp or Gemini, using its native `countTokens`.
+         *     Gemini counts supported attachments as well as text, system
+         *     instructions and tools. When none can (the model is asleep,
+         *     its backend cannot count, or llama.cpp receives an image whose
+         *     cost only its projector knows), this is a **400** naming the reason, and Claude Code falls
          *     back to counting by inference as above. **A 400 and not a 5xx,
          *     by measurement:** answered 400, 403 or 404, `/context` tried each
          *     count once and fell back; answered 501 or 503, it retried every
@@ -821,8 +1203,9 @@ export interface paths {
          *     tools refusal, the refresh-and-wake, the settings profile, the
          *     image path, client-key admission, the truncation detector, the
          *     cascade and the recording. Every shape below was captured from a
-         *     real Codex CLI rather than read from the documentation
-         *     (`docs/acceptance/responses-measurement.md`).
+         *     real Codex CLI (`docs/acceptance/responses-measurement.md`), except
+         *     the row 57 client-run tools and compaction, whose wire shapes
+         *     follow OpenAI's documented API.
          *
          *     ### Stateless: the conversation lives in the client
          *
@@ -865,10 +1248,50 @@ export interface paths {
          *     header.
          *     `image_generation` runs
          *     through this install's image models (P8e, "Server-run tools"
-         *     above) or is refused with a 400 naming why. Every other
-         *     server-side tool (file search, code interpreter, computer use,
-         *     MCP, a custom or local-shell tool) is refused with a 400 naming
-         *     its type.
+         *     above) or is refused with a 400 naming why.
+         *
+         *     ### Client-run tools (row 57)
+         *
+         *     `custom`, `local_shell`, `shell` and `apply_patch` are offered to
+         *     the model as chat functions. The client executes the calls;
+         *     nothing executes inside the gateway. A `custom` tool becomes a
+         *     function with one string parameter `input`. Its call comes back
+         *     as `custom_tool_call` with `call_id`, `name` and the free-text
+         *     `input`. A grammar in `format` is included in the function
+         *     description, not enforced, and named as `tools[i].format` on
+         *     `x-eugene-plexus-ignored-settings`.
+         *
+         *     `local_shell` becomes a function with `command` (an array of
+         *     strings), `workdir`, `timeout_ms` and `env`. Its
+         *     `local_shell_call` carries an `action` of `type: exec`, with
+         *     `working_directory` for `workdir`. `shell` becomes a function
+         *     with `commands` (an array of strings), `timeout_ms` and
+         *     `max_output_length`; its `shell_call` carries those in `action`.
+         *     It uses the client's local environment; a hosted container is
+         *     refused because this gateway has no shell execution service.
+         *     `apply_patch` becomes a function with one string parameter
+         *     `input`, the patch, and returns an `apply_patch_call` with an
+         *     OpenAI `operation` (`type`, `path` and, for create or update,
+         *     `diff`).
+         *
+         *     These call items can be sent back as assistant history. Their
+         *     `custom_tool_call_output`, `local_shell_call_output`,
+         *     `shell_call_output` and `apply_patch_call_output` items become
+         *     tool results matched by `call_id`. The legacy local-shell
+         *     output's `id` is also accepted as its call id.
+         *     `tool_choice` can force any declared client-run tool, by name
+         *     for a function or custom tool, or by type for the other tools.
+         *
+         *     Tools still refused return a 400 naming their observed cause:
+         *     `computer_use_preview` (no local model is trained for it),
+         *     `code_interpreter` (Eugene has no sandbox; use a function tool and
+         *     run it yourself), `mcp` (remote MCP execution needs row 59), and
+         *     `file_search` (file search needs row 56).
+         *
+         *     A `compaction` input item from `/v1/responses/compact` is
+         *     decrypted and authenticated by this gateway and expanded into a
+         *     developer message containing the summary. An item that cannot
+         *     be authenticated is refused with a 400; see the compact endpoint.
          *
          *     **A `namespace` tool is accepted** (2026-10-03): `{"type":
          *     "namespace", "name", "description", "tools": [...]}`, a group of
@@ -989,7 +1412,7 @@ export interface paths {
          *     ### The envelope does not go in the body
          *
          *     `x_eugene_plexus` rides on response headers, as on `/v1/messages`
-         *     (`x-eugene-plexus-driver`, `-runtime`, `-backend`, `-latency-ms`,
+         *     (`x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`, `-latency-ms`,
          *     `-attempts`, `-tier`, `-swapped-in`, `-waited-ms`,
          *     `-context-length`, `-prompt-truncated`), and
          *     `x-eugene-plexus-ignored-settings` names every accepted setting
@@ -1011,11 +1434,51 @@ export interface paths {
          *     run (P8). Refused with a 400 naming the
          *     field: every stateful field above, `top_logprobs` above 0 and the
          *     `message.output_text.logprobs` include, an `input_file` with a
-         *     `file_id` or a `file_url`, `tool_choice` forcing a tool that is
-         *     not a function, and any top-level field not listed in
+         *     `file_id` or a `file_url`, `tool_choice` forcing an undeclared or
+         *     refused tool, and any top-level field not listed in
          *     `ResponsesRequest`.
          */
         post: operations["createResponse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/responses/compact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compact a conversation into an opaque item the client can resend.
+         * @description OpenAI's standalone compact shape. The gateway asks the requested
+         *     model for a summary using a fixed compaction prompt: what was
+         *     asked, decided and done, open threads, and files touched. The
+         *     summary has a budget of 4,000 output tokens. `instructions`, when
+         *     supplied, guides the summary alongside that fixed prompt.
+         *
+         *     The response's output ends with a `compaction` item. Its
+         *     `encrypted_content` is the summary, encrypted and authenticated
+         *     with the gateway's own key, made once in an owner-only
+         *     `compaction.key` file beside its config. The key survives a
+         *     restart. The item is opaque to the client and needs no response store.
+         *     The returned output is the next conversation window: send it
+         *     intact as `input` to `/v1/responses` or this endpoint. The gateway
+         *     decrypts a compaction item into a developer message for any model
+         *     serving that later request.
+         *
+         *     Admission, model routing, client-key scope, `localOnly`, the
+         *     16 MiB JSON body limit, timeouts and metrics use the same path as
+         *     `/v1/responses`. No client tool is executed while summarising.
+         *     This endpoint returns JSON only. It does not add chain loading:
+         *     `previous_response_id` remains refused until row 54 supplies it.
+         */
+        post: operations["compactResponse"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1041,9 +1504,11 @@ export interface paths {
          *     recorded.
          *
          *     **A count this door cannot give is a 400 saying why**: a backend
-         *     that cannot count without generating (every hosted provider;
-         *     OpenRouter has no such endpoint, measured), an attachment, whose
-         *     cost is the encoder's, or nothing running. A key or a listing that
+         *     that cannot count without generating (OpenRouter has no such
+         *     endpoint, measured), an attachment its counter cannot handle,
+         *     or nothing running. Gemini uses native `countTokens`, including
+         *     supported multimodal inputs; llama.cpp still cannot count images.
+         *     A key or a listing that
          *     cannot be checked right now is the same 400 (fail-closed), never a
          *     5xx. It is admitted as `/v1/responses` is: the same key scope and
          *     `localOnly` rule, and the same body limit (2026-10-12).
@@ -1218,7 +1683,7 @@ export interface paths {
          *     is refused: raw bytes are the stream.
          *
          *     **What served it rides response headers** (U4, 2026-09-28), as on
-         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier` and the rest of
          *     `x_eugene_plexus`, because the body is the audio and has nowhere to carry them.
          */
@@ -1272,7 +1737,7 @@ export interface paths {
          *     that a model without the surface is never asked.
          *
          *     **What served it rides response headers** (U4, 2026-09-28), as on
-         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier` and the rest of
          *     `x_eugene_plexus`, because `text` has no body to carry them; every format carries them alike.
          */
@@ -1313,7 +1778,7 @@ export interface paths {
          *     here, and `srt`/`vtt` refused.
          *
          *     **What served it rides response headers** (U4, 2026-09-28), as on
-         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-backend`,
+         *     `/v1/messages`: `x-eugene-plexus-driver`, `-runtime`, `-node`, `-backend`,
          *     `-latency-ms`, `-attempts`, `-tier` and the rest of
          *     `x_eugene_plexus`, because `text` has no body to carry them; every format carries them alike.
          */
@@ -1610,20 +2075,20 @@ export interface paths {
          *     against a real backend's own output rather than inferred from
          *     the OpenAI documentation.
          *
-         *     **`dimensions` and `user` are accepted and ignored, and the
-         *     answer says so** (MR0, 2026-10-11). Neither reaches a backend --
-         *     the driver's `EmbedRequest` has no field for either -- and this
-         *     layer does not emulate `dimensions`, because a silently
-         *     truncated vector is a wrong answer that looks like a right one.
-         *     A request that carries either is answered with
-         *     `x-eugene-plexus-ignored-settings` naming each one it sent, in
-         *     this order (`dimensions, user`), as the other doors name what
-         *     they do not honour. A request that carries neither gets no such
-         *     header, and a JSON `null` is not a setting. The vectors come
-         *     back at the model's own width whatever was asked, so read the
-         *     width off them. Until 2026-10-11 the request schema called
-         *     `dimensions` "passed through" and `user` "recorded"; the code
-         *     dropped both without a word.
+         *     **`dimensions` reaches the driver** (row 58). Gemini sends it as
+         *     `outputDimensionality`, including each item in a batch. The
+         *     answer names dimensions in `x-eugene-plexus-ignored-settings`
+         *     only when the serving backend did not apply it; it is absent
+         *     for dimensions applied by Gemini. Provider refusals name the
+         *     field and observed cause. No layer truncates or pads vectors.
+         *     An untested capability alone never blocks an attempt.
+         *
+         *     **`user` remains accepted and ignored**: it is not forwarded,
+         *     stored or routed on. The ignored-settings header names it when
+         *     present; when both fields were ignored the order is
+         *     `dimensions, user`. A JSON null is not a setting. Before row 58
+         *     dimensions was always ignored (MR0); the header now reports
+         *     what the backend actually applied.
          */
         post: operations["createEmbedding"];
         delete?: never;
@@ -2038,6 +2503,21 @@ export interface paths {
          *       `model_not_found` and a message naming the role and where to
          *       assign one, for example: "No model has the role Reads pages.
          *       Give one that role under Routing > Model roles."
+         *     * **`geminiModelNames`** (`model_slots`, default `[]`, label
+         *       **Gemini model names**) — live mappings on the Gemini door.
+         *       Each entry is a `GeminiModelNameMapping`: `{model, targets}`,
+         *       with one Eugene model id or `role:<ModelRole>` in targets.
+         *       A known Eugene model id is used directly. Otherwise an explicit
+         *       name mapping wins; an unmapped name uses `role:chat` for both
+         *       the CLI's routing classifier and its turn (R58-NAMES, default
+         *       built). The target uses the same slot routing and failover as
+         *       the other doors; all key scope and locality rules apply to the
+         *       resolved models. An unassigned role is a 404 naming the role
+         *       and where to assign it, not a guessed substitute.
+         *       The GUI edits this field through the existing model_slots
+         *       renderer, and GET shows the effective mappings and default
+         *       description, never a value waiting for restart. Unknown target
+         *       capability warns; checks never block an untested target.
          *     * **`conversationAffinity`** (`boolean`, default on; CB1, since
          *       2026-10-02) — a request that continues a conversation goes to
          *       the replica its earlier turns went to, because only that
@@ -2063,7 +2543,8 @@ export interface paths {
          *       flight; within noise on three replicas. `least_busy` picks the
          *       eligible driver with the fewest in-flight requests per slot of
          *       capacity, ties round-robin; `round_robin` alternates strictly,
-         *       which is worth having when comparing two replicas. **`conversation` is no longer a value** (it was PC4's
+         *       which is worth having when comparing two replicas. **`conversation` is no longer a value**
+         *       (it was PC4's
          *       default, from 2026-10-02 until CB1 the same day, and kept
          *       conversations on their replicas, which affinity now does under
          *       every value): a file holding it, or holding the default because
@@ -2141,6 +2622,14 @@ export interface paths {
          *     and never block an assignment. Edits to role slots keep every other
          *     slot; clients save the complete list they read with their edits.
          *
+         *     `geminiModelNames` takes a complete list of
+         *     `GeminiModelNameMapping` entries, using the same GUI editor as
+         *     model_slots. Each name is unique and each targets list holds
+         *     exactly one model or role. Invalid entries are rejected naming
+         *     geminiModelNames and their observed cause. Valid updates take
+         *     effect immediately. An invalid file leaves config endpoints
+         *     reachable and GET reports the mappings actually in effect.
+         *
          *     Some fields require a process restart to take effect (see
          *     `ConfigField.requiresRestart`). The response indicates whether
          *     a restart is needed and which keys are queued.
@@ -2201,6 +2690,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The gateway's observed Library state and saved settings use.
+         * @description Reports the last Library check without waiting for another one.
+         *     A Library outage does not stop routing or running models. Saved
+         *     profile defaults stay in effect under profileMaxStaleSeconds;
+         *     this view counts only models whose saved defaults are in effect.
+         */
+        get: operations["getInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -2222,6 +2734,307 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description The gateway's observed Library state and use of saved model settings. */
+        GatewayInfo: {
+            library: components["schemas"]["GatewayLibraryStatus"];
+        };
+        /**
+         * @description Library reachability observed by profile and special-token reads.
+         *     Loading saved caches after a restart does not establish whether
+         *     the Library can answer. A successful Library answer clears the
+         *     outage time and cause, including an answer with no profile.
+         */
+        GatewayLibraryStatus: {
+            /**
+             * @description True after a successful Library answer. False after a
+             *     transport error, a proxy 502/503/504, or a timeout. Null
+             *     before the first check, including after a gateway restart.
+             */
+            reachable: boolean | null;
+            /**
+             * Format: date-time
+             * @description When the current outage was first observed, in UTC. Further
+             *     failed checks keep this time. Null while reachable or before
+             *     the first check.
+             */
+            since: string | null;
+            /**
+             * @description The latest observed cause of the failed Library check, such
+             *     as connection refused, proxy HTTP 502/503/504, or a timeout.
+             *     Null while reachable or before the first check.
+             */
+            cause: string | null;
+            /**
+             * @description Number of distinct model paths currently using saved profile
+             *     defaults after cache expiry, including values loaded after a restart.
+             *     Counts each path once. Excludes fresh profiles, saved values
+             *     that are not in effect, and values excluded by an explicit
+             *     profileMaxStaleSeconds limit.
+             */
+            modelsOnSavedSettings: number;
+        };
+        /**
+         * @description Native Gemini request translated onto the shared chat path. Unsupported settings are refused
+         *     by field name. Untested capabilities are attempted rather than blocked by an unmeasured
+         *     allowlist.
+         */
+        GeminiGenerateContentRequest: {
+            contents: components["schemas"]["GeminiContent"][];
+            systemInstruction?: components["schemas"]["GeminiContent"];
+            tools?: components["schemas"]["GeminiTool"][];
+            toolConfig?: {
+                functionCallingConfig?: components["schemas"]["GeminiFunctionCallingConfig"];
+            };
+            generationConfig?: components["schemas"]["GeminiGenerationConfig"];
+            /** @description Accepted; named as ignored because no local safety filter runs. */
+            safetySettings?: {
+                category?: string;
+                threshold?: string;
+            }[];
+            /**
+             * @description Used inside countTokens.generateContentRequest only. When present it must resolve to the
+             *     same model as the URL; a mismatch is a 400 naming generateContentRequest.model.
+             */
+            model?: string;
+        };
+        GeminiContent: {
+            /**
+             * @description Omitted for systemInstruction; otherwise defaults to user.
+             * @enum {string}
+             */
+            role?: "user" | "model";
+            parts: components["schemas"]["GeminiPart"][];
+        };
+        /**
+         * @description Text, inline image/audio/PDF, function call or result. Existing attachment size and MIME
+         *     limits apply. Backend reasoning returns as text with thought true only when requested.
+         */
+        GeminiPart: {
+            text?: string;
+            inlineData?: {
+                mimeType: string;
+                data: string;
+            };
+            functionCall?: {
+                /** @description Preserved when supplied; otherwise the shared path assigns one. */
+                id?: string;
+                name: string;
+                args: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * @description Matched to the preceding call by id, or by name in call order when ids are absent. An
+             *     ambiguous or missing call is a 400 naming functionResponse; its content is never lost.
+             */
+            functionResponse?: {
+                id?: string;
+                name: string;
+                response: {
+                    [key: string]: unknown;
+                };
+            };
+            thought?: boolean;
+            /**
+             * @description Opaque client data, never invented by the door. The Gemini provider retains its own
+             *     required signatures on the shared path (G2).
+             */
+            thoughtSignature?: string;
+        };
+        GeminiTool: {
+            functionDeclarations?: components["schemas"]["GeminiFunctionDeclaration"][];
+            /**
+             * @description Runs the hub's web search through web_search_options, with the same key tool/locality
+             *     limits and observed-cause refusals.
+             */
+            googleSearch?: {
+                [key: string]: unknown;
+            };
+        };
+        GeminiFunctionDeclaration: {
+            name: string;
+            description?: string;
+            /** @description Gemini schema form, translated to the shared function schema. */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /** @description JSON Schema form used by Gemini CLI; mutually exclusive with parameters. */
+            parametersJsonSchema?: unknown;
+            /**
+             * @description Measured google-genai dictionary spelling of parametersJsonSchema. Same translation;
+             *     conflicting spellings are refused naming the field.
+             */
+            parameters_json_schema?: unknown;
+        };
+        GeminiFunctionCallingConfig: {
+            /**
+             * @description Maps to tool_choice auto, required or none.
+             * @enum {string}
+             */
+            mode?: "AUTO" | "ANY" | "NONE";
+            /**
+             * @description Restricts declarations offered to the shared path. A single name in ANY selects that
+             *     function. Unknown names are a 400 naming allowedFunctionNames.
+             */
+            allowedFunctionNames?: string[];
+        };
+        GeminiGenerationConfig: {
+            temperature?: number;
+            topP?: number;
+            topK?: number;
+            maxOutputTokens?: number;
+            stopSequences?: string[];
+            seed?: number;
+            /** @description Only one candidate; larger values are refused naming candidateCount. */
+            candidateCount?: number;
+            /** @description text/plain or application/json; other types are refused naming this field. */
+            responseMimeType?: string;
+            /** @description Gemini schema form; used with application/json for structured output. */
+            responseSchema?: {
+                [key: string]: unknown;
+            };
+            /** @description JSON Schema form; mutually exclusive with responseSchema. */
+            responseJsonSchema?: unknown;
+            thinkingConfig?: components["schemas"]["GeminiThinkingConfig"];
+        };
+        /**
+         * @description thinkingLevel LOW, MEDIUM, HIGH maps to reasoning_effort low, medium, high (case
+         *     insensitive). thinkingBudget maps 0 to none, 1..1024 to low, 1025..8192 to medium, larger
+         *     values to high; -1 leaves the backend default. An exact positive budget is not promised:
+         *     thinkingConfig.thinkingBudget is named in ignored-settings when reduced to effort. A level
+         *     and budget together are a 400 naming thinkingConfig. includeThoughts controls returning
+         *     thought parts independently of effort; omitted means false. Unsupported effort is refused
+         *     with the backend's observed cause, never guessed from a name.
+         */
+        GeminiThinkingConfig: {
+            thinkingLevel?: string;
+            thinkingBudget?: number;
+            /** @default false */
+            includeThoughts: boolean;
+            /**
+             * @description Measured google-genai dictionary spelling of thinkingLevel; conflicting spellings are
+             *     refused naming the field.
+             */
+            thinking_level?: string;
+            /**
+             * @description Measured google-genai dictionary spelling of thinkingBudget; conflicting spellings are
+             *     refused naming the field.
+             */
+            thinking_budget?: number;
+            /**
+             * @description Measured google-genai dictionary spelling of includeThoughts; conflicting spellings are
+             *     refused naming the field.
+             */
+            include_thoughts?: boolean;
+        };
+        /**
+         * @description One SSE data object. Each frame carries Gemini response fields as available; text and tool
+         *     parts are deltas, usageMetadata may arrive only at the end, and finishReason appears only
+         *     when observed. No synthetic usage or finish reason.
+         */
+        GeminiStreamGenerateContentResponse: {
+            candidates?: components["schemas"]["GeminiCandidate"][];
+            usageMetadata?: components["schemas"]["GeminiUsageMetadata"];
+            /** @description The Eugene model id that actually answered, after role routing and failover. */
+            modelVersion?: string;
+            responseId?: string;
+        };
+        /**
+         * @description A complete answer. SSE uses the same fields but may omit candidates in a usage-only frame
+         *     and usageMetadata until the final frame. Required fields here apply to a complete
+         *     non-streamed response.
+         */
+        GeminiGenerateContentResponse: {
+            candidates: components["schemas"]["GeminiCandidate"][];
+            usageMetadata: components["schemas"]["GeminiUsageMetadata"];
+            /** @description The Eugene model id that actually answered, after role routing and failover. */
+            modelVersion: string;
+            responseId?: string;
+        };
+        GeminiCandidate: {
+            /** @constant */
+            index?: 0;
+            content?: components["schemas"]["GeminiContent"];
+            /**
+             * @description STOP for stop or tool calls, MAX_TOKENS for length, SAFETY only for observed
+             *     content_filter. Never invent a safety refusal.
+             * @enum {string}
+             */
+            finishReason?: "STOP" | "MAX_TOKENS" | "SAFETY";
+        };
+        /**
+         * @description Counts from the shared path; omit unavailable counts rather than invent them.
+         *     candidatesTokenCount excludes thoughtsTokenCount; totalTokenCount includes prompt, candidate
+         *     and thought tokens, with cachedContentTokenCount already included in promptTokenCount.
+         */
+        GeminiUsageMetadata: {
+            promptTokenCount?: number;
+            candidatesTokenCount?: number;
+            totalTokenCount?: number;
+            thoughtsTokenCount?: number;
+            cachedContentTokenCount?: number;
+        };
+        /**
+         * @description Either contents or a full generateContentRequest including system instructions and tools,
+         *     never both. The SDK sends contents for an ordinary count_tokens call.
+         */
+        GeminiCountTokensRequest: {
+            contents?: components["schemas"]["GeminiContent"][];
+            generateContentRequest?: components["schemas"]["GeminiGenerateContentRequest"];
+        } & (unknown | unknown);
+        GeminiCountTokensResponse: {
+            totalTokens: number;
+            cachedContentTokenCount?: number;
+        };
+        GeminiListModelsResponse: {
+            models: components["schemas"]["GeminiModel"][];
+            /** @description Omitted on the last page, so SDK iteration terminates. */
+            nextPageToken?: string;
+        };
+        GeminiModel: {
+            /** @description models/<Eugene id or configured Gemini alias>; slashes in ids are preserved. */
+            name: string;
+            version?: string;
+            displayName?: string;
+            description?: string;
+            /** @description Effective reported input limit; omitted when unknown, never guessed. */
+            inputTokenLimit?: number;
+            /** @description Effective reported output limit; omitted when unknown, never guessed. */
+            outputTokenLimit?: number;
+            /**
+             * @description Door methods the serving path reports, such as generateContent, streamGenerateContent
+             *     and countTokens. Unknown capability is not a refusal; requests may still try it.
+             */
+            supportedGenerationMethods: string[];
+        };
+        /**
+         * @description One geminiModelNames entry using the existing model_slots config renderer. model is the
+         *     requested Gemini name without models/; targets holds one Eugene model id or
+         *     role:<ModelRole>. A role uses its existing slot and failover. No capability allowlist blocks
+         *     an untested target. Duplicate names and empty targets are rejected by field name; a bad file
+         *     keeps config endpoints reachable.
+         */
+        GeminiModelNameMapping: {
+            model: string;
+            targets: string[];
+        };
+        GeminiErrorResponse: {
+            error: {
+                /** @description HTTP status code. */
+                code: number;
+                /**
+                 * @description Names the field or model and the observed cause. Upstream credentials are identified
+                 *     as the backend's, not the caller's. No query key or other secret appears here.
+                 */
+                message: string;
+                /**
+                 * @description Google's status word: INVALID_ARGUMENT (400), UNAUTHENTICATED (401),
+                 *     PERMISSION_DENIED (403), NOT_FOUND (404), RESOURCE_EXHAUSTED (429), CANCELLED (499),
+                 *     INTERNAL (502), UNAVAILABLE (503), DEADLINE_EXCEEDED (504).
+                 */
+                status: string;
+            };
+        };
         WebSearchRequest: {
             query: string;
             /**
@@ -2406,6 +3219,10 @@ export interface components {
             object: "list";
             data: components["schemas"]["Model"][];
             x_eugene_plexus?: components["schemas"]["ModelListInfo"];
+            /** @description Gemini projection of this same page; existing OpenAI clients continue reading data. */
+            models: components["schemas"]["GeminiModel"][];
+            /** @description Opaque token for the next page; omitted on the last page. */
+            nextPageToken?: string;
         };
         /**
          * @description Namespaced extension: what this install can do for this caller
@@ -2441,6 +3258,9 @@ export interface components {
          *     extension. Unknown fields are ignored by OpenAI clients, which
          *     is what makes it safe to answer "which of my backends is behind
          *     this name" without breaking compatibility.
+         *
+         *     Gemini clients read name, displayName, supportedGenerationMethods and known token limits;
+         *     OpenAI clients retain id, object and the namespaced extension.
          */
         Model: {
             /**
@@ -2475,6 +3295,19 @@ export interface components {
              */
             owned_by?: string;
             x_eugene_plexus?: components["schemas"]["ModelRoutingInfo"];
+            /** @description models/<Eugene id or configured Gemini alias>; slashes in ids are preserved. */
+            name: string;
+            version?: string;
+            displayName?: string;
+            /** @description Effective reported input limit; omitted when unknown, never guessed. */
+            inputTokenLimit?: number;
+            /** @description Effective reported output limit; omitted when unknown, never guessed. */
+            outputTokenLimit?: number;
+            /**
+             * @description Door methods the serving path reports, such as generateContent, streamGenerateContent
+             *     and countTokens. Unknown capability is not a refusal; requests may still try it.
+             */
+            supportedGenerationMethods: string[];
         };
         /**
          * @description Namespaced extension: how this install serves the model. Present
@@ -3909,6 +4742,14 @@ export interface components {
              *     no runtime of ours.
              */
             runtime?: string;
+            /**
+             * @description Name of the machine whose runtime answered, as the root's node
+             *     registry names it. Null when the backend is not a machine's
+             *     runtime, such as a cloud provider. Where the `x_eugene_plexus`
+             *     envelope rides on headers, this field rides as the
+             *     `x-eugene-plexus-node` header.
+             */
+            node?: string | null;
             backend?: components["schemas"]["BackendKind"];
             /**
              * @description What the backend said served this request, verbatim. Provenance,
@@ -4180,15 +5021,13 @@ export interface components {
              */
             user?: string;
             /**
-             * @description **Accepted and ignored.** The vectors come back at the
-             *     model's own width, whatever is asked here. No backend is sent
-             *     this field (the driver's `EmbedRequest` has none), and this
-             *     layer does not emulate truncation, because a silently
-             *     truncated vector is a wrong answer that looks like a right
-             *     one. A request that carries one is answered with
-             *     `x-eugene-plexus-ignored-settings: dimensions` (`dimensions,
-             *     user` when both are sent). Before 2026-10-11 this said it was
-             *     passed through to the backend unchanged; it never was.
+             * @description Requested vector width, forwarded in EmbedRequest.dimensions.
+             *     Gemini applies it as outputDimensionality. A backend that
+             *     does not apply it returns its native width and names
+             *     dimensions in x-eugene-plexus-ignored-settings; Gemini does
+             *     not call an applied value ignored. No layer truncates or
+             *     pads vectors, and an untested capability never blocks an
+             *     attempt. A provider refusal names the field and its cause.
              */
             dimensions?: number;
         };
@@ -5108,8 +5947,10 @@ export interface components {
             instructions?: string | null;
             tools?: components["schemas"]["ResponsesTool"][];
             /**
-             * @description `auto`, `none`, `required`, or `{"type": "function", "name": …}`.
-             *     Forcing any other tool type is refused.
+             * @description `auto`, `none`, `required`, or an object forcing a declared
+             *     client-run tool: `function` or `custom` with `name`, or
+             *     `local_shell`, `shell` or `apply_patch` by `type`. An
+             *     undeclared or refused tool is a 400 naming the cause.
              */
             tool_choice?: ("auto" | "none" | "required") | {
                 [key: string]: unknown;
@@ -5181,6 +6022,42 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * @description Request for standalone compaction. The model and conversation are
+         *     required while no response store exists. Unknown top-level fields
+         *     are refused with a 400 naming the field.
+         */
+        ResponsesCompactRequest: {
+            /** @description A model id from `GET /v1/models`, resolved against this install's slots. */
+            model: string;
+            /**
+             * @description A string (one user message), or the conversation as a list of
+             *     items. Codex resends the whole conversation on every turn.
+             */
+            input: string | components["schemas"]["ResponsesInputItem"][];
+            /** @description Summary guidance carried alongside the fixed compaction prompt. */
+            instructions?: string | null;
+            /** @description Refused when set until row 54 supplies chain loading; send input instead. */
+            previous_response_id?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description OpenAI's compacted response, with output items ending with a
+         *     `compaction` item (`id`, `type: compaction`, `encrypted_content`).
+         *     Send the whole output array back as the next input window.
+         */
+        ResponsesCompactResponse: {
+            id: string;
+            /** @constant */
+            object: "response.compaction";
+            /** @description Unix timestamp in seconds. */
+            created_at: number;
+            output: components["schemas"]["ResponsesOutputItem"][];
+            usage: components["schemas"]["ResponsesUsage"];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * @description One conversation item. **Modelled loosely on purpose**, as
          *     `AnthropicContentBlock` is: the variants differ by `type`, and a
          *     strict union would reject the next item type on a wire we do not
@@ -5191,7 +6068,17 @@ export interface components {
          *     (`call_id`, `name`, `arguments` as a JSON string, and `namespace`
          *     when the call was to a member of a `namespace` tool),
          *     `function_call_output` (`call_id`, `output` as a string or a list
-         *     of `input_text` / `input_image` parts), and `reasoning`
+         *     of `input_text` / `input_image` parts), `custom_tool_call`
+         *     (`call_id`, `name`, `input`), `local_shell_call` and `shell_call`
+         *     (`call_id`, `action`), and `apply_patch_call` (`call_id`,
+         *     `operation`). Their `custom_tool_call_output`,
+         *     `local_shell_call_output`, `shell_call_output` and
+         *     `apply_patch_call_output` become tool results by `call_id`
+         *     (a legacy local-shell output may use `id` instead).
+         *     A `compaction` item's authenticated `encrypted_content` is
+         *     expanded into a developer message with the summary; an
+         *     unauthenticated item is a 400 (see `/v1/responses/compact`).
+         *     Also carried: `reasoning`
          *     (`content` of `reasoning_text` parts, `encrypted_content`), and a
          *     `web_search_call` handed back (P8), which becomes a line of the
          *     assistant's history naming the search and its sources, and an
@@ -5204,6 +6091,8 @@ export interface components {
          */
         ResponsesInputItem: {
             type?: string;
+            /** @description Optional item id; also the legacy local-shell output's call id. */
+            id?: string;
             role?: string;
             /** @description A string, or a list of parts. */
             content?: unknown;
@@ -5212,12 +6101,67 @@ export interface components {
             /** @description The `namespace` tool a `function_call` was to (Codex 0.133 and later). */
             namespace?: string;
             arguments?: string;
-            /** @description A string, or a list of `input_text` / `input_image` parts. */
+            /** @description Free-text input of a custom tool call. */
+            input?: string;
+            action?: components["schemas"]["ResponsesToolAction"];
+            operation?: components["schemas"]["ResponsesPatchOperation"];
+            /** @description A call's status; an apply-patch output reports completed or failed. */
+            status?: string;
+            /** @description Carried on shell output when present on its call. */
+            max_output_length?: number | null;
+            /**
+             * @description A function or custom result is a string or a list of
+             *     `input_text` / `input_image` parts. A local-shell result is a
+             *     string. A shell result is a list of objects with `stdout`,
+             *     `stderr` and `outcome` (`type: exit` with `exit_code`, or
+             *     `type: timeout`). An apply-patch result is an optional string;
+             *     its status and observed failure text are carried to the model.
+             */
             output?: unknown;
             summary?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * @description Reasoning's existing carrier, or a compaction item's encrypted
+             *     and authenticated summary. A compaction requires a nonempty
+             *     string that this gateway can authenticate before using it.
+             */
             encrypted_content?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description A local-shell `exec` action has `type: exec`, `command`, `env`,
+         *     and optional `working_directory`, `timeout_ms` and `user`.
+         *     A shell action has `commands`, `timeout_ms` and
+         *     `max_output_length`. The gateway returns these for the client to
+         *     execute. Other action fields remain open for existing search items.
+         */
+        ResponsesToolAction: {
+            type?: string;
+            command?: string[];
+            commands?: string[];
+            working_directory?: string;
+            env?: {
+                [key: string]: string;
+            };
+            user?: string;
+            timeout_ms?: number | null;
+            max_output_length?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description OpenAI's file operation for a client-run apply-patch call.
+         *     `create_file` and `update_file` include a V4A `diff`;
+         *     `delete_file` needs only `path`. The client applies the operation
+         *     and reports completed or failed with its observed cause.
+         */
+        ResponsesPatchOperation: {
+            /** @enum {string} */
+            type: "create_file" | "delete_file" | "update_file";
+            path: string;
+            diff?: string;
         } & {
             [key: string]: unknown;
         };
@@ -5229,7 +6173,19 @@ export interface components {
          *     endpoint). `web_search` runs on this install's search account, or
          *     is removed and named when it cannot (see the endpoint);
          *     `image_generation` runs on this install's image models, or is
-         *     refused naming why (P8e); any other `type` is refused.
+         *     refused naming why (P8e).
+         *
+         *     `custom` (`name`, `description`, `format`) maps to a function with
+         *     one string parameter `input`; `local_shell` maps to a function
+         *     with `command`, `workdir`, `timeout_ms` and `env`; `shell` maps
+         *     to a function with `commands`, `timeout_ms` and
+         *     `max_output_length`; `apply_patch` maps to a function with one
+         *     string parameter `input`, the patch. The client executes their
+         *     calls; the gateway translates them into their Responses item
+         *     types. A shell's `environment` may be absent or `type: local`;
+         *     hosted containers are refused because no shell execution service
+         *     exists here. Other tool types are refused with the causes and
+         *     alternatives on `/v1/responses`.
          */
         ResponsesTool: {
             type: string;
@@ -5243,13 +6199,39 @@ export interface components {
                 [key: string]: unknown;
             };
             strict?: boolean | null;
+            /**
+             * @description A custom tool's free-text format, or grammar (Lark or regex).
+             *     Grammars are not enforced: they are included in the function
+             *     description and named as `tools[i].format` on
+             *     `x-eugene-plexus-ignored-settings`. No constrained output is claimed.
+             */
+            format?: {
+                /** @enum {string} */
+                type: "text" | "grammar";
+                /** @enum {string} */
+                syntax?: "lark" | "regex";
+                definition?: string;
+            } & {
+                [key: string]: unknown;
+            };
+            /**
+             * @description A shell tool's execution environment. Only the client's local
+             *     environment is supported; hosted containers are refused.
+             */
+            environment?: {
+                type?: string;
+            } & {
+                [key: string]: unknown;
+            };
         } & {
             [key: string]: unknown;
         };
         /**
          * @description A response object. `output` holds a `reasoning` item first when
          *     the model reasoned, then a `message` with one `output_text` part,
-         *     then one `function_call` item per tool call. The request's settings
+         *     then one call item per tool call, using the declared tool's type
+         *     (`function_call`, `custom_tool_call`, `local_shell_call`,
+         *     `shell_call` or `apply_patch_call`). The request's settings
          *     are echoed as OpenAI echoes them; `store` is always false.
          */
         ResponsesResponse: {
@@ -5294,11 +6276,27 @@ export interface components {
          *     "status", "result", "revised_prompt", "size", "quality",
          *     "background", "output_format", "action": "generate"}` -- `result`
          *     the base64 image, null and `status: failed` when none was made.
+         *
+         *     Client-run calls are `custom_tool_call` (`id`, `call_id`, `name`,
+         *     `input`), `local_shell_call` and `shell_call` (`id`, `call_id`,
+         *     `status`, `action`), and `apply_patch_call` (`id`, `call_id`,
+         *     `status`, `operation`). Standalone compact returns a `compaction`
+         *     item (`id`, `encrypted_content`, the encrypted and authenticated
+         *     summary); it can be passed back unchanged to any model here.
          */
         ResponsesOutputItem: {
             /** @enum {string} */
-            type: "reasoning" | "message" | "function_call" | "web_search_call" | "image_generation_call";
+            type: "reasoning" | "message" | "function_call" | "web_search_call" | "image_generation_call" | "custom_tool_call" | "local_shell_call" | "shell_call" | "apply_patch_call" | "compaction";
             id?: string;
+            call_id?: string;
+            name?: string;
+            /** @description Free-text input of a custom tool call. */
+            input?: string;
+            status?: string;
+            action?: components["schemas"]["ResponsesToolAction"];
+            operation?: components["schemas"]["ResponsesPatchOperation"];
+            /** @description An opaque compaction summary or the existing reasoning carrier. */
+            encrypted_content?: string;
         } & {
             [key: string]: unknown;
         };
@@ -5322,12 +6320,30 @@ export interface components {
          * @description One frame of the Responses event stream. The SSE `event:` name
          *     and `data.type` always agree, and every frame has a
          *     `sequence_number`.
+         *
+         *     Custom input uses `response.custom_tool_call_input.delta` (`delta`)
+         *     and `.done` (`input`), with `item_id` and `output_index`. Shell
+         *     commands use `response.shell_call_command.added`, `.delta` and
+         *     `.done`, with `command_index` and `output_index`; added and done
+         *     carry `command`, delta carries `delta`. All client call types,
+         *     including `local_shell_call` and `apply_patch_call`, also use
+         *     `response.output_item.added` and `response.output_item.done` with
+         *     their Responses `item`, including the complete action or operation
+         *     on done. Internal function-adapter arguments are not exposed as
+         *     function-call events for these client-run tools.
          */
         ResponsesStreamEvent: {
             /** @enum {string} */
-            type: "response.created" | "response.in_progress" | "response.output_item.added" | "response.output_item.done" | "response.content_part.added" | "response.content_part.done" | "response.output_text.delta" | "response.output_text.done" | "response.reasoning_text.delta" | "response.reasoning_text.done" | "response.function_call_arguments.delta" | "response.function_call_arguments.done" | "response.completed" | "response.incomplete" | "response.failed";
+            type: "response.created" | "response.in_progress" | "response.output_item.added" | "response.output_item.done" | "response.content_part.added" | "response.content_part.done" | "response.output_text.delta" | "response.output_text.done" | "response.reasoning_text.delta" | "response.reasoning_text.done" | "response.function_call_arguments.delta" | "response.function_call_arguments.done" | "response.custom_tool_call_input.delta" | "response.custom_tool_call_input.done" | "response.shell_call_command.added" | "response.shell_call_command.delta" | "response.shell_call_command.done" | "response.completed" | "response.incomplete" | "response.failed";
             sequence_number: number;
             response?: components["schemas"]["ResponsesResponse"];
+            item?: components["schemas"]["ResponsesOutputItem"];
+            item_id?: string;
+            output_index?: number;
+            command_index?: number;
+            delta?: string;
+            input?: string;
+            command?: string;
         } & {
             [key: string]: unknown;
         };
@@ -6982,7 +7998,12 @@ export interface operations {
     };
     listModels: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Page size. Omitted returns all visible models, preserving the OpenAI catalogue default. */
+                pageSize?: number;
+                /** @description Opaque nextPageToken from the preceding response. */
+                pageToken?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7027,7 +8048,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                    "application/json": components["schemas"]["OpenAIErrorResponse"] | components["schemas"]["GeminiErrorResponse"];
                 };
             };
             /** @description No model by that id that this caller may use (`code` `model_not_found`, as OpenAI's). */
@@ -7036,7 +8057,923 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                    "application/json": components["schemas"]["OpenAIErrorResponse"] | components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+        };
+    };
+    generateGeminiContentBeta: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeminiGenerateContentRequest"];
+            };
+        };
+        responses: {
+            /** @description Gemini response. The x-eugene-plexus-* envelope headers identify the actual serving path. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiGenerateContentResponse"];
+                };
+            };
+            /** @description Invalid or unsupported request; names the field and observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid caller key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Key scope, tool permission or localOnly refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The resolved model or role has no assignment visible to this key; names it and where to configure it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Client rate or concurrency limit reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The caller disconnected; the backend request was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /**
+             * @description All eligible backends failed, or the backend's own credential was refused; the message
+             *     identifies the observed cause.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Gateway starting, safe mode, or no eligible backend ready. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Backend request timed out; names the observed timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+        };
+    };
+    streamGeminiContentBeta: {
+        parameters: {
+            query?: {
+                /** @description SSE transport used by the Python SDK and Gemini CLI. Omitted also selects SSE. */
+                alt?: "sse";
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeminiGenerateContentRequest"];
+            };
+        };
+        responses: {
+            /** @description Gemini response. The x-eugene-plexus-* envelope headers identify the actual serving path. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["GeminiStreamGenerateContentResponse"];
+                };
+            };
+            /** @description Invalid or unsupported request; names the field and observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid caller key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Key scope, tool permission or localOnly refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The resolved model or role has no assignment visible to this key; names it and where to configure it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Client rate or concurrency limit reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The caller disconnected; the backend request was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /**
+             * @description All eligible backends failed, or the backend's own credential was refused; the message
+             *     identifies the observed cause.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Gateway starting, safe mode, or no eligible backend ready. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Backend request timed out; names the observed timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+        };
+    };
+    countGeminiTokensBeta: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeminiCountTokensRequest"];
+            };
+        };
+        responses: {
+            /** @description Gemini response. The x-eugene-plexus-* envelope headers identify the actual serving path. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiCountTokensResponse"];
+                };
+            };
+            /** @description Invalid or unsupported request; names the field and observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid caller key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Key scope, tool permission or localOnly refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The resolved model or role has no assignment visible to this key; names it and where to configure it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Client rate or concurrency limit reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The caller disconnected; the backend request was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /**
+             * @description All eligible backends failed, or the backend's own credential was refused; the message
+             *     identifies the observed cause.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Gateway starting, safe mode, or no eligible backend ready. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Backend request timed out; names the observed timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+        };
+    };
+    listGeminiModelsBeta: {
+        parameters: {
+            query?: {
+                /** @description Page size. Omitted returns all visible models, preserving the OpenAI catalogue default. */
+                pageSize?: number;
+                /** @description Opaque nextPageToken from the preceding response. */
+                pageToken?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gemini response. The x-eugene-plexus-* envelope headers identify the actual serving path. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiListModelsResponse"];
+                };
+            };
+            /** @description Invalid or unsupported request; names the field and observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid caller key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Key scope, tool permission or localOnly refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The resolved model or role has no assignment visible to this key; names it and where to configure it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Client rate or concurrency limit reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The caller disconnected; the backend request was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /**
+             * @description All eligible backends failed, or the backend's own credential was refused; the message
+             *     identifies the observed cause.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Gateway starting, safe mode, or no eligible backend ready. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Backend request timed out; names the observed timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+        };
+    };
+    retrieveGeminiModelBeta: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gemini response. The x-eugene-plexus-* envelope headers identify the actual serving path. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiModel"];
+                };
+            };
+            /** @description Invalid or unsupported request; names the field and observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid caller key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Key scope, tool permission or localOnly refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The resolved model or role has no assignment visible to this key; names it and where to configure it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Client rate or concurrency limit reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The caller disconnected; the backend request was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /**
+             * @description All eligible backends failed, or the backend's own credential was refused; the message
+             *     identifies the observed cause.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Gateway starting, safe mode, or no eligible backend ready. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Backend request timed out; names the observed timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+        };
+    };
+    generateGeminiContentV1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeminiGenerateContentRequest"];
+            };
+        };
+        responses: {
+            /** @description Gemini response. The x-eugene-plexus-* envelope headers identify the actual serving path. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiGenerateContentResponse"];
+                };
+            };
+            /** @description Invalid or unsupported request; names the field and observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid caller key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Key scope, tool permission or localOnly refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The resolved model or role has no assignment visible to this key; names it and where to configure it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Client rate or concurrency limit reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The caller disconnected; the backend request was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /**
+             * @description All eligible backends failed, or the backend's own credential was refused; the message
+             *     identifies the observed cause.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Gateway starting, safe mode, or no eligible backend ready. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Backend request timed out; names the observed timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+        };
+    };
+    streamGeminiContentV1: {
+        parameters: {
+            query?: {
+                /** @description SSE transport used by the Python SDK and Gemini CLI. Omitted also selects SSE. */
+                alt?: "sse";
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeminiGenerateContentRequest"];
+            };
+        };
+        responses: {
+            /** @description Gemini response. The x-eugene-plexus-* envelope headers identify the actual serving path. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["GeminiStreamGenerateContentResponse"];
+                };
+            };
+            /** @description Invalid or unsupported request; names the field and observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid caller key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Key scope, tool permission or localOnly refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The resolved model or role has no assignment visible to this key; names it and where to configure it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Client rate or concurrency limit reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The caller disconnected; the backend request was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /**
+             * @description All eligible backends failed, or the backend's own credential was refused; the message
+             *     identifies the observed cause.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Gateway starting, safe mode, or no eligible backend ready. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Backend request timed out; names the observed timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+        };
+    };
+    countGeminiTokensV1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Requested model name, slashes included. Remove only the leading models/ resource prefix.
+                 *     Known Eugene ids resolve directly, then explicit geminiModelNames, then role:chat
+                 *     (R58-NAMES). Resolved targets retain key scope and localOnly checks.
+                 */
+                model: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeminiCountTokensRequest"];
+            };
+        };
+        responses: {
+            /** @description Gemini response. The x-eugene-plexus-* envelope headers identify the actual serving path. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiCountTokensResponse"];
+                };
+            };
+            /** @description Invalid or unsupported request; names the field and observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid caller key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Key scope, tool permission or localOnly refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The resolved model or role has no assignment visible to this key; names it and where to configure it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Client rate or concurrency limit reached. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description The caller disconnected; the backend request was cancelled. */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /**
+             * @description All eligible backends failed, or the backend's own credential was refused; the message
+             *     identifies the observed cause.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Gateway starting, safe mode, or no eligible backend ready. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
+                };
+            };
+            /** @description Backend request timed out; names the observed timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeminiErrorResponse"];
                 };
             };
         };
@@ -7557,6 +9494,92 @@ export interface operations {
              * @description No backend answered within `requestTimeoutSeconds`. Not
              *     cascaded: the backend is almost certainly still computing.
              */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    compactResponse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResponsesCompactRequest"];
+            };
+        };
+        responses: {
+            /** @description A compacted conversation window ending with an opaque compaction item. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponsesCompactResponse"];
+                };
+            };
+            /**
+             * @description An invalid request, a model nothing serves, a backend refusal,
+             *     or a compaction item's `encrypted_content` that could not be
+             *     authenticated (malformed, tampered with, or made by another
+             *     gateway or OpenAI). The error names the field and observed
+             *     cause and includes: "This compaction was made elsewhere; send
+             *     the conversation instead." The same error applies to a
+             *     compaction input on `/v1/responses`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description Missing, malformed, expired or revoked credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The compaction key could not be read or created; the error names the observed cause. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description Every eligible backend failed, or an upstream credential was refused. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description A backend serves the model but is not ready, or the gateway is starting. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description No backend answered within requestTimeoutSeconds. */
             504: {
                 headers: {
                     [name: string]: unknown;
@@ -8538,8 +10561,8 @@ export interface operations {
         responses: {
             /**
              * @description Vectors produced. `x-eugene-plexus-ignored-settings` names
-             *     `dimensions` and `user` when the request carried them, and is
-             *     absent otherwise.
+             *     `user` when supplied and `dimensions` only when the backend
+             *     did not apply it. It is absent when nothing was ignored.
              */
             200: {
                 headers: {
@@ -9200,6 +11223,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigTestResult"];
+                };
+            };
+        };
+    };
+    getInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current observations, including an unknown state before the first check. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayInfo"];
                 };
             };
         };

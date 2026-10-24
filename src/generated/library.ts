@@ -1547,6 +1547,14 @@ export interface components {
          *     in config.
          */
         LibraryFolderList: {
+            /**
+             * @description True when the Library ignores its saved config and runs in
+             *     safe mode. These folders may be defaults with no saved mounts.
+             *     Agents keep their saved folder list instead of saving this
+             *     answer. Absent means false for older Libraries.
+             * @default false
+             */
+            readonly safeMode: boolean;
             folders: components["schemas"]["LibraryFolderStatus"][];
         };
         LibraryFolderStatus: components["schemas"]["LibraryFolder"] & {
@@ -2016,6 +2024,10 @@ export interface components {
              * @description The file embeds its own chat template. When false, something
              *     has to supply one at launch, and a model answering strangely
              *     with no template is a common and confusing failure.
+             *
+             *     An available Eugene fallback (`GgufDetail.chatTemplateFallback`
+             *     or `CataloguePreflight.chatTemplateFallback`) never changes
+             *     this to true. Unknown metadata leaves this field absent.
              */
             chatTemplate?: boolean;
             /**
@@ -2248,6 +2260,7 @@ export interface components {
              */
             projectorPath?: string;
             speculation?: components["schemas"]["GgufSpeculation"];
+            readonly chatTemplateFallback?: components["schemas"]["ChatTemplateFallback"];
             recommendedSampling?: components["schemas"]["RecommendedSampling"];
             /**
              * @description Selected raw KV pairs, verbatim, minus the tokenizer arrays.
@@ -2259,6 +2272,54 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * @description A reviewed template Eugene can supply for this model family when
+         *     its header confirms both the architecture and that it has no
+         *     embedded chat template. Absent when that evidence is unknown,
+         *     when the file embeds a template, or when Eugene has no reviewed
+         *     fallback for this variant. A filename or a catalogue name alone
+         *     is not evidence.
+         *
+         *     This is availability, not the template in effect. The model page
+         *     can say "This model ships no chat template; Eugene supplies
+         *     DeepSeek V4's" and name the engines below, while keeping
+         *     `ModelCapabilities.chatTemplate` false. The running agent reports
+         *     the effective template separately as `Runtime.chatTemplate`.
+         *
+         *     Default precedence is an explicit operator override, then the
+         *     file's embedded template, then this fallback on an engine listed
+         *     below, then the engine's own behaviour. The override is exposed
+         *     through the engine's GUI flag schema. Missing fallback information
+         *     does not block a launch: engine eligibility is still decided by
+         *     the existing eligibility API, and untested engines remain eligible
+         *     under that API's rules.
+         * @example {
+         *       "id": "deepseek-v4",
+         *       "name": "DeepSeek V4",
+         *       "engines": [
+         *         "llama_cpp"
+         *       ],
+         *       "sourceUrl": "https://github.com/deepseek-ai/deepseek-recipe/blob/main/deepseek-recipe-encoding/src/v4/dsv4.rs"
+         *     }
+         */
+        ChatTemplateFallback: {
+            /** @description Eugene's template identifier; distinct variants have distinct ids. */
+            id: string;
+            /** @description Human-readable template name for the model page. */
+            name: string;
+            /**
+             * @description Engines whose Eugene adapters can apply this fallback. This
+             *     is not a list of engines proved to load the model; consult
+             *     eligibility for that. No engine is rejected because it is
+             *     absent from this list.
+             */
+            engines: components["schemas"]["schemas-EngineKind"][];
+            /**
+             * Format: uri
+             * @description Published upstream format or template used for the review.
+             */
+            sourceUrl: string;
         };
         /**
          * @description What this model can draft with when it runs with speculative
@@ -2581,6 +2642,34 @@ export interface components {
          */
         ProfileMode: "auto" | "chat" | "embedding" | "reranking";
         /**
+         * @description Prepare the model for an engine before running it. Asked for,
+         *     never implied: Run without it picks an engine that runs the model
+         *     as it is. This is the source schema for the durable run protocol's
+         *     PreparationIntent; regenerate openapi/run-operations.json from the
+         *     Library after adopting this schema, rather than editing its copy.
+         *     The Strata choices use the same keys as that engine's profile
+         *     flags. Unsupported or ignored choices must name the observed
+         *     cause; no requested value may be reported as applied by default.
+         */
+        PreparationIntent: {
+            engine: components["schemas"]["schemas-EngineKind"];
+            /** @description The context to prepare for. Absent uses the engine's recommendation for the node. */
+            contextSize?: number | null;
+            /**
+             * @description Image encoder placement. Off preserves text-only preparation.
+             * @default off
+             */
+            vision: components["schemas"]["schemas-PreparationVisionMode"];
+            /**
+             * @description Changes answers when on; experimental. Off preserves stock model behavior.
+             * @default off
+             */
+            speedProjection: components["schemas"]["schemas-SpeedProjectionMode"];
+            gpus?: components["schemas"]["StrataGpuSelection"];
+            /** @default auto */
+            layerSplit: components["schemas"]["StrataLayerSplit"];
+        };
+        /**
          * @description Declarative half of a profile — launch settings and generation
          *     defaults for one model. Used for create and replace bodies.
          *
@@ -2661,6 +2750,15 @@ export interface components {
              *     adapter's `flagSchema` — context size, GPU layers, batch
              *     size, parallel slots. Copied onto `RuntimeSpec.flags`
              *     verbatim.
+             *
+             *     Strata's keys are `speedProjection` (`SpeedProjectionMode`),
+             *     `gpus` (`StrataGpuSelection`) and `layerSplit`
+             *     (`StrataLayerSplit`). Preparation uses the same choices in
+             *     `PreparationIntent`, with defaults off, automatic single-card
+             *     selection and auto boundaries. Omitted profile flags preserve
+             *     the prepared configuration's values. The projection changes
+             *     answers when on and is experimental. A saved profile is intent,
+             *     not evidence of the applied launch.
              *
              *     **Stored, not validated.** The validator is the agent's
              *     adapter schema, at runtime-creation time. A profile is
@@ -3762,6 +3860,7 @@ export interface components {
             dtype?: string;
             vocabSize?: number;
             capabilities?: components["schemas"]["ModelCapabilities"];
+            readonly chatTemplateFallback?: components["schemas"]["ChatTemplateFallback"];
             recommendedSampling?: components["schemas"]["RecommendedSampling"];
             fit?: components["schemas"]["Fit"];
             /**
@@ -4386,22 +4485,74 @@ export interface components {
          */
         PreparationVisionMode: "off" | "cpu" | "gpu";
         /**
-         * PreparationIntent
-         * @description Prepare the model for an engine before running it (LS5). Asked for,
-         *     never implied: Run without it picks an engine that runs the model as it is.
+         * SpeedProjectionMode
+         * @description Changes the model's answers when on; experimental and off by default.
+         *     Strata's bundled refusal-direction projection reduces refusals and
+         *     also changes ordinary predictions. Upstream measures a 0.2-0.4%
+         *     cost per token on identical text, not a guaranteed speed-up.
+         *     Preparation uses --experimental-speed-projection on|off. Launch
+         *     applies the prepared control vector and reports the applied mode;
+         *     a requested mode alone is not evidence that it took effect.
+         * @enum {string}
          */
-        PreparationIntent: {
+        SpeedProjectionMode: "off" | "on";
+        /** StrataGpuSelectionItem */
+        StrataGpuSelectionItem: number;
+        /**
+         * PreparationIntent
+         * @description Prepare the model for an engine before running it. Asked for,
+         *     never implied: Run without it picks an engine that runs the model
+         *     as it is. This is the source schema for the durable run protocol's
+         *     PreparationIntent; regenerate openapi/run-operations.json from the
+         *     Library after adopting this schema, rather than editing its copy.
+         *     The Strata choices use the same keys as that engine's profile
+         *     flags. Unsupported or ignored choices must name the observed
+         *     cause; no requested value may be reported as applied by default.
+         */
+        "schemas-PreparationIntent": {
             engine: components["schemas"]["EngineKind"];
             /**
              * Contextsize
-             * @description The context the engine prepares for. Absent: the engine's own recommendation for the node.
+             * @description The context to prepare for. Absent uses the engine's recommendation for the node.
              */
             contextSize?: number | null;
             /**
              * @description Image encoder placement. Off preserves text-only preparation.
              * @default off
              */
-            vision: components["schemas"]["PreparationVisionMode"];
+            vision: components["schemas"]["PreparationVisionMode"] | null;
+            /**
+             * @description Changes answers when on; experimental. Off preserves stock model behavior.
+             * @default off
+             */
+            speedProjection: components["schemas"]["SpeedProjectionMode"] | null;
+            /**
+             * Gpus
+             * @description Ordered card ordinals from this node's ComputeDevice inventory;
+             *     the main card is first. The node validates each selected card
+             *     against its current inventory and resolves process visibility at
+             *     every preparation and launch. Two or more cards share the model.
+             *     Omission in a preparation keeps the existing automatic single-card
+             *     selection. Omission in a profile preserves the prepared selection.
+             *     An empty list is not automatic selection.
+             *     This inventory has kind and index, not row 43's stable UUIDs;
+             *     ordinals are local to the selected node and must not be treated
+             *     as stable identities or silently replaced by another card.
+             */
+            gpus?: components["schemas"]["StrataGpuSelectionItem"][] | null;
+            /**
+             * Layersplit
+             * @description auto places layers using the selected cards' free memory and
+             *     expert profile. An expert can give the first layer of each later
+             *     card, as comma-separated rising integers: 16,32 for three cards.
+             *     These are boundaries, not a count of layers per card. The node
+             *     checks one boundary per card after the first, each at least 2,
+             *     strictly rising and below the model's layer count. An explicit
+             *     boundary requires several selected cards. With one card there
+             *     is no layer split.
+             * @default auto
+             */
+            layerSplit: string | null;
         };
         /** Intent */
         Intent: {
@@ -4410,7 +4561,7 @@ export interface components {
             /** Modelid */
             modelId?: string | null;
             download?: components["schemas"]["schemas-DownloadSpec"] | null;
-            preparation?: components["schemas"]["PreparationIntent"] | null;
+            preparation?: components["schemas"]["schemas-PreparationIntent"] | null;
             /** @description The engine the person agreed, at the click, to install if the node lacks it (CX3). Checking that stops for this engine goes straight on to installing; any other engine still waits for an answer. */
             installEngine?: components["schemas"]["EngineKind"] | null;
         };
@@ -4535,6 +4686,10 @@ export interface components {
              * @description The file embeds its own chat template. When false, something
              *     has to supply one at launch, and a model answering strangely
              *     with no template is a common and confusing failure.
+             *
+             *     An available Eugene fallback (`GgufDetail.chatTemplateFallback`
+             *     or `CataloguePreflight.chatTemplateFallback`) never changes
+             *     this to true. Unknown metadata leaves this field absent.
              */
             chatTemplate?: boolean | null;
             /**
@@ -4642,6 +4797,55 @@ export interface components {
              *     Empty when there are none.
              */
             draftFiles: components["schemas"]["schemas-DraftFile"][];
+        };
+        /**
+         * ChatTemplateFallback
+         * @description A reviewed template Eugene can supply for this model family when
+         *     its header confirms both the architecture and that it has no
+         *     embedded chat template. Absent when that evidence is unknown,
+         *     when the file embeds a template, or when Eugene has no reviewed
+         *     fallback for this variant. A filename or a catalogue name alone
+         *     is not evidence.
+         *
+         *     This is availability, not the template in effect. The model page
+         *     can say "This model ships no chat template; Eugene supplies
+         *     DeepSeek V4's" and name the engines below, while keeping
+         *     `ModelCapabilities.chatTemplate` false. The running agent reports
+         *     the effective template separately as `Runtime.chatTemplate`.
+         *
+         *     Default precedence is an explicit operator override, then the
+         *     file's embedded template, then this fallback on an engine listed
+         *     below, then the engine's own behaviour. The override is exposed
+         *     through the engine's GUI flag schema. Missing fallback information
+         *     does not block a launch: engine eligibility is still decided by
+         *     the existing eligibility API, and untested engines remain eligible
+         *     under that API's rules.
+         */
+        "schemas-ChatTemplateFallback": {
+            /**
+             * Id
+             * @description Eugene's template identifier; distinct variants have distinct ids.
+             */
+            id: string;
+            /**
+             * Name
+             * @description Human-readable template name for the model page.
+             */
+            name: string;
+            /**
+             * Engines
+             * @description Engines whose Eugene adapters can apply this fallback. This
+             *     is not a list of engines proved to load the model; consult
+             *     eligibility for that. No engine is rejected because it is
+             *     absent from this list.
+             */
+            engines: components["schemas"]["EngineKind"][];
+            /**
+             * Sourceurl
+             * Format: uri
+             * @description Published upstream format or template used for the review.
+             */
+            sourceUrl: string;
         };
         /**
          * RecommendedSamplingSource
@@ -4759,6 +4963,7 @@ export interface components {
              */
             projectorPath?: string | null;
             speculation?: components["schemas"]["schemas-GgufSpeculation"] | null;
+            chatTemplateFallback?: components["schemas"]["schemas-ChatTemplateFallback"] | null;
             recommendedSampling?: components["schemas"]["schemas-RecommendedSampling"] | null;
             /**
              * Metadata
@@ -6213,6 +6418,17 @@ export interface components {
          */
         "schemas-PreparationVisionMode": "off" | "cpu" | "gpu";
         /**
+         * @description Changes the model's answers when on; experimental and off by default.
+         *     Strata's bundled refusal-direction projection reduces refusals and
+         *     also changes ordinary predictions. Upstream measures a 0.2-0.4%
+         *     cost per token on identical text, not a guaranteed speed-up.
+         *     Preparation uses --experimental-speed-projection on|off. Launch
+         *     applies the prepared control vector and reports the applied mode;
+         *     a requested mode alone is not evidence that it took effect.
+         * @enum {string}
+         */
+        "schemas-SpeedProjectionMode": "off" | "on";
+        /**
          * @description A match that runs only after the engine prepares it (Strata builds
          *     an expert pack, a lookup table and an MTP helper from a GGUF). The
          *     verdict is `after_preparation`; the original file is never
@@ -6247,6 +6463,15 @@ export interface components {
              *     encoder and uses additional memory while serving.
              */
             visionModes?: components["schemas"]["schemas-PreparationVisionMode"][];
+            /**
+             * @description Changes answers when on; experimental. Choices this model's
+             *     preparation offers for the bundled projection. Absent means
+             *     no projection choice is advertised, not a claim that an
+             *     untested model cannot run. Omitting the choice in a run
+             *     intent selects off. An upstream fallback must be reported
+             *     as the mode that actually took effect, with its cause.
+             */
+            speedProjectionModes?: components["schemas"]["schemas-SpeedProjectionMode"][];
             /**
              * @description The oldest version of the engine that prepares this model, as
              *     the engine's own setup states it (LS7, B30): e.g. Strata's
@@ -7444,6 +7669,30 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * @description Ordered card ordinals from this node's ComputeDevice inventory;
+         *     the main card is first. The node validates each selected card
+         *     against its current inventory and resolves process visibility at
+         *     every preparation and launch. Two or more cards share the model.
+         *     Omission in a preparation keeps the existing automatic single-card
+         *     selection. Omission in a profile preserves the prepared selection.
+         *     An empty list is not automatic selection.
+         *     This inventory has kind and index, not row 43's stable UUIDs;
+         *     ordinals are local to the selected node and must not be treated
+         *     as stable identities or silently replaced by another card.
+         */
+        StrataGpuSelection: number[];
+        /**
+         * @description auto places layers using the selected cards' free memory and
+         *     expert profile. An expert can give the first layer of each later
+         *     card, as comma-separated rising integers: 16,32 for three cards.
+         *     These are boundaries, not a count of layers per card. The node
+         *     checks one boundary per card after the first, each at least 2,
+         *     strictly rising and below the model's layer count. An explicit
+         *     boundary requires several selected cards. With one card there
+         *     is no layer split.
+         */
+        StrataLayerSplit: string;
     };
     responses: {
         /** @description Error response in RFC 7807 problem+json format. */

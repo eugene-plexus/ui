@@ -14,7 +14,8 @@ import { ModelCard } from "@/components/ModelCard";
 import { ModelDownloadAction } from "@/components/ModelDownloadAction";
 import { rememberDownloadTarget } from "@/lib/downloadHandoff";
 import { QuantReference } from "@/components/QuantReference";
-import { ApiError, api, describeError } from "@/lib/api";
+import { LibraryFailure } from "@/components/LibraryFailure";
+import { ApiError, api, describeError, displayFailure, type DisplayFailure } from "@/lib/api";
 import { NodePicker } from "@/components/NodePicker";
 import { SearchModelsShelf } from "@/components/SearchModelsShelf";
 import { StarterSetPanel } from "@/components/StarterSetPanel";
@@ -226,7 +227,7 @@ function DiscoverPageInner() {
   // What each source answered (LS4); null when the search failed.
   const [statuses, setStatuses] = useState<CatalogueSourceStatus[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<DisplayFailure | null>(null);
 
   // `?repo=` seeds the selection, so a reload keeps the repo open and a
   // link from anywhere else lands on the detail — the `?sel=` rule the
@@ -261,7 +262,7 @@ function DiscoverPageInner() {
   const [starterBusy, setStarterBusy] = useState<string | null>(null);
   // The starter card's own refusal, shown on the card that was pressed.
   // It went to the search results' error line, in the other column.
-  const [starterError, setStarterError] = useState<string | null>(null);
+  const [starterError, setStarterError] = useState<DisplayFailure | null>(null);
 
   const [hardware, setHardware] = useState<HostHardware | null>(null);
   // Whose memory the verdicts are about: the chosen node's, defaulting
@@ -405,7 +406,7 @@ function DiscoverPageInner() {
       setResults([]);
       setStatuses(null);
       setInterpreted("search");
-      setSearchError(describeError(err));
+      setSearchError(displayFailure(err));
     } finally {
       if (current()) setSearching(false);
     }
@@ -436,7 +437,7 @@ function DiscoverPageInner() {
         // the library's "another download is already writing" 409.
         await reloadDownloads();
       } catch (err) {
-        setStarterError(describeError(err));
+        setStarterError(displayFailure(err));
       } finally {
         setStarterBusy(null);
       }
@@ -776,7 +777,7 @@ function ResultsList({
   /** What each source answered (LS4); null when the search failed. */
   statuses: CatalogueSourceStatus[] | null;
   searching: boolean;
-  error: string | null;
+  error: DisplayFailure | null;
   interpreted: "search" | "repo";
   selected: Selection | null;
   onSelect: (result: CatalogueSearchResult) => void;
@@ -825,7 +826,7 @@ function ResultsList({
           className="status-error m-3 rounded-[var(--radius)] border px-3 py-2 text-sm"
           role="alert"
         >
-          {error}
+          {error && <LibraryFailure error={error} />}
         </p>
       )}
       {results === null && !error && (
@@ -985,7 +986,7 @@ function EmptyDetail({
   contextLength: number;
   busy: string | null;
   inFlight: Set<string>;
-  error: string | null;
+  error: DisplayFailure | null;
   onDownload: (model: StarterModel) => void;
   onDownloadAndRun?: (model: StarterModel) => void;
   onOpenRepo: (repo: string) => void;
@@ -1090,7 +1091,7 @@ function RepoDetail({
   onDownloadStarted: () => void;
 }) {
   const [detail, setDetail] = useState<CatalogueModel | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayFailure | null>(null);
   const [loading, setLoading] = useState(true);
   const [projector, setProjector] = useState<string | null>(null);
   // Whether the vision part rides along. On by default: a person who
@@ -1179,7 +1180,7 @@ function RepoDetail({
       } catch (err) {
         if (id !== requestId.current) return;
         if (err instanceof ApiError && err.status === 401) return;
-        setError(describeError(err));
+        setError(displayFailure(err));
         setDetail(null);
       } finally {
         if (id === requestId.current) setLoading(false);
@@ -1276,7 +1277,7 @@ function RepoDetail({
   if (error) {
     return (
       <p className="status-error rounded-[var(--radius)] border px-3 py-2 text-sm" role="alert">
-        {error}
+        {error && <LibraryFailure error={error} />}
       </p>
     );
   }

@@ -267,6 +267,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/client-keys/{keyId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a new token with the same name and limits; the old one stops after an overlap (operator only).
+         * @description The new key copies the old key's name and limits exactly. The old
+         *     token keeps working until `retiresAt` (default one day, or stop it
+         *     now with `overlapSeconds` 0), then new requests on it are refused as
+         *     replaced; running ones finish. During the overlap both tokens share
+         *     one concurrency and rate allowance. The token is shown once.
+         */
+        post: operations["rotateClientKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/client-keys": {
         parameters: {
             query?: never;
@@ -480,8 +504,48 @@ export interface paths {
          *       each. Empty when no group sets a policy.
          *     An app reads a change after its next token refresh (the ID token
          *     lives 10 minutes).
+         *
+         *     **The ID token's cap (row 70c).** An app may keep the ID token in a
+         *     cookie, and a browser drops a cookie over 4 KB. So in the ID token
+         *     the two claims together take at most 1024 bytes, counted as the
+         *     token's payload carries them: compact JSON with every non-ASCII
+         *     character escaped (one emoji is 12 bytes). Past that, the ID token
+         *     lists the groups that fit, in name order, keeps every policy value,
+         *     keeps in `setBy` only the groups it lists, and adds
+         *     `eugene_groups_truncated: true`. An app that needs every group then
+         *     reads this answer, which is never cut (at most 64 groups). Without
+         *     the flag, the ID token holds every group.
          */
         get: operations["oidcUserinfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The permission groups that give this app (row 70c)
+         * @description `client_secret_basic`, as `/oidc/revoke`. The groups whose apps
+         *     include the calling app (or every app), as `{id, name}`, sorted by
+         *     name. An app uses it to attach settings of its own to a group, such
+         *     as Workbench's group memory servers, which its owner sets before any
+         *     member signs in. It says nothing of who is in a group: a person's
+         *     groups come only in their own sign-in claims.
+         *
+         *     Bounded: 5 wrong secrets from one address, or 60 reads by one app,
+         *     in 60 seconds, then 429 `slow_down` with `Retry-After`. The list
+         *     has no fixed length; a person's own groups are at most 64.
+         */
+        get: operations["oidcGroups"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1150,7 +1214,9 @@ export interface paths {
          *     there for why.
          *
          *     Each read by the standby records where it is: `after` is the index
-         *     it has applied (`ControlStatus.standbys`).
+         *     it has applied (`ControlStatus.standbys`), and, from its headers,
+         *     the version it runs and whether its copy is this root's
+         *     (`StandbyStatus.version`, `StandbyStatus.matches`; row 4).
          */
         get: operations["readLog"];
         put?: never;
@@ -1195,6 +1261,12 @@ export interface paths {
          *     this root's applied state on every request, so removing the grant
          *     shuts the next pull out while the token still has time left. No
          *     other node, and no other token kind, opens this or the log.
+         *
+         *     **A standby whose copy differs from this root's** (row 4) takes
+         *     one again by itself, at most once in 10 minutes: its copy at this
+         *     root's index has another digest than `LogPage.appliedDigest`. It
+         *     logs *this copy differs from the root at index N; taking a fresh
+         *     snapshot*.
          */
         get: operations["readSnapshot"];
         put?: never;
@@ -1234,6 +1306,19 @@ export interface paths {
          *     announcement learns the epoch when it next pulls the bundle, which
          *     is the bounded, visible window this document accepts in place of
          *     quorum.
+         *
+         *     **Then it announces its address** (row 4): it pushes its signed
+         *     machine list, whose `control` names this root, its node and the
+         *     new epoch (`POST /v1/node/machine-list`, `agent.yaml`), over TLS
+         *     to the keys this copy holds for each node. Each node that takes it
+         *     moves its `controlUrl` here, announces its address again and pulls
+         *     the bundle. This root starts polling the nodes, and pushes the
+         *     bundle and the list again, at most once a minute, to any node
+         *     that reports a lower `epoch` or `controlUrlEpoch`. A node that
+         *     cannot be reached asks the machine that held the `standby` grant
+         *     after 2 minutes of failed pulls. The copy is reached through its
+         *     machine's port (`/control`): its agent marks it promoted once a
+         *     list signed at the new epoch names its machine, with no restart.
          *
          *     **Refusing to promote is a valid outcome.** A standby that cannot
          *     prove its state reports how far behind it is and returns 409;
@@ -3507,9 +3592,18 @@ export interface components {
             revokedAt?: string;
             /**
              * Format: date-time
-             * @description Reserved; not currently measured.
+             * @description When the authority last admitted a check or acquisition with this key, to the minute. Absent, no use recorded.
              */
             lastUsedAt?: string;
+            /**
+             * Format: date-time
+             * @description Set when the key was rotated. The token works until then, and new requests on it are refused as replaced afterwards. Running requests finish.
+             */
+            retiresAt?: string;
+            /** @description The id of the key this one replaced. */
+            replaces?: string;
+            /** @description The id of the key that replaced this one. */
+            replacedBy?: string;
             /** @description Absent on legacy keys (all models, no per-key limits); new keys receive bounded defaults. */
             limits?: components["schemas"]["ClientKeyLimits"];
         };
@@ -3526,6 +3620,15 @@ export interface components {
             /** @default 365 */
             ttlDays: number;
             limits?: components["schemas"]["ClientKeyLimits"];
+        };
+        ClientKeyRotateRequest: {
+            /**
+             * @description How long the old token keeps working. 0 stops it now. The old and new tokens share one concurrency and rate allowance during the overlap.
+             * @default 86400
+             */
+            overlapSeconds: number;
+            /** @description Lifetime of the new key. Absent, the old key's lifetime. */
+            ttlDays?: number;
         };
         ClientKeyCreated: {
             key: components["schemas"]["ClientKey"];
@@ -3864,7 +3967,48 @@ export interface components {
              *     root's list, and a node then offers no change.
              */
             keyChange?: boolean;
+            control?: components["schemas"]["MachineListControl"];
             nodes: components["schemas"]["MachineListNode"][];
+        };
+        /**
+         * @description Where the install's active control root is, and at which epoch
+         *     (row 4, `docs/design/rows/row-04.md`). Absent from a root older
+         *     than row 4.
+         *
+         *     **A node moves only with a promotion** (R4-MOVE). It writes
+         *     `url` as its `controlUrl` only when all of these hold: the list
+         *     verifies against the root identity it pinned at enrolment; its
+         *     `version` is above the one it holds; `epoch` is above the epoch
+         *     its current `controlUrl` came with (`NodeIdentity.controlUrlEpoch`);
+         *     and `epoch` is at least the epoch it holds. The same epoch never
+         *     moves a node: a node may reach its root at an address the root
+         *     does not know, such as a tailnet address.
+         *
+         *     A list whose `epoch` is below the epoch a node holds comes from a
+         *     superseded root, and the node refuses all of it
+         *     (`POST /v1/node/machine-list` answers 409).
+         */
+        MachineListControl: {
+            /**
+             * Format: int64
+             * @description The epoch of the root that signed this list.
+             */
+            epoch: number;
+            /**
+             * @description The node this root runs on, when it knows its own name. After a
+             *     promotion, the promoted machine.
+             */
+            node?: string | null;
+            /**
+             * @description Where nodes reach this root: the plain form
+             *     `http://<host>:<machine port>` of its machine's port, which a
+             *     node's machine table carries to TLS under `/control`, or the
+             *     root's nodes name when it has no machine port. Taken from the
+             *     machine port its agent describes in the door file, else from
+             *     this root's own node record, else from the nodes name. Null
+             *     when this root knows none of them; a node then does not move.
+             */
+            url?: string | null;
         };
         MachineListNode: {
             name: string;
@@ -4255,6 +4399,25 @@ export interface components {
              *     stopped.
              */
             reachable?: boolean;
+            /**
+             * @description The version of control the standby runs, from the
+             *     `Eugene-Plexus-Version` header of its last pull (row 4). Absent
+             *     from a standby older than row 4. A standby older than the root
+             *     should be updated: it may drop what a newer root writes.
+             */
+            version?: string;
+            /**
+             * @description Whether the standby's copy is the root's, byte for byte (row
+             *     4). Read at a pull made at this root's own applied index, from
+             *     the `Eugene-Plexus-Copy-Digest` header: true when that digest
+             *     is this root's `LogPage.appliedDigest`, false when it differs.
+             *     A standby whose copy differs takes a fresh snapshot by itself
+             *     (at most once in 10 minutes), so false that stays means the
+             *     fresh copy differs too. Absent until a standby on this root's
+             *     version has pulled at this root's index: two versions may write
+             *     the same state in different bytes.
+             */
+            matches?: boolean;
         };
         LogPage: {
             /** @description Oldest first, gapless, strictly increasing `index`. */
@@ -4270,6 +4433,17 @@ export interface components {
              *     behind compaction *before* it tries to read a gap.
              */
             firstAvailableIndex?: number;
+            /**
+             * @description SHA-256, in hex, of the active root's canonical applied state
+             *     at `appliedIndex`: the bytes `GET /v1/control/snapshot` would
+             *     send at that index (row 4). Kept per index, so a caught-up
+             *     standby's pulls cost no hashing. A standby on the same version
+             *     (the `Eugene-Plexus-Version` response header) whose copy at the
+             *     same index has another digest differs from the root, for
+             *     example a copy that applied entries with code too old to know
+             *     all their fields. It takes a fresh snapshot.
+             */
+            appliedDigest?: string;
         };
         AccessAuditEvent: {
             index: number;
@@ -4385,7 +4559,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -4817,6 +4991,14 @@ export interface components {
             /** @description Ids Eugene has no person for. Each one was deleted, or never was Eugene's. */
             unknown: string[];
         };
+        OidcGroup: {
+            id: string;
+            name: string;
+        };
+        OidcGroupsResponse: {
+            /** @description The permission groups that give the calling app, sorted by name. */
+            groups: components["schemas"]["OidcGroup"][];
+        };
         PromoteRequest: {
             /**
              * Format: password
@@ -5176,6 +5358,28 @@ export interface components {
          */
         ComputeDeviceKind: "cuda" | "rocm" | "xpu" | "metal" | "vulkan" | "cpu";
         /**
+         * @description Current and supported PCIe link measurements for one card. Each
+         *     measurement is null independently when its probe fails, so a
+         *     readable width survives an unreadable generation.
+         */
+        ComputeDevicePcieLink: {
+            /** @description Current PCIe generation. Null when unreadable. */
+            generation: number | null;
+            /** @description Current PCIe lane count. Null when unreadable. */
+            width: number | null;
+            /** @description Maximum PCIe generation the card supports. Null when unreadable. */
+            maxGeneration: number | null;
+            /** @description Maximum PCIe lane count the card supports. Null when unreadable. */
+            maxWidth: number | null;
+        };
+        /**
+         * @description An observed reason a card is slowing down. `thermal` is a heat
+         *     limit, `power-cap` a power limit, `hardware-slowdown` another
+         *     hardware slowdown signal, and `other` another active NVML reason.
+         * @enum {string}
+         */
+        ComputeDeviceThrottleReason: "thermal" | "power-cap" | "hardware-slowdown" | "other";
+        /**
          * @description One compute device on one host, as that host's agent detected it.
          *
          *     Shared because it appears on both sides of a join: an agent
@@ -5192,20 +5396,80 @@ export interface components {
          *     describes a host in the singular. This is a device *list*,
          *     because a host with two cards is the case that makes replicas of
          *     one model possible.
+         *
+         *     Health readings are observations, never estimates. Each optional
+         *     health field is null when the platform cannot read it. The agent
+         *     refreshes these with its device list every 600 seconds and on
+         *     each `GET /v1/node` (row 43).
          */
         ComputeDevice: {
             kind: components["schemas"]["ComputeDeviceKind"];
             /** @description Device name as the vendor reports it, e.g. `NVIDIA GeForce RTX 5090`. */
             name?: string;
             /**
-             * @description Device ordinal on its own host — what `CUDA_VISIBLE_DEVICES`
-             *     or `HIP_VISIBLE_DEVICES` in a runtime's `env` selects to pin
-             *     that runtime to one card. For a `vulkan` device it is the
+             * @description Current device ordinal on its own host. It can change when
+             *     another card disappears; `uuid`, when readable, identifies
+             *     the same card across that renumbering. NVIDIA launches use
+             *     the UUID in `CUDA_VISIBLE_DEVICES`, falling back to an index
+             *     when no UUID was read. For a `vulkan` device the index is the
              *     order the operating system lists its adapters in, which is
-             *     not promised to be the order `GGML_VK_VISIBLE_DEVICES`
-             *     counts in.
+             *     not promised to be the order `GGML_VK_VISIBLE_DEVICES` counts
+             *     in.
              */
             index?: number;
+            /**
+             * @description Stable vendor device identifier, used to keep a runtime on
+             *     the same card when indices change. NVIDIA's NVML UUID (for
+             *     example `GPU-...`) or AMD's sysfs `unique_id`, kept as the
+             *     vendor reports it; not necessarily an RFC UUID. Null when
+             *     the platform cannot read it.
+             */
+            uuid?: string | null;
+            /**
+             * @description PCI bus address from NVML or the Linux sysfs device path.
+             *     Null when unreadable. A location, not a stable card identity.
+             */
+            pciBusId?: string | null;
+            /**
+             * @description Observed PCIe link against the card's supported link. Null
+             *     when no link measurements can be read. A lower generation
+             *     is a warning only when this card's utilisation exceeded 50%
+             *     in the last minute of host history: an idle card can lower
+             *     its generation to save power. A narrower width is a warning
+             *     at any time. Compare only measurements that are known.
+             */
+            pcieLink?: components["schemas"]["ComputeDevicePcieLink"] | null;
+            /**
+             * @description Power cap in effect, in watts, from NVML's enforced power
+             *     limit or Linux hwmon `power1_cap`. Null when unreadable.
+             */
+            powerLimitWatts?: number | null;
+            /**
+             * @description The card's default power cap in watts, from NVML or Linux
+             *     hwmon `power1_cap_default`. Null when unreadable.
+             */
+            powerDefaultLimitWatts?: number | null;
+            /**
+             * @description Reasons the card is currently slowing down, read from NVML.
+             *     An empty list means it reported no throttling. Null when
+             *     unreadable, including AMD and other unsupported platforms.
+             */
+            throttleReasons?: components["schemas"]["ComputeDeviceThrottleReason"][] | null;
+            /**
+             * Format: int64
+             * @description Volatile uncorrected ECC memory-error count from NVML, since
+             *     the device's counter was reset. Zero is a measured result.
+             *     Null when ECC is off, unsupported or unreadable.
+             */
+            uncorrectedMemoryErrors?: number | null;
+            /**
+             * @description UUIDs of other cards this card can reach directly by P2P
+             *     reads, as NVML reports it. Directional: the reverse path is
+             *     reported on the other card. An empty list means no peers
+             *     were reachable; null means the peer check was unreadable or
+             *     unsupported. Unknown checks never claim that P2P is absent.
+             */
+            peers?: string[] | null;
             /** Format: int64 */
             memoryTotalBytes?: number;
             /**
@@ -6491,6 +6755,12 @@ export interface components {
          *     none of these.
          */
         SubjectToken: string;
+        /**
+         * @description The version of control the standby runs (row 4). Recorded as
+         *     `StandbyStatus.version`; a standby that does not send it is older
+         *     than row 4.
+         */
+        EugenePlexusVersion: string;
     };
     requestBodies: never;
     headers: never;
@@ -7055,6 +7325,54 @@ export interface operations {
             };
         };
     };
+    rotateClientKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ClientKeyRotateRequest"];
+            };
+        };
+        responses: {
+            /** @description The new key and its one-time token. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyCreated"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description No such key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The key is turned off or expired, or already replaced. The message says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry unavailable or the root is locked. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listClientKeys: {
         parameters: {
             query?: never;
@@ -7407,6 +7725,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    oidcGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The groups, possibly none. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcGroupsResponse"];
+                };
+            };
+            /** @description `invalid_client`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `slow_down`: too many wrong secrets from this address, or reads by this app. Wait `Retry-After` seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `temporarily_unavailable`: the root is a standby; ask the active one. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
             };
         };
     };
@@ -8297,7 +8662,19 @@ export interface operations {
                 after: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description The version of control the standby runs (row 4). Recorded as
+                 *     `StandbyStatus.version`; a standby that does not send it is older
+                 *     than row 4.
+                 */
+                "Eugene-Plexus-Version"?: components["parameters"]["EugenePlexusVersion"];
+                /**
+                 * @description The standby's own `LogPage.appliedDigest`: SHA-256, in hex, of
+                 *     its canonical applied state at `after` (row 4).
+                 */
+                "Eugene-Plexus-Copy-Digest"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8306,6 +8683,12 @@ export interface operations {
             /** @description Entries, oldest first. */
             200: {
                 headers: {
+                    /**
+                     * @description The version of control this root runs. A standby compares
+                     *     `appliedDigest` with its own copy only when it runs the same
+                     *     version.
+                     */
+                    "Eugene-Plexus-Version"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8330,7 +8713,14 @@ export interface operations {
     readSnapshot: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description The version of control the standby runs (row 4). Recorded as
+                 *     `StandbyStatus.version`; a standby that does not send it is older
+                 *     than row 4.
+                 */
+                "Eugene-Plexus-Version"?: components["parameters"]["EugenePlexusVersion"];
+            };
             path?: never;
             cookie?: never;
         };

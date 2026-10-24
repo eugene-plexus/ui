@@ -38,6 +38,7 @@
 import { labelOf } from "./nodeLabels";
 import { phaseLine } from "./profileBuild";
 import { downloadHref } from "./downloadHandoff";
+import type { ServingMeasurement } from "./servingMeasurements";
 import type {
   Benchmark,
   Download,
@@ -50,7 +51,15 @@ import type {
   Scan,
 } from "./types";
 
-export type TaskKind = "download" | "install" | "load" | "scan" | "run" | "benchmark" | "build";
+export type TaskKind =
+  | "download"
+  | "install"
+  | "load"
+  | "scan"
+  | "run"
+  | "benchmark"
+  | "build"
+  | "measurement";
 
 export interface Task {
   /** Stable across polls, so a list can keep its order and React its keys. */
@@ -87,6 +96,7 @@ export interface Task {
 
 /** The raw bodies, each `null` when its source did not answer. */
 export interface TaskSources {
+  measurements?: ServingMeasurement[];
   benchmarks?: Benchmark[];
   /** Settings builds on every reachable node (PB2), read like benchmarks. */
   builds?: ProfileBuild[];
@@ -133,6 +143,18 @@ export function engineLabel(engine: string): string {
 
 export function tasksFrom(sources: TaskSources): Task[] {
   return [
+    ...(sources.measurements ?? [])
+      .filter((j) => j.state === "running")
+      .map(
+        (job): Task => ({
+          id: `measurement:${job.node}/${job.id}`,
+          kind: "measurement",
+          title: `Measuring people served by ${job.model} on ${labelOf(job.node)}`,
+          detail: job.detail,
+          progress: job.progress,
+          href: `/inference?measurement=${encodeURIComponent(job.id)}&node=${encodeURIComponent(job.node)}`,
+        }),
+      ),
     ...(sources.benchmarks ?? [])
       .filter((j) => j.state === "running")
       .map(

@@ -166,6 +166,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/client-keys/{keyId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a new token with the same name and limits; the old one stops after an overlap (operator only).
+         * @description The new key copies the old key's name and limits exactly. The old
+         *     token keeps working until `retiresAt` (default one day, or stop it
+         *     now with `overlapSeconds` 0), then new requests on it are refused as
+         *     replaced; running ones finish. During the overlap both tokens share
+         *     one concurrency and rate allowance. The token is shown once.
+         *     An enrolled agent forwards to the root. For an app installed on this
+         *     node, it also writes the new token to the app's key file and restarts
+         *     the app when the app reads its key only at start. A key of an app on
+         *     another machine gets a 409 naming that machine.
+         */
+        post: operations["rotateClientKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/status": {
         parameters: {
             query?: never;
@@ -1243,6 +1271,131 @@ export interface paths {
         get: operations["getAppConfigSchema"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/serving-measurements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent measurements of people served by a runtime on this node.
+         * @description Operator-only. Newest first, including an active job. Keeps the
+         *     newest 20 runs per node and the newest completed run per runtime,
+         *     across agent restarts. A runtime's newest completed run is retained
+         *     even when it is outside the newest 20. Computes `current` and
+         *     `staleBecause` on read against the running runtime's provenance.
+         *     An optional runtime name filters the list, including stopped runtimes.
+         */
+        get: operations["listServingMeasurements"];
+        put?: never;
+        /**
+         * Measure how many people this running runtime serves at a speed.
+         * @description Operator-only. An agent job, started through the node proxy and
+         *     polled through the list, using the gateway's streamed OpenAI door.
+         *     Does not launch the measured runtime, change its settings, download
+         *     a model or install an engine. One measurement job per node, shared
+         *     with benchmarks and profile builds. A stopped runtime is a 422,
+         *     naming the runtime and node and asking the operator to start it.
+         *
+         *     Uses the caller's own credential to mint a client key, as app
+         *     installs do: `localOnly`, `allowedModels: [alias]`, concurrency 64,
+         *     10,000 requests a minute, `ttlDays: 1`, named
+         *     "Measurement <runtime> <date>". The raw key stays only in memory;
+         *     it is never returned or persisted. It cannot reach a cloud tier
+         *     or a fallback model. The key is revoked when the run ends, whether
+         *     completed, failed or cancelled, using the caller's credential.
+         *     A failed revocation reports the observed cause and leaves
+         *     `keyLive: true` until revocation or expiry is confirmed; the console
+         *     retries through cancel. One day is a backstop, not the end-of-run
+         *     revocation policy (Troy's MEASURE-KEY call).
+         *
+         *     Rechecks the gateway's routing view before sending work. The
+         *     console asks for consent before submitting `stopReplicas`; the
+         *     job stops exactly those other ready replicas through their agents
+         *     with the caller's credential, and restarts what it stopped after
+         *     completion, failure or cancellation. Another ready replica not
+         *     listed in `stopReplicas` returns 409; no replica is stopped
+         *     implicitly. Unrelated runtimes are reported, not stopped.
+         *     Restart outcomes, including refusals and their observed cause,
+         *     are kept in `restarts`. Check X-Eugene-Plexus-Runtime on every
+         *     answer; an answer from another runtime stops the run and names
+         *     the answering runtime and node, and the intended runtime and node.
+         *
+         *     Levels are 1, 2, 4, 8 and so on, with `maxPeople` as the final
+         *     level if it is not a power of two. Stops one level past the knee,
+         *     at 5% request errors, or at TTFT p50 above 60 s. Requests in flight
+         *     at a window's end finish and count; cancellation aborts them.
+         *     Warm-up requests do not count. Records the effective request,
+         *     actual output tokens, gateway wait, cache reuse, foreign requests
+         *     when counters exist, watts when host history has them, and loop
+         *     lag. Missing observations never block a run; they are unknown.
+         *     Failures name their observed cause, including the control root's
+         *     words when it could not mint the key. Keeps partial results.
+         */
+        post: operations["startServingMeasurement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/serving-measurements/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What measuring this runtime would affect, and roughly how long it takes.
+         * @description Operator-only. Reads the gateway's routing view using the caller's
+         *     credential. Names other ready replicas of the same alias, with
+         *     node and runtime identities so the console can ask for consent
+         *     before stopping them through their agents. Lists other running
+         *     runtimes on the measured node that may share its resources.
+         *     Changes nothing: does not mint a key, stop a replica or send work.
+         *     `problems` names observed reasons the job cannot start; missing
+         *     counters, untested engines and unknown readings never block it.
+         *     The estimate covers the requested levels and windows, excluding
+         *     an unknown drain time for requests still in flight.
+         */
+        post: operations["preflightServingMeasurement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/serving-measurements/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop this measurement and revoke its key, keeping partial results.
+         * @description Operator-only. Stops an active run within 5 s and revokes its key
+         *     with the caller's credential. On a finished run it only revokes
+         *     any key still live; it does not change the finished state or
+         *     repeat replica restarts. Idempotent after revocation. The console
+         *     calls this for a finished run with `keyLive: true`, including a
+         *     run failed by an agent restart. A failed revocation names the
+         *     observed cause and leaves `keyLive: true`; never reports a key as
+         *     revoked without confirmation. Partial levels are retained.
+         */
+        post: operations["cancelServingMeasurement"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2379,6 +2532,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node/machine-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a newer machine list from the control root, and follow a promoted root.
+         * @description The mirror of `POST /v1/node/trust-bundle` for the signed machine
+         *     list (`control.yaml`, `MachineList`; row 4). A root pushes it after
+         *     a promotion, and to any node whose `epoch` or `controlUrlEpoch` it
+         *     sees lower than its own, at most once a minute. The agent also
+         *     pulls it every minute (`GET /v1/trust/machines`).
+         *
+         *     **The credential is the signature, not a bearer token**: a JWS
+         *     signed by the root identity this agent pinned at enrolment. A list
+         *     that does not verify, or reaches an agent that has not enrolled, is
+         *     refused with 401.
+         *
+         *     **Following a promoted root** (R4-MOVE, Troy 2026-10-21). The agent
+         *     writes the list's `control.url` as its `controlUrl` only when the
+         *     list is newer than the one it holds, its `control.epoch` is above
+         *     this node's `controlUrlEpoch`, and at least the epoch it holds. It
+         *     then holds that epoch, rebuilds its machine table, announces its
+         *     address to the new root, pulls the bundle there, and logs *the
+         *     install's root moved to <node> (epoch N)*. The same epoch never
+         *     moves a node.
+         */
+        post: operations["pushMachineList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/directories": {
         parameters: {
             query?: never;
@@ -2678,6 +2869,255 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description A person is one top-level session, not a stream or sub-agent.
+         *     `agents` uses growing histories, the published pauses and bursts,
+         *     and an uncounted warm start at a random turn. `chat` uses short
+         *     questions and reading pauses. `streams` is closed loop with no
+         *     pause or history growth, comparable with a concurrency sweep.
+         *     All use the profile builder's bundled corpus and seeded sampling.
+         * @enum {string}
+         */
+        ServingWorkload: "agents" | "chat" | "streams";
+        ServingMeasurementRequest: {
+            /** @description The name of an existing runtime on this node; it must be ready. */
+            runtime: string;
+            /** @default agents */
+            workload: components["schemas"]["ServingWorkload"];
+            /** @description Defaults to min(256, 4 * parallelSlots) of the running runtime. */
+            maxPeople?: number;
+            /**
+             * @description Per level. Defaults to 300 for agents and chat, 120 for streams.
+             *     With `full: true` the effective window is 3,600 seconds, even
+             *     when a different window was supplied. Requests still in flight
+             *     at the window's end finish and count, adding drain time.
+             */
+            windowSeconds?: number;
+            /**
+             * @description Use a one-hour window at each level.
+             * @default false
+             */
+            full: boolean;
+            /**
+             * @description Seed for workload sampling; does not promise identical model output.
+             * @default 0
+             */
+            seed: number;
+            /**
+             * @description The owner's first-token ceiling, in milliseconds; editable on
+             *     the run page. Troy's MEASURE-KNEE-2 call sets the default to
+             *     first content after more than one second.
+             * @default 1000
+             */
+            ttftThresholdMs: number;
+            /**
+             * @description Minimum per-person median speed as a fraction of level 1's;
+             *     editable on the run page. Default is two thirds (Troy's
+             *     MEASURE-KNEE-2 call). A speed below this crosses the knee.
+             * @default 0.6666666666666666
+             */
+            speedRatioThreshold: number;
+            /**
+             * @description The other replicas the operator agreed to stop after seeing
+             *     the preflight, identified by node, runtime and model alias.
+             *     Only replicas of the measured alias may be listed, never the
+             *     measured runtime. The job calls their agents to stop them,
+             *     then restarts exactly those it stopped when the run ends.
+             *     An unlisted ready replica is a 409, including one that became
+             *     ready after the preflight. Already stopped entries are not
+             *     restarted by this job.
+             * @default []
+             */
+            stopReplicas: components["schemas"]["ServingRuntime"][];
+        };
+        ServingRuntime: {
+            /** @description Node identity used by the node proxy. */
+            node: string;
+            runtime: string;
+            /** @description The model alias exposed by the gateway. */
+            model: string;
+        };
+        ServingMeasurementPreflight: {
+            /** @description Other ready replicas of the same alias, including replicas on other nodes. */
+            otherReplicas: components["schemas"]["ServingRuntime"][];
+            /** @description Other running runtimes on this node; informational, never stopped implicitly. */
+            otherRuntimes: components["schemas"]["ServingRuntime"][];
+            /** @description Observed causes that prevent starting, one sentence each. Empty when it can start. */
+            problems: string[];
+            /** @description Estimated total of the level windows; null when it cannot be estimated. */
+            estimateSeconds: number | null;
+        };
+        /**
+         * @description One tested number of people, including all requests begun in its
+         *     window and their drain time. Excludes warm-up requests. Unknown
+         *     observations are null, never fabricated zeroes. Latencies are
+         *     client-side through the gateway; speed after the first content
+         *     token excludes TTFT. A level remains readable with no successful
+         *     requests, including a failed or cancelled partial level.
+         */
+        ServingLevel: {
+            people: number;
+            /** @description Time-weighted mean requests in flight, including sub-agents. */
+            streamsMean: number;
+            /** @description Peak requests in flight, including sub-agents. */
+            streamsPeak: number;
+            /** @description Counted requests attempted, including requests that failed. */
+            requests: number;
+            errors: number;
+            /** @description Counts by observed cause, including the engine or gateway's error words. */
+            errorCauses: {
+                [key: string]: number;
+            };
+            /** @description Median time to first content token; null when no request produced content. */
+            ttftP50Ms: number | null;
+            ttftP90Ms: number | null;
+            /** @description Median inter-token latency; null when there are no measured intervals. */
+            itlP50Ms: number | null;
+            itlP90Ms: number | null;
+            /** @description Median per-request decode speed after the first content token, not total speed divided by people. */
+            tokensPerSecondEachP50: number | null;
+            tokensPerSecondEachP10: number | null;
+            /** @description Actual counted output tokens divided by durationSeconds; null if output usage is unavailable. */
+            tokensPerSecondTotal: number | null;
+            /** @description Sum of reported prompt usage; missing usage is named in the job's detail. */
+            promptTokens: number;
+            /** @description Sum of reported cached prompt usage; missing usage is named in the job's detail. */
+            cachedTokens: number;
+            /** @description Median X-Eugene-Plexus-Waited-Ms; null when the header was unavailable. */
+            waitedP50Ms: number | null;
+            /** @description Engine request-counter delta minus this job's requests; null means others' use is unknown. */
+            foreignRequests: number | null;
+            /** @description Mean GPU power from host history over the level; null when history has no power readings. */
+            watts: number | null;
+            /** @description Actual reported output tokens, including any output from failed requests; never max_tokens. */
+            outputTokens: number;
+            /** @description Observed duration including drain time; permits interpreting total throughput on partial levels. */
+            durationSeconds: number;
+            /** @description Fraction of prompt tokens reused as an unchanged prefix between turns; null when not observed. */
+            promptReuse: number | null;
+            /** @description Largest measured event-loop scheduling delay during this level. */
+            loopLagMaxMs: number;
+            /** @description True when loopLagMaxMs exceeds 50 ms; marks a potentially load-generator-limited level. */
+            loopLagged: boolean;
+        };
+        /**
+         * @description The last level before TTFT p50 exceeds request.ttftThresholdMs
+         *     or per-request median speed falls below request.speedRatioThreshold
+         *     times level 1's. These owner-editable thresholds follow Troy's
+         *     MEASURE-KNEE-2 call. `found: false` means the limit was not reached;
+         *     `people` and speeds then describe the largest tested usable level,
+         *     not an extrapolation. An unfinished or unusable run has a null knee.
+         */
+        ServingKnee: {
+            found: boolean;
+            people: number;
+            tokensPerSecondEach: number;
+            ttftP50Ms: number;
+        };
+        ServingGpu: {
+            name: string;
+            /** @description Stable device identity when available. */
+            uuid: string | null;
+            memoryBytes: number | null;
+        };
+        /**
+         * @description Snapshot of the engine, effective launch, model file and hardware
+         *     measured. Unknown identity fields are null and remain visible as
+         *     unknown; their absence never makes an untested engine unsupported.
+         *     Model identity is its local path, size and mtime, not a model hash.
+         *     Does not hold prompts, answers, credentials or raw client keys.
+         */
+        ServingProvenance: {
+            engine: string;
+            engineBuild: string | null;
+            /** @description sha256 of the running engine binary, when readable. */
+            binaryHash: string | null;
+            /** @description Effective engine launch argv at measurement time, with credentials redacted. */
+            launchArgv: string[];
+            modelPath: string;
+            modelSizeBytes: number | null;
+            /** Format: date-time */
+            modelModifiedAt: string | null;
+            /** @description GPUs used by the runtime, in stable device order; empty for CPU-only. */
+            gpus: components["schemas"]["ServingGpu"][];
+            /** @description GPU driver version or versions, in stable device order. */
+            driver: string | null;
+            cpu: string | null;
+            ramBytes: number | null;
+            agentCommit: string | null;
+            gatewayCommit: string | null;
+        };
+        /**
+         * @description Drafting in effect during this run, for comparing on and off
+         *     records of the same model and machine. No automatic off pass.
+         *     Acceptance is an observation and is not part of provenanceKey;
+         *     drafting configuration is captured by the effective launch argv.
+         */
+        ServingDrafting: {
+            /** @description Engine's drafting type, off when disabled, null when unknown. */
+            type: string | null;
+            /** @description Draft model path or identity; null when no separate draft model is used or it is unknown. */
+            model: string | null;
+            /** @description Accepted draft tokens divided by proposed draft tokens; null when not observed. */
+            acceptance: number | null;
+        };
+        ServingMeasurementRestart: {
+            node: string;
+            runtime: string;
+            state: components["schemas"]["MeasurementRestartState"];
+            /** @description Observed cause of a refusal or failed restart; null when no explanation is needed. */
+            detail: string | null;
+        };
+        /**
+         * @description A serving measurement kept on the runtime's node for rows 11,
+         *     13, 14 and 69 and the speed nudge. Agent restart marks an unfinished
+         *     run failed and names that cause; it keeps partial levels and never
+         *     resumes load silently. Final records keep their state when cancel
+         *     is used only to revoke a key. Does not persist prompts or answers.
+         */
+        ServingMeasurement: {
+            id: string;
+            node: string;
+            runtime: string;
+            /** @description The measured gateway model alias. */
+            model: string;
+            state: components["schemas"]["BenchmarkState"];
+            /**
+             * @description The effective request, including resolved workload, maxPeople,
+             *     windowSeconds, full, seed, both knee thresholds and stopReplicas.
+             *     Returned settings always describe the values in effect, including
+             *     the one-hour window when full overrides a supplied shorter one.
+             */
+            request: components["schemas"]["ServingMeasurementRequest"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: string | null;
+            progress: number;
+            /** @description One sentence of progress, or the observed cause of a failure, including the upstream's words. */
+            detail: string;
+            levels: components["schemas"]["ServingLevel"][];
+            knee: components["schemas"]["ServingKnee"] | null;
+            provenance: components["schemas"]["ServingProvenance"];
+            /**
+             * @description Lowercase sha256 of provenance as UTF-8 JSON with sorted object
+             *     keys, compact separators and unescaped Unicode. Array order is
+             *     preserved. Includes null identity fields; excludes observations
+             *     such as drafting acceptance and the request's workload seed.
+             */
+            provenanceKey: string;
+            /** @description Recomputed on read; true only when the runtime's present provenance matches this record. */
+            current: boolean;
+            /** @description What changed since measurement, with old and new values; empty when current. A missing runtime is named. */
+            staleBecause: string[];
+            /** @description True until the control root confirms revocation or expiry; a failed revocation is named in detail. */
+            keyLive: boolean;
+            restarts: components["schemas"]["ServingMeasurementRestart"][];
+            drafting: components["schemas"]["ServingDrafting"];
+        };
+        ServingMeasurementList: {
+            measurements: components["schemas"]["ServingMeasurement"][];
+        };
         BenchmarkRequest: {
             modelId: string;
             profileId: string;
@@ -3109,6 +3549,15 @@ export interface components {
          * @enum {string}
          */
         ComponentStatus: "starting" | "running" | "safe_mode" | "exited" | "crashed" | "unreachable";
+        SignedMachineList: {
+            /**
+             * @description A JWS compact serialization with header
+             *     `{"alg": "EdDSA", "typ": "ep-machines+jwt"}` whose payload is a
+             *     `MachineList` (`control.yaml`), signed with the root identity
+             *     this node pinned at enrolment.
+             */
+            jws: string;
+        };
         /**
          * @description The warm standby this agent runs because its node holds the
          *     `standby` grant (`docs/design/warm-standby.md`, SB3). Absent when it
@@ -3297,7 +3746,25 @@ export interface components {
              * @description The control root this node answers to.
              */
             controlUrl?: string;
+            /**
+             * Format: int64
+             * @description The epoch `controlUrl` came with (row 4): the epoch at
+             *     enrolment, or of the promoted root this node moved to. A node
+             *     moves only for a signed machine list at a higher epoch. Set to
+             *     the epoch held when a node updated to row 4 first starts, so an
+             *     update never moves a node. Absent until enrolled.
+             */
+            controlUrlEpoch?: number;
             standby?: components["schemas"]["LocalStandby"];
+            /**
+             * @description This machine runs the install's control root, and it is locked:
+             *     nothing can be signed until the owner signs in with the
+             *     passphrase (row 4). Home says so. Common after a restart under
+             *     `prompt_on_startup`, and after a promoted copy restarts before
+             *     any other machine heard of the promotion. Absent when this
+             *     machine runs no root, or its state is not known yet.
+             */
+            rootLocked?: boolean;
             /**
              * @description This agent supervises the install's active control root. The
              *     root reads it from its probe of each node to know its own
@@ -4475,9 +4942,18 @@ export interface components {
             revokedAt?: string;
             /**
              * Format: date-time
-             * @description Reserved; not currently measured.
+             * @description When the authority last admitted a check or acquisition with this key, to the minute. Absent, no use recorded.
              */
             lastUsedAt?: string;
+            /**
+             * Format: date-time
+             * @description Set when the key was rotated. The token works until then, and new requests on it are refused as replaced afterwards. Running requests finish.
+             */
+            retiresAt?: string;
+            /** @description The id of the key this one replaced. */
+            replaces?: string;
+            /** @description The id of the key that replaced this one. */
+            replacedBy?: string;
             /** @description Absent on legacy keys (all models, no per-key limits); new keys receive bounded defaults. */
             limits?: components["schemas"]["ClientKeyLimits"];
         };
@@ -4494,6 +4970,15 @@ export interface components {
             /** @default 365 */
             ttlDays: number;
             limits?: components["schemas"]["ClientKeyLimits"];
+        };
+        ClientKeyRotateRequest: {
+            /**
+             * @description How long the old token keeps working. 0 stops it now. The old and new tokens share one concurrency and rate allowance during the overlap.
+             * @default 86400
+             */
+            overlapSeconds: number;
+            /** @description Lifetime of the new key. Absent, the old key's lifetime. */
+            ttlDays?: number;
         };
         ClientKeyCreated: {
             key: components["schemas"]["ClientKey"];
@@ -5315,6 +5800,15 @@ export interface components {
              *     complaint we answer. Values here are engine *launch* flags;
              *     sampling parameters that ride on each request are the
              *     gateway's, not these.
+             *
+             *     For llama.cpp and vLLM, `missingCard` is the agent's "If a
+             *     card is missing" setting, exposed in the engine's GUI
+             *     `flagSchema`. `start-on-cards-left` is the default: refit for
+             *     the cards present and report any temporary context or RAM
+             *     offload changes. `do-not-start` refuses the launch and names
+             *     the missing card. The profile is not changed; the next start
+             *     uses its saved settings when all cards are back. This setting
+             *     controls the agent's launch check, not an engine CLI flag.
              */
             flags?: {
                 [key: string]: unknown;
@@ -5456,12 +5950,22 @@ export interface components {
              */
             readonly openedPath?: string | null;
             /**
-             * @description Why this node is **not** opening a local copy, when it is
-             *     not and the operator asked for one: not enough free space to
-             *     leave the configured headroom, the copy failed, the source
-             *     could not be read. Absent when the copy was used, and absent
-             *     when copying is switched off — a node that was never asked
-             *     has nothing to explain.
+             * @description Why a requested local copy was skipped or used without
+             *     checking its source. A skipped copy names the observed cause:
+             *     not enough free space to leave the configured headroom, a
+             *     failed copy, or a source that could not be read.
+             *
+             *     When the source's Library folder root on this machine raises
+             *     an OSError or exceeds the 5 s check limit, a copy whose size
+             *     matches its saved source record may be used. The note starts
+             *     "Started from this machine's copy" and names the folder root
+             *     and the observed cause. It remains until the next start that
+             *     checks the source. A missing file in a readable folder does
+             *     not permit this fallback.
+             *
+             *     Absent when the source was checked and the copy was used,
+             *     and absent when copying is switched off — a node that was
+             *     never asked has nothing to explain.
              *
              *     On the wire because a silently skipped copy is the failure
              *     mode of this whole feature: the model still serves, the
@@ -5554,6 +6058,13 @@ export interface components {
             /** @description Version reported by the binary that is actually running. */
             engineVersion?: string;
             capabilities?: components["schemas"]["RuntimeCapabilities"];
+            /**
+             * @description Strata settings applied by the last successful launch, read
+             *     from its private launch configuration. Absent before a
+             *     launch or when unknown; never copied from saved flags.
+             */
+            readonly effectiveLaunch?: components["schemas"]["StrataEffectiveLaunch"];
+            readonly chatTemplate?: components["schemas"]["RuntimeChatTemplate"];
             /** Format: date-time */
             lastRestart?: string;
             /**
@@ -5562,9 +6073,133 @@ export interface components {
              *     Cleared on a successful start.
              */
             lastError?: string;
+            /**
+             * @description UUIDs of the cards used at the last successful start, recorded
+             *     by the agent. An observation, never a profile setting or a
+             *     replacement for its saved device pins. Kept across stops and
+             *     failed starts, and updated only after a successful start.
+             *     Absent before a successful start has been observed; an empty
+             *     list means no device UUIDs were available or used.
+             */
+            readonly lastDevices?: string[];
+            /**
+             * @description The last successful start used fewer cards because one or
+             *     more expected cards were missing. Names those cards and the
+             *     launch changes actually applied. Null when there is no such
+             *     observation. Kept until a successful start with every
+             *     expected card clears it; a returning card does not restart a
+             *     running runtime automatically. The profile stays unchanged.
+             */
+            readonly startedOnFewerCards?: components["schemas"]["RuntimeStartedOnFewerCards"] | null;
             loadProgress?: components["schemas"]["LoadProgress"];
             speculation?: components["schemas"]["RuntimeSpeculation"];
             promptCache?: components["schemas"]["RuntimePromptCache"];
+        };
+        /**
+         * @description Strata's applied launch settings, read from the launch configuration
+         *     that was successfully spawned, not the current profile or prepared
+         *     file, which may have changed since. Unknown values leave this record
+         *     absent; they never acquire an intent default. A stopped runtime may
+         *     retain the last successful launch, labelled as such. This records
+         *     launch settings, not a claim of successful inference or measured speed.
+         */
+        StrataEffectiveLaunch: {
+            /**
+             * @description Changes answers when on; experimental. Applied mode from the
+             *     loaded control vector and launch sampling default together.
+             *     A vector absent or disabled in that configuration means off.
+             */
+            speedProjection: components["schemas"]["SpeedProjectionMode"];
+            /** @description Selected node inventory ordinals, main first, resolved from the applied launch and its visibility mapping. */
+            gpus: components["schemas"]["StrataGpuSelection"];
+            /**
+             * @description null with one card. Otherwise the applied boundaries or auto
+             *     when upstream chooses them. auto reports the selected mode,
+             *     not measured boundaries or an assumed equal split.
+             */
+            layerSplit: components["schemas"]["StrataLayerSplit"] | null;
+        };
+        /**
+         * @description Observed result of a successful start on the cards left. The
+         *     console keeps a warning until a start with every expected card
+         *     clears it, and offers a restart so the person can use a returned
+         *     card. Never written back to a profile.
+         */
+        RuntimeStartedOnFewerCards: {
+            missing: components["schemas"]["RuntimeMissingDevice"][];
+            /**
+             * @description One sentence per launch change actually applied, such as a
+             *     smaller context, more of the model in RAM, a changed tensor
+             *     split or reduced tensor parallelism. Empty when only the
+             *     device selection changed. These describe values in effect,
+             *     not suggestions from fit that were never used.
+             */
+            changes: string[];
+        };
+        /** @description A missing card, identified from the agent's last observation. */
+        RuntimeMissingDevice: {
+            /** @description Stable vendor UUID of the missing card. */
+            uuid: string;
+            /** @description Device name when the card was last present. */
+            name: string;
+            /** @description Device index when the card was last present, before renumbering. */
+            lastIndex: number;
+        };
+        /**
+         * @description The chat template the running engine reports in effect, not a
+         *     saved setting or a Library fallback recommendation. Publish only
+         *     after the engine reports its effective template text; the digest
+         *     is SHA-256 of those exact UTF-8 bytes, without whitespace or line
+         *     ending normalization. The source is not inferred from argv alone.
+         *
+         *     Omit on stopped runtimes, while the effective template is
+         *     unconfirmed, and on engines that do not report it. Clear this
+         *     observation on stop and before each new start, so a changed
+         *     setting cannot leave a previous process's template on display.
+         *     Missing information does not block a launch or inference.
+         * @example {
+         *       "source": "engine",
+         *       "name": "Engine chat template",
+         *       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+         *     }
+         */
+        RuntimeChatTemplate: {
+            /**
+             * @description * `embedded` — the reported text matches the model file's
+             *       embedded template and no operator override selected it.
+             *     * `eugene` — the reported text matches the Eugene fallback
+             *       captured at launch, with no operator override in effect.
+             *     * `override` — the reported text matches the operator's
+             *       explicit template override captured at launch. This takes
+             *       precedence even when its contents match a bundled template.
+             *     * `engine` — the engine reports the text but its origin is
+             *       unknown, or it does not match the captured selection.
+             *       Never label an unconfirmed fallback as `eugene`.
+             * @enum {string}
+             */
+            source: "embedded" | "eugene" | "override" | "engine";
+            /**
+             * @description Human-readable name of the effective template. Use an engine
+             *     template label when the origin is unknown; never the name of
+             *     a saved override or fallback that was not confirmed.
+             */
+            name: string;
+            /** @description Digest of the effective template text returned by the engine. */
+            sha256: string;
+            /**
+             * @description The Library's `ChatTemplateFallback.id` when source is
+             *     `eugene`; omitted for other sources. The digest identifies
+             *     the exact template revision in effect.
+             */
+            id?: string;
+            /**
+             * @description Template file on this runtime's node, captured at launch and
+             *     reported only when its captured contents match the engine's
+             *     effective template. Absent for embedded and engine templates,
+             *     and for inline overrides. A later edit to this file does not
+             *     change the running process's template or digest.
+             */
+            path?: string;
         };
         /**
          * @description The memory this runtime's engine keeps for recent conversations, as
@@ -7521,6 +8156,17 @@ export interface components {
          */
         PreparationVisionMode: "off" | "cpu" | "gpu";
         /**
+         * @description Changes the model's answers when on; experimental and off by default.
+         *     Strata's bundled refusal-direction projection reduces refusals and
+         *     also changes ordinary predictions. Upstream measures a 0.2-0.4%
+         *     cost per token on identical text, not a guaranteed speed-up.
+         *     Preparation uses --experimental-speed-projection on|off. Launch
+         *     applies the prepared control vector and reports the applied mode;
+         *     a requested mode alone is not evidence that it took effect.
+         * @enum {string}
+         */
+        SpeedProjectionMode: "off" | "on";
+        /**
          * @description A match that runs only after the engine prepares it (Strata builds
          *     an expert pack, a lookup table and an MTP helper from a GGUF). The
          *     verdict is `after_preparation`; the original file is never
@@ -7555,6 +8201,15 @@ export interface components {
              *     encoder and uses additional memory while serving.
              */
             visionModes?: components["schemas"]["PreparationVisionMode"][];
+            /**
+             * @description Changes answers when on; experimental. Choices this model's
+             *     preparation offers for the bundled projection. Absent means
+             *     no projection choice is advertised, not a claim that an
+             *     untested model cannot run. Omitting the choice in a run
+             *     intent selects off. An upstream fallback must be reported
+             *     as the mode that actually took effect, with its cause.
+             */
+            speedProjectionModes?: components["schemas"]["SpeedProjectionMode"][];
             /**
              * @description The oldest version of the engine that prepares this model, as
              *     the engine's own setup states it (LS7, B30): e.g. Strata's
@@ -8374,6 +9029,30 @@ export interface components {
             pendingRestart?: string[];
         };
         /**
+         * @description Ordered card ordinals from this node's ComputeDevice inventory;
+         *     the main card is first. The node validates each selected card
+         *     against its current inventory and resolves process visibility at
+         *     every preparation and launch. Two or more cards share the model.
+         *     Omission in a preparation keeps the existing automatic single-card
+         *     selection. Omission in a profile preserves the prepared selection.
+         *     An empty list is not automatic selection.
+         *     This inventory has kind and index, not row 43's stable UUIDs;
+         *     ordinals are local to the selected node and must not be treated
+         *     as stable identities or silently replaced by another card.
+         */
+        StrataGpuSelection: number[];
+        /**
+         * @description auto places layers using the selected cards' free memory and
+         *     expert profile. An expert can give the first layer of each later
+         *     card, as comma-separated rising integers: 16,32 for three cards.
+         *     These are boundaries, not a count of layers per card. The node
+         *     checks one boundary per card after the first, each at least 2,
+         *     strictly rising and below the model's layer count. An explicit
+         *     boundary requires several selected cards. With one card there
+         *     is no layer split.
+         */
+        StrataLayerSplit: string;
+        /**
          * @description What kind of device this is.
          *
          *     `vulkan` is a GPU served by llama.cpp's Vulkan build, which needs
@@ -8399,6 +9078,28 @@ export interface components {
          */
         ComputeDeviceKind: "cuda" | "rocm" | "xpu" | "metal" | "vulkan" | "cpu";
         /**
+         * @description Current and supported PCIe link measurements for one card. Each
+         *     measurement is null independently when its probe fails, so a
+         *     readable width survives an unreadable generation.
+         */
+        ComputeDevicePcieLink: {
+            /** @description Current PCIe generation. Null when unreadable. */
+            generation: number | null;
+            /** @description Current PCIe lane count. Null when unreadable. */
+            width: number | null;
+            /** @description Maximum PCIe generation the card supports. Null when unreadable. */
+            maxGeneration: number | null;
+            /** @description Maximum PCIe lane count the card supports. Null when unreadable. */
+            maxWidth: number | null;
+        };
+        /**
+         * @description An observed reason a card is slowing down. `thermal` is a heat
+         *     limit, `power-cap` a power limit, `hardware-slowdown` another
+         *     hardware slowdown signal, and `other` another active NVML reason.
+         * @enum {string}
+         */
+        ComputeDeviceThrottleReason: "thermal" | "power-cap" | "hardware-slowdown" | "other";
+        /**
          * @description One compute device on one host, as that host's agent detected it.
          *
          *     Shared because it appears on both sides of a join: an agent
@@ -8415,20 +9116,80 @@ export interface components {
          *     describes a host in the singular. This is a device *list*,
          *     because a host with two cards is the case that makes replicas of
          *     one model possible.
+         *
+         *     Health readings are observations, never estimates. Each optional
+         *     health field is null when the platform cannot read it. The agent
+         *     refreshes these with its device list every 600 seconds and on
+         *     each `GET /v1/node` (row 43).
          */
         ComputeDevice: {
             kind: components["schemas"]["ComputeDeviceKind"];
             /** @description Device name as the vendor reports it, e.g. `NVIDIA GeForce RTX 5090`. */
             name?: string;
             /**
-             * @description Device ordinal on its own host — what `CUDA_VISIBLE_DEVICES`
-             *     or `HIP_VISIBLE_DEVICES` in a runtime's `env` selects to pin
-             *     that runtime to one card. For a `vulkan` device it is the
+             * @description Current device ordinal on its own host. It can change when
+             *     another card disappears; `uuid`, when readable, identifies
+             *     the same card across that renumbering. NVIDIA launches use
+             *     the UUID in `CUDA_VISIBLE_DEVICES`, falling back to an index
+             *     when no UUID was read. For a `vulkan` device the index is the
              *     order the operating system lists its adapters in, which is
-             *     not promised to be the order `GGML_VK_VISIBLE_DEVICES`
-             *     counts in.
+             *     not promised to be the order `GGML_VK_VISIBLE_DEVICES` counts
+             *     in.
              */
             index?: number;
+            /**
+             * @description Stable vendor device identifier, used to keep a runtime on
+             *     the same card when indices change. NVIDIA's NVML UUID (for
+             *     example `GPU-...`) or AMD's sysfs `unique_id`, kept as the
+             *     vendor reports it; not necessarily an RFC UUID. Null when
+             *     the platform cannot read it.
+             */
+            uuid?: string | null;
+            /**
+             * @description PCI bus address from NVML or the Linux sysfs device path.
+             *     Null when unreadable. A location, not a stable card identity.
+             */
+            pciBusId?: string | null;
+            /**
+             * @description Observed PCIe link against the card's supported link. Null
+             *     when no link measurements can be read. A lower generation
+             *     is a warning only when this card's utilisation exceeded 50%
+             *     in the last minute of host history: an idle card can lower
+             *     its generation to save power. A narrower width is a warning
+             *     at any time. Compare only measurements that are known.
+             */
+            pcieLink?: components["schemas"]["ComputeDevicePcieLink"] | null;
+            /**
+             * @description Power cap in effect, in watts, from NVML's enforced power
+             *     limit or Linux hwmon `power1_cap`. Null when unreadable.
+             */
+            powerLimitWatts?: number | null;
+            /**
+             * @description The card's default power cap in watts, from NVML or Linux
+             *     hwmon `power1_cap_default`. Null when unreadable.
+             */
+            powerDefaultLimitWatts?: number | null;
+            /**
+             * @description Reasons the card is currently slowing down, read from NVML.
+             *     An empty list means it reported no throttling. Null when
+             *     unreadable, including AMD and other unsupported platforms.
+             */
+            throttleReasons?: components["schemas"]["ComputeDeviceThrottleReason"][] | null;
+            /**
+             * Format: int64
+             * @description Volatile uncorrected ECC memory-error count from NVML, since
+             *     the device's counter was reset. Zero is a measured result.
+             *     Null when ECC is off, unsupported or unreadable.
+             */
+            uncorrectedMemoryErrors?: number | null;
+            /**
+             * @description UUIDs of other cards this card can reach directly by P2P
+             *     reads, as NVML reports it. Directional: the reverse path is
+             *     reported on the other card. An empty list means no peers
+             *     were reachable; null means the peer check was unreadable or
+             *     unsupported. Unknown checks never claim that P2P is absent.
+             */
+            peers?: string[] | null;
             /** Format: int64 */
             memoryTotalBytes?: number;
             /**
@@ -8842,6 +9603,54 @@ export interface operations {
                 content?: never;
             };
             /** @description Registry unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rotateClientKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ClientKeyRotateRequest"];
+            };
+        };
+        responses: {
+            /** @description The new key and its one-time token. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientKeyCreated"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description No such key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The key is turned off or expired, or already replaced. The message says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry unavailable or the root is locked. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -9971,6 +10780,114 @@ export interface operations {
             401: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listServingMeasurements: {
+        parameters: {
+            query?: {
+                runtime?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Measurements and their current provenance status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServingMeasurementList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
+    startServingMeasurement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServingMeasurementRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted; poll this node's measurements for progress. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServingMeasurement"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    preflightServingMeasurement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServingMeasurementRequest"];
+            };
+        };
+        responses: {
+            /** @description Replicas to ask about, other load, start problems and a time estimate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServingMeasurementPreflight"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    cancelServingMeasurement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped or already finished, with the observed key and restart status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServingMeasurement"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };
     };
@@ -11249,6 +12166,53 @@ export interface operations {
             /**
              * @description Refused: the bundle's `epoch` or `version` is lower than the
              *     one this agent holds. `detail` names both numbers.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    pushMachineList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignedMachineList"];
+            };
+        };
+        responses: {
+            /** @description Taken, or the same list again. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description The signature does not verify against the pinned
+             *     `controlPublicKey`, or this agent has not enrolled.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description Refused: the list's `version` is lower than the one this agent
+             *     holds, or its `control.epoch` is lower than the epoch it holds
+             *     (a superseded root). `detail` names both numbers.
              */
             409: {
                 headers: {

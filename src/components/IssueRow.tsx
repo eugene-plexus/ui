@@ -7,6 +7,7 @@ import { More } from "@/components/Help";
 import { unlockControlRoot } from "@/lib/controlUnlock";
 import type { Issue } from "@/lib/issues";
 import { getSessionToken } from "@/lib/session";
+import { api, describeError } from "@/lib/api";
 
 /**
  * One issue, as it reads in the header list and on Home.
@@ -45,6 +46,25 @@ export function IssueRow({
   focusUnlock?: boolean;
 }) {
   const toneClass = issue.severity === "blocking" ? "text-status-error" : "text-status-warn";
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  async function restart() {
+    if (!issue.restart || restarting) return;
+    setRestarting(true);
+    setRestartError(null);
+    try {
+      await api.post(
+        issue.restart.target,
+        `/v1/runtimes/${encodeURIComponent(issue.restart.name)}/restart`,
+        {},
+      );
+      await onFixed();
+    } catch (error) {
+      setRestartError(describeError(error));
+    } finally {
+      setRestarting(false);
+    }
+  }
   return (
     <div
       data-testid="issue-row"
@@ -56,6 +76,17 @@ export function IssueRow({
       {/* Never truncated. This is the sentence that says what to do, and
           it is read by somebody who is already unhappy. */}
       <p className="mt-0.5 text-[0.6875rem] text-[color:var(--muted)]">{issue.detail}</p>
+      {issue.restart && (
+        <button
+          type="button"
+          disabled={restarting}
+          onClick={() => void restart()}
+          className="action-button text-sm"
+        >
+          {restarting ? "Restarting…" : "Restart"}
+        </button>
+      )}
+      {restartError && <p role="alert">{restartError}</p>}
       {/* The whole of it, for whoever asks: the next step is above. */}
       {issue.more && issue.more.length > 0 ? (
         <More
