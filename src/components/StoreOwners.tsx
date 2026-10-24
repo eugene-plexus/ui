@@ -71,7 +71,7 @@ export function StoreOwners() {
 
   if (error) {
     return (
-      <p data-testid="store-owners-error" className="mt-3 text-sm text-[color:var(--danger)]">
+      <p role="alert" data-testid="store-owners-error" className="text-status-error mt-3 text-sm">
         The store did not answer: {error}
       </p>
     );
