@@ -40,6 +40,7 @@ import { useServedContexts } from "@/lib/useServedContexts";
 import { usePolling } from "@/lib/usePolling";
 import { stopReasonWords } from "@/lib/runningModel";
 import { promptCacheLine } from "@/lib/promptCache";
+import { sameAnswerLine } from "@/lib/sameAnswer";
 import { speculationLine } from "@/lib/speculation";
 import { expertHint } from "@/lib/vocabulary";
 import type {
@@ -811,6 +812,7 @@ function RowView({
   const drafting = speculationLine(own?.speculation);
   // PC7: the prompt cache it was started with, from its command line (settings never lie).
   const promptCache = promptCacheLine(own?.promptCache);
+  const sameAnswer = sameAnswerLine(own);
   const prefix = `${row.node ?? ""}/${row.runtime ?? ""}:`;
   // What a row's buttons say they act on, for a screen reader that hears
   // the buttons without the row around them.
@@ -1041,6 +1043,11 @@ function RowView({
           <div className="text-[0.6875rem] text-[color:var(--muted)]" data-testid="speculation">
             {drafting.text}
             {drafting.note && <div className="text-status-warn">{drafting.note}</div>}
+          </div>
+        )}
+        {sameAnswer && (
+          <div className="text-[0.6875rem] text-[color:var(--muted)]" data-testid="same-answer">
+            {sameAnswer}
           </div>
         )}
         {promptCache && (

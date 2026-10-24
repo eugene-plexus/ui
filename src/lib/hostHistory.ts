@@ -39,6 +39,7 @@ export const FLEET_METRICS: HostMetric[] = [
   "gpuMemoryEugene",
   "gpuUtilization",
   "gpuTemperature",
+  "gpuPower",
 ];
 
 export function historyPath(hours: number, now: number, metrics?: HostMetric[]): string {

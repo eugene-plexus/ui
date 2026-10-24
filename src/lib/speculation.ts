@@ -36,7 +36,11 @@ export const DRAFT_TOKENS_KEY = "draftTokens";
  * adapter's own default and words for these, where for every other flag
  * unset means nothing is passed.
  */
-export const ACTS_WHEN_UNSET = new Set<string>([REUSE_TEXT_KEY, ...PROMPT_CACHE_KEYS]);
+export const ACTS_WHEN_UNSET = new Set<string>([
+  REUSE_TEXT_KEY,
+  ...PROMPT_CACHE_KEYS,
+  "sameAnswerEveryTime",
+]);
 
 function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;

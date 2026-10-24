@@ -1239,6 +1239,22 @@ describe("a row says its state in a sentence (CX1)", () => {
   });
 });
 
+describe("a running model's repeatable answers (row 20)", () => {
+  it.each([true, false])("shows the effective launch setting: %s", async (enabled) => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: { runtimes: [nodeRuntime({ flags: { sameAnswerEveryTime: enabled } })] },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    const line = await within(row).findByTestId("same-answer");
+    expect(line).toHaveTextContent(
+      enabled
+        ? "Same answer every time: on; one request at a time; others wait."
+        : "Same answer every time: off.",
+    );
+  });
+});
+
 describe("a running model's prompt cache (row 9)", () => {
   it("says the size it was started with and where it came from", async () => {
     handlers.set("GET agent/v1/runtimes", () => ({

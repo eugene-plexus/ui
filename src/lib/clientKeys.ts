@@ -67,6 +67,69 @@ function shortDate(iso: string): string {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
+/** "last used 3 min ago", or "no use recorded" (the authority stamps it to the minute). */
+export function lastUsedText(
+  lastUsedAt: string | null | undefined,
+  now: Date = new Date(),
+): string {
+  if (!lastUsedAt) return "no use recorded";
+  const then = new Date(lastUsedAt).getTime();
+  if (Number.isNaN(then)) return "no use recorded";
+  const minutes = Math.max(0, Math.floor((now.getTime() - then) / 60_000));
+  if (minutes < 1) return "last used just now";
+  if (minutes < 60) return `last used ${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `last used ${hours} h ago`;
+  return `last used ${Math.floor(hours / 24)} days ago`;
+}
+
+/** The choices for how long an old key keeps working after a rotation. */
+export const ROTATE_OVERLAPS: readonly { label: string; seconds: number }[] = [
+  { label: "Stop now", seconds: 0 },
+  { label: "1 hour", seconds: 3_600 },
+  { label: "1 day", seconds: 86_400 },
+  { label: "7 days", seconds: 604_800 },
+  { label: "30 days", seconds: 2_592_000 },
+];
+export const DEFAULT_ROTATE_OVERLAP = 86_400;
+
+interface RotationFields {
+  readonly id: string;
+  readonly tail: string;
+  readonly retiresAt?: string | null;
+  readonly replacedBy?: string | null;
+}
+
+function dateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** "replaced by …x7Yb2c, works until 22 Oct 14:05", or null for a key that is not replaced. */
+export function rotationNote(
+  key: RotationFields,
+  keys: readonly RotationFields[],
+  now: Date = new Date(),
+): string | null {
+  if (!key.replacedBy || !key.retiresAt) return null;
+  const next = keys.find((k) => k.id === key.replacedBy);
+  const label = next ? keyLabel(next.tail) : "a newer key";
+  const over = new Date(key.retiresAt).getTime() <= now.getTime();
+  return `replaced by ${label}, ${over ? "stopped" : "works until"} ${dateTime(key.retiresAt)}`;
+}
+
+/** The machine an app's key belongs to: `app:<id>@<node>` names it. */
+export function appKeyNode(name: string): string | null {
+  const match = /^app:[^@]+@(.+)$/.exec(name);
+  return match?.[1] ?? null;
+}
+
 // --- the recipes ------------------------------------------------------
 
 export interface Recipe {
