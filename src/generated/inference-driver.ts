@@ -2562,9 +2562,12 @@ export interface components {
              */
             file_data?: string;
             /**
-             * @description Refused with a 400. It names a file uploaded to one
-             *     provider's store, which this install does not have; send
-             *     `file_data`.
+             * @description A file kept in this install's store (`POST /v1/files`, row
+             *     53). The gateway reads it for the caller, from the caller's
+             *     own files only, and carries it as `file_data` (a PDF), an
+             *     image or text, within the limits above; it never reaches a
+             *     backend as an id. Another owner's id is refused as one that
+             *     does not exist.
              */
             file_id?: string;
         };
@@ -3064,6 +3067,11 @@ export interface components {
          *     calls a tool-driver when the model uses it. `library` scans the operator's model
          *     directories and holds per-model launch profiles; there is
          *     exactly one, and it is deliberately not in the request path.
+         *     `store` (row 53, 2026-10-23) keeps what the gateway's platform
+         *     doors keep for people -- uploaded files first, then stored
+         *     responses, batches and vector stores -- each object with an owner
+         *     and an end; there is exactly one, on the root by default, and the
+         *     gateway is its only caller (`openapi/store.yaml`).
          *
          *     **The agent is not in this list**, for the same reason engine
          *     runtimes are not: it supervises, it is not supervised. Its
@@ -3074,7 +3082,7 @@ export interface components {
          *     second copy of the supervision machinery.
          * @enum {string}
          */
-        ComponentKind: "control" | "gateway" | "inference-driver" | "library" | "tool-driver";
+        ComponentKind: "control" | "gateway" | "inference-driver" | "library" | "store" | "tool-driver";
         /**
          * @description Predicate over another `ConfigField`'s current value. The UI
          *     renders the field this is attached to only when the named field
