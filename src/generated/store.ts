@@ -1060,7 +1060,7 @@ export interface components {
          * @description The owner header came with a credential that may not name owners,
          *     the owner turned this part of the store off in its settings, or
          *     the owner named is a person Eugene removed (nothing new is kept
-         *     for them while their objects are hidden).
+         *     for them, while their objects are hidden or after they are deleted).
          */
         Forbidden: {
             headers: {

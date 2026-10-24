@@ -438,6 +438,9 @@ function CatalogueEntry({
     >
       <div className="flex flex-wrap items-center gap-3">
         <span className="font-ui font-semibold">{manifest.name}</span>
+        {manifest.experimental && (
+          <span className="font-ui text-sm text-[color:var(--muted)]">Experimental</span>
+        )}
         <span className="font-mono text-sm text-[color:var(--muted)]">{manifest.version}</span>
         {entry.origin === "custom" && (
           <span
@@ -453,7 +456,7 @@ function CatalogueEntry({
           ) : update ? (
             <ConfirmButton
               className={primaryClass}
-              disabled={!installable || running || needsAccount}
+              disabled={!installable || entry.installable === false || running || needsAccount}
               label={running ? "Installing…" : `Update from ${entry.installedVersion}`}
               confirmLabel={entry.resetsSettings ? "Update and reset settings" : "Update"}
               prompt={`Update ${manifest.name} to ${manifest.version}?${entry.resetsSettings ? ` This update resets ${manifest.name}'s Admin Settings to Eugene's, once.` : ""}`}
@@ -464,7 +467,7 @@ function CatalogueEntry({
             <button
               type="button"
               className={primaryClass}
-              disabled={!installable || running || needsAccount}
+              disabled={!installable || entry.installable === false || running || needsAccount}
               onClick={onInstall}
               data-testid={`apps-install-${manifest.id}`}
             >
@@ -487,6 +490,11 @@ function CatalogueEntry({
         </span>
       </div>
       {manifest.summary && <p className="text-sm text-[color:var(--muted)]">{manifest.summary}</p>}
+      {entry.installable === false && entry.reason && (
+        <p role="status" className="text-sm text-[color:var(--muted)]">
+          {entry.reason}
+        </p>
+      )}
       {(manifest.homepage || manifest.licenseUrl) && (
         <p className="flex flex-wrap gap-3 text-sm" data-testid={`apps-links-${manifest.id}`}>
           {manifest.homepage && (

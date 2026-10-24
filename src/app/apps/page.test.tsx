@@ -72,6 +72,34 @@ function catalogue(installable = true, reason?: string) {
   };
 }
 
+it("keeps an unavailable experimental entry visible with its specific cause", async () => {
+  handlers.set("GET agent/v1/app-catalogue", () => ({
+    status: 200,
+    body: {
+      installable: true,
+      ownAccounts: true,
+      apps: [
+        {
+          manifest: {
+            ...MANIFEST,
+            id: "hindsight",
+            name: "Hindsight",
+            experimental: true,
+            localActions: false,
+          },
+          origin: "catalogue",
+          installable: false,
+          reason: "pg0 cannot keep data in this app's folder.",
+        },
+      ],
+    },
+  }));
+  render(<AppsPage />);
+  expect(await screen.findByText("Experimental")).toBeInTheDocument();
+  expect(screen.getByText("pg0 cannot keep data in this app's folder.")).toBeInTheDocument();
+  expect(screen.getByTestId("apps-install-hindsight")).toBeDisabled();
+});
+
 beforeEach(() => {
   calls = [];
   let polls = 0;
