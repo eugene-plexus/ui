@@ -5945,6 +5945,12 @@ export interface components {
             /** @description Version reported by the binary that is actually running. */
             engineVersion?: string;
             capabilities?: components["schemas"]["RuntimeCapabilities"];
+            /**
+             * @description Strata settings applied by the last successful launch, read
+             *     from its private launch configuration. Absent before a
+             *     launch or when unknown; never copied from saved flags.
+             */
+            readonly effectiveLaunch?: components["schemas"]["StrataEffectiveLaunch"];
             readonly chatTemplate?: components["schemas"]["RuntimeChatTemplate"];
             /** Format: date-time */
             lastRestart?: string;
@@ -5975,6 +5981,30 @@ export interface components {
             loadProgress?: components["schemas"]["LoadProgress"];
             speculation?: components["schemas"]["RuntimeSpeculation"];
             promptCache?: components["schemas"]["RuntimePromptCache"];
+        };
+        /**
+         * @description Strata's applied launch settings, read from the launch configuration
+         *     that was successfully spawned, not the current profile or prepared
+         *     file, which may have changed since. Unknown values leave this record
+         *     absent; they never acquire an intent default. A stopped runtime may
+         *     retain the last successful launch, labelled as such. This records
+         *     launch settings, not a claim of successful inference or measured speed.
+         */
+        StrataEffectiveLaunch: {
+            /**
+             * @description Changes answers when on; experimental. Applied mode from the
+             *     loaded control vector and launch sampling default together.
+             *     A vector absent or disabled in that configuration means off.
+             */
+            speedProjection: components["schemas"]["SpeedProjectionMode"];
+            /** @description Selected node inventory ordinals, main first, resolved from the applied launch and its visibility mapping. */
+            gpus: components["schemas"]["StrataGpuSelection"];
+            /**
+             * @description null with one card. Otherwise the applied boundaries or auto
+             *     when upstream chooses them. auto reports the selected mode,
+             *     not measured boundaries or an assumed equal split.
+             */
+            layerSplit: components["schemas"]["StrataLayerSplit"] | null;
         };
         /**
          * @description Observed result of a successful start on the cards left. The
@@ -7830,6 +7860,17 @@ export interface components {
          */
         PreparationVisionMode: "off" | "cpu" | "gpu";
         /**
+         * @description Changes the model's answers when on; experimental and off by default.
+         *     Strata's bundled refusal-direction projection reduces refusals and
+         *     also changes ordinary predictions. Upstream measures a 0.2-0.4%
+         *     cost per token on identical text, not a guaranteed speed-up.
+         *     Preparation uses --experimental-speed-projection on|off. Launch
+         *     applies the prepared control vector and reports the applied mode;
+         *     a requested mode alone is not evidence that it took effect.
+         * @enum {string}
+         */
+        SpeedProjectionMode: "off" | "on";
+        /**
          * @description A match that runs only after the engine prepares it (Strata builds
          *     an expert pack, a lookup table and an MTP helper from a GGUF). The
          *     verdict is `after_preparation`; the original file is never
@@ -7864,6 +7905,15 @@ export interface components {
              *     encoder and uses additional memory while serving.
              */
             visionModes?: components["schemas"]["PreparationVisionMode"][];
+            /**
+             * @description Changes answers when on; experimental. Choices this model's
+             *     preparation offers for the bundled projection. Absent means
+             *     no projection choice is advertised, not a claim that an
+             *     untested model cannot run. Omitting the choice in a run
+             *     intent selects off. An upstream fallback must be reported
+             *     as the mode that actually took effect, with its cause.
+             */
+            speedProjectionModes?: components["schemas"]["SpeedProjectionMode"][];
             /**
              * @description The oldest version of the engine that prepares this model, as
              *     the engine's own setup states it (LS7, B30): e.g. Strata's
@@ -8682,6 +8732,30 @@ export interface components {
              */
             pendingRestart?: string[];
         };
+        /**
+         * @description Ordered card ordinals from this node's ComputeDevice inventory;
+         *     the main card is first. The node validates each selected card
+         *     against its current inventory and resolves process visibility at
+         *     every preparation and launch. Two or more cards share the model.
+         *     Omission in a preparation keeps the existing automatic single-card
+         *     selection. Omission in a profile preserves the prepared selection.
+         *     An empty list is not automatic selection.
+         *     This inventory has kind and index, not row 43's stable UUIDs;
+         *     ordinals are local to the selected node and must not be treated
+         *     as stable identities or silently replaced by another card.
+         */
+        StrataGpuSelection: number[];
+        /**
+         * @description auto places layers using the selected cards' free memory and
+         *     expert profile. An expert can give the first layer of each later
+         *     card, as comma-separated rising integers: 16,32 for three cards.
+         *     These are boundaries, not a count of layers per card. The node
+         *     checks one boundary per card after the first, each at least 2,
+         *     strictly rising and below the model's layer count. An explicit
+         *     boundary requires several selected cards. With one card there
+         *     is no layer split.
+         */
+        StrataLayerSplit: string;
         /**
          * @description What kind of device this is.
          *

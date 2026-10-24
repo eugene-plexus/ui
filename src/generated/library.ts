@@ -2642,6 +2642,34 @@ export interface components {
          */
         ProfileMode: "auto" | "chat" | "embedding" | "reranking";
         /**
+         * @description Prepare the model for an engine before running it. Asked for,
+         *     never implied: Run without it picks an engine that runs the model
+         *     as it is. This is the source schema for the durable run protocol's
+         *     PreparationIntent; regenerate openapi/run-operations.json from the
+         *     Library after adopting this schema, rather than editing its copy.
+         *     The Strata choices use the same keys as that engine's profile
+         *     flags. Unsupported or ignored choices must name the observed
+         *     cause; no requested value may be reported as applied by default.
+         */
+        PreparationIntent: {
+            engine: components["schemas"]["schemas-EngineKind"];
+            /** @description The context to prepare for. Absent uses the engine's recommendation for the node. */
+            contextSize?: number | null;
+            /**
+             * @description Image encoder placement. Off preserves text-only preparation.
+             * @default off
+             */
+            vision: components["schemas"]["schemas-PreparationVisionMode"];
+            /**
+             * @description Changes answers when on; experimental. Off preserves stock model behavior.
+             * @default off
+             */
+            speedProjection: components["schemas"]["schemas-SpeedProjectionMode"];
+            gpus?: components["schemas"]["StrataGpuSelection"];
+            /** @default auto */
+            layerSplit: components["schemas"]["StrataLayerSplit"];
+        };
+        /**
          * @description Declarative half of a profile — launch settings and generation
          *     defaults for one model. Used for create and replace bodies.
          *
@@ -2722,6 +2750,15 @@ export interface components {
              *     adapter's `flagSchema` — context size, GPU layers, batch
              *     size, parallel slots. Copied onto `RuntimeSpec.flags`
              *     verbatim.
+             *
+             *     Strata's keys are `speedProjection` (`SpeedProjectionMode`),
+             *     `gpus` (`StrataGpuSelection`) and `layerSplit`
+             *     (`StrataLayerSplit`). Preparation uses the same choices in
+             *     `PreparationIntent`, with defaults off, automatic single-card
+             *     selection and auto boundaries. Omitted profile flags preserve
+             *     the prepared configuration's values. The projection changes
+             *     answers when on and is experimental. A saved profile is intent,
+             *     not evidence of the applied launch.
              *
              *     **Stored, not validated.** The validator is the agent's
              *     adapter schema, at runtime-creation time. A profile is
@@ -4448,22 +4485,74 @@ export interface components {
          */
         PreparationVisionMode: "off" | "cpu" | "gpu";
         /**
-         * PreparationIntent
-         * @description Prepare the model for an engine before running it (LS5). Asked for,
-         *     never implied: Run without it picks an engine that runs the model as it is.
+         * SpeedProjectionMode
+         * @description Changes the model's answers when on; experimental and off by default.
+         *     Strata's bundled refusal-direction projection reduces refusals and
+         *     also changes ordinary predictions. Upstream measures a 0.2-0.4%
+         *     cost per token on identical text, not a guaranteed speed-up.
+         *     Preparation uses --experimental-speed-projection on|off. Launch
+         *     applies the prepared control vector and reports the applied mode;
+         *     a requested mode alone is not evidence that it took effect.
+         * @enum {string}
          */
-        PreparationIntent: {
+        SpeedProjectionMode: "off" | "on";
+        /** StrataGpuSelectionItem */
+        StrataGpuSelectionItem: number;
+        /**
+         * PreparationIntent
+         * @description Prepare the model for an engine before running it. Asked for,
+         *     never implied: Run without it picks an engine that runs the model
+         *     as it is. This is the source schema for the durable run protocol's
+         *     PreparationIntent; regenerate openapi/run-operations.json from the
+         *     Library after adopting this schema, rather than editing its copy.
+         *     The Strata choices use the same keys as that engine's profile
+         *     flags. Unsupported or ignored choices must name the observed
+         *     cause; no requested value may be reported as applied by default.
+         */
+        "schemas-PreparationIntent": {
             engine: components["schemas"]["EngineKind"];
             /**
              * Contextsize
-             * @description The context the engine prepares for. Absent: the engine's own recommendation for the node.
+             * @description The context to prepare for. Absent uses the engine's recommendation for the node.
              */
             contextSize?: number | null;
             /**
              * @description Image encoder placement. Off preserves text-only preparation.
              * @default off
              */
-            vision: components["schemas"]["PreparationVisionMode"];
+            vision: components["schemas"]["PreparationVisionMode"] | null;
+            /**
+             * @description Changes answers when on; experimental. Off preserves stock model behavior.
+             * @default off
+             */
+            speedProjection: components["schemas"]["SpeedProjectionMode"] | null;
+            /**
+             * Gpus
+             * @description Ordered card ordinals from this node's ComputeDevice inventory;
+             *     the main card is first. The node validates each selected card
+             *     against its current inventory and resolves process visibility at
+             *     every preparation and launch. Two or more cards share the model.
+             *     Omission in a preparation keeps the existing automatic single-card
+             *     selection. Omission in a profile preserves the prepared selection.
+             *     An empty list is not automatic selection.
+             *     This inventory has kind and index, not row 43's stable UUIDs;
+             *     ordinals are local to the selected node and must not be treated
+             *     as stable identities or silently replaced by another card.
+             */
+            gpus?: components["schemas"]["StrataGpuSelectionItem"][] | null;
+            /**
+             * Layersplit
+             * @description auto places layers using the selected cards' free memory and
+             *     expert profile. An expert can give the first layer of each later
+             *     card, as comma-separated rising integers: 16,32 for three cards.
+             *     These are boundaries, not a count of layers per card. The node
+             *     checks one boundary per card after the first, each at least 2,
+             *     strictly rising and below the model's layer count. An explicit
+             *     boundary requires several selected cards. With one card there
+             *     is no layer split.
+             * @default auto
+             */
+            layerSplit: string | null;
         };
         /** Intent */
         Intent: {
@@ -4472,7 +4561,7 @@ export interface components {
             /** Modelid */
             modelId?: string | null;
             download?: components["schemas"]["schemas-DownloadSpec"] | null;
-            preparation?: components["schemas"]["PreparationIntent"] | null;
+            preparation?: components["schemas"]["schemas-PreparationIntent"] | null;
             /** @description The engine the person agreed, at the click, to install if the node lacks it (CX3). Checking that stops for this engine goes straight on to installing; any other engine still waits for an answer. */
             installEngine?: components["schemas"]["EngineKind"] | null;
         };
@@ -6329,6 +6418,17 @@ export interface components {
          */
         "schemas-PreparationVisionMode": "off" | "cpu" | "gpu";
         /**
+         * @description Changes the model's answers when on; experimental and off by default.
+         *     Strata's bundled refusal-direction projection reduces refusals and
+         *     also changes ordinary predictions. Upstream measures a 0.2-0.4%
+         *     cost per token on identical text, not a guaranteed speed-up.
+         *     Preparation uses --experimental-speed-projection on|off. Launch
+         *     applies the prepared control vector and reports the applied mode;
+         *     a requested mode alone is not evidence that it took effect.
+         * @enum {string}
+         */
+        "schemas-SpeedProjectionMode": "off" | "on";
+        /**
          * @description A match that runs only after the engine prepares it (Strata builds
          *     an expert pack, a lookup table and an MTP helper from a GGUF). The
          *     verdict is `after_preparation`; the original file is never
@@ -6363,6 +6463,15 @@ export interface components {
              *     encoder and uses additional memory while serving.
              */
             visionModes?: components["schemas"]["schemas-PreparationVisionMode"][];
+            /**
+             * @description Changes answers when on; experimental. Choices this model's
+             *     preparation offers for the bundled projection. Absent means
+             *     no projection choice is advertised, not a claim that an
+             *     untested model cannot run. Omitting the choice in a run
+             *     intent selects off. An upstream fallback must be reported
+             *     as the mode that actually took effect, with its cause.
+             */
+            speedProjectionModes?: components["schemas"]["schemas-SpeedProjectionMode"][];
             /**
              * @description The oldest version of the engine that prepares this model, as
              *     the engine's own setup states it (LS7, B30): e.g. Strata's
@@ -7560,6 +7669,30 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * @description Ordered card ordinals from this node's ComputeDevice inventory;
+         *     the main card is first. The node validates each selected card
+         *     against its current inventory and resolves process visibility at
+         *     every preparation and launch. Two or more cards share the model.
+         *     Omission in a preparation keeps the existing automatic single-card
+         *     selection. Omission in a profile preserves the prepared selection.
+         *     An empty list is not automatic selection.
+         *     This inventory has kind and index, not row 43's stable UUIDs;
+         *     ordinals are local to the selected node and must not be treated
+         *     as stable identities or silently replaced by another card.
+         */
+        StrataGpuSelection: number[];
+        /**
+         * @description auto places layers using the selected cards' free memory and
+         *     expert profile. An expert can give the first layer of each later
+         *     card, as comma-separated rising integers: 16,32 for three cards.
+         *     These are boundaries, not a count of layers per card. The node
+         *     checks one boundary per card after the first, each at least 2,
+         *     strictly rising and below the model's layer count. An explicit
+         *     boundary requires several selected cards. With one card there
+         *     is no layer split.
+         */
+        StrataLayerSplit: string;
     };
     responses: {
         /** @description Error response in RFC 7807 problem+json format. */
