@@ -20,7 +20,10 @@ const MIN_PASSPHRASE = 12;
 
 /** One line for each machine, as the owner reads it. */
 export function machineLine(machine: Machine): string {
-  if (machine.state === "changed") return `${machine.node}: changed`;
+  if (machine.state === "changed")
+    return machine.detail
+      ? `${machine.node}: changed, but ${machine.detail}`
+      : `${machine.node}: changed`;
   if (machine.state === "plain") return `${machine.node}: not sent: reached in plain HTTP`;
   return `${machine.node}: changes at its next sign-in`;
 }
@@ -69,9 +72,10 @@ export function PassphraseChange({
     >
       <h4 className="font-ui font-semibold">Change passphrase</h4>
       <p className="text-[color:var(--muted)]">
-        The keys the passphrase protects stay the same. A copy of Eugene made before the change
-        still opens with the old passphrase. After a leak, also change the sign-in key, under Apps
-        that sign in with Eugene.
+        The keys the passphrase protects stay the same. It does not change the root token key, and
+        the console cannot change that key yet. A copy of Eugene made before the change still opens
+        with the old passphrase. After a leak, also change the sign-in key, under Apps that sign in
+        with Eugene.
       </p>
       <label className="flex max-w-sm flex-col gap-2">
         Current passphrase
@@ -123,6 +127,11 @@ export function PassphraseChange({
       {result && (
         <div role="status" className="flex flex-col gap-1" data-testid="passphrase-changed">
           <p className="status-success">Passphrase changed.</p>
+          {result.cleanup && (
+            <p className="status-warn">
+              Old copies could not be removed yet: {result.cleanup}. Eugene tries again every hour.
+            </p>
+          )}
           {result.passphraseFile === "old" && (
             <p className="status-warn">
               The passphrase file still holds the old passphrase. Put the new one in it, or Eugene

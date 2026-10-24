@@ -428,7 +428,7 @@ describe("the sign-in key and Eugene's passphrase (row 5)", () => {
     );
     await user.click(within(key).getByRole("button", { name: "Change sign-in key" }));
     expect(await within(key).findByRole("status")).toHaveTextContent(
-      "Sign-in key changed. Every app signs in again.",
+      "Sign-in key changed. Workbench asks people to sign in again within five minutes. Open WebUI keeps its sessions until they expire or people sign out.",
     );
     expect(sent("POST control/v1/oidc/keys/change")).toEqual([{ endSignIns: true }]);
     expect(within(key).getByTestId("sign-in-key-line")).toHaveTextContent(
@@ -466,8 +466,14 @@ describe("the sign-in key and Eugene's passphrase (row 5)", () => {
           { node: "nas", state: "changed" },
           { node: "box", state: "pending", detail: "Not reached (timed out)." },
           { node: "old", state: "plain", detail: "It is reached in plain HTTP." },
+          {
+            node: "tower",
+            state: "changed",
+            detail: "this machine could not save its passphrase file: Read-only file system",
+          },
         ],
         passphraseFile: "old",
+        cleanup: "No space left on device",
       },
     }));
     const user = userEvent.setup();
@@ -475,6 +481,7 @@ describe("the sign-in key and Eugene's passphrase (row 5)", () => {
     const owner = await screen.findByTestId("protected-owner", {}, { timeout: 5000 });
     await user.click(within(owner).getByText("Protected owner"));
     const form = within(owner).getByTestId("passphrase-change");
+    expect(form).toHaveTextContent("It does not change the root token key");
     const submit = within(form).getByRole("button", { name: "Change passphrase" });
     await user.type(within(form).getByLabelText("Current passphrase"), "the-old-passphrase");
     await user.type(within(form).getByLabelText("New passphrase"), "a-new-passphrase");
@@ -487,6 +494,9 @@ describe("the sign-in key and Eugene's passphrase (row 5)", () => {
     const changed = await within(form).findByTestId("passphrase-changed");
     expect(changed).toHaveTextContent("Passphrase changed.");
     expect(changed).toHaveTextContent("The passphrase file still holds the old passphrase.");
+    expect(changed).toHaveTextContent(
+      "Old copies could not be removed yet: No space left on device.",
+    );
     expect(
       within(changed)
         .getAllByRole("listitem")
@@ -495,6 +505,7 @@ describe("the sign-in key and Eugene's passphrase (row 5)", () => {
       "nas: changed",
       "box: changes at its next sign-in",
       "old: not sent: reached in plain HTTP",
+      "tower: changed, but this machine could not save its passphrase file: Read-only file system",
     ]);
     expect(sent("POST agent/v1/auth/passphrase")).toEqual([
       { current: "the-old-passphrase", new: "a-new-passphrase" },

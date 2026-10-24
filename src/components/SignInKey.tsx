@@ -62,7 +62,7 @@ export function SignInKey({ rowClass }: { rowClass: string }) {
       setKeys(await api.post<OidcKeyList>("control", "/v1/oidc/keys/change", { endSignIns }));
       setDone(
         endSignIns
-          ? "Sign-in key changed. Every app signs in again."
+          ? "Sign-in key changed. Workbench asks people to sign in again within five minutes. Open WebUI keeps its sessions until they expire or people sign out."
           : "Sign-in key changed. Apps stay signed in.",
       );
       setEndSignIns(false);
