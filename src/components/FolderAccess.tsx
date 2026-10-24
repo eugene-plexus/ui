@@ -102,7 +102,11 @@ export function FolderAccess({
           {(grant.unknown ?? []).map((found) =>
             found.decision === "pending" ? (
               <div key={found.id} className="flex flex-col gap-1">
-                <p>{`Workbench can still open ${found.path}: ${found.entry}. Eugene did not add this entry.`}</p>
+                <p>
+                  {found.kind === "hardlink"
+                    ? `Workbench can still open ${found.path}: ${found.entry}.`
+                    : `Workbench can still open ${found.path}: ${found.entry}. Eugene did not add this entry.`}
+                </p>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -110,7 +114,9 @@ export function FolderAccess({
                     disabled={busy}
                     onClick={() => decide(grant.id, found.id, "remove")}
                   >
-                    Remove this entry too
+                    {found.kind === "hardlink"
+                      ? "Remove access here and there"
+                      : "Remove this entry too"}
                   </button>
                   <button
                     type="button"
@@ -124,7 +130,9 @@ export function FolderAccess({
               </div>
             ) : (
               <p key={found.id}>
-                {`Workbench can still open ${found.path} through an entry Eugene did not add: ${found.entry}.`}
+                {found.kind === "hardlink"
+                  ? `Workbench can still open ${found.path}: ${found.entry}.`
+                  : `Workbench can still open ${found.path} through an entry Eugene did not add: ${found.entry}.`}
               </p>
             ),
           )}

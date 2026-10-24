@@ -163,3 +163,44 @@ it("asks the owner about access Eugene did not add, and says so when it is kept"
     ),
   );
 });
+
+it("says why a file with another name waits, and does not blame an entry", async () => {
+  vi.mocked(api.get).mockResolvedValue({
+    grants: [
+      {
+        id: "g1",
+        path: "/srv/acme",
+        mode: "read",
+        state: "incomplete",
+        restartNeeded: false,
+        message: "Workbench's account can still open /srv/acme/a.txt.",
+        unknown: [
+          {
+            id: "e1",
+            path: "/srv/acme/a.txt",
+            kind: "hardlink",
+            entry:
+              "it has another name outside the folder, so changing it here changes it there too",
+            decision: "pending",
+          },
+        ],
+      },
+    ],
+  });
+  vi.mocked(api.post).mockResolvedValue({ state: "removed", message: "Done." });
+  render(<FolderAccess target="agent" app="workbench" account="files" />);
+  expect(
+    await screen.findByText(
+      "Workbench can still open /srv/acme/a.txt: it has another name outside the folder, so changing it here changes it there too.",
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByText(/Eugene did not add/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Remove access here and there" }));
+  await waitFor(() =>
+    expect(api.post).toHaveBeenCalledWith(
+      "agent",
+      "/v1/apps/workbench/folder-access/g1/unknown/e1",
+      { action: "remove" },
+    ),
+  );
+});

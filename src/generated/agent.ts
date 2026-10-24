@@ -1284,13 +1284,20 @@ export interface paths {
          *     client key is refused, including the app's own key.
          *
          *     A removal that finds access for the app's account that Eugene
-         *     did not add stops at incomplete and lists each such entry in
-         *     unknown. The owner decides each one (R23-UNKNOWN). Remove: the
+         *     did not add, or a file with another name outside the folder,
+         *     stops at incomplete and lists each such entry in unknown. The owner decides each one (R23-UNKNOWN). Remove: the
          *     agent checks the entry again (the same item, the same entry)
          *     and deletes only that entry, then finishes the removal. Keep:
          *     the entry stays, the app keeps that access, and the record says
          *     so. Either way the removal runs again; when no entry waits, the
-         *     record reads removed and lists the kept entries.
+         *     record reads removed and lists the kept entries. What the owner
+         *     kept comes from the record of the backend that holds the answer,
+         *     so a kept entry is listed even when an earlier call failed
+         *     before this record was saved.
+         *
+         *     An item changed since the agent found it (its permissions or its
+         *     owner on Windows) is not changed on the owner's old answer: the
+         *     removal runs again and asks again about what is there now.
          *
          *     An entry that changed since the agent found it, or that the
          *     agent cannot change, is not removed; the response names the
@@ -7697,10 +7704,13 @@ export interface components {
          *     a Windows item with no permission list, which lets everyone
          *     in. owner means the app's account owns the item, so it can
          *     change the item's permissions. unreadable means Eugene cannot
-         *     read the item's permissions.
+         *     read the item's permissions. hardlink is a file with another
+         *     name outside the folder: removal never changes such a file on
+         *     its own, since the change would reach that name too. Remove
+         *     lets the removal change it; Keep leaves it as it is.
          * @enum {string}
          */
-        FolderAccessUnknownKind: "entry" | "null_dacl" | "owner" | "unreadable";
+        FolderAccessUnknownKind: "entry" | "null_dacl" | "owner" | "unreadable" | "hardlink";
         /**
          * @description Pending waits for the owner; kept means the owner chose to keep it.
          * @enum {string}
