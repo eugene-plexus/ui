@@ -933,10 +933,14 @@ export interface paths {
          *
          *     **After a suspected leak** (`endSignIns: true`) it makes a new
          *     key and then appends `retireOidcKeys`, keeping only the new one:
-         *     every token the old key signed stops verifying at once, and every
-         *     app signs in again. A **409** while the standby runs a log
+         *     every token the old key signed stops verifying at once. An app
+         *     that keeps its own session (Open WebUI) keeps it until it expires
+         *     or the person signs out. A **409** while the standby runs a log
          *     version older than `retireOidcKeys` (`StandbyStatus.logVersion`
          *     below 1): its copy would stop at this change.
+         *
+         *     Two changes at once are one change: the second sees the key the
+         *     first made, and a routine one then waits.
          *
          *     Apps read the keys again when they meet an unknown `kid`
          *     (Workbench, Authlib). An app that caches the JWKS (Workbench, 5
@@ -1788,8 +1792,22 @@ export interface paths {
          *        and nothing is sent to it.
          *
          *     The keys the passphrase protects stay the same; it re-wraps them.
-         *     A copy of the state made before the change still opens with the
-         *     old passphrase. Neither passphrase is ever logged or echoed.
+         *     It does not change the root token key that signs sessions
+         *     (`POST /v1/control/rotate-key`). A copy of the state made before
+         *     the change still opens with the old passphrase. Neither
+         *     passphrase is ever logged or echoed.
+         *
+         *     **Once the change entry is written, the new key is in effect**,
+         *     before anything else that can fail. Removing the old copies (the
+         *     snapshot and compaction) comes after; when it fails, the answer
+         *     is still 200, with `cleanup` naming the cause, and the root tries
+         *     again every hour and at its next start.
+         *
+         *     **A write that sealed a value under the old key** (a connected
+         *     account's secret, a sign-in key, the token key, the install CA)
+         *     and reaches the log after the change is refused with **409**,
+         *     *"The passphrase changed while this was saved; save it again."*,
+         *     and nothing is stored.
          */
         post: operations["changePassphrase"];
         delete?: never;
@@ -4632,8 +4650,12 @@ export interface components {
          *     `recoveryKey`, `installCaKey`, `oidcKeys` by `kid`, and
          *     `externalProviders` by id). It must name exactly the sealed values
          *     the state holds, no more and no fewer, or it does not apply. Every
-         *     root that applies it writes a snapshot and compacts its log
-         *     through it, so no value sealed under the old key stays in the log.
+         *     root that applies it writes a snapshot and drops every entry
+         *     before it, so no value sealed under the old key stays in the log;
+         *     a root that could not, does at its next start. The writer appends
+         *     every entry that carries a sealed value (`putOidcKey`,
+         *     `rotateSigningKey`, `setInstallCa`, `putExternalProvider`,
+         *     `changePassphrase`) only while the salt is the one it sealed under.
          *
          *     **`setNodeCertificateNames` (LT2, 2026-10-20)** replaces the names
          *     the owner listed for one node's client certificate (`{name,
@@ -5104,8 +5126,11 @@ export interface components {
         };
         OidcKeyChangeRequest: {
             /**
-             * @description True after a suspected leak: the old key stops verifying at
-             *     once, and every app signs in again.
+             * @description True after a suspected leak: tokens the old key signed stop
+             *     verifying at once. An app that renews them asks the person to
+             *     sign in again (Workbench within five minutes, its JWKS cache);
+             *     an app that keeps its own session (Open WebUI) keeps it until
+             *     it expires or the person signs out.
              * @default false
              */
             endSignIns: boolean;
@@ -5134,7 +5159,12 @@ export interface components {
         PassphraseMachine: {
             node: string;
             state: components["schemas"]["PassphraseMachineState"];
-            /** @description The observed cause, for `pending` and `plain`. */
+            /**
+             * @description The observed cause, for `pending` and `plain`. For `changed`,
+             *     what the machine could not do with the new passphrase:
+             *     *this machine could not save its passphrase file: <cause>*
+             *     (after a restart it stays locked until someone signs in).
+             */
             detail?: string;
         };
         /**
@@ -5156,6 +5186,12 @@ export interface components {
              */
             machines: components["schemas"]["PassphraseMachine"][];
             passphraseFile: components["schemas"]["PassphraseFileState"];
+            /**
+             * @description Present when the passphrase changed but the copies sealed
+             *     under the old key could not be removed yet: the cause. The
+             *     root tries again every hour and at its next start.
+             */
+            cleanup?: string;
         };
         OidcClientList: {
             clients: components["schemas"]["OidcClient"][];
