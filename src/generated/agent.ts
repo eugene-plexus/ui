@@ -577,7 +577,9 @@ export interface paths {
          *     approves it here; see `ExecTrust`. An approval lapses, and is
          *     dropped from this list, the first time a check finds the file or
          *     any folder or link on its way different from what was approved.
-         *     A person's own install never needs one, and lists none.
+         *     A person's own install never needs one, and lists none. Approvals
+         *     never cross a move to the Mac's daemon: the owner approves again
+         *     there.
          */
         get: operations["listExecApprovals"];
         put?: never;
@@ -4876,8 +4878,11 @@ export interface components {
         ExecTrust: {
             kind: components["schemas"]["ExecTrustKind"];
             /**
-             * @description The path that would run: absolute, every folder resolved. What
-             *     `POST /v1/exec-approvals` takes.
+             * @description The path the program is looked up by: the setting's path made
+             *     absolute, its links kept (`/Users/troy/current/llama-server`,
+             *     not where `current` points). What `POST /v1/exec-approvals`
+             *     takes and what an approval is kept by, so the folders and links
+             *     approved are the ones every later check walks.
              */
             path: string;
             /**
@@ -4914,7 +4919,7 @@ export interface components {
          */
         ExecApproval: {
             id: string;
-            /** @description The program approved, as `ExecTrust.path` named it. */
+            /** @description The program approved, by the path it is looked up by (`ExecTrust.path`). */
             path: string;
             /** @description The other account that can change it. */
             account: string;
