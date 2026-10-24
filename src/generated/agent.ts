@@ -833,6 +833,12 @@ export interface paths {
          *     409 when an entry with this `id` already exists, shipped or custom;
          *     422 when `source` is neither an archive URL nor an existing folder
          *     on this node.
+         *
+         *     MV5b links are only between shipped catalogue entries. A custom
+         *     entry declaring `provides`, `providesPath`, `uses: [memory-server]`
+         *     (alone or with other uses), or the `{linkSecret}` placeholder is
+         *     refused with 422, even when `allowCustomApps` is on. A custom entry
+         *     cannot override a shipped provider or receive its link credential.
          */
         post: operations["addCustomApp"];
         delete?: never;
@@ -891,6 +897,21 @@ export interface paths {
          *     `installApp` says. If that revocation fails the uninstall stops
          *     with the authority's answer and nothing has been removed; a
          *     refusal of the credential itself is a 502.
+         *
+         *     For Hindsight, run `pg0 stop` for its named instance before removing
+         *     its environment, including after a hard kill. With `purge: true`,
+         *     also run `pg0 drop` by instance name, in the account and HOME used
+         *     by that app, before deleting its files. This removes pg0 data even
+         *     when it lives in that account's profile outside the app's data
+         *     folder. A failed stop or drop names its observed cause, returns
+         *     503 and keeps the install record and tools for retry. Do not report
+         *     a successful purge while memories remain.
+         *
+         *     Uninstalling a link provider removes its link credential and
+         *     withdraws the consumers' link. Keeping data keeps the secret
+         *     privately for a reinstall; a purge deletes it, so reinstall with
+         *     deleted data creates a new secret. Refresh or restart consumers
+         *     so an old link cannot keep reaching an uninstalled provider.
          */
         delete: operations["uninstallApp"];
         options?: never;
@@ -982,6 +1003,13 @@ export interface paths {
          *     403 for a custom entry while `allowCustomApps` is off; 409 when an
          *     install is in flight or that version is already installed; 422
          *     when this node cannot install apps (`AppCatalogue.reason`).
+         *
+         *     Also check the entry's `installable` state before installing and
+         *     return 422 with its `reason` when false. Hindsight's first install
+         *     saves `settings: {memoryModel: null}` and does not start a process
+         *     until the owner chooses its model. The app page shows that cause;
+         *     installation itself may complete successfully while it awaits a
+         *     choice. Updating an installed app keeps its selected model.
          */
         post: operations["installApp"];
         /** Cancel an install in flight. */
@@ -1003,7 +1031,20 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start an installed app, and keep it started across restarts. */
+        /**
+         * Start an installed app, and keep it started across restarts.
+         * @description For Hindsight, `settings.memoryModel` must have an explicit owner
+         *     choice. While it is unset, no process starts and `App.detail` says
+         *     "Choose the model Hindsight reads your chats with". Return 409
+         *     with that cause; the agent and its settings endpoints stay up.
+         *     A model that has not been measured is allowed.
+         *
+         *     Before starting Hindsight, run `pg0 stop` for its named instance
+         *     to clear a database left by a hard kill. Use its app interpreter,
+         *     account and HOME. A failed cleanup returns 503 with its observed
+         *     cause rather than starting against an unverified orphan database.
+         *     An already stopped or absent named instance is successful cleanup.
+         */
         post: operations["startApp"];
         delete?: never;
         options?: never;
@@ -1023,7 +1064,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Stop an installed app, and keep it stopped across restarts. */
+        /**
+         * Stop an installed app, and keep it stopped across restarts.
+         * @description Hindsight's database can outlive its parent. After stopping its
+         *     process, run `pg0 stop` for its named instance with the app's
+         *     interpreter, account and HOME, even after a hard kill. Confirm
+         *     that instance has stopped before returning success. A failure
+         *     returns 503 and names its observed cause; retain the tools and
+         *     record needed to retry. The same cleanup applies at agent shutdown.
+         *     An already stopped or absent named instance is successful cleanup.
+         */
         post: operations["stopApp"];
         delete?: never;
         options?: never;
@@ -1060,6 +1110,11 @@ export interface paths {
          *     Before the request the console confirms: "Reset Open WebUI's
          *     settings to Eugene's? It restarts, and its Admin Settings go back
          *     to Eugene's. Chats, people, knowledge, models and tools stay."
+         *
+         *     Hindsight runs the same named-instance `pg0 stop` cleanup as
+         *     `stopApp`, including when its process was already killed. Do not
+         *     start its replacement until cleanup succeeds. A cleanup failure
+         *     returns 503 and names its observed cause.
          */
         post: operations["restartApp"];
         delete?: never;
@@ -1109,6 +1164,64 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the launcher settings for an installed app.
+         * @description Requires an operator session. These settings belong to the agent,
+         *     are persisted in `apps.yaml` under the app's `settings`, and are
+         *     available even while the app is stopped or has failed. They do not
+         *     require `configTrio` and are not proxied to the app. The console
+         *     on any connected machine reaches them through this node's agent.
+         *
+         *     Returns the effective selection, including an explicit null for
+         *     an unset memory model. No app or link secret is returned. 409
+         *     when the installed app has no launcher settings; 503 when the
+         *     agent cannot read them, with the observed cause.
+         */
+        get: operations["getAppSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Choose or clear the model an installed memory server reads with.
+         * @description Requires an operator session. Writes the agent's launcher settings,
+         *     independent of the app's `configTrio`. Omitted fields stay as they
+         *     are; null clears the model. Validate before changing anything.
+         *     Unknown settings or malformed values return 422 with the observed
+         *     cause. Unmeasured models are advice only, never an admission gate.
+         *
+         *     A changed model restarts an enabled app; a stopped app stays stopped.
+         *     The old process must be confirmed stopped, including Hindsight's
+         *     `pg0 stop` cleanup, before persisting the new selection. During
+         *     that stop, reads still report the old effective selection. A stop
+         *     failure returns 503 with its observed cause and keeps the old
+         *     selection. Never report the requested value as effective while
+         *     the old process is still running. A persistence failure also
+         *     returns 503 with its cause and leaves the old selection in effect.
+         *
+         *     After saving, use the new selection for the replacement process.
+         *     Return the effective settings; the console also reads `App.status`
+         *     and `App.lastError`. A failed replacement start is reported there
+         *     with its observed cause; it does not silently restore another
+         *     model. Clearing the model stops Hindsight and leaves it awaiting
+         *     an owner choice. An unchanged selection does not restart the app.
+         *     409 when the app has no launcher settings or another install,
+         *     restart, uninstall or settings change is in progress.
+         */
+        patch: operations["updateAppSettings"];
         trace?: never;
     };
     "/v1/apps/{id}/config": {
@@ -7047,6 +7160,42 @@ export interface components {
          *     apps must refuse local model-selected processes without this signal.
          *     It describes account isolation from Eugene, not isolation between
          *     people using the same app. It is not a user-configurable setting.
+         *
+         *     **MV5b's Hindsight entry is Experimental.** Install exactly
+         *     `hindsight-api-slim[embedded-db]` at `1.0.0`, with the explicit
+         *     dependency pin `pg0-embedded==0.15.2` and Python 3.12,
+         *     entry `hindsight_api.main:main`, `ui: false`, `configTrio: false`,
+         *     `localActions: false`, `healthPath: /health` and `uses: [inference]`.
+         *     It provides `memory-server` at `/mcp/`. Its LLM, embeddings and
+         *     reranker addresses and keys all name the gateway, never upstream
+         *     defaults. Use the OpenAI LLM and embeddings providers, the Cohere
+         *     reranker at the gateway's full `/v1/rerank` path, and disable OTEL
+         *     traces. Set `HINDSIGHT_API_LLM_REASONING_EFFORT=none`.
+         *
+         *     Set `HINDSIGHT_API_TENANT_EXTENSION` to `ApiKeyTenantExtension`
+         *     and `HINDSIGHT_API_TENANT_API_KEY` to `{appSecret}`: REST is open
+         *     otherwise. Enable MCP with `HINDSIGHT_API_MCP_AUTH_TOKEN` set to
+         *     the separate `{linkSecret}`. A REST key is not an MCP token.
+         *     Set the database URL to
+         *     `pg0://hindsight:{databaseSecret}@eugene-plexus-hindsight:{auxPort}`.
+         *     pg0 `start`, `stop` and `drop` must all use
+         *     `eugene-plexus-hindsight`, never the default `hindsight` instance.
+         *     The database must listen on the reserved `{auxPort}`; if that
+         *     port is in use or pg0 selects another port, the start is refused
+         *     and names the observed cause. Never report a moved port as ready.
+         *     On Linux,
+         *     HOME must be the app's data folder, so pg0 data is contained there.
+         *     Where pg0 uses the account profile instead, a purge must run
+         *     `pg0 drop` by instance name before deleting the app's files.
+         *     Require password authentication in `pg_hba.conf` for TCP and the
+         *     Unix socket, never `trust`. Acceptance must check that both the
+         *     default `hindsight`/`hindsight` login and a login with no password
+         *     are refused over TCP and the Unix socket, while the generated
+         *     password succeeds. The launcher must redact database credentials
+         *     from pg0 and Hindsight output, logs and errors, including their
+         *     connection URIs.
+         *     Availability follows MV5b-C1: Linux and agent-account installs
+         *     only; Windows own-account installs wait for data-folder support.
          */
         AppManifest: {
             /**
@@ -7115,6 +7264,11 @@ export interface components {
              */
             ui: boolean;
             /**
+             * @description Show an Experimental badge on the catalogue card and installed app page.
+             * @default false
+             */
+            experimental: boolean;
+            /**
              * @description Whether the app serves `GET /v1/config`, `GET
              *     /v1/config/schema` and `PATCH /v1/config`, requiring the admin
              *     token this agent hands it at each spawn. Required of apps we
@@ -7124,12 +7278,65 @@ export interface components {
              */
             configTrio: boolean;
             /**
-             * @description The hub surfaces the app's key is scoped to.
+             * @description The app's dependencies. `inference` scopes its hub key;
+             *     `memory-server` requests the same-machine catalogue link,
+             *     never a wider hub credential. Only shipped catalogue entries
+             *     may consume that link.
              * @default [
              *       "inference"
              *     ]
              */
             uses: components["schemas"]["AppHubSurface"][];
+            /**
+             * @description A link provided to another app on the same machine, only
+             *     between entries from the shipped catalogue. One provider of
+             *     `memory-server` per machine; a custom entry may not declare
+             *     this field. `providesPath` is required with it.
+             *
+             *     The agent generates a link secret at provider installation,
+             *     separate from the REST app secret. Only that provider receives
+             *     `{linkSecret}` for MCP. A shipped consumer with
+             *     `uses: [inference, memory-server]` receives the exact loopback
+             *     URL including `providesPath` in
+             *     `EUGENE_PLEXUS_APP_MEMORY_SERVER_URL`, and the secret's file
+             *     in `EUGENE_PLEXUS_APP_MEMORY_SERVER_TOKEN_FILE`. The URL never
+             *     contains the secret. No link is delivered when the provider
+             *     is absent; link absence must not prevent the consumer starting.
+             *
+             *     The consumer also gets
+             *     `EUGENE_PLEXUS_APP_MEMORY_SERVER_MODEL_FILE`, a read-only file
+             *     containing the provider's effective `AppSettings` as JSON.
+             *     This non-secret metadata stays current when the effective
+             *     model changes; do not retain a snapshot across changes.
+             *     Workbench reads it at each call and looks up that model's
+             *     locality in the gateway. If the file is missing or unreadable,
+             *     the model is unset, or locality cannot be established, treat
+             *     it as outside and name the observed cause. A loopback server
+             *     address alone never establishes model locality.
+             *
+             *     The credential is an owner-only file granted only to the
+             *     provider's and authorised consumers' accounts on Windows,
+             *     and a systemd credential on Linux. A third app gets no grant.
+             *     It never appears in API responses, per-person records, logs
+             *     or a service definition. The consumer re-reads its token file
+             *     when it changes. Provider uninstall withdraws the link;
+             *     reinstall after purge generates a new secret. Uninstall
+             *     without purge keeps it privately with the retained data.
+             *
+             *     Workbench chooses each person's bank as `wb-` plus the first
+             *     16 hex characters of SHA-256 of their `sub`, appended to the
+             *     link path with a trailing slash. The person cannot choose a
+             *     bank or see the token. Only this exact agent-provided address
+             *     is exempt from the memory server policy's loopback refusal;
+             *     person-supplied addresses keep all MV5a checks.
+             * @enum {string}
+             */
+            provides?: "memory-server";
+            /**
+             * @description Root-relative link path ending in `/`, such as `/mcp/`.
+             *     Requires `provides`. No origin, query, fragment or dot segments.
+             */
+            providesPath?: string;
             /**
              * @description Whether the app signs people in with Eugene (C2). At install
              *     the agent registers it as an app that signs in with Eugene,
@@ -7154,6 +7361,9 @@ export interface components {
              *     text with placeholders filled in at every start:
              *
              *     * `{bindHost}`, `{port}` — where to listen;
+             *     * `{auxPort}` — a distinct, persisted auxiliary port from
+             *       8190-8289, reserved against all app ports and auxiliary ports;
+             *       Hindsight's named pg0 instance uses it;
              *     * `{dataDir}` — its private data directory;
              *     * `{gatewayUrl}` — the gateway, as `EUGENE_PLEXUS_APP_GATEWAY_URL`;
              *     * `{appUrl}` — the address the console opens it at;
@@ -7195,13 +7405,32 @@ export interface components {
              *       and say why in the start notes;
              *     * `{imageModelSet}` — `true` when `{imageModel}` has a value,
              *       otherwise `false`, including when the listing fails;
+             *     * `{memoryModel}` — the owner's explicit per-app
+             *       `settings.memoryModel` in `apps.yaml`, unset until chosen.
+             *       A manifest using it is refused a start while it is unset;
+             *       never omit it and let the app choose its own model;
+             *     * `{linkSecret}` — the MCP link credential, only for a shipped
+             *       `provides: memory-server` entry, read in its launch account.
+             *       A missing credential refuses the provider's start with the
+             *       observed cause; never start an unprotected memory server;
+             *     * `{databaseSecret}` — a URL-safe random database password,
+             *       generated in the launch account at the app's first start,
+             *       kept in an owner-only file in the app's data directory and
+             *       reused on subsequent starts. It is separate from
+             *       `{appSecret}` and `{linkSecret}`. If the launcher cannot
+             *       obtain it because its file is missing, unreadable or empty,
+             *       the start is refused with the observed cause; never use a
+             *       default password or leave the database variable unset.
+             *       Filled values never appear in `launch.json`, logs, service
+             *       definitions or API responses;
              *     * `{clientKey}`, `{oidcClientSecret}`, `{appSecret}` — secrets.
              *       `{appSecret}` is a random value made at its first start and
              *       kept in its data directory.
              *
              *     **A manifest that names `{gatewayUrl}` is not started while
              *     the gateway's address is unknown** (MR6, 2026-10-12). Every
-             *     other placeholder with no value leaves its variable unset, but
+             *     other placeholder except `{memoryModel}`, `{linkSecret}` and `{databaseSecret}`
+             *     with no value leaves its variable unset, but
              *     an app without the gateway's address uses its own default, and
              *     Open WebUI's is `https://api.openai.com/v1`: documents and
              *     speech would go there. The start is refused, naming why, and
@@ -7291,18 +7520,19 @@ export interface components {
             localActions: boolean;
         };
         /**
-         * @description A public hub surface an app's client key may be used on.
+         * @description An app dependency: a public hub surface or a narrow catalogue link.
          *
          *     * `inference` — the gateway's client doors (`/v1/models`,
          *       `/v1/chat/completions` and the rest), under A5's default
          *       limits. The operator narrows or widens the key like any other.
          *
-         *     One member today on purpose. A trainer depositing models into the
-         *     Library would add a second, together with the Library endpoint it
-         *     names, when a trainer exists to use it — not before.
+         *     * `memory-server` — the same-machine app link from a shipped
+         *       catalogue provider. It is not a hub client-key scope and grants
+         *       no access to the Library, control root or other apps. Link
+         *       credentials go only to shipped catalogue consumers declaring it.
          * @enum {string}
          */
-        AppHubSurface: "inference";
+        AppHubSurface: "inference" | "memory-server";
         /**
          * @description Which OS account an app runs as (C1, `workbench.md` §2).
          *
@@ -7359,6 +7589,22 @@ export interface components {
              *     `manifest.version` when an update is available.
              */
             installedVersion?: string;
+            /**
+             * @description Whether this particular entry can be installed on this node,
+             *     including the catalogue-wide checks. An older agent may omit
+             *     it; absence is unknown, not a refusal. Keep the entry visible
+             *     and give the observed cause in `reason` when false.
+             *     Hindsight is available on Linux and agent-account installs
+             *     only (MV5b-C1). Windows own-account installs are refused
+             *     because pg0 cannot keep data in the app's data folder there.
+             *     Being experimental or an untested model is not a refusal.
+             */
+            installable?: boolean;
+            /**
+             * @description The observed cause and remedy when this entry's `installable`
+             *     is false. Absent when true; never a generic "not supported".
+             */
+            reason?: string;
             /**
              * @description True when an installed app's target manifest has
              *     `resetOnConnectionChange` and its `environment` templates
@@ -7425,6 +7671,37 @@ export interface components {
             /** Format: date-time */
             finishedAt?: string;
         };
+        /**
+         * @description The gateway model id Hindsight reads chats with. It is unset
+         *     until the owner chooses; null clears the selection and stops
+         *     Hindsight. There is no automatic first-model or fallback choice.
+         *     The console lists chat models from the gateway's `GET /v1/models`,
+         *     marks the probe or harness measurements as advice, and lets an
+         *     expert enter a model id. Measurements never block an untested
+         *     model. Gateway access limits still apply.
+         *
+         *     Locality comes from the selected model's gateway metadata, never
+         *     from this server's loopback URL. Workbench treats outside or
+         *     unknown locality as an outside model under the person's write
+         *     policy, as for an MV5a server.
+         * @default null
+         */
+        AppMemoryModel: string | null;
+        /**
+         * @description Effective launcher settings for the installed app, persisted in
+         *     its `apps.yaml` entry under `settings`. For a running app these
+         *     are the values used to launch that process; for a stopped app
+         *     they are the values its next start will use. No pending selection
+         *     may be shown while an old process still runs. An unset model is
+         *     explicit null, including in API responses. No secret is included.
+         */
+        AppSettings: {
+            memoryModel: components["schemas"]["AppMemoryModel"];
+        };
+        /** @description Partial launcher settings update; omitted fields stay unchanged. */
+        AppSettingsUpdate: {
+            memoryModel?: components["schemas"]["AppMemoryModel"];
+        };
         AppRestartRequest: {
             /**
              * @description Reset stored Admin Settings to Eugene's for one start.
@@ -7488,6 +7765,7 @@ export interface components {
              *     start. Absent before a recorded seed or on an older install.
              */
             givenSettings?: components["schemas"]["AppGivenSettings"];
+            settings?: components["schemas"]["AppSettings"];
             /**
              * @description The image model the launcher would select now from the app's key
              *     listing, using the local-first rule for `{imageModel}`. This
@@ -7512,6 +7790,12 @@ export interface components {
              */
             port: number;
             /**
+             * @description The auxiliary port reserved for `{auxPort}`, persisted and
+             *     distinct from every app's main and auxiliary port. Present
+             *     only when its manifest needs it, including while stopped.
+             */
+            auxPort?: number;
+            /**
              * Format: uri
              * @description Where a browser opens its UI: this node's advertised host with
              *     the app's port, or loopback on a node that advertises none.
@@ -7530,8 +7814,20 @@ export interface components {
              */
             gatewayUrl?: string;
             ui: boolean;
+            /**
+             * @description Whether to show the installed app's Experimental badge.
+             * @default false
+             */
+            experimental: boolean;
             configTrio: boolean;
             uses: components["schemas"]["AppHubSurface"][];
+            /**
+             * @description The installed manifest's same-machine catalogue link, when provided.
+             * @enum {string}
+             */
+            provides?: "memory-server";
+            /** @description The installed manifest's link path; no credential is returned. */
+            providesPath?: string;
             /**
              * @description The client key minted for it. Revoking that key cuts the app
              *     off from the hub; uninstalling revokes it.
@@ -10244,6 +10540,8 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     stopApp: {
@@ -10269,6 +10567,7 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     restartApp: {
@@ -10301,6 +10600,7 @@ export interface operations {
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     rollbackApp: {
@@ -10329,6 +10629,72 @@ export interface operations {
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
+        };
+    };
+    getAppSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The effective launcher settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "memoryModel": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AppSettings"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    updateAppSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The app's `AppManifest.id`. */
+                id: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description The effective launcher settings after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppSettings"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     getAppConfig: {

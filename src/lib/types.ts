@@ -211,11 +211,29 @@ export type FolderReachSource = AgentComponents["schemas"]["FolderReachSource"];
 // agent installs and supervises its own, and the console reads every
 // node's through `node:<name>`.
 
-export type App = AgentComponents["schemas"]["App"];
-export type AppList = AgentComponents["schemas"]["AppList"];
-export type AppManifest = AgentComponents["schemas"]["AppManifest"];
-export type AppCatalogue = AgentComponents["schemas"]["AppCatalogue"];
-export type AppCatalogueEntry = AgentComponents["schemas"]["AppCatalogueEntry"];
+// Optional MV5b fields from the pinned agent contract (25146bc). Keep older agents readable.
+// The generated sources remain at their release pin until the orchestrator regenerates them.
+export interface AppLauncherSettings {
+  memoryModel: string | null;
+}
+export type App = AgentComponents["schemas"]["App"] & {
+  settings?: AppLauncherSettings;
+  provides?: "memory-server";
+  experimental?: boolean;
+};
+export type AppList = { apps: App[] };
+export type AppManifest = AgentComponents["schemas"]["AppManifest"] & { experimental?: boolean };
+export type AppCatalogueEntry = Omit<
+  AgentComponents["schemas"]["AppCatalogueEntry"],
+  "manifest"
+> & {
+  manifest: AppManifest;
+  installable?: boolean;
+  reason?: string;
+};
+export type AppCatalogue = Omit<AgentComponents["schemas"]["AppCatalogue"], "apps"> & {
+  apps: AppCatalogueEntry[];
+};
 export type AppInstall = AgentComponents["schemas"]["AppInstall"];
 
 // --- Control: the install-wide views --------------------------------
