@@ -447,10 +447,15 @@ describe("useIssues on a healthy standalone install", () => {
     // component's own `lastError` exists nowhere else. The drivers list is
     // P1's: an account whose model list failed says so only there.
     await poll();
-    expect(routes().sort()).toEqual([
+    expect(
+      routes()
+        .map((route) => route.split("?")[0])
+        .sort(),
+    ).toEqual([
       "GET agent/v1/components",
       "GET agent/v1/engines",
       "GET agent/v1/node",
+      "GET agent/v1/node/history",
       "GET agent/v1/runtimes",
       "GET control/v1/nodes",
       "GET gateway/v1/admin/drivers",

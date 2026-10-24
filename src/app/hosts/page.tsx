@@ -302,6 +302,7 @@ function FleetTable({
               <th className="py-1 pr-3 font-medium">Held by Eugene</th>
               <th className="py-1 pr-3 font-medium">Utilization</th>
               <th className="py-1 pr-3 font-medium">Temperature</th>
+              <th className="py-1 pr-3 font-medium">Power</th>
               <th className="py-1 pr-3 font-medium">Last reading</th>
             </tr>
           </thead>
@@ -328,7 +329,7 @@ function FleetTable({
                 return (
                   <tr key={key} className="border-t border-[color:var(--border)] align-top">
                     <td className="py-2 pr-3">{name}</td>
-                    <td colSpan={5} className="text-status-error py-2 pr-3 text-xs">
+                    <td colSpan={6} className="text-status-error py-2 pr-3 text-xs">
                       Not answering: {reading.error}{" "}
                       <Link
                         href={logsHref({ q: node.name ?? undefined })}
@@ -348,7 +349,7 @@ function FleetTable({
                 return (
                   <tr key={key} className="border-t border-[color:var(--border)]">
                     <td className="py-2 pr-3">{name}</td>
-                    <td colSpan={6} className="py-2 pr-3 text-xs text-[color:var(--muted)]">
+                    <td colSpan={7} className="py-2 pr-3 text-xs text-[color:var(--muted)]">
                       Reading…
                     </td>
                   </tr>
@@ -358,7 +359,7 @@ function FleetTable({
                 return (
                   <tr key={key} className="border-t border-[color:var(--border)]">
                     <td className="py-2 pr-3">{name}</td>
-                    <td colSpan={5} className="py-2 pr-3 text-xs text-[color:var(--muted)]">
+                    <td colSpan={6} className="py-2 pr-3 text-xs text-[color:var(--muted)]">
                       {history.enabled
                         ? "No GPU on this machine; its CPU, memory and disks are below when you pick it."
                         : "Not recording."}
@@ -389,6 +390,7 @@ function FleetTable({
                   </td>
                   <NowCell series={gpu.series.gpuUtilization} label={`${gpu.name} utilization`} />
                   <NowCell series={gpu.series.gpuTemperature} label={`${gpu.name} temperature`} />
+                  <NowCell series={gpu.series.gpuPower} label={`${gpu.name} power`} />
                   <td className="py-2 pr-3 text-xs text-[color:var(--muted)]">
                     {i === 0 ? (age ?? "—") : null}
                   </td>

@@ -40,6 +40,7 @@ import { NodeUpdateCard } from "@/components/NodeUpdateCard";
 import { ReportOllama } from "@/components/OllamaKeep";
 import { LeaveInstall } from "@/components/LeaveInstall";
 import { MachineKeyCard } from "@/components/MachineKeyCard";
+import { Hardware } from "@/components/Hardware";
 import { RemoveMachine } from "@/components/RemoveMachine";
 import { StandbyPanel } from "@/components/StandbyPanel";
 import { UpdateAllPanel } from "@/components/UpdateAllPanel";
@@ -257,6 +258,7 @@ export default function NodesPage() {
   const nodeNames = useMemo(() => (nameKey === null ? null : nameKey.split("\n")), [nameKey]);
   const {
     readings,
+    hardware = [],
     refresh: refreshVersions,
     difference,
     checkingUpdates,
@@ -865,6 +867,18 @@ export default function NodesPage() {
               </div>
             </section>
           )}
+
+          <section id="hardware" className="section-panel space-y-4">
+            <h2 className="section-heading font-ui text-base font-semibold">Hardware</h2>
+            {hardware.map((node) => (
+              <Hardware
+                key={node.name ?? "local"}
+                label={node.label}
+                devices={node.identity?.devices ?? []}
+                history={node.history}
+              />
+            ))}
+          </section>
 
           {/* Hidden rather than disabled while locked: minting a join token
           is a control-root write, so the button could only produce the

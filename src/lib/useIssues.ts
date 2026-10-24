@@ -50,6 +50,7 @@ import type {
 } from "./types";
 import { versionDifference } from "./updates";
 import { labelOf, recordNodeLabels } from "@/lib/nodeLabels";
+import { historyPath, type HostHistory } from "./hostHistory";
 
 const POLL_MS = 30_000;
 
@@ -145,7 +146,7 @@ async function readNode(
   known: Timed | null,
   options: ReturnType<typeof reads>,
 ): Promise<NodeFacts> {
-  const [timed, runtimes, engines, folders, components] = await Promise.all([
+  const [timed, runtimes, engines, folders, components, history] = await Promise.all([
     known ?? readIdentity(address.target, options),
     api.get<RuntimeList>(address.target, "/v1/runtimes", options).catch(() => null),
     api.get<EngineList>(address.target, "/v1/engines", options).catch(() => null),
@@ -158,6 +159,13 @@ async function readNode(
     // gateway's driver list says nothing about the gateway — so a taken
     // port is only explicable from the owning agent.
     api.get<ComponentList>(address.target, "/v1/components", options).catch(() => null),
+    api
+      .get<HostHistory>(
+        address.target,
+        historyPath(1 / 60, Date.now(), ["gpuUtilization", "gpuTemperature", "gpuPower"]),
+        options,
+      )
+      .catch(() => null),
   ]);
   return {
     name: address.name,
@@ -169,6 +177,7 @@ async function readNode(
     engines,
     folders,
     components,
+    history,
   };
 }
 
