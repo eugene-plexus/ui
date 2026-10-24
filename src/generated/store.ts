@@ -357,8 +357,8 @@ export interface components {
             sha256: string;
             /** @description Unix seconds. */
             createdAt: number;
-            /** @description Unix seconds. Every kept file has an end. */
-            expiresAt: number;
+            /** @description Unix seconds. Absent, the file is kept until it is deleted. */
+            expiresAt?: number;
             status: components["schemas"]["StoredFileStatus"];
         };
         StoredFileList: {
@@ -1130,8 +1130,9 @@ export interface operations {
                 /** @description What the caller said the file is. Absent, it is `application/octet-stream`. */
                 mimeType?: string;
                 /**
-                 * @description The file's end, in seconds after it is kept. Absent, the
-                 *     install's `fileDefaultDays`. More than `fileMaxDays` is a 400.
+                 * @description The file's end, in seconds after it is kept, at most 30 days.
+                 *     Absent, the install's `fileDefaultDays`, which by default is
+                 *     none: the file is kept until it is deleted.
                  */
                 expiresAfterSeconds?: number;
             };
@@ -1336,6 +1337,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description The upload is being completed, or is taking a part; try again when that has finished. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     completeStoredUpload: {
@@ -1373,6 +1383,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description The upload is being completed, or is taking a part; try again when that has finished. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             413: components["responses"]["OverQuota"];
         };
     };
