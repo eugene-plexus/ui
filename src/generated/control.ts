@@ -2106,9 +2106,11 @@ export interface paths {
         put?: never;
         /**
          * A site answers an operation it claimed
-         * @description A site token, for this site's own operations only. The answer is at
-         *     most 70,000 bytes, and reaches the caller only after the caller's
-         *     access is checked once more.
+         * @description A site token, for this site's own operations only. The complete
+         *     result body is at most 8 MiB (8,388,608 bytes), and reaches the caller
+         *     only after the caller's access is checked once more. Results are
+         *     held in memory, never in the log; the per-site running-job limit
+         *     bounds how many can be held at once.
          */
         post: operations["finishSiteOperation"];
         delete?: never;
@@ -2454,7 +2456,8 @@ export interface paths {
          *     J14b, for a person with a key, the site answers `held` (`held` says
          *     what to sign) until the call comes again with `approval`, signed by
          *     the person; this root carries it and cannot make one. The
-         *     request is at most 40,000 bytes; the answer at most 70,000. A `tools/call` the site
+         *     request is at most 40,000 bytes; the site allows answers up to
+         *     8 MiB for `tools/call` and 70,000 bytes for other answers. A `tools/call` the site
          *     claimed but did not confirm is `uncertain`: it may have acted.
          */
         post: operations["callSiteServer"];
@@ -10010,7 +10013,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The answer is larger than 70,000 bytes. */
+            /** @description The answer is larger than 8 MiB. Ask for less. */
             413: {
                 headers: {
                     [name: string]: unknown;

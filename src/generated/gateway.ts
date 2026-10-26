@@ -629,6 +629,21 @@ export interface paths {
          *     request. Profile edits take effect on subsequent requests after
          *     cache expiry and do not restart engines.
          *
+         *     **Pictures in tool results.** A `tool` message's `content` may be
+         *     a string or an array of text and `image_url` parts. The gateway moves
+         *     each tool picture to the next user message, after the turn's tool
+         *     messages and before the person's own words, labelled with
+         *     `The image returned by tool call <id>:`. The tool message keeps its
+         *     call id and a note: "[The tool returned an image; it is attached to
+         *     the next user message.]". This is the same path as an Anthropic
+         *     `tool_result` or a Responses `function_call_output`; the
+         *     inference-driver's tool messages carry text only. PNG and JPEG pass
+         *     through; GIF and WebP are re-encoded to PNG, and animated pictures
+         *     are refused. The limits and the rule that keeps the newest tool
+         *     pictures are in `MessageContent`. Pictures route only to a backend
+         *     that confirms image input; with none, the request is a 400 naming
+         *     the cause, as for a person's own picture.
+         *
          *     Profile and special-token caches survive a gateway restart in
          *     `library-cache.json` beside its config file. They are written at
          *     most once a minute, only when changed, and loaded as stale, never
@@ -965,8 +980,8 @@ export interface paths {
          *     decided the shape (captured with `scripts/r4-capture.py --mode
          *     imageread`, Claude Code 2.1.207 / agent-sdk 0.3.280): its `Read`
          *     of an image file returns a result whose content is a lone
-         *     `image` block and no text. An OpenAI `tool` message carries text
-         *     only and image parts ride on user messages, so the picture
+         *     `image` block and no text. The inference-driver's `tool` messages
+         *     carry text only and image parts ride on user messages, so the picture
          *     **moves**: the tool message keeps its call id and says, in a
          *     bracketed line, that the tool returned an image attached to the
          *     next user message; and that user message -- directly after the
@@ -1000,8 +1015,10 @@ export interface paths {
          *     2026-09-23, when a Claude Code session that had read five
          *     screenshots was refused on every turn after the fifth; it is the
          *     gateway's `maxImagesPerRequest` now, twelve by default and at most
-         *     64, and a refusal names both the setting and the block that tipped
-         *     it.
+         *     64. The shared `MessageContent` rule keeps the newest tool pictures
+         *     that fit and replaces the others with notes naming the limit. A
+         *     person's own pictures are never dropped; if they alone are over a
+         *     limit, the refusal names the setting and the block that tipped it.
          *
          *     ### Documents are carried too (P2, 2026-09-28)
          *
@@ -1385,8 +1402,11 @@ export interface paths {
          *     `auto` is named on the ignored-settings header, because a local
          *     projector sizes the picture itself. An image inside a
          *     `function_call_output` moves to the next user message, labelled
-         *     with the call id, as on `/v1/messages`: a `tool` message carries
-         *     text only.
+         *     with the call id, as on `/v1/messages`: the inference-driver's
+         *     `tool` messages carry text only. The shared `MessageContent` rule
+         *     keeps the newest tool pictures that fit and replaces the others
+         *     with notes naming the limit; a person's own pictures are never
+         *     dropped.
          *
          *     ### No cap from the install default
          *
@@ -4636,6 +4656,12 @@ export interface components {
              * @enum {string}
              */
             role: "system" | "developer" | "user" | "assistant" | "tool" | "function";
+            /**
+             * @description On a **tool** message: the result, as a string or an array of
+             *     text and image parts. The gateway moves each tool picture to the
+             *     next user message, labelled with the call id, and leaves a note
+             *     in the tool's text. Audio and files ride on user messages only.
+             */
             content?: components["schemas"]["MessageContent"];
             /**
              * @description Request alias for `reasoning_content`, used by Hermes Agent and
@@ -4677,8 +4703,8 @@ export interface components {
             tool_calls?: components["schemas"]["ToolCall"][];
             /**
              * @description Required on a **tool** message: which call in the preceding
-             *     assistant turn this is the result of. `content` is the
-             *     result, as a string — the caller serializes it.
+             *     assistant turn this is the result of. `content` carries the
+             *     result as described above.
              */
             tool_call_id?: string;
             /**
@@ -7560,19 +7586,33 @@ export interface components {
         };
         MessageContentPart: components["schemas"]["TextContentPart"] | components["schemas"]["ImageContentPart"] | components["schemas"]["InputAudioContentPart"] | components["schemas"]["FileContentPart"];
         /**
-         * @description Text, null for an assistant tool-call turn, or ordered user content parts.
+         * @description Text, null for an assistant tool-call turn, or ordered content parts.
+         *     Images ride on user messages and on tool results (the gateway carries
+         *     a tool's picture on the next user message). Audio and files ride on
+         *     user messages only.
+         *
          *     Images are inline PNG/JPEG only: the gateway's `maxImagesPerRequest`
          *     per request (12 by default, at most 64, counted across the whole
          *     conversation), 5 MiB decoded each, 10 MiB decoded total, 16 million
          *     pixels each, maximum dimension 8192. The inference-driver enforces
          *     the ceiling of 64; the gateway enforces the setting.
          *
+         *     Tool pictures count toward these same limits. On all three gateway
+         *     doors (`/v1/chat/completions`, `/v1/messages`, `/v1/responses`), when
+         *     tool pictures exceed the image count or decoded-byte limits, the
+         *     gateway keeps the newest tool pictures that fit. Each picture not
+         *     attached becomes a note in its tool message naming the limit, for
+         *     example: "[A picture this tool returned is not attached: this request
+         *     holds at most 12 pictures.]" (with the effective setting's value).
+         *     A person's own pictures are never dropped; if they alone exceed a
+         *     limit, the request is a 400.
+         *
          *     Audio (`input_audio`, WAV or MP3) and files (`file`, PDF) are
          *     inline too: at most 10 MiB decoded each, and every attachment in
          *     the request together -- images, audio and files -- at most
          *     11 MiB decoded, which is what fits in the 16 MiB JSON body once
-         *     base64 has grown it by a third. Attachments ride on user messages
-         *     only. Remote URLs are never fetched, and a `file_id` is refused:
+         *     base64 has grown it by a third. Remote URLs are never fetched, and a
+         *     `file_id` is refused:
          *     each names a store this install does not have.
          */
         MessageContent: string | null | components["schemas"]["MessageContentPart"][];
