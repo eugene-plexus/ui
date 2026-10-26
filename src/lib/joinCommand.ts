@@ -168,9 +168,22 @@ export function isLoopbackUrl(url: string): boolean {
  */
 const INSTALLER_REF = process.env.NEXT_PUBLIC_EUGENE_PLEXUS_INSTALLER_REF ?? "";
 
+/**
+ * The release build's address as one string the bundler folds at build time,
+ * so the shipped files name `specs/<tag>/scripts` literally. The release script
+ * checks exactly that (2026-10-26: the bundler kept the template below and
+ * filled the tag in at run time, so the files never named it).
+ */
+const BUILD_BASE = `https://raw.githubusercontent.com/eugene-plexus/specs/${
+  process.env.NEXT_PUBLIC_EUGENE_PLEXUS_INSTALLER_REF ?? "main"
+}/scripts`;
+
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+
 /** Where the installers are served from, at `ref`. */
 export function installerBase(ref: string = INSTALLER_REF): string {
-  const safe = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(ref) ? ref : "main";
+  const safe = SAFE_REF.test(ref) ? ref : "main";
+  if (safe === INSTALLER_REF) return BUILD_BASE;
   return `https://raw.githubusercontent.com/eugene-plexus/specs/${safe}/scripts`;
 }
 
