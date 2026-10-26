@@ -204,3 +204,45 @@ it("says why a file with another name waits, and does not blame an entry", async
     ),
   );
 });
+
+it("says why a pipe waits, one decision for each", async () => {
+  // Re-review 3: removal never changes a pipe, socket or device; each is asked about.
+  const pipe = (id: string, name: string) => ({
+    id,
+    path: `/srv/acme/${name}`,
+    kind: "special",
+    entry: "it is a pipe, socket or device, which Eugene never changes on its own",
+    decision: "pending",
+  });
+  vi.mocked(api.get).mockResolvedValue({
+    grants: [
+      {
+        id: "g1",
+        path: "/srv/acme",
+        mode: "read",
+        state: "incomplete",
+        restartNeeded: false,
+        message: "Workbench's account can still open /srv/acme/a.fifo, /srv/acme/b.fifo.",
+        unknown: [pipe("e1", "a.fifo"), pipe("e2", "b.fifo")],
+      },
+    ],
+  });
+  vi.mocked(api.post).mockResolvedValue({ state: "incomplete", message: "Kept." });
+  render(<FolderAccess target="agent" app="workbench" account="files" />);
+  expect(
+    await screen.findByText(
+      "Workbench can still open /srv/acme/b.fifo: it is a pipe, socket or device, which Eugene never changes on its own.",
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByText(/Eugene did not add/)).toBeNull();
+  expect(screen.getAllByRole("button", { name: "Remove its access too" })).toHaveLength(2);
+  const [, second] = screen.getAllByRole("button", { name: "Keep it" });
+  fireEvent.click(second!);
+  await waitFor(() =>
+    expect(api.post).toHaveBeenCalledWith(
+      "agent",
+      "/v1/apps/workbench/folder-access/g1/unknown/e2",
+      { action: "keep" },
+    ),
+  );
+});

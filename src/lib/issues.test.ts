@@ -1634,3 +1634,15 @@ describe("describeCopying a model of several files (LS7)", () => {
     expect(one?.text).not.toContain("files");
   });
 });
+
+describe("the control root's passphrase file (row 5)", () => {
+  it("is a warning when it holds the old passphrase, and nothing otherwise", () => {
+    const old = issuesFrom({ ...NOTHING, controlPassphraseFile: "old" });
+    expect(old.map((issue) => [issue.kind, issue.severity])).toEqual([
+      ["passphrase-file-old", "warning"],
+    ]);
+    expect(old[0]?.detail).toContain("stays locked until someone signs in");
+    for (const fine of ["matches", "none", null, undefined] as const)
+      expect(issuesFrom({ ...NOTHING, controlPassphraseFile: fine })).toEqual([]);
+  });
+});

@@ -442,10 +442,11 @@ describe("useIssues on a healthy standalone install", () => {
     expect(result.current.worst).toBeNull();
   });
 
-  it("asks the five per-node reads, plus the routing view, the drivers and the roster", async () => {
+  it("asks the five per-node reads, plus the routing view, the drivers, the roster and the root's auth status", async () => {
     // `/v1/components` is the fifth, added by R1.5: a crash-looping
     // component's own `lastError` exists nowhere else. The drivers list is
-    // P1's: an account whose model list failed says so only there.
+    // P1's: an account whose model list failed says so only there. The
+    // root's auth status is row 5's: whether its passphrase file is old.
     await poll();
     expect(
       routes()
@@ -457,6 +458,7 @@ describe("useIssues on a healthy standalone install", () => {
       "GET agent/v1/node",
       "GET agent/v1/node/history",
       "GET agent/v1/runtimes",
+      "GET control/v1/auth/status",
       "GET control/v1/nodes",
       "GET gateway/v1/admin/drivers",
       "GET gateway/v1/admin/routing",

@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { AppMemoryModel } from "@/components/AppMemoryModel";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
 import { FolderAccess } from "@/components/FolderAccess";
@@ -184,6 +185,17 @@ function Inner() {
               initialMode={searchParams.get("mode") === "write" ? "write" : "read"}
             />
           )}
+          {app?.provides === "memory-server" && app.settings && target && !gone && (
+            <AppMemoryModel
+              target={target}
+              appId={app.id}
+              settings={app.settings}
+              status={app.status}
+              onSaved={(settings, status) =>
+                setApp((current) => (current ? { ...current, settings, status } : current))
+              }
+            />
+          )}
         </div>
       </main>
     </AppShell>
@@ -240,6 +252,9 @@ function Overview({
     <>
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="font-ui text-lg font-semibold">{app.name}</h2>
+        {app.experimental && (
+          <span className="font-ui text-sm text-[color:var(--muted)]">Experimental</span>
+        )}
         <span className="font-ui text-sm" data-testid="app-status">
           {state.text}
         </span>

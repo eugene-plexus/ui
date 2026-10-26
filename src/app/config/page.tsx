@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { ConfigEditor, type SectionHandle } from "@/components/ConfigEditor";
 import { saveSections } from "@/lib/saveSections";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { StoreOwners } from "@/components/StoreOwners";
 import { useSharedTopology } from "@/components/ResourceTree";
 import { UIPreferences } from "@/components/UIPreferences";
 import { api, describeError } from "@/lib/api";
@@ -405,6 +406,7 @@ function SettingsView({
                     );
                   })}
                 </div>
+                {card.topic === "files" && <StoreOwners />}
                 <SeeAlso entries={seeAlso(card.topic)} />
               </section>
             ))}

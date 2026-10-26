@@ -9,6 +9,13 @@ import { ConfirmButton } from "./ConfirmButton";
 import { FolderPicker } from "./FolderPicker";
 
 type Grant = components["schemas"]["FolderAccess"];
+type UnknownKind = components["schemas"]["FolderAccessUnknownKind"];
+
+// Files removal never changes on its own: the entry words say why, and nobody
+// "did not add" anything.
+function unchanged(kind: UnknownKind): boolean {
+  return kind === "hardlink" || kind === "special";
+}
 const button = "action-button rounded border px-3 py-1 text-sm disabled:opacity-40";
 
 export function FolderAccess({
@@ -103,7 +110,7 @@ export function FolderAccess({
             found.decision === "pending" ? (
               <div key={found.id} className="flex flex-col gap-1">
                 <p>
-                  {found.kind === "hardlink"
+                  {unchanged(found.kind)
                     ? `Workbench can still open ${found.path}: ${found.entry}.`
                     : `Workbench can still open ${found.path}: ${found.entry}. Eugene did not add this entry.`}
                 </p>
@@ -116,7 +123,9 @@ export function FolderAccess({
                   >
                     {found.kind === "hardlink"
                       ? "Remove access here and there"
-                      : "Remove this entry too"}
+                      : found.kind === "special"
+                        ? "Remove its access too"
+                        : "Remove this entry too"}
                   </button>
                   <button
                     type="button"
@@ -130,7 +139,7 @@ export function FolderAccess({
               </div>
             ) : (
               <p key={found.id}>
-                {found.kind === "hardlink"
+                {unchanged(found.kind)
                   ? `Workbench can still open ${found.path}: ${found.entry}.`
                   : `Workbench can still open ${found.path} through an entry Eugene did not add: ${found.entry}.`}
               </p>
