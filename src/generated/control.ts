@@ -912,6 +912,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/oidc/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The sign-in keys, and when the next change is due
+         * @description Row 5 (5a). Operator only. The key that signs now, the key it
+         *     replaced while a refresh token it signed can still be live, and
+         *     when the active root changes the key by itself
+         *     (`signInKeyDays` after the newest key was made). Never key
+         *     material: the public halves are at `/oidc/jwks`.
+         */
+        get: operations["listOidcKeys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/oidc/keys/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the sign-in key now
+         * @description Row 5 (5a). Operator only; the active, unlocked root.
+         *
+         *     **A routine change** (`endSignIns: false`) makes a new key with
+         *     `putOidcKey`, so a standby on any version applies it. The old key
+         *     keeps verifying until the last refresh token it signed has
+         *     expired (30 days), so apps stay signed in. The log keeps two
+         *     keys, so a second change would drop a key whose refresh tokens
+         *     may still be live: it is a **409** while the newest key is
+         *     younger than 30 days and 10 minutes, naming the day it is due.
+         *
+         *     **After a suspected leak** (`endSignIns: true`) it makes a new
+         *     key and then appends `retireOidcKeys`, keeping only the new one:
+         *     every token the old key signed stops verifying at once. An app
+         *     that keeps its own session (Open WebUI) keeps it until it expires
+         *     or the person signs out. A **409** while the standby runs a log
+         *     version older than `retireOidcKeys` (`StandbyStatus.logVersion`
+         *     below 1): its copy would stop at this change.
+         *
+         *     Two changes at once are one change: the second sees the key the
+         *     first made, and a routine one then waits.
+         *
+         *     Apps read the keys again when they meet an unknown `kid`
+         *     (Workbench, Authlib). An app that caches the JWKS (Workbench, 5
+         *     minutes) may still accept a token signed with a retired key until
+         *     its cache expires.
+         */
+        post: operations["changeOidcKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/nodes": {
         parameters: {
             query?: never;
@@ -1703,6 +1771,72 @@ export interface paths {
          *     root cannot be reached.
          */
         delete: operations["authLogout"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/passphrase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Eugene's passphrase.
+         * @description Row 5 (5b). An operator session, the current passphrase, and the
+         *     login rate limit (5 failures a minute per address, shared with
+         *     `POST /v1/auth/login`). The active, unlocked root only. The new
+         *     passphrase must be at least 12 characters.
+         *
+         *     **What it does, in order.**
+         *
+         *     1. Checks the session and `current`. A **409** while the standby
+         *        runs a log version older than `changePassphrase`
+         *        (`StandbyStatus.logVersion` below 1).
+         *     2. Makes a new salt and master key, opens every value sealed
+         *        under the old key and seals it under the new one: the token
+         *        key, the identity key, the recovery key, the install CA key,
+         *        every sign-in key and every connected account's secret. If
+         *        any one does not open, nothing changes and the answer names
+         *        it. It then walks every string of the state it would write, and
+         *        refuses if one still opens with the old key.
+         *     3. Appends `changePassphrase`, writes a snapshot and compacts the
+         *        log through it, so no old ciphertext is left in the log.
+         *     4. With `securityMode: os_keyring`, stores the new key under the
+         *        new install id and deletes the old entry.
+         *     5. With `securityMode: passphrase_file`, writes the new
+         *        passphrase to the file. A file it cannot write (a container
+         *        secret) is `passphraseFile: old`.
+         *     6. Sends `{current, new}` to each machine that keeps a
+         *        passphrase of its own (`NodeIdentity.ownPassphrase`), over its
+         *        machine port's pinned TLS, or on loopback to this machine's
+         *        own agent. Never over plain HTTP: such a machine is `plain`,
+         *        and nothing is sent to it.
+         *
+         *     The keys the passphrase protects stay the same; it re-wraps them.
+         *     It does not change the root token key that signs sessions
+         *     (`POST /v1/control/rotate-key`). A copy of the state made before
+         *     the change still opens with the old passphrase. Neither
+         *     passphrase is ever logged or echoed.
+         *
+         *     **Once the change entry is written, the new key is in effect**,
+         *     before anything else that can fail. Removing the old copies (the
+         *     snapshot and compaction) comes after; when it fails, the answer
+         *     is still 200, with `cleanup` naming the cause, and the root tries
+         *     again every hour and at its next start.
+         *
+         *     **A write that sealed a value under the old key** (a connected
+         *     account's secret, a sign-in key, the token key, the install CA)
+         *     and reaches the log after the change is refused with **409**,
+         *     *"The passphrase changed while this was saved; save it again."*,
+         *     and nothing is stored.
+         */
+        post: operations["changePassphrase"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4453,6 +4587,16 @@ export interface components {
              *     the same state in different bytes.
              */
             matches?: boolean;
+            /**
+             * @description The log version the standby applies, from the
+             *     `Eugene-Plexus-Log-Version` header of its last pull (row 5);
+             *     0 when its pull carried none (a standby older than row 5).
+             *     Absent until it has pulled since this root started. Log
+             *     version 1 adds `retireOidcKeys` and `changePassphrase`: this
+             *     root refuses to write either while its standby reports less,
+             *     because the standby's copy would stop there.
+             */
+            logVersion?: number;
         };
         LogPage: {
             /** @description Oldest first, gapless, strictly increasing `index`. */
@@ -4528,7 +4672,27 @@ export interface components {
             at?: string;
         };
         /**
-         * @description **`setNodeCertificateNames` (LT2, 2026-10-20)** replaces the names
+         * @description **`retireOidcKeys` (row 5, log version 1)** keeps only the sign-in
+         *     keys named in `keep` (`{keep: [kid]}`, at least one held key) and
+         *     drops the others, so every token they signed stops verifying. It
+         *     follows a `putOidcKey` when the owner ends every app sign-in after
+         *     a suspected leak.
+         *
+         *     **`changePassphrase` (row 5, log version 1)** changes Eugene's
+         *     passphrase: `{salt, passphraseVerifier, sealed}`, where `sealed`
+         *     holds every value the old master key sealed, sealed again under
+         *     the new one by the writer (`signingKey`, `controlKey`,
+         *     `recoveryKey`, `installCaKey`, `oidcKeys` by `kid`, and
+         *     `externalProviders` by id). It must name exactly the sealed values
+         *     the state holds, no more and no fewer, or it does not apply. Every
+         *     root that applies it writes a snapshot and drops every entry
+         *     before it, so no value sealed under the old key stays in the log;
+         *     a root that could not, does at its next start. The writer appends
+         *     every entry that carries a sealed value (`putOidcKey`,
+         *     `rotateSigningKey`, `setInstallCa`, `putExternalProvider`,
+         *     `changePassphrase`) only while the salt is the one it sealed under.
+         *
+         *     **`setNodeCertificateNames` (LT2, 2026-10-20)** replaces the names
          *     the owner listed for one node's client certificate (`{name,
          *     names}`). An operator's, unsigned, like `labelNode`.
          *
@@ -4594,7 +4758,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames" | "retireOidcKeys" | "changePassphrase";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -4966,6 +5130,104 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /** @description One sign-in key (row 5), without its key material. */
+        OidcKey: {
+            /** @description The key's RFC 7638 thumbprint, as the JWKS names it. */
+            kid: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description True for the newest key, which signs every new token. */
+            signs: boolean;
+            /**
+             * Format: date-time
+             * @description For a key that no longer signs: when the last refresh token
+             *     it signed expires (30 days after the next key was made). It
+             *     is dropped at the next change after that. Absent for the key
+             *     that signs.
+             */
+            verifiesUntil?: string;
+        };
+        OidcKeyList: {
+            /** @description Newest first. Empty before the first sign-in made a key. */
+            keys: components["schemas"]["OidcKey"][];
+            /**
+             * Format: date-time
+             * @description When the active root changes the key by itself:
+             *     `signInKeyDays` after the newest key was made. It checks once
+             *     an hour while it is unlocked. Absent when `signInKeyDays` is 0
+             *     (never) or there is no key yet.
+             */
+            nextChangeAt?: string;
+        };
+        OidcKeyChangeRequest: {
+            /**
+             * @description True after a suspected leak: tokens the old key signed stop
+             *     verifying at once. An app that renews them asks the person to
+             *     sign in again (Workbench within five minutes, its JWKS cache);
+             *     an app that keeps its own session (Open WebUI) keeps it until
+             *     it expires or the person signs out.
+             * @default false
+             */
+            endSignIns: boolean;
+        };
+        PassphraseChangeRequest: {
+            /**
+             * Format: password
+             * @description Eugene's passphrase now.
+             */
+            current: string;
+            /**
+             * Format: password
+             * @description The new passphrase, at least 12 characters.
+             */
+            new: string;
+        };
+        /**
+         * @description * `changed`: the machine took the new passphrase.
+         *     * `pending`: it was not reached, or could not take it now; it
+         *       takes it at its next sign-in with the new passphrase.
+         *     * `plain`: it is reached in plain HTTP, so nothing was sent to
+         *       it; it takes the new passphrase at its next sign-in.
+         * @enum {string}
+         */
+        PassphraseMachineState: "changed" | "pending" | "plain";
+        PassphraseMachine: {
+            node: string;
+            state: components["schemas"]["PassphraseMachineState"];
+            /**
+             * @description The observed cause, for `pending` and `plain`. For `changed`,
+             *     what the machine could not do with the new passphrase:
+             *     *this machine could not save its passphrase file: <cause>*
+             *     (after a restart it stays locked until someone signs in).
+             */
+            detail?: string;
+        };
+        /**
+         * @description The passphrase file this root unlocks from (`securityMode:
+         *     passphrase_file`), checked at each start, every hour and after a
+         *     change: `matches` holds this install's passphrase; `old` holds
+         *     another (after a change this root could not write it), so after a
+         *     restart the root stays locked until someone signs in; `none`
+         *     means this root does not unlock from a file.
+         * @enum {string}
+         */
+        PassphraseFileState: "matches" | "old" | "none";
+        PassphraseChangeResult: {
+            /** Format: date-time */
+            changedAt: string;
+            /**
+             * @description Each machine that keeps a passphrase of its own, or that could
+             *     not be asked whether it does, by node name.
+             */
+            machines: components["schemas"]["PassphraseMachine"][];
+            passphraseFile: components["schemas"]["PassphraseFileState"];
+            /**
+             * @description Present when the passphrase changed but the copies sealed
+             *     under the old key could not be removed yet: the cause. The
+             *     root tries again every hour and at its next start.
+             */
+            cleanup?: string;
+        };
         OidcClientList: {
             clients: components["schemas"]["OidcClient"][];
             /** @description Explicit oidcIssuer or the managed console origin with /oidc. Otherwise absent, and an app uses the address it reaches Eugene at with /oidc. */
@@ -5203,6 +5465,7 @@ export interface components {
              *     probe was not run or did not finish within its budget.
              */
             keyringAvailable?: boolean;
+            passphraseFile?: components["schemas"]["PassphraseFileState"];
         };
         AuthInitializeRequest: {
             /**
@@ -6817,6 +7080,14 @@ export interface components {
          *     than row 4.
          */
         EugenePlexusVersion: string;
+        /**
+         * @description The log version the standby applies (row 5): which `LogOp` values
+         *     its code knows. Recorded as `StandbyStatus.logVersion`; a standby
+         *     that does not send it applies log version 0. Every build reports
+         *     the same `Eugene-Plexus-Version`, so this number, not that one,
+         *     says whether a standby can apply an op.
+         */
+        EugenePlexusLogVersion: number;
     };
     requestBodies: never;
     headers: never;
@@ -8429,6 +8700,54 @@ export interface operations {
             422: components["responses"]["Problem"];
         };
     };
+    listOidcKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The keys, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcKeyList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    changeOidcKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OidcKeyChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description The keys after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcKeyList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
     listNodes: {
         parameters: {
             query?: never;
@@ -8753,6 +9072,14 @@ export interface operations {
                  */
                 "Eugene-Plexus-Version"?: components["parameters"]["EugenePlexusVersion"];
                 /**
+                 * @description The log version the standby applies (row 5): which `LogOp` values
+                 *     its code knows. Recorded as `StandbyStatus.logVersion`; a standby
+                 *     that does not send it applies log version 0. Every build reports
+                 *     the same `Eugene-Plexus-Version`, so this number, not that one,
+                 *     says whether a standby can apply an op.
+                 */
+                "Eugene-Plexus-Log-Version"?: components["parameters"]["EugenePlexusLogVersion"];
+                /**
                  * @description The standby's own `LogPage.appliedDigest`: SHA-256, in hex, of
                  *     its canonical applied state at `after` (row 4).
                  */
@@ -8803,6 +9130,14 @@ export interface operations {
                  *     than row 4.
                  */
                 "Eugene-Plexus-Version"?: components["parameters"]["EugenePlexusVersion"];
+                /**
+                 * @description The log version the standby applies (row 5): which `LogOp` values
+                 *     its code knows. Recorded as `StandbyStatus.logVersion`; a standby
+                 *     that does not send it applies log version 0. Every build reports
+                 *     the same `Eugene-Plexus-Version`, so this number, not that one,
+                 *     says whether a standby can apply an op.
+                 */
+                "Eugene-Plexus-Log-Version"?: components["parameters"]["EugenePlexusLogVersion"];
             };
             path?: never;
             cookie?: never;
@@ -9194,6 +9529,35 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Problem"];
+        };
+    };
+    changePassphrase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PassphraseChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Changed. Where each machine stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PassphraseChangeResult"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     exchangeToken: {

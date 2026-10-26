@@ -77,7 +77,8 @@ export type IssueKind =
   | "update-failed"
   | "versions-differ"
   | "account-list-failed"
-  | "routing-target-unserved";
+  | "routing-target-unserved"
+  | "passphrase-file-old";
 
 /**
  * `blocking` means the install is not doing its job right now;
@@ -188,6 +189,12 @@ export interface IssueSources {
   routing?: Pick<RoutingTableView, "slots"> | null;
   /** The gateway's view of each driver, for an account's list status. */
   drivers?: DriverHealth[] | null;
+  /**
+   * Row 5: whether the file the control root unlocks from holds this
+   * install's passphrase (`AuthStatus.passphraseFile`), checked by the root
+   * at each start, every hour and after a change. Absent when unknown.
+   */
+  controlPassphraseFile?: "matches" | "old" | "none" | null;
 }
 
 /**
@@ -219,6 +226,7 @@ export const TRUST_STALE_SECONDS = 600;
 export function issuesFrom(sources: IssueSources): Issue[] {
   const issues: Issue[] = [
     ...sealedRootIssue(sources),
+    ...passphraseFileIssue(sources),
     ...nodeDownIssues(sources.nodes),
     ...clockSkewIssues(sources.perNode),
     ...accountListIssues(sources.drivers),
@@ -365,6 +373,27 @@ function sealedRootIssue(sources: IssueSources): Issue[] {
         "store. Nothing is lost, but nothing else works until it is unlocked.",
       href: "/nodes",
       action: "unlock-control-root",
+    },
+  ];
+}
+
+/**
+ * Row 5: after a passphrase change the control root rewrites the file it
+ * unlocks from, but a container secret is read-only. Until someone puts
+ * the new passphrase there, a restart leaves the root locked.
+ */
+function passphraseFileIssue(sources: IssueSources): Issue[] {
+  if (sources.controlPassphraseFile !== "old") return [];
+  return [
+    {
+      id: "passphrase-file-old",
+      kind: "passphrase-file-old",
+      severity: "warning",
+      title: "The control root's passphrase file holds the old passphrase",
+      detail:
+        "After a restart Eugene stays locked until someone signs in. Put the new passphrase " +
+        "in the file the control root unlocks from (in a container, its passphrase secret).",
+      href: "/nodes",
     },
   ];
 }

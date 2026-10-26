@@ -29,6 +29,8 @@ import { AccessAudit } from "@/components/AccessAudit";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { PermissionGroups, PersonGroups } from "@/components/PermissionGroups";
 import { CopyButton } from "@/components/CopyButton";
+import { PassphraseChange } from "@/components/PassphraseChange";
+import { SignInKey } from "@/components/SignInKey";
 import { api, describeError } from "@/lib/api";
 import { agentTarget, workbenchLink } from "@/lib/apps";
 import {
@@ -197,6 +199,7 @@ function PeopleSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () =>
               Eugene&rsquo;s passphrase. Full console access. The owner account and recovery
               passphrase are managed separately from member accounts and groups.
             </p>
+            <PassphraseChange inputClass={inputClass} primaryClass={primaryClass} />
           </details>
           <AddPerson operatorName={operatorName} clients={clients} onAdded={onChanged} />
         </>
@@ -994,6 +997,7 @@ function AppsSection({ loaded, onChanged }: { loaded: Loaded; onChanged: () => P
           .
         </p>
       </div>
+      <SignInKey rowClass={rowClass} />
       {loaded.clients.length === 0 ? (
         <p className="text-sm text-[color:var(--muted)]" data-testid="people-no-apps">
           No apps sign in with Eugene yet. Installing one from{" "}

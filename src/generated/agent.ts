@@ -308,8 +308,52 @@ export interface paths {
          *     60 seconds, the endpoint returns 429 and refuses further
          *     attempts from that source for 60 seconds. (No lockout of the
          *     legitimate operator — they'll just have to wait.)
+         *
+         *     **A machine that was off when the passphrase changed** (row 5).
+         *     Enrolled, a passphrase this agent's own hash refuses is still sent
+         *     to the root. When the root accepts it (a session that verifies
+         *     against this agent's trust bundle and names this machine), this
+         *     agent takes it as its own: unlocked, it wraps its master key under
+         *     it at once. Locked, it cannot open its key with the new
+         *     passphrase, so it answers **409** with the problem type
+         *     `.../old-passphrase-needed` and asks once for the old one:
+         *     *"This machine was off when the passphrase changed. Enter the old
+         *     passphrase once to finish."* The same sign-in again with
+         *     `previousPassphrase` opens the key with the old passphrase and
+         *     wraps it under the new one.
          */
         post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/passphrase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Eugene's passphrase (the console's door).
+         * @description Row 5 (5b). **Enrolled, this forwards to the control root's
+         *     `POST /v1/auth/passphrase`** with the caller's operator session
+         *     and the browser's address (the login rate limit is the root's),
+         *     and returns the root's answer: the root re-seals its own values,
+         *     then sends the new passphrase to every machine that keeps one of
+         *     its own, this one included.
+         *
+         *     **Standalone**, this agent changes its own passphrase: it checks
+         *     `current` (under the login rate limit), keeps its master key, and
+         *     wraps it under the new passphrase (`kekSalt`, `wrappedMasterKey`
+         *     in `agent.yaml`), so every secret it sealed still opens. It
+         *     rewrites the passphrase file it keeps, if it keeps one.
+         */
+        post: operations["changePassphrase"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2594,6 +2638,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node/passphrase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take Eugene's new passphrase from the control root.
+         * @description Row 5 (5b). **The control root's own service token only**
+         *     (`sub: control`, addressed to this node), and **only over TLS**:
+         *     through this node's machine port, whose key the root pinned, or on
+         *     loopback from the root on this same machine. Anything else is a
+         *     403 and nothing changes. The root never sends it in plain HTTP.
+         *
+         *     The agent checks `current` against its own hash, keeps its master
+         *     key (so every secret it sealed still opens), wraps it under `new`
+         *     (`kekSalt`, `wrappedMasterKey` in `agent.yaml`), stores the new
+         *     hash and rewrites the passphrase file it keeps. A replay carries a
+         *     `current` that no longer verifies, so it changes nothing.
+         */
+        post: operations["takeNodePassphrase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/directories": {
         parameters: {
             query?: never;
@@ -3734,6 +3808,66 @@ export interface components {
             series: components["schemas"]["HostSeries"][];
         };
         /**
+         * @description `common.yaml`'s `AuthLoginRequest`, and (row 5) the old passphrase
+         *     once, for a machine that was off when the passphrase changed.
+         */
+        AgentLoginRequest: {
+            passphrase: string;
+            /**
+             * @description Only after a 409 of type `.../old-passphrase-needed`: the
+             *     passphrase this machine had, which opens its master key so it
+             *     can wrap it under `passphrase`.
+             */
+            previousPassphrase?: string;
+        };
+        /** @description The same shape as `control.yaml`'s. */
+        PassphraseChangeRequest: {
+            /** Format: password */
+            current: string;
+            /** Format: password */
+            new: string;
+        };
+        /** @description What the control root sends a machine that keeps its own passphrase. */
+        NodePassphraseRequest: {
+            /** Format: password */
+            current: string;
+            /** Format: password */
+            new: string;
+        };
+        NodePassphraseResult: {
+            passphraseFile: components["schemas"]["PassphraseFileState"];
+            /**
+             * @description When `passphraseFile` is `old`: why the file could not be
+             *     written. After a restart this machine stays locked until
+             *     someone signs in.
+             */
+            detail?: string;
+        };
+        /**
+         * @description The same values as `control.yaml`'s.
+         * @enum {string}
+         */
+        PassphraseMachineState: "changed" | "pending" | "plain";
+        PassphraseMachine: {
+            node: string;
+            state: components["schemas"]["PassphraseMachineState"];
+            detail?: string;
+        };
+        /**
+         * @description The same values as `control.yaml`'s.
+         * @enum {string}
+         */
+        PassphraseFileState: "matches" | "old" | "none";
+        /** @description The same shape as `control.yaml`'s. */
+        PassphraseChangeResult: {
+            /** Format: date-time */
+            changedAt: string;
+            machines: components["schemas"]["PassphraseMachine"][];
+            passphraseFile: components["schemas"]["PassphraseFileState"];
+            /** @description The same as `control.yaml`'s. */
+            cleanup?: string;
+        };
+        /**
          * @description What this agent knows about its own host and its own place in an
          *     install. The install-wide `Node` view lives on the control root;
          *     this is the half only the host itself can answer.
@@ -3779,6 +3913,13 @@ export interface components {
              *     update never moves a node. Absent until enrolled.
              */
             controlUrlEpoch?: number;
+            /**
+             * @description Whether this agent keeps a passphrase of its own (row 5): the
+             *     root machine's agent, and a machine set up on its own before
+             *     it joined. The control root sends a changed passphrase only to
+             *     these. Absent from an agent older than row 5.
+             */
+            ownPassphrase?: boolean;
             standby?: components["schemas"]["LocalStandby"];
             /**
              * @description This machine runs the install's control root, and it is locked:
@@ -7983,15 +8124,6 @@ export interface components {
              */
             operatorName?: string;
         };
-        /**
-         * @description Login request body sent by the UI to `POST /v1/auth/login` on
-         *     the agent. The passphrase is the same one the operator set
-         *     in the wizard. The agent verifies its Argon2id hash; on match,
-         *     issues a session token.
-         */
-        AuthLoginRequest: {
-            passphrase: string;
-        };
         ClientKeyPolicyEntry: {
             id: string;
             /** Format: date-time */
@@ -9787,7 +9919,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AuthLoginRequest"];
+                "application/json": components["schemas"]["AgentLoginRequest"];
             };
         };
         responses: {
@@ -9812,6 +9944,9 @@ export interface operations {
             /**
              * @description The install no longer lists this machine (it was removed).
              *     The detail says whether it has left the install already.
+             *     Or (row 5, type `.../old-passphrase-needed`) the passphrase
+             *     changed while this machine was off, and it is locked: send
+             *     the sign-in again with `previousPassphrase`.
              */
             409: {
                 headers: {
@@ -9823,6 +9958,75 @@ export interface operations {
             };
             /** @description Rate-limited. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    changePassphrase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PassphraseChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Changed. Where each machine stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PassphraseChangeResult"];
+                };
+            };
+            /** @description No operator session, or `current` is wrong. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The root refused (for example, its standby is too old). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The new passphrase is shorter than 12 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate-limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The control root did not answer, or is locked. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12295,6 +12499,74 @@ export interface operations {
              *     (a superseded root). `detail` names both numbers.
              */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    takeNodePassphrase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodePassphraseRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Taken. Whether its passphrase file now holds the new
+             *     passphrase, and why not when it does not.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodePassphraseResult"];
+                };
+            };
+            /** @description Not the control root's token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not over TLS or loopback. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description This machine keeps no passphrase of its own (type
+             *     `.../no-own-passphrase`), or its own passphrase is not
+             *     `current` (type `.../passphrase-differs`). Either way nothing
+             *     changed; it takes the new one at its next sign-in.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The new passphrase is shorter than 12 characters. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
