@@ -666,6 +666,9 @@ function trustStaleIssues(node: NodeFacts): Issue[] {
   if (!identity?.enrolled) return [];
   const age = identity.trustBundleAgeSeconds;
   if (typeof age !== "number" || age < TRUST_STALE_SECONDS) return [];
+  // Row 46: past its limit the machine itself says it refuses changes from
+  // other machines; the console repeats what it says, never its own guess.
+  const refusing = identity.trustBundleFrozen === true;
   return [
     {
       id: `trust-stale:${node.name ?? node.label}`,
@@ -673,6 +676,7 @@ function trustStaleIssues(node: NodeFacts): Issue[] {
       severity: "warning",
       title: `${node.label} has not heard from the control root for ${formatAge(age)}`,
       detail:
+        (refusing ? "Changes from other machines are refused here. " : "") +
         "It keeps working with what it last heard, so removals and sign-outs since then are " +
         "unknown there. Check that it can reach the control root.",
       href: "/nodes",

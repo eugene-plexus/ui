@@ -2067,6 +2067,10 @@ export interface paths {
          *     again. Before that, every runtime with `autoStart` came back, so
          *     a model someone had stopped to free the GPU took it back at the
          *     next boot. `idle` and `measurement` are not remembered.
+         *
+         *     A `gateway` token from another machine is refused with 403 while
+         *     this machine is past `maxTrustBundleAgeHours` without word from
+         *     the root (`RootNotHeard`, row 46).
          */
         post: operations["stopRuntime"];
         delete?: never;
@@ -2103,6 +2107,11 @@ export interface paths {
          *
          *     Any start forgets a remembered stop (`StopReason.operator`): this,
          *     a restart, and an edit with `PATCH`.
+         *
+         *     A `gateway` token from another machine is refused with 403 while
+         *     this machine is past `maxTrustBundleAgeHours` without word from
+         *     the root (`RootNotHeard`, row 46). A running model keeps
+         *     answering; a stopped one is not woken from another machine.
          */
         post: operations["startRuntime"];
         delete?: never;
@@ -3059,6 +3068,22 @@ export interface paths {
          *     The machine's page exposes this switch through the config trio;
          *     turning it off stops reports and leaves the last report's actual
          *     `readAt` visible so its age stays honest.
+         *
+         *     **`maxTrustBundleAgeHours`** (`integer`, default `24`, `0` for no
+         *     limit, at most `8760`) is how long this machine goes without
+         *     word from the control root before it refuses changes from other
+         *     machines (row 46). Past it, a token signed by another machine's
+         *     key gets the `RootNotHeard` 403 on every route that changes
+         *     something here. The root's own tokens, this machine's own
+         *     tokens, and every read keep working, so a dead root never stops
+         *     answers. Word from the root is a bundle this machine pulled from
+         *     the root, or a newer bundle pushed to it, counted from the time
+         *     the root signed it; a pushed copy of the bundle it already holds
+         *     is not word. `GET /v1/node` reports the limit in effect
+         *     (`trustBundleMaxAgeSeconds`) and whether it refuses now
+         *     (`trustBundleFrozen`); the field's status line says so too. A
+         *     value in the file that is not a whole number in range is ignored
+         *     with a warning, and the default applies.
          */
         get: operations["getConfig"];
         put?: never;
@@ -4156,15 +4181,33 @@ export interface components {
             trustBundleVersion?: number;
             /**
              * Format: int64
-             * @description Seconds since this agent last took the control root's bundle
-             *     -- a push, or the pull it makes every minute. Not the
+             * @description Seconds since this agent last heard from the control root:
+             *     the pull it makes every minute, or a newer bundle the root
+             *     pushed, counted from when the root signed it. Not the held
              *     bundle's signing time: a quiet install's bundle can be days
-             *     old and current. Reported, never enforced: a bundle keeps
-             *     working while the root is dead, so this is what tells an
-             *     operator the node has not heard from the root. Past ten
-             *     minutes the console lists it as an issue.
+             *     old and current. A clock set back does not shorten it while
+             *     the agent runs. Past ten minutes the console lists it as an
+             *     issue; past `trustBundleMaxAgeSeconds` the agent refuses
+             *     changes from other machines (`trustBundleFrozen`).
              */
             trustBundleAgeSeconds?: number;
+            /**
+             * Format: int64
+             * @description The limit in effect on `trustBundleAgeSeconds`, from the
+             *     `maxTrustBundleAgeHours` setting, in seconds; `0` when there
+             *     is none. Absent when this agent has joined no install, or
+             *     runs a version older than row 46.
+             */
+            trustBundleMaxAgeSeconds?: number;
+            /**
+             * @description True while `trustBundleAgeSeconds` is past
+             *     `trustBundleMaxAgeSeconds`: this agent refuses changes
+             *     signed by other machines' keys (the `RootNotHeard` 403) until
+             *     it hears from the root again. Answers, reads and the root's
+             *     own tokens keep working. Absent when this agent has joined
+             *     no install, or runs a version older than row 46.
+             */
+            trustBundleFrozen?: boolean;
             /**
              * @description Base64 of this node's raw Ed25519 token public key. The
              *     private half was generated here and never leaves.
@@ -9869,6 +9912,23 @@ export interface components {
         };
     };
     responses: {
+        /**
+         * @description This machine has gone longer than its `maxTrustBundleAgeHours`
+         *     without word from the control root, and the token was signed
+         *     by another machine's key, so the change is refused (row 46).
+         *     `title` is `Root not heard`; `detail` names the time, as in
+         *     "This machine has not heard from the root for 31 hours, so it
+         *     takes no changes from other machines. Check its network to the
+         *     root." It clears by itself at the next bundle from the root.
+         */
+        RootNotHeard: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description Error response in RFC 7807 problem+json format. */
         Problem: {
             headers: {
@@ -12329,6 +12389,7 @@ export interface operations {
                     "application/json": components["schemas"]["RestartResult"];
                 };
             };
+            403: components["responses"]["RootNotHeard"];
             404: components["responses"]["Problem"];
         };
     };
@@ -12355,6 +12416,7 @@ export interface operations {
                     "application/json": components["schemas"]["RestartResult"];
                 };
             };
+            403: components["responses"]["RootNotHeard"];
             404: components["responses"]["Problem"];
             /**
              * @description Admission refused and `force` was not set. `detail` carries
@@ -13360,7 +13422,12 @@ export interface operations {
                     "application/json": components["schemas"]["OllamaSendResult"];
                 };
             };
-            /** @description An operator session is required, or the Keep job belongs to another machine. */
+            /**
+             * @description An operator session is required, the Keep job belongs to
+             *     another machine, or this machine is past
+             *     `maxTrustBundleAgeHours` without word from the root and the
+             *     token is the Library machine's (`RootNotHeard`, row 46).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
