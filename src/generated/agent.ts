@@ -42,8 +42,9 @@ export interface paths {
          *     So does any other tool given a key that may send.
          *
          *     **Who may send:** a client key whose limits carry `writeLogs:
-         *     true` (`ClientKeyLimits`). This is the one path on the agent that
-         *     accepts a client key, for writing only. Reading stays
+         *     true` (`ClientKeyLimits`). The other path that accepts an app's
+         *     client key is `POST /v1/apps/{app}/folder-access/release`, which
+         *     only removes that app's recorded access. Reading logs stays
          *     operator-only, as `GET /v1/logs` says.
          *
          *     **Every line is stamped with the key, never with what the sender
@@ -1339,6 +1340,196 @@ export interface paths {
         get: operations["getAppConfigSchema"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{app}/folder-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List this app's recorded folder access on this node.
+         * @description Requires an operator session. A service token, gateway token or
+         *     client key is refused, including the app's own key.
+         *
+         *     Returns persisted records, including applying, removing and
+         *     terminal states. Records survive an agent restart. Poll this
+         *     route after adding access to see its effective state; accepting
+         *     a request does not mean the app can already open the folder.
+         */
+        get: operations["listFolderAccess"];
+        put?: never;
+        /**
+         * Give this app's own account access to a shared project folder.
+         * @description Requires an operator session. A service token, gateway token or
+         *     client key is refused, including the app's own key. Workbench
+         *     cannot widen its own access.
+         *
+         *     Read only is the default. The console confirms the account,
+         *     path and mode, and says "everything in it", before sending this
+         *     request: these rights expose the folder to the whole app account.
+         *     The agent records the folder's identity and exactly what Eugene
+         *     added in its private folder-access.json. Existing rights are
+         *     recorded as preexisting and are not added again.
+         *
+         *     Check the final path without following links. A folder that
+         *     contains a refused folder is also refused. Reject drive and mount
+         *     roots, system folders, Eugene's own folders, every person's home,
+         *     links (including junctions and reparse points), and network paths
+         *     (including mapped network drives). A home refusal points to a
+         *     Job Site, which works as that person. The OS permission editor
+         *     remains the expert override.
+         *
+         *     Propagation runs off the event loop. A 202 returns the recorded
+         *     state, initially applying unless the rights already existed;
+         *     poll listFolderAccess until it reaches ready or failed. Children
+         *     that keep their own permissions are counted, never changed.
+         *     Linux write access needs a Workbench restart; restartNeeded stays
+         *     true until that restart. This request does not restart Workbench.
+         */
+        post: operations["addFolderAccess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{app}/folder-access/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+                /** @description The recorded folder access id, scoped to this app on this node. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove only the folder permission Eugene added for this app.
+         * @description Requires an operator session. A service token, gateway token or
+         *     client key is refused, including the app's own key.
+         *
+         *     Remove only what Eugene added, as the record identifies it.
+         *     Rights that were preexisting or set by hand stay. Check the
+         *     folder identity and the recorded permission before changing it:
+         *     if either differs, change nothing and return changed_outside.
+         *     No folder or file is deleted. A removed record is retained, and
+         *     removing it again succeeds without another permission change.
+         *
+         *     The response reports the completed attempt. Work runs off the
+         *     event loop, and listFolderAccess shows removing while it runs.
+         *     A failed or changed_outside state names its observed cause in
+         *     message and must be shown as access that was left in place.
+         *     Linux ACL access is revoked at once; its write-path drop-in is
+         *     cleaned up on the next Workbench restart.
+         */
+        delete: operations["removeFolderAccess"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{app}/folder-access/{id}/unknown/{entry}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+                /** @description The recorded folder access id, scoped to this app on this node. */
+                id: string;
+                /** @description The id of one entry in the record's unknown list. */
+                entry: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove or keep one access entry that Eugene did not add.
+         * @description Requires an operator session. A service token, gateway token or
+         *     client key is refused, including the app's own key.
+         *
+         *     A removal that finds access for the app's account that Eugene
+         *     did not add, or a file with another name outside the folder,
+         *     stops at incomplete and lists each such entry in unknown. The owner decides each one (R23-UNKNOWN). Remove: the
+         *     agent checks the entry again (the same item, the same entry)
+         *     and deletes only that entry, then finishes the removal. Keep:
+         *     the entry stays, the app keeps that access, and the record says
+         *     so. Either way the removal runs again; when no entry waits, the
+         *     record reads removed and lists the kept entries. What the owner
+         *     kept comes from the record of the backend that holds the answer,
+         *     so a kept entry is listed even when an earlier call failed
+         *     before this record was saved.
+         *
+         *     An item changed since the agent found it is not changed on the
+         *     owner's old answer: its identity, its entry, its owner and
+         *     permissions on Windows, or its number of names (a file that
+         *     gained another name outside the folder is asked about again as
+         *     hardlink). The removal runs again and asks again about what is
+         *     there now.
+         *
+         *     An entry that changed since the agent found it, or that the
+         *     agent cannot change, is not removed; the response names the
+         *     observed cause.
+         */
+        post: operations["decideFolderAccessEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{app}/folder-access/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release this app's recorded OS access when it stops using a folder.
+         * @description Requires this installed app's own active client key, whose
+         *     registry identity is app:<app>@<this node>. Reject another app
+         *     or node's key, an ordinary client key, an operator session, a
+         *     service token and a gateway token. This route never adds access.
+         *
+         *     Workbench calls this when no other grant names the folder or a
+         *     descendant. Send path to look up this app's own covering records
+         *     without changing permissions. Then send id to remove only what Eugene added
+         *     for that access record. Exactly one of path or id is required.
+         *     Never act on another app's records. With no recorded access,
+         *     return 404 with the observed cause. A removed id is safe to release again.
+         *     Preexisting and by-hand rights
+         *     stay, with the same identity and permission checks as
+         *     removeFolderAccess. No folder or file is deleted.
+         *
+         *     Wait for each removal attempt and return its retained record.
+         *     The caller must inspect every state: changed_outside or failed
+         *     means access stays, and message names the observed cause to
+         *     show beside the link to remove access in Eugene. A 500 Problem
+         *     also names its observed cause; it must not be shown as a removal.
+         */
+        post: operations["releaseFolderAccess"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7845,6 +8036,146 @@ export interface components {
             /** Format: date-time */
             finishedAt?: string;
         };
+        /** @description A shared project folder and the rights confirmed by the operator. */
+        FolderAccessRequest: {
+            /** @description An existing absolute folder path on this node; links are refused. */
+            path: string;
+            /**
+             * @description Read only by default; write adds file creation and writing. On Windows the added ACE excludes delete permission.
+             * @default read
+             * @enum {string}
+             */
+            mode: "read" | "write";
+        };
+        /** @description Send path to look up covering records, or id to release one record. Exactly one is required. Never adds access. */
+        FolderAccessReleaseRequest: {
+            /** @description Look up this app's covering access records without changing permissions. */
+            path?: string;
+            /** @description Release this app's access record by its stable id. */
+            id?: string;
+        };
+        /**
+         * @description One persisted access record. Internal folder identity and the
+         *     exact permission delta stay in the agent's private record,
+         *     rather than accepting them from a caller. Every status field
+         *     reports the observed state, not merely the requested change.
+         */
+        FolderAccess: {
+            /** @description Stable access record id, scoped to this app on this node. */
+            id: string;
+            /** @description The installed app's AppManifest.id. */
+            app: string;
+            /** @description The final absolute folder path whose identity the agent recorded. */
+            path: string;
+            /**
+             * @description The recorded rights; on Windows the write ACE excludes delete permission. Workbench never deletes files.
+             * @enum {string}
+             */
+            mode: "read" | "write";
+            /** @description The app's own OS identity that receives these rights. */
+            account: string;
+            /**
+             * @description The effective access state. Applying and removing are in
+             *     progress; ready means propagation completed, subject to
+             *     notInheriting and restartNeeded. Removed means Eugene's
+             *     additions are gone, even if preexisting rights remain.
+             *     Changed_outside means the folder identity or recorded rights
+             *     differ, so nothing was changed. Failed names its cause in
+             *     message; it does not imply that all additions were removed.
+             *     Incomplete means removal found access for the app's account
+             *     that Eugene did not add; each such entry waits in unknown
+             *     for the owner's decision, and the app may still use it.
+             * @enum {string}
+             */
+            state: "applying" | "ready" | "removing" | "removed" | "changed_outside" | "failed" | "incomplete";
+            /** @description The account already had the requested rights; nothing added and nothing to take back. */
+            preexisting: boolean;
+            /** @description Items inside the folder that keep their own permissions; their permissions are left as they are. */
+            notInheriting: number;
+            /** @description Linux write access awaits a Workbench restart; never show write access as effective while true. */
+            restartNeeded: boolean;
+            /** @description The current outcome in words; a failure or changed_outside names its observed cause. */
+            message: string;
+            /**
+             * Format: date-time
+             * @description When the operator's access request was recorded.
+             */
+            addedAt: string;
+            /** @description The operator identity that requested access, derived from the session. */
+            addedBy: string;
+            /**
+             * @description Access for the app's account that removal found and Eugene did
+             *     not add. A pending entry waits for the owner's decision; a kept
+             *     entry stays, and the app still has that access through it.
+             *     Absent or empty when there is none.
+             */
+            unknown?: components["schemas"]["FolderAccessUnknown"][];
+        };
+        /** @description One entry that lets the app's account in and that Eugene did not add. */
+        FolderAccessUnknown: {
+            /** @description Stable id of this entry within its record. */
+            id: string;
+            /** @description The file or folder that holds the entry. */
+            path: string;
+            kind: components["schemas"]["FolderAccessUnknownKind"];
+            /** @description The entry in words, as the console shows it. */
+            entry: string;
+            decision: components["schemas"]["FolderAccessUnknownDecision"];
+        };
+        /**
+         * @description entry is a permission entry for the app's account. null_dacl is
+         *     a Windows item with no permission list, which lets everyone
+         *     in. owner means the app's account owns the item, so it can
+         *     change the item's permissions. unreadable means Eugene cannot
+         *     read the item's permissions. hardlink is a file with another
+         *     name outside the folder: removal never changes such a file on
+         *     its own, since the change would reach that name too. special is
+         *     a pipe, socket or device holding an entry for the app's account
+         *     (Linux): removal never changes one on its own. Each file is its
+         *     own entry. For hardlink and special, Remove lets the removal
+         *     change that file, at no more names than it has when the owner
+         *     decides; Keep leaves it as it is.
+         * @enum {string}
+         */
+        FolderAccessUnknownKind: "entry" | "null_dacl" | "owner" | "unreadable" | "hardlink" | "special";
+        /**
+         * @description Pending waits for the owner; kept means the owner chose to keep it.
+         * @enum {string}
+         */
+        FolderAccessUnknownDecision: "pending" | "kept";
+        /** @description The owner's decision about one unknown entry. */
+        FolderAccessDecision: {
+            action: components["schemas"]["FolderAccessDecisionAction"];
+        };
+        /**
+         * @description Remove deletes only this entry after checking it again; keep leaves it.
+         * @enum {string}
+         */
+        FolderAccessDecisionAction: "remove" | "keep";
+        /** @description This app's recorded folder access on this node, including removal outcomes. */
+        FolderAccessList: {
+            /** @description Empty when there is no matching recorded access. */
+            grants: components["schemas"]["FolderAccess"][];
+        };
+        /**
+         * @description The observed reason for refusing access. not_a_folder covers
+         *     missing paths and files; link covers any symlink, junction or
+         *     reparse point in the path; drive_root includes mount roots;
+         *     network includes UNC paths and mapped network drives. System,
+         *     Eugene and home refusals also cover ancestors containing those
+         *     folders. unsafe_parent means a parent folder can be changed by
+         *     accounts other than root (Linux), and applies only when no other
+         *     refusal does. Unavailable means the app shares Eugene's own
+         *     account and is reported with 409; path refusals use 400.
+         * @enum {string}
+         */
+        FolderAccessRefusal: "not_a_folder" | "link" | "drive_root" | "network" | "system" | "eugene" | "home" | "unsafe_parent" | "unavailable";
+        /** @description A Problem with the observed folder-access refusal and its cause. */
+        FolderAccessProblem: components["schemas"]["Problem"] & {
+            refusal: components["schemas"]["FolderAccessRefusal"];
+            /** @description The observed cause, including the path where applicable, and the next action. */
+            detail: string;
+        };
         /**
          * @description The gateway model id Hindsight reads chats with. It is unset
          *     until the owner chooses; null clears the selection and stops
@@ -9549,6 +9880,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description The installed app's AppManifest.id on this node. */
+        FolderAccessApp: string;
         /** @description The app's `AppManifest.id`. */
         AppId: string;
     };
@@ -11065,6 +11398,353 @@ export interface operations {
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
+        };
+    };
+    listFolderAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This app's recorded grants, including completed removals. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderAccessList"];
+                };
+            };
+            /** @description The credential is missing, invalid or expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The credential is valid but is not an operator session. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The app is not installed on this node. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The app shares Eugene's account; folder access is unavailable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["FolderAccessProblem"];
+                };
+            };
+        };
+    };
+    addFolderAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FolderAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description Recorded; state and restartNeeded report what is effective. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderAccess"];
+                };
+            };
+            /** @description The path is refused; refusal and detail name the observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["FolderAccessProblem"];
+                };
+            };
+            /** @description The credential is missing, invalid or expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The credential is valid but is not an operator session. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The app is not installed on this node. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The app shares Eugene's account; folder access is unavailable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["FolderAccessProblem"];
+                };
+            };
+            /**
+             * @description The request is invalid, or the OS permissions cannot safely
+             *     be changed. Detail names the observed cause, including a
+             *     parent writable by a non-root account or a masked named ACL
+             *     entry that recalculating the ACL mask would widen on Linux.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeFolderAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+                /** @description The recorded folder access id, scoped to this app on this node. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The retained record reports removed, changed_outside or failed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderAccess"];
+                };
+            };
+            /** @description The credential is missing, invalid or expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The credential is valid but is not an operator session. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The app or its recorded folder access was not found on this node. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The app shares Eugene's account; folder access is unavailable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["FolderAccessProblem"];
+                };
+            };
+        };
+    };
+    decideFolderAccessEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+                /** @description The recorded folder access id, scoped to this app on this node. */
+                id: string;
+                /** @description The id of one entry in the record's unknown list. */
+                entry: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FolderAccessDecision"];
+            };
+        };
+        responses: {
+            /** @description The record after the decision and the removal that follows it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderAccess"];
+                };
+            };
+            /** @description The entry could not be removed; detail names the observed cause. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The credential is missing, invalid or expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The credential is valid but is not an operator session. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The app, the record or the entry was not found on this node. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The entry is not waiting for a decision, or the record is changing. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    releaseFolderAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The installed app's AppManifest.id on this node. */
+                app: components["parameters"]["FolderAccessApp"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FolderAccessReleaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Matching access records for a path lookup, or the removal outcome for an id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderAccessList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            /** @description The client key is missing, invalid, expired or revoked. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The credential is not this app's own client key on this node. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            /** @description The app shares Eugene's account; folder access is unavailable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["FolderAccessProblem"];
+                };
+            };
+            /** @description Release could not complete; detail names the observed cause. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listServingMeasurements: {
