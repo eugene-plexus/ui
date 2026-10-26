@@ -5072,9 +5072,15 @@ export interface components {
              *     request past it is refused with `key_queue_full` and
              *     `Retry-After`. `0` refuses at once, as before the queue. Not part
              *     of the policy a running request is bound to.
-             * @default 8
+             *
+             *     **Absent means 8**, and no default is declared here on purpose:
+             *     a declared default is filled into every answer a generated model
+             *     writes, and a reader a release behind refuses the field
+             *     (`extra='forbid'`), so the authority and the agent send it only
+             *     when it was set to something else, as `band` and row 70's
+             *     `queueBand`.
              */
-            maxQueuedRequests: number;
+            maxQueuedRequests?: number;
         };
         ClientKeyUpdateRequest: {
             limits: components["schemas"]["ClientKeyLimits"];
