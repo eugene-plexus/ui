@@ -12,6 +12,7 @@ import type { ClientKeyLimits } from "@/lib/types";
 import {
   ClientKeyLimitsEditor,
   DEFAULT_CLIENT_LIMITS,
+  cleanClientLimits,
   describeClientLimits,
 } from "./ClientKeyLimitsEditor";
 
@@ -97,5 +98,48 @@ describe("the send-logs switch (C1)", () => {
   it("shows a key that may send as checked", () => {
     render(<Harness start={{ ...DEFAULT_CLIENT_LIMITS, writeLogs: true }} seen={[]} />);
     expect(screen.getByTestId("key-write-logs")).toBeChecked();
+  });
+});
+
+describe("the key's place in line (row 11)", () => {
+  it("shows the band in effect and sets the one chosen", () => {
+    const seen: ClientKeyLimits[] = [];
+    render(<Harness start={DEFAULT_CLIENT_LIMITS} seen={seen} />);
+    const priority = screen.getByLabelText("Priority") as HTMLSelectElement;
+    expect(priority.value).toBe("interactive");
+    expect(screen.getByRole("option", { name: "Dropped first when busy" })).toBeInTheDocument();
+    fireEvent.change(priority, { target: { value: "background" } });
+    expect(seen.at(-1)?.band).toBe("background");
+    fireEvent.change(priority, { target: { value: "sheddable" } });
+    expect(seen.at(-1)?.band).toBe("sheddable");
+  });
+
+  it("says how many requests may wait, and that 0 refuses at once", () => {
+    const seen: ClientKeyLimits[] = [];
+    render(<Harness start={DEFAULT_CLIENT_LIMITS} seen={seen} />);
+    const waiting = screen.getByLabelText("Requests that may wait") as HTMLInputElement;
+    expect(waiting.value).toBe("8");
+    expect(screen.getByText(/0 refuses at once/)).toBeInTheDocument();
+    fireEvent.change(waiting, { target: { value: "0" } });
+    expect(seen.at(-1)?.maxQueuedRequests).toBe(0);
+  });
+
+  it("sends a band and a queue bound only when they are not the defaults", () => {
+    const sent = cleanClientLimits(DEFAULT_CLIENT_LIMITS);
+    expect("band" in sent || "maxQueuedRequests" in sent).toBe(false);
+    expect(
+      cleanClientLimits({ ...DEFAULT_CLIENT_LIMITS, band: "background", maxQueuedRequests: 0 }),
+    ).toMatchObject({ band: "background", maxQueuedRequests: 0 });
+  });
+
+  it("names a lower band and the line in the key's one-line summary", () => {
+    expect(describeClientLimits({ ...DEFAULT_CLIENT_LIMITS, band: "background" })).toMatch(
+      /Background/,
+    );
+    expect(describeClientLimits({ ...DEFAULT_CLIENT_LIMITS, maxQueuedRequests: 0 })).toMatch(
+      /none may wait/,
+    );
+    expect(describeClientLimits(DEFAULT_CLIENT_LIMITS)).toMatch(/8 may wait/);
+    expect(describeClientLimits(DEFAULT_CLIENT_LIMITS)).not.toMatch(/Background|Dropped/);
   });
 });

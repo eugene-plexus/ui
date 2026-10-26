@@ -3683,14 +3683,51 @@ export interface components {
              * @default false
              */
             writeLogs: boolean;
-            /** @default 2 */
+            /**
+             * @description How many of this key's requests run at once, across every
+             *     gateway. A request past it waits in the gateway's queue (row 11)
+             *     while `maxQueuedRequests` allows, and is refused when it does not.
+             * @default 2
+             */
             maxConcurrentRequests: number;
             /** @default 60 */
             requestsPerMinute: number;
+            /**
+             * @description The key's queue band (row 11): which of its requests wait or are
+             *     turned away first when the machines are busy. Absent means
+             *     `interactive`. A verified person's band from their permission
+             *     groups (`ClientAdmissionResult.queueBand`) replaces it, and a
+             *     request's `X-Eugene-Band` header can only lower it. Not part of
+             *     the policy a running request is bound to: changing it never cuts
+             *     a request that is already running.
+             */
+            band?: components["schemas"]["QueueBand"];
+            /**
+             * @description How many of this key's requests may wait in one gateway's queue
+             *     for each person (row 11): Workbench's one app key serves
+             *     everyone, so each verified person has a line of their own. A
+             *     request past it is refused with `key_queue_full` and
+             *     `Retry-After`. `0` refuses at once, as before the queue. Not part
+             *     of the policy a running request is bound to.
+             * @default 8
+             */
+            maxQueuedRequests: number;
         };
         ClientKeyUpdateRequest: {
             limits: components["schemas"]["ClientKeyLimits"];
         };
+        /**
+         * @description Since row 11 the gateway sends `check` when a request arrives and
+         *     `acquire` when the request leaves its queue, so a request that waits
+         *     holds no lease. A `check` that names a `model` applies the key's
+         *     `allowedModels` as `acquire` does, and takes nothing.
+         *
+         *     An `acquire` refused for the key's limits is a 429 with
+         *     `Retry-After` and `X-Eugene-Refusal-Reason`: `concurrency` when the
+         *     key already runs `maxConcurrentRequests` requests (on any gateway;
+         *     the gateway keeps the request's place and asks again), `rate` when
+         *     its `requestsPerMinute` are used (the gateway refuses the request).
+         */
         ClientAdmissionRequest: {
             /** @enum {string} */
             action: "check" | "acquire" | "renew" | "release";
@@ -3749,6 +3786,16 @@ export interface components {
          * @enum {string}
          */
         QueueBand: "interactive" | "background" | "sheddable";
+        /**
+         * @description Why an `acquire` was refused with a 429, in its
+         *     `X-Eugene-Refusal-Reason` header (row 11): `concurrency`, the key
+         *     already runs `maxConcurrentRequests` requests; `rate`, its
+         *     `requestsPerMinute` are used. An agent that forwards the root's
+         *     answer passes the header on, and a standalone agent sets it the same
+         *     way.
+         * @enum {string}
+         */
+        AdmissionRefusalReason: "concurrency" | "rate";
         ClientKey: {
             id: string;
             name: string;
@@ -7595,10 +7642,16 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Shared concurrency/rate allowance exhausted. */
+            /**
+             * @description Shared concurrency/rate allowance exhausted. `X-Eugene-Refusal-Reason`
+             *     says which (row 11): the gateway keeps a request refused for
+             *     `concurrency` in its queue and asks again, and refuses one refused
+             *     for `rate`.
+             */
             429: {
                 headers: {
                     "Retry-After"?: number;
+                    "X-Eugene-Refusal-Reason"?: components["schemas"]["AdmissionRefusalReason"];
                     [name: string]: unknown;
                 };
                 content?: never;
