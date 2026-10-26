@@ -2,21 +2,32 @@
  * Adding a search account (P8): the pure half, tested without a browser.
  *
  * A search account is a tool-driver the agent supervises, one per provider
- * account: a SearXNG instance, a Brave Search subscription, or a Gemini key used for Google Search. Web search
+ * account: a SearXNG instance, a Brave Search subscription, a Gemini key used for Google Search, or a
+ * Tavily key (row 59a). Web search
  * then runs for any model that calls tools -- Codex's live search, Claude
  * Code's WebSearch, chat's `web_search_options` -- on this account.
  */
 
 import type { Component } from "@/lib/types";
 
-export type SearchProvider = "searxng" | "brave" | "google";
+export type SearchProvider = "searxng" | "brave" | "google" | "tavily";
+
+/** Tavily's two search depths, the account's `searchDepth`. */
+export type TavilyDepth = "basic" | "advanced";
 
 export interface SearchDraft {
   provider: SearchProvider;
-  /** SearXNG: the instance's address. Unused for Brave. */
+  /** SearXNG: the instance's address. Unused for the keyed providers. */
   address: string;
-  /** Brave: the subscription token. Google: a Gemini API key. Unused for SearXNG. */
+  /** Brave: the subscription token. Google: a Gemini API key. Tavily: its key. Unused for SearXNG. */
   apiKey: string;
+  /** Tavily only: how hard it searches. Basic when not chosen. */
+  depth?: TavilyDepth;
+}
+
+/** The providers that take a key and no address. */
+function keyed(provider: SearchProvider): boolean {
+  return provider === "brave" || provider === "google" || provider === "tavily";
 }
 
 export function blankSearch(): SearchDraft {
@@ -43,7 +54,19 @@ export const SEARCH_PROVIDERS: ReadonlyArray<{
     label: "Google Search (Gemini API key)",
     says: "Google's own search, reached with a Gemini API key. Google bills each search.",
   },
+  {
+    id: "tavily",
+    label: "Tavily",
+    says: "A paid search service made for AI models. Each search costs Tavily credits.",
+  },
 ];
+
+/** Tavily's depths, with what each costs, in one line (Tavily's prices as of 2026-10). */
+export const TAVILY_DEPTHS: ReadonlyArray<{ id: TavilyDepth; label: string }> = [
+  { id: "basic", label: "Basic" },
+  { id: "advanced", label: "Advanced" },
+];
+export const TAVILY_DEPTH_COST = "Basic costs 1 credit a search; advanced costs 2.";
 
 /** What the page tells a person who picks Google, before they add it (GS1, GS3, GS4). */
 export const GOOGLE_BILLING =
@@ -55,7 +78,7 @@ export const GOOGLE_MODEL =
 
 /** Whether the form holds enough to try. An address must be a web address. */
 export function searchDraftComplete(draft: SearchDraft): boolean {
-  if (draft.provider === "brave" || draft.provider === "google") {
+  if (keyed(draft.provider)) {
     return draft.apiKey.trim().length > 0;
   }
   return /^https?:\/\/[^\s/]+/.test(draft.address.trim());
@@ -63,7 +86,10 @@ export function searchDraftComplete(draft: SearchDraft): boolean {
 
 /** The account's settings, as its config trio takes them. */
 export function searchPatch(draft: SearchDraft): Record<string, unknown> {
-  if (draft.provider === "brave" || draft.provider === "google") {
+  if (draft.provider === "tavily") {
+    return { provider: "tavily", apiKey: draft.apiKey.trim(), searchDepth: draft.depth ?? "basic" };
+  }
+  if (keyed(draft.provider)) {
     return { provider: draft.provider, apiKey: draft.apiKey.trim() };
   }
   return { provider: "searxng", baseUrl: draft.address.trim().replace(/\/+$/, "") };
@@ -111,6 +137,9 @@ export function remedyFor(provider: SearchProvider, error: string): string | nul
   }
   if (provider === "google" && /API key|401|403/.test(error)) {
     return "Copy the key again from aistudio.google.com/apikey and press Try again.";
+  }
+  if (provider === "tavily" && /API key|401|403/.test(error)) {
+    return "Copy the key again from app.tavily.com and press Try again.";
   }
   return null;
 }

@@ -41,6 +41,8 @@ import {
   searchDraftComplete,
   searchNameFor,
   searchPatch,
+  TAVILY_DEPTH_COST,
+  TAVILY_DEPTHS,
 } from "./searchAccount";
 
 interface TestResult {
@@ -170,7 +172,11 @@ export default function AddSearchAccountPage() {
                 </label>
               ) : (
                 <label className="mb-4 block text-sm">
-                  {draft.provider === "google" ? "Gemini API key" : "Brave Search API key"}
+                  {draft.provider === "google"
+                    ? "Gemini API key"
+                    : draft.provider === "tavily"
+                      ? "Tavily API key"
+                      : "Brave Search API key"}
                   <input
                     className={field}
                     type="password"
@@ -183,9 +189,37 @@ export default function AddSearchAccountPage() {
                   <span className="mt-1 block text-[color:var(--muted)]">
                     {draft.provider === "google"
                       ? "From Google AI Studio, at aistudio.google.com/apikey. Stored encrypted."
-                      : "From api-dashboard.search.brave.com. Stored encrypted."}
+                      : draft.provider === "tavily"
+                        ? "From app.tavily.com. Stored encrypted."
+                        : "From api-dashboard.search.brave.com. Stored encrypted."}
                   </span>
                 </label>
+              )}
+
+              {draft.provider === "tavily" && (
+                <fieldset disabled={working} className="mb-4">
+                  <legend className="font-ui mb-1 text-sm font-semibold">Search depth</legend>
+                  <div className="flex gap-4 text-sm">
+                    {TAVILY_DEPTHS.map((d) => (
+                      <label key={d.id} className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="search-depth"
+                          checked={(draft.depth ?? "basic") === d.id}
+                          onChange={() => patch({ depth: d.id })}
+                          data-testid={`search-depth-${d.id}`}
+                        />
+                        {d.label}
+                      </label>
+                    ))}
+                  </div>
+                  <span
+                    className="mt-1 block text-sm text-[color:var(--muted)]"
+                    data-testid="search-depth-cost"
+                  >
+                    {TAVILY_DEPTH_COST}
+                  </span>
+                </fieldset>
               )}
 
               {draft.provider === "google" && (
