@@ -1258,17 +1258,52 @@ export interface paths {
          *     the row 57 client-run tools and compaction, whose wire shapes
          *     follow OpenAI's documented API.
          *
-         *     ### Stateless: the conversation lives in the client
+         *     ### Stored responses and conversations (row 54)
          *
          *     Codex sends `store: false` and **resends the whole conversation
-         *     on every turn**, with no `previous_response_id`. This gateway
-         *     keeps no response store either, so `previous_response_id`,
-         *     `conversation`, `prompt` (a stored prompt template),
+         *     on every turn**, with no `previous_response_id`; nothing of it is
+         *     kept. **A request with `store: true`, OpenAI's default when
+         *     `store` is absent, is kept** in the install's store (row 53)
+         *     for its owner -- the person the root verified, else the client
+         *     key -- for `responseDays` (30, OpenAI's retention), then deleted
+         *     for good. It is kept after it ends and before its last event or
+         *     its body is sent, so the next request can name it at once; the
+         *     response says `store: true` only when it was kept. A stream the
+         *     client left is kept with what was sent, `incomplete`. Not kept,
+         *     and `store` named on the ignored-settings header when it was
+         *     sent `true`: a request of the owner's console session, a request
+         *     while the owner has turned responses off (Settings -> Store,
+         *     "Keep responses when apps ask"), and one while the store cannot
+         *     be reached.
+         *
+         *     **`previous_response_id`** continues a stored response: the
+         *     gateway reads its chain from the store (each link the owner's
+         *     own, oldest first), and the model is given that conversation
+         *     followed by this request's `input`, as for a client that sends it
+         *     all; context limits apply as they do to such a client.
+         *     `instructions` are not carried along a chain (OpenAI's rule):
+         *     when the previous response had some and this request sends none,
+         *     `previous_response_id.instructions` is named on the
+         *     ignored-settings header. A missing, ended or other owner's id is
+         *     the one 400 `previous_response_not_found` (OpenAI's), and a chain
+         *     whose earlier response was deleted is a 400 naming it.
+         *     **`conversation`** (an id, or `{"id": ...}`) continues a
+         *     conversation made at `/v1/conversations`: its items come first,
+         *     and this request's input and output items are added to it when
+         *     it ends (even with `store: false`). A request may send one of the
+         *     two, not both. Either one while responses are off is a 400 that
+         *     names the setting; while the store cannot be reached, a 503
+         *     naming the cause.
+         *
+         *     A request in a chain or a conversation is kept on one replica:
+         *     conversation affinity keys it by the conversation's id or the
+         *     chain's first response before any other key.
+         *
+         *     `prompt` (a reusable prompt made in OpenAI's dashboard),
          *     `background: true` and an `item_reference` input item are each
-         *     refused with a 400 naming the field: each points at state that
-         *     exists only on OpenAI's servers. `store: true` is accepted and
-         *     named on the ignored-settings header, because nothing is kept;
-         *     every response reports `store: false`.
+         *     refused with a 400 naming the field: Eugene has no prompt
+         *     dashboard, makes no background responses and does not resolve
+         *     item references.
          *
          *     ### What the input becomes
          *
@@ -1489,7 +1524,7 @@ export interface paths {
          *     (`web_search_call.action.sources` is always included on a search
          *     that ran). `max_tool_calls` bounds the searches one response may
          *     run (P8). Refused with a 400 naming the
-         *     field: every stateful field above, `top_logprobs` above 0 and the
+         *     field: `prompt`, `background: true`, `top_logprobs` above 0 and the
          *     `message.output_text.logprobs` include, an `input_file` with a
          *     `file_url`, `tool_choice` forcing an undeclared or
          *     refused tool, and any top-level field not listed in
@@ -1532,8 +1567,9 @@ export interface paths {
          *     Admission, model routing, client-key scope, `localOnly`, the
          *     16 MiB JSON body limit, timeouts and metrics use the same path as
          *     `/v1/responses`. No client tool is executed while summarising.
-         *     This endpoint returns JSON only. It does not add chain loading:
-         *     `previous_response_id` remains refused until row 54 supplies it.
+         *     This endpoint returns JSON only. `previous_response_id` reads
+         *     that stored response's chain first, as on `/v1/responses` (row
+         *     54); nothing compacted is kept.
          */
         post: operations["compactResponse"];
         delete?: never;
@@ -1569,6 +1605,8 @@ export interface paths {
          *     cannot be checked right now is the same 400 (fail-closed), never a
          *     5xx. It is admitted as `/v1/responses` is: the same key scope and
          *     `localOnly` rule, and the same body limit (2026-10-12).
+         *     `previous_response_id` and `conversation` are read from the store
+         *     first and counted with the input (row 54).
          */
         post: operations["countResponseInputTokens"];
         delete?: never;
@@ -1582,21 +1620,171 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                responseId: string;
+                responseId: components["parameters"]["StoredResponseId"];
             };
             cookie?: never;
         };
         /**
-         * Always 404 -- this gateway keeps no response store.
-         * @description Answered so that a client asking for a stored response is told
-         *     why there is none, in OpenAI's envelope, rather than receiving a
-         *     framework's bare 404. `DELETE`, and the `cancel` and
-         *     `input_items` sub-resources, answer the same way.
+         * A stored response, as it was returned (row 54).
+         * @description The caller's own stored response, `output` included. A missing,
+         *     ended or other owner's id is the same 404 (`Response with id
+         *     '...' not found.`). `stream=true`, which replays a background
+         *     response, is a 400: none is made here. Admitted as the files
+         *     doors are (row 53): a check of the key or person, no lease.
          */
         get: operations["retrieveResponse"];
         put?: never;
         post?: never;
+        /**
+         * Delete a stored response, for good.
+         * @description A later response chained from it can no longer be continued (a
+         *     400 naming the deleted one).
+         */
+        delete: operations["deleteResponse"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/responses/{responseId}/input_items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                responseId: components["parameters"]["StoredResponseId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The items the model was given for a stored response.
+         * @description The conversation as the model received it, each item with its
+         *     `id`: for a chained response, every earlier response's input and
+         *     output items, then its own input; for one in a conversation, the
+         *     conversation's items before it, then its own input. Paged as
+         *     OpenAI pages it (`limit` 1-100, default 20; `order`, default
+         *     `desc`; `after` an item id).
+         */
+        get: operations["listResponseInputItems"];
+        put?: never;
+        post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/responses/{responseId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                responseId: components["parameters"]["StoredResponseId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Always a 400 -- only a background response can be cancelled, and none is made here. */
+        post: operations["cancelResponse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a conversation (row 54), with up to 20 items.
+         * @description OpenAI's Conversations API over the install's store. A
+         *     conversation belongs to its caller (the person, else the key),
+         *     is seen by no one else, and is kept until `DELETE`, as OpenAI
+         *     keeps one; an expert may set `conversationDays` (Settings ->
+         *     Store) to end each one that many days after its last use. A
+         *     removed person's are hidden, then deleted (row 53's rule). A
+         *     Responses request with
+         *     `conversation` reads its items first and adds its own input and
+         *     output when it ends. The owner's console session keeps none
+         *     (403). While the owner has turned responses off, every
+         *     conversation door is a 403 naming the setting. Each item is
+         *     given an `id` when it has none; message content sent as a string
+         *     is kept as one `input_text` (or, for the assistant,
+         *     `output_text`) part. Body limit 16 MiB.
+         */
+        post: operations["createConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{conversationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["StoredConversationId"];
+            };
+            cookie?: never;
+        };
+        /** One of the caller's conversations. */
+        get: operations["retrieveConversation"];
+        put?: never;
+        /** Replace a conversation's metadata. */
+        post: operations["updateConversation"];
+        /**
+         * Delete a conversation and its items, for good.
+         * @description The responses kept in it stay until their own end, as on OpenAI.
+         */
+        delete: operations["deleteConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{conversationId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["StoredConversationId"];
+            };
+            cookie?: never;
+        };
+        /** One page of a conversation's items. */
+        get: operations["listConversationItems"];
+        put?: never;
+        /** Add up to 20 items to the end of a conversation. */
+        post: operations["createConversationItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{conversationId}/items/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["StoredConversationId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /** One item of a conversation. */
+        get: operations["retrieveConversationItem"];
+        put?: never;
+        post?: never;
+        /** Delete one item of a conversation, for good. */
+        delete: operations["deleteConversationItem"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6196,7 +6384,10 @@ export interface components {
          *     reads, not what it refuses**: the refusals are enforced against
          *     the raw body by the implementation, with a 400 naming the field,
          *     and the endpoint description lists them. A top-level field not
-         *     named here is refused.
+         *     named here is refused. `input` is optional, as on OpenAI, with
+         *     `previous_response_id` or `conversation` (row 54): absent, the
+         *     stored conversation is continued as it stands. Without either it
+         *     is required.
          */
         ResponsesRequest: {
             /** @description A model id from `GET /v1/models`, resolved against this install's slots. */
@@ -6205,7 +6396,7 @@ export interface components {
              * @description A string (one user message), or the conversation as a list of
              *     items. Codex resends the whole conversation on every turn.
              */
-            input: string | components["schemas"]["ResponsesInputItem"][];
+            input?: string | components["schemas"]["ResponsesInputItem"][];
             /** @description The leading system message. */
             instructions?: string | null;
             tools?: components["schemas"]["ResponsesTool"][];
@@ -6252,9 +6443,18 @@ export interface components {
              *     `message.output_text.logprobs` is refused.
              */
             include?: string[] | null;
-            /** @description Nothing is ever stored; `true` is named on the ignored-settings header. */
+            /**
+             * @description Absent or `true` (OpenAI's default), the response is kept for
+             *     its owner for `responseDays` (row 54); `false` keeps nothing
+             *     (Codex sends `false`). The response's own `store` says whether
+             *     it was kept; a `true` that is not kept is named on the
+             *     ignored-settings header.
+             */
             store?: boolean | null;
-            /** @description Refused when set. This gateway keeps no response store. */
+            /**
+             * @description A stored response of this caller's to continue: its chain is
+             *     the conversation so far. Not with `conversation`.
+             */
             previous_response_id?: string | null;
             /** @enum {string|null} */
             truncation?: "auto" | "disabled" | null;
@@ -6277,17 +6477,24 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             prompt_cache_retention?: string | null;
-            /** @description Refused when set. Conversations are stored objects. */
-            conversation?: unknown;
-            /** @description Refused when set. A stored prompt template exists only at OpenAI. */
+            /**
+             * @description A conversation of this caller's (`conv_...`, or `{"id":
+             *     "conv_..."}`) to continue: its items come first, and this
+             *     request's input and output are added to it. Not with
+             *     `previous_response_id`.
+             */
+            conversation?: string | components["schemas"]["ResponsesConversationRef"] | null;
+            /**
+             * @description Refused when set: a reusable prompt is made in OpenAI's
+             *     dashboard, and Eugene has no prompt dashboard.
+             */
             prompt?: unknown;
         } & {
             [key: string]: unknown;
         };
         /**
-         * @description Request for standalone compaction. The model and conversation are
-         *     required while no response store exists. Unknown top-level fields
-         *     are refused with a 400 naming the field.
+         * @description Request for standalone compaction. Unknown top-level fields are
+         *     refused with a 400 naming the field.
          */
         ResponsesCompactRequest: {
             /** @description A model id from `GET /v1/models`, resolved against this install's slots. */
@@ -6299,7 +6506,7 @@ export interface components {
             input: string | components["schemas"]["ResponsesInputItem"][];
             /** @description Summary guidance carried alongside the fixed compaction prompt. */
             instructions?: string | null;
-            /** @description Refused when set until row 54 supplies chain loading; send input instead. */
+            /** @description A stored response of this caller's whose chain is compacted with `input` (row 54). */
             previous_response_id?: string | null;
         } & {
             [key: string]: unknown;
@@ -6495,7 +6702,9 @@ export interface components {
          *     then one call item per tool call, using the declared tool's type
          *     (`function_call`, `custom_tool_call`, `local_shell_call`,
          *     `shell_call` or `apply_patch_call`). The request's settings
-         *     are echoed as OpenAI echoes them; `store` is always false.
+         *     are echoed as OpenAI echoes them; `store` says whether the
+         *     response was kept (row 54), and `previous_response_id` and
+         *     `conversation` are echoed when sent.
          */
         ResponsesResponse: {
             id: string;
@@ -6686,6 +6895,80 @@ export interface components {
             };
             usage?: components["schemas"]["SystemOneUsage"];
             x_eugene_plexus?: components["schemas"]["CompletionRoutingInfo"];
+        };
+        /**
+         * @description The order items are listed in, by their place in the conversation.
+         * @default desc
+         * @enum {string}
+         */
+        StoredItemOrder: "asc" | "desc";
+        /** @description `DELETE /v1/responses/{responseId}` (row 54). */
+        ResponsesDeleted: {
+            id: string;
+            /** @constant */
+            object: "response.deleted";
+            /** @constant */
+            deleted: true;
+        };
+        /**
+         * @description One page of a stored response's input items (row 54), OpenAI's
+         *     list: `first_id` and `last_id` name the page's ends (null when it
+         *     is empty).
+         */
+        ResponsesItemList: {
+            /** @constant */
+            object: "list";
+            data: components["schemas"]["ResponsesInputItem"][];
+            first_id: string | null;
+            last_id: string | null;
+            has_more: boolean;
+        };
+        /**
+         * @description OpenAI's metadata: 16 pairs at most, a key of at most 64
+         *     characters and a value of at most 512.
+         */
+        ConversationMetadata: {
+            [key: string]: string;
+        };
+        /** @description A conversation named by object, as OpenAI's SDKs may send it. */
+        ResponsesConversationRef: {
+            id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description A conversation (row 54), OpenAI's shape. */
+        Conversation: {
+            id: string;
+            /** @constant */
+            object: "conversation";
+            created_at: number;
+            metadata: components["schemas"]["ConversationMetadata"];
+        };
+        ConversationDeleted: {
+            id: string;
+            /** @constant */
+            object: "conversation.deleted";
+            /** @constant */
+            deleted: true;
+        };
+        ConversationCreateRequest: {
+            items?: components["schemas"]["ResponsesInputItem"][] | null;
+            metadata?: components["schemas"]["ConversationMetadata"] | null;
+        };
+        ConversationUpdateRequest: {
+            metadata: components["schemas"]["ConversationMetadata"] | null;
+        };
+        ConversationItemsCreateRequest: {
+            items: components["schemas"]["ResponsesInputItem"][];
+        };
+        /** @description One page of a conversation's items, OpenAI's list. */
+        ConversationItemList: {
+            /** @constant */
+            object: "list";
+            data: components["schemas"]["ResponsesInputItem"][];
+            first_id: string | null;
+            last_id: string | null;
+            has_more: boolean;
         };
         /**
          * @description Error envelope for the OpenAI-compatible operations, `/v1/responses`
@@ -8340,6 +8623,12 @@ export interface components {
          *     Use off for intentional repeated passages.
          */
         RepetitionMode: "off" | "observe" | "stop";
+        StoredResponseId: string;
+        StoredConversationId: string;
+        StoredItemLimit: number;
+        StoredItemOrder: components["schemas"]["StoredItemOrder"];
+        /** @description An item id; the page starts after it, in `order`. */
+        StoredItemAfter: string;
         /**
          * @description Lower this request's queue band (row 11): `background` or
          *     `sheddable` waits behind `interactive` work when the machines are
@@ -9963,7 +10252,9 @@ export interface operations {
              *     image it cannot carry or no ready backend can see, a backend
              *     refused it -- **or it names a model nothing serves**, which is
              *     a 400 here and not a 404 because Codex retries a 404 five
-             *     times before showing it.
+             *     times before showing it. A `previous_response_id` this caller
+             *     has no stored response for is the 400
+             *     `previous_response_not_found`, as on OpenAI.
              */
             400: {
                 headers: {
@@ -9975,6 +10266,18 @@ export interface operations {
             };
             /** @description Missing, malformed, expired or revoked credential. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /**
+             * @description `conversation` names no conversation of this caller's (missing,
+             *     ended or another's: one answer).
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10007,7 +10310,11 @@ export interface operations {
                     "application/json": components["schemas"]["OpenAIErrorResponse"];
                 };
             };
-            /** @description A backend serves the model but is not ready, or the gateway is starting. */
+            /**
+             * @description A backend serves the model but is not ready, or the gateway is
+             *     starting; or `previous_response_id` or `conversation` was sent
+             *     while the install's store cannot be reached (the cause named).
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -10160,16 +10467,512 @@ export interface operations {
     };
     retrieveResponse: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Accepted; a stored response is returned as it was made. */
+                include?: string[];
+            };
             header?: never;
             path: {
-                responseId: string;
+                responseId: components["parameters"]["StoredResponseId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description No response is ever stored here. */
+            /** @description The response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponsesResponse"];
+                };
+            };
+            /** @description `stream=true`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description Missing, malformed, expired or revoked credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The owner turned responses off (Settings -> Store). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description No stored response with this id for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The install's store cannot be reached; the cause is named. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteResponse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                responseId: components["parameters"]["StoredResponseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponsesDeleted"];
+                };
+            };
+            /** @description Missing, malformed, expired or revoked credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description No stored response with this id for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The install's store cannot be reached; the cause is named. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    listResponseInputItems: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["StoredItemLimit"];
+                order?: components["parameters"]["StoredItemOrder"];
+                /** @description An item id; the page starts after it, in `order`. */
+                after?: components["parameters"]["StoredItemAfter"];
+                /** @description Accepted; items are returned as they were kept. */
+                include?: string[];
+            };
+            header?: never;
+            path: {
+                responseId: components["parameters"]["StoredResponseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of items. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponsesItemList"];
+                };
+            };
+            /** @description A bad page parameter, or a chain whose earlier response was deleted. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description No stored response with this id for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The install's store cannot be reached; the cause is named. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    cancelResponse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                responseId: components["parameters"]["StoredResponseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No background response exists to cancel. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    createConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            /** @description A bad item or metadata, named. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description Missing, malformed, expired or revoked credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description Responses are off, or the caller is the owner's console session. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The body passes 16 MiB, or the caller's quota would be passed. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description The install's store cannot be reached; the cause is named. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    retrieveConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["StoredConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            /** @description No conversation with this id for this caller (missing, ended or another's). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    updateConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["StoredConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            /** @description Bad metadata, named. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description No conversation with this id for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["StoredConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationDeleted"];
+                };
+            };
+            /** @description No conversation with this id for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    listConversationItems: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["StoredItemLimit"];
+                order?: components["parameters"]["StoredItemOrder"];
+                /** @description An item id; the page starts after it, in `order`. */
+                after?: components["parameters"]["StoredItemAfter"];
+                /** @description Accepted; items are returned as they were kept. */
+                include?: string[];
+            };
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["StoredConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of items. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationItemList"];
+                };
+            };
+            /** @description No conversation with this id for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    createConversationItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["StoredConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationItemsCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The items added, in order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationItemList"];
+                };
+            };
+            /** @description A bad item, named. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+            /** @description No conversation with this id for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    retrieveConversationItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["StoredConversationId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The item, as it was kept. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponsesInputItem"];
+                };
+            };
+            /** @description No such item in a conversation of this caller's. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteConversationItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["StoredConversationId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conversation, as OpenAI answers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            /** @description No such item in a conversation of this caller's. */
             404: {
                 headers: {
                     [name: string]: unknown;
