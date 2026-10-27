@@ -659,6 +659,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/exec-approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The programs an owner approved for Eugene's own account.
+         * @description Row 8, part 8c (call R8-EXEC-TRUST). Run as an account of its
+         *     own (the Mac's daemon, a Linux system install), the agent runs a
+         *     program that one other account can change only after an owner
+         *     approves it here; see `ExecTrust`. An approval lapses, and is
+         *     dropped from this list, the first time a check finds the file or
+         *     any folder or link on its way different from what was approved.
+         *     A person's own install never needs one, and lists none. Approvals
+         *     never cross a move to the Mac's daemon: the owner approves again
+         *     there.
+         */
+        get: operations["listExecApprovals"];
+        put?: never;
+        /**
+         * Let Eugene's own account run a program one other account can change.
+         * @description Row 8, part 8c. The agent checks `path` again now. It approves
+         *     only when the check says `needs_approval` and the file's SHA-256
+         *     is the one the console showed (`ExecTrust.sha256`); otherwise 409
+         *     with the cause named: anyone else can change it (`refused`),
+         *     Eugene runs it already (`ok`), or the file changed since it was
+         *     shown. Approving a file again replaces its earlier approval.
+         *
+         *     **An approval trusts that account.** The hash and the chain catch
+         *     a change made after the approval; they are not a boundary against
+         *     the account that owns the file, which can act as Eugene's account
+         *     once its program runs.
+         */
+        post: operations["approveExec"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/exec-approvals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Take an approval back.
+         * @description The program is refused again from its next start; a process
+         *     already running keeps running.
+         */
+        delete: operations["removeExecApproval"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/engines": {
         parameters: {
             query?: never;
@@ -5807,6 +5872,91 @@ export interface components {
         EngineList: {
             engines: components["schemas"]["EngineDescriptor"][];
         };
+        /**
+         * @description Why Eugene's own account did not run a program (row 8, part 8c).
+         *     The check walks the program's path from `/`: every folder, every
+         *     link and where it points, the file, a script's interpreter and
+         *     the Python environment it belongs to.
+         *
+         *     - `needs_approval`: everything is owned by root, by Eugene's
+         *       account, or by one other account, and nothing can be changed
+         *       by a group or by others. It runs once an owner approves it
+         *       (`POST /v1/exec-approvals`).
+         *     - `refused`: a group or others can change something on the way
+         *       (mode bits, a macOS ACL entry, a volume that ignores
+         *       ownership), two or more other accounts own parts of it, or it
+         *       cannot be checked. It never runs; the error names the path and
+         *       who can change it.
+         *
+         *     A program owned by root and Eugene's account alone runs, and is
+         *     not reported.
+         * @enum {string}
+         */
+        ExecTrustKind: "needs_approval" | "refused";
+        /**
+         * @description A program Eugene's own account did not run, and what an owner can
+         *     do about it (row 8, part 8c). Present only when the agent runs as
+         *     an account of its own (the Mac's daemon, a Linux system install).
+         */
+        ExecTrust: {
+            kind: components["schemas"]["ExecTrustKind"];
+            /**
+             * @description The path the program is looked up by: the setting's path made
+             *     absolute, its links kept (`/Users/troy/current/llama-server`,
+             *     not where `current` points). What `POST /v1/exec-approvals`
+             *     takes and what an approval is kept by, so the folders and links
+             *     approved are the ones every later check walks.
+             */
+            path: string;
+            /**
+             * @description `needs_approval`: the one account other than root and
+             *     Eugene's that can change the program. A console says that
+             *     approving it lets this account act as Eugene.
+             */
+            account?: string;
+            /**
+             * @description `needs_approval`: the program file's SHA-256 now, which an
+             *     approval must name.
+             */
+            sha256?: string;
+        };
+        ExecApprovalRequest: {
+            /** @description `ExecTrust.path`. */
+            path: string;
+            /** @description `ExecTrust.sha256`: the file as it was shown. */
+            sha256: string;
+        };
+        /** @description One file, folder or link the check walked, as it was approved. */
+        ExecChainItem: {
+            path: string;
+            uid: number;
+            /** @description `st_mode`: the type and permission bits. */
+            mode: number;
+        };
+        /**
+         * @description An owner's approval of one program for Eugene's own account (row
+         *     8, part 8c). It holds while the path, the other account, the
+         *     file's SHA-256 and every item of the chain are what they were;
+         *     the first check that finds any of them different drops it, and
+         *     the program asks again.
+         */
+        ExecApproval: {
+            id: string;
+            /** @description The program approved, by the path it is looked up by (`ExecTrust.path`). */
+            path: string;
+            /** @description The other account that can change it. */
+            account: string;
+            accountUid: number;
+            sha256: string;
+            chain: components["schemas"]["ExecChainItem"][];
+            /** Format: date-time */
+            approvedAt: string;
+            /** @description Who approved it, as their session named them. */
+            approvedBy?: string;
+        };
+        ExecApprovalList: {
+            approvals: components["schemas"]["ExecApproval"][];
+        };
         /** @description One engine adapter, plus what the agent found on this host. */
         EngineDescriptor: {
             engine: components["schemas"]["EngineKind"];
@@ -5955,6 +6105,11 @@ export interface components {
             flagSchema?: components["schemas"]["ConfigSchema"];
             /** @description Populated when `available: false`. */
             error?: string;
+            /**
+             * @description Present when `error` is Eugene's own account not running the
+             *     binary it found (row 8, part 8c).
+             */
+            execTrust?: components["schemas"]["ExecTrust"];
             managed?: components["schemas"]["ManagedEngine"];
             acquisition?: components["schemas"]["EngineAcquisition"];
             /**
@@ -6498,6 +6653,25 @@ export interface components {
              *     Cleared on a successful start.
              */
             lastError?: string;
+            /**
+             * @description The program this runtime's `binary` names, when the agent runs
+             *     in Eugene's own account and will not run it because someone
+             *     other than root or that account could change it (row 8):
+             *     `lastError` says who. The way out a console offers is to clear
+             *     `binary` (`PATCH /v1/runtimes/{name}` with the spec without it),
+             *     so the runtime runs Eugene's own build of the engine, installed
+             *     first with `POST /v1/engines/{engine}/install` when there is
+             *     none. Absent otherwise; cleared on a successful start.
+             */
+            refusedBinary?: string;
+            /**
+             * @description Present when the last start failed because Eugene's own account
+             *     did not run the engine's program, whether a runtime's `binary`
+             *     or one the agent found (row 8, part 8c). `needs_approval`: a
+             *     console asks the owner, and `POST /v1/exec-approvals` lets it
+             *     run. Cleared on a successful start.
+             */
+            execTrust?: components["schemas"]["ExecTrust"];
             /**
              * @description UUIDs of the cards used at the last successful start, recorded
              *     by the agent. An observation, never a profile setting or a
@@ -10794,6 +10968,83 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    listExecApprovals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The approvals. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecApprovalList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    approveExec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExecApprovalRequest"];
+            };
+        };
+        responses: {
+            /** @description Approved. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecApproval"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description Not a program to approve, or not the file that was shown. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeExecApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Taken back. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
         };
     };
     listEngines: {
