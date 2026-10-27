@@ -8,7 +8,13 @@
  * quietly.
  */
 
-export type MachineLinkState = "encrypted" | "no_key" | "unreachable" | "refused" | "unknown";
+export type MachineLinkState =
+  | "encrypted"
+  | "no_key"
+  | "unreachable"
+  | "door_down"
+  | "refused"
+  | "unknown";
 
 export interface MachineLinkInput {
   name: string;
@@ -75,6 +81,14 @@ export function describeMachineLink(node: MachineLinkInput): MachineLinkLine | n
         fix: firewallFix(node.os, port),
       };
     }
+    case "door_down":
+      // The machine said why its machine port does not answer (agent#38):
+      // "port 8083 is held by python (pid 4242)". Its words are the cause.
+      return {
+        text: `Not reachable: ${link.detail || `${who}'s machine port is not open`}`,
+        tone: "bad",
+        fix: null,
+      };
     case "refused":
       return {
         text: `${who}'s machine key doesn't match the one it registered. Nothing was sent to it.`,

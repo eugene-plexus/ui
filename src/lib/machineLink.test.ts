@@ -36,6 +36,19 @@ describe("describeMachineLink", () => {
     expect(line?.fix).toContain("8283");
   });
 
+  it("says why a machine's port does not answer, in that machine's words", () => {
+    const line = describeMachineLink({
+      name: "amish",
+      label: "Amish_Station",
+      machineTls: { state: "door_down", detail: "port 8083 is held by python (pid 4242)" },
+    });
+    expect(line?.text).toBe("Not reachable: port 8083 is held by python (pid 4242)");
+    expect(line?.tone).toBe("bad");
+    expect(describeMachineLink({ name: "amish", machineTls: { state: "door_down" } })?.text).toBe(
+      "Not reachable: amish's machine port is not open",
+    );
+  });
+
   it("says a refused key is a refusal", () => {
     const line = describeMachineLink({ name: "amish", machineTls: { state: "refused" } });
     expect(line?.text).toBe(
