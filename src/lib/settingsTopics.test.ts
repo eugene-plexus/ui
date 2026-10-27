@@ -151,6 +151,12 @@ describe("every served field has a topic", () => {
     );
   });
 
+  it("files which MCP servers apps may reach under Access, not under Answer defaults (row 59b)", () => {
+    expect(topicOf("gateway", { key: "remoteMcp", category: "generation" })).toBe("access");
+    expect(topicOf("gateway", { key: "maxToolCalls", category: "generation" })).toBe("answers");
+    expect(TOPICS.find((t) => t.id === "access")?.blurb).toContain("MCP servers");
+  });
+
   it("puts the two security modes and the gateway's CORS in one topic", () => {
     expect(topicOf("agent", { key: "securityMode", category: "security" })).toBe("access");
     expect(topicOf("control", { key: "securityMode", category: "security" })).toBe("access");
