@@ -904,8 +904,12 @@ function RowView({
   const sentence = row.runtime ? statusSentence(row.runtimeStatus) : null;
   // Why it is stopped, in words (agent#11: "someone stopped it" now
   // outlives a reboot, and the row says so).
+  // Row 35: a runtime Pause stopped reads "Paused", as in effect on its machine.
+  const paused = status === "stopped" && (row.stopReason ?? own?.stopReason) === "paused";
   const stopReason =
-    status === "stopped" ? stopReasonWords(row.stopReason ?? own?.stopReason ?? null) : null;
+    status === "stopped" && !paused
+      ? stopReasonWords(row.stopReason ?? own?.stopReason ?? null)
+      : null;
   // Whether it starts when Eugene does, once the node has said: the box
   // never shows a guess. What was just saved is shown until the node's
   // slower read catches up with it.
@@ -990,9 +994,16 @@ function RowView({
           <span
             className="inline-flex flex-wrap items-center gap-1.5 rounded-full border border-current/20 px-2.5 py-0.5 text-xs font-medium"
             style={{ color: known ? STATUS_TONE[status as RuntimeStatus] : undefined }}
-            title={known ? STATUS_HELP[status as RuntimeStatus] : undefined}
+            title={
+              paused
+                ? "The models on this machine are paused. Resume them on Machines or from its tray icon."
+                : known
+                  ? STATUS_HELP[status as RuntimeStatus]
+                  : undefined
+            }
+            data-testid={paused ? "runtime-paused" : undefined}
           >
-            {status}
+            {paused ? "Paused" : status}
             {stopReason && (
               <span className="ml-1 text-[color:var(--muted)]" data-testid="stop-reason">
                 — {stopReason}

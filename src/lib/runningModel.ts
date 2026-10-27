@@ -155,6 +155,8 @@ const STOP_REASON: Record<StopReason, string> = {
   // PB1: a benchmark or a profile build stopped it, with the person's
   // agreement, and starts it again when the job ends.
   measurement: "a test of this machine paused it, and it starts again when the test ends",
+  // Row 35: Pause, from the machine's tray icon or Machines; Resume starts it.
+  paused: "the models on its machine are paused",
 };
 
 /** A stop reason in the page's words; null when there is none. */

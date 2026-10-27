@@ -2824,6 +2824,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop every model on this machine, and keep serving everything else.
+         * @description Row 35. Takes the launch lock, cancels a benchmark, settings
+         *     build or serving measurement that is running (the models it
+         *     stopped join the pause), stops every runtime that is not stopped
+         *     with `StopReason.paused`, and records the pause, which outlives a
+         *     restart and a reboot. Answers in progress on those models stop
+         *     at once.
+         *
+         *     While paused, every start is refused with 409 and a sentence
+         *     that names the pause: Start, Restart, a declaration, an edit, a
+         *     gateway wake, Run from the Library, a benchmark and a settings
+         *     build. The gateway passes the sentence on to the person who
+         *     asked for the model.
+         *
+         *     The same action as the tray icon's **Pause models**, which asks
+         *     over a local channel instead (`NodeTrayChannel`). The console
+         *     reaches another machine's agent through the usual exchange.
+         *
+         *     An operator session only. A `gateway`, `control` or other
+         *     service token, and a client key, are refused with 401 or 403. A
+         *     second pause changes nothing and answers 200 with the pause as
+         *     it stands and no results.
+         */
+        post: operations["pauseNodeModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/node/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start again what Pause stopped.
+         * @description Row 35. Clears the pause, then starts each runtime in
+         *     `NodePause.runtimes` as the Start button would: through memory
+         *     admission, never forced, under the launch lock. Each result says
+         *     `started`, `refused` (with admission's reason), `gone` or
+         *     `failed`. A machine that is not paused answers 200 with no
+         *     results.
+         *
+         *     An operator session only, as `POST /v1/node/pause`.
+         */
+        post: operations["resumeNodeModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node/trust-bundle": {
         parameters: {
             query?: never;
@@ -4373,7 +4440,92 @@ export interface components {
             install?: components["schemas"]["NodeInstall"];
             update?: components["schemas"]["NodeUpdate"];
             version?: components["schemas"]["NodeVersion"];
+            pause?: components["schemas"]["NodePause"];
         };
+        /**
+         * @description Whether the models on this machine are paused (row 35), and the
+         *     state of the tray icon's channel on Windows.
+         *
+         *     Pause stops every model on this machine and keeps everything
+         *     else serving: the console, the gateway, apps, cloud accounts and
+         *     the other machines. While paused, nothing starts a model here --
+         *     a request, Run, a benchmark, a settings build or a reboot -- and
+         *     a start is refused with 409 naming the pause. Resume
+         *     (`POST /v1/node/resume`) starts again what Pause stopped, through
+         *     memory admission.
+         *
+         *     Present on every agent from row 35 on, paused or not; absent on
+         *     an older agent, which cannot pause. A console offers Pause only
+         *     where it is present. `since`, `by` and `runtimes` are present
+         *     exactly when `paused` is true.
+         */
+        NodePause: {
+            /** @description Whether the models on this machine are paused now. */
+            paused: boolean;
+            /**
+             * Format: date-time
+             * @description When the pause began.
+             */
+            since?: string;
+            by?: components["schemas"]["NodePauseBy"];
+            /**
+             * @description The runtimes Resume starts again: those Pause stopped,
+             *     those a measurement it cancelled had stopped, and those a
+             *     restart during the pause held back. A runtime removed during
+             *     the pause leaves the list.
+             */
+            runtimes?: string[];
+            trayChannel?: components["schemas"]["NodeTrayChannel"];
+        };
+        /**
+         * @description Where the pause came from: this machine's tray icon (the local
+         *     channel, which checks the caller's Windows account), or the
+         *     console (an operator session through the agent's API).
+         * @enum {string}
+         */
+        NodePauseBy: "tray" | "console";
+        /**
+         * @description The tray icon's local channel on Windows, the named pipe
+         *     `\\.\pipe\eugene-plexus-agent-<port>`. Present on Windows only.
+         *
+         *     * `serving` — the agent holds the pipe. It admits only accounts
+         *       that may stop the Eugene service (or, without the service, the
+         *       agent's own account), on this machine only.
+         *     * `taken` — another program held the pipe's name when the agent
+         *       tried to create it, so the tray cannot pause models. The
+         *       agent's log names the program's process. The agent tries again
+         *       every 30 seconds.
+         *     * `unavailable` — the agent could not serve the pipe (pywin32
+         *       missing, or an error the log names).
+         * @enum {string}
+         */
+        NodeTrayChannel: "serving" | "taken" | "unavailable";
+        /**
+         * @description What `POST /v1/node/pause` or `POST /v1/node/resume` did: the
+         *     pause as it now stands, and what happened to each runtime.
+         */
+        NodePauseResult: {
+            pause: components["schemas"]["NodePause"];
+            results: components["schemas"]["NodePauseRuntimeResult"][];
+        };
+        NodePauseRuntimeResult: {
+            name: string;
+            state: components["schemas"]["NodePauseRuntimeState"];
+            /** @description The cause in a sentence, for every state but `started` and `stopped`. */
+            detail?: string;
+        };
+        /**
+         * @description * `stopped` — Pause stopped it (or a measurement Pause cancelled
+         *       had stopped it).
+         *     * `started` — Resume started it again.
+         *     * `refused` — memory admission refused it at Resume; `detail`
+         *       carries admission's reason. It stays stopped.
+         *     * `gone` — it is no longer declared on this machine.
+         *     * `failed` — it could not be stopped or started; `detail` names
+         *       the observed cause.
+         * @enum {string}
+         */
+        NodePauseRuntimeState: "stopped" | "started" | "refused" | "gone" | "failed";
         /**
          * @description What a person calls the version this machine runs (row 75).
          *
@@ -7303,6 +7455,14 @@ export interface components {
          *       starts again when that job ends unless the request asked
          *       otherwise, and while the job runs a start or a gateway wake is
          *       refused with 409.
+         *     * `paused` — stopped by Pause, from this machine's tray icon or
+         *       the console (`POST /v1/node/pause`, row 35). A start, a
+         *       restart, a declaration, an edit, a gateway wake, a Run, a
+         *       benchmark and a settings build are refused with 409 until
+         *       Resume, and the refusal names the pause. The pause outlives a
+         *       restart and a reboot: the runtime stays stopped, and still
+         *       reports `paused`, until Resume starts it. Set by Pause only; a
+         *       stop request that names it is recorded as `operator`.
          *
          *     A reason beside `status: stopped` rather than three new members
          *     of `RuntimeStatus`, because the state is the same state — the
@@ -7310,7 +7470,7 @@ export interface components {
          *     only the cause differs.
          * @enum {string}
          */
-        StopReason: "operator" | "idle" | "autoStart" | "measurement";
+        StopReason: "operator" | "idle" | "autoStart" | "measurement" | "paused";
         /**
          * @description Whether a runtime would fit on the device it targets, right now,
          *     and the arithmetic behind the answer. Returned by
@@ -12745,6 +12905,19 @@ export interface operations {
             403: components["responses"]["RootNotHeard"];
             404: components["responses"]["Problem"];
             /**
+             * @description Nothing may start a model here now. When this machine's
+             *     models are paused (`StopReason.paused`), `detail` is a
+             *     `Problem` whose own `detail` names the pause and where to
+             *     resume it. While a measurement runs, `detail` is that
+             *     sentence as text.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
              * @description Admission refused and `force` was not set. `detail` carries
              *     the arithmetic.
              */
@@ -13478,6 +13651,50 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
+        };
+    };
+    pauseNodeModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paused. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodePauseResult"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
+    resumeNodeModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resumed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodePauseResult"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
         };
     };
     pushTrustBundle: {
