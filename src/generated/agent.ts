@@ -3074,12 +3074,24 @@ export interface paths {
          *     word from the control root before it refuses changes from other
          *     machines (row 46). Past it, a token signed by another machine's
          *     key gets the `RootNotHeard` 403 on every route that changes
-         *     something here. The root's own tokens, this machine's own
+         *     something here, and on every change it sends through
+         *     `/api/proxy` to a component on this machine (answers, questions
+         *     and reads pass). The root's own tokens, this machine's own
          *     tokens, and every read keep working, so a dead root never stops
-         *     answers. Word from the root is a bundle this machine pulled from
-         *     the root, or a newer bundle pushed to it, counted from the time
-         *     the root signed it; a pushed copy of the bundle it already holds
-         *     is not word. `GET /v1/node` reports the limit in effect
+         *     answers.
+         *
+         *     Word from the root is a bundle this machine pulled from the root
+         *     over a channel only the root can answer (machine TLS pinned to
+         *     the root's key, or loopback), or a newer bundle from anywhere,
+         *     counted from the time the root signed it. A copy of the bundle
+         *     it already holds, pushed or pulled in plain HTTP, is not word.
+         *     The time of the last word is kept in its own record beside the
+         *     bundle, never read off the bundle file. **With no such channel
+         *     to the root (an older root, or encryption between machines off)
+         *     the limit is not enforced**: the field's status line says "Not
+         *     enforced: this machine reaches the root without encryption."
+         *
+         *     `GET /v1/node` reports the limit in effect
          *     (`trustBundleMaxAgeSeconds`) and whether it refuses now
          *     (`trustBundleFrozen`); the field's status line says so too. A
          *     value in the file that is not a whole number in range is ignored
@@ -4182,11 +4194,14 @@ export interface components {
             /**
              * Format: int64
              * @description Seconds since this agent last heard from the control root:
-             *     the pull it makes every minute, or a newer bundle the root
-             *     pushed, counted from when the root signed it. Not the held
-             *     bundle's signing time: a quiet install's bundle can be days
-             *     old and current. A clock set back does not shorten it while
-             *     the agent runs. Past ten minutes the console lists it as an
+             *     the pull it makes every minute, or a newer bundle from
+             *     anywhere, counted from when the root signed it. Over machine
+             *     TLS to the root (or loopback) only an answer from the root
+             *     counts; in plain HTTP, any answer at the root's address,
+             *     which is all plain HTTP can say. Not the held bundle's
+             *     signing time: a quiet install's bundle can be days old and
+             *     current. A clock set back does not shorten it while the
+             *     agent runs. Past ten minutes the console lists it as an
              *     issue; past `trustBundleMaxAgeSeconds` the agent refuses
              *     changes from other machines (`trustBundleFrozen`).
              */
@@ -4194,9 +4209,11 @@ export interface components {
             /**
              * Format: int64
              * @description The limit in effect on `trustBundleAgeSeconds`, from the
-             *     `maxTrustBundleAgeHours` setting, in seconds; `0` when there
-             *     is none. Absent when this agent has joined no install, or
-             *     runs a version older than row 46.
+             *     `maxTrustBundleAgeHours` setting, in seconds. `0` when there
+             *     is none: the setting is 0, or this agent reaches the root
+             *     without encryption, where a pull cannot be told from a
+             *     replay and the limit is not enforced. Absent when this agent
+             *     has joined no install, or runs a version older than row 46.
              */
             trustBundleMaxAgeSeconds?: number;
             /**
