@@ -4187,13 +4187,19 @@ export interface components {
              *       traffic to it is plain (refused once encryption is required).
              *     * `unreachable`: it has a key on record and its machine port did
              *       not answer.
+             *     * `door_down`: as `unreachable`, and the node said why
+             *       (`NodeAddressAnnouncement.machineError`), or it last announced
+             *       no machine port at all; `detail` holds its words.
              *     * `refused`: its machine port presented a key it did not
              *       register. A security event; nothing was sent.
              *     * `unknown`: not polled yet.
              * @enum {string}
              */
-            state: "encrypted" | "no_key" | "unreachable" | "refused" | "unknown";
-            /** @description The reason in the probe client's words, for the last three. */
+            state: "encrypted" | "no_key" | "unreachable" | "door_down" | "refused" | "unknown";
+            /**
+             * @description The reason: the probe client's words for `unreachable` and
+             *     `refused`, the node's own for `door_down`.
+             */
             detail?: string | null;
         };
         SignedMachineList: {
@@ -4476,6 +4482,13 @@ export interface components {
             url?: string;
             machineUrl?: components["schemas"]["MachineUrl"];
             tlsPin?: components["schemas"]["TlsPin"];
+            /**
+             * @description Why the node's machine port does not answer yet, when it joins
+             *     with it still binding (agent#38): the same words as
+             *     `NodeAddressAnnouncement.machineError`, so its link says why
+             *     (`door_down`) from the join, before its first announcement.
+             */
+            machineError?: string;
             agentVersion?: string;
             /** @enum {string} */
             os?: "windows" | "linux" | "macos";
@@ -4551,6 +4564,25 @@ export interface components {
              *     `sequence`.
              */
             tlsNextPin?: components["schemas"]["TlsPin"];
+            /**
+             * @description Why this node's machine port does not answer, in the node's own
+             *     words, while it does not (agent#38): another program holds the
+             *     port, the machine key does not load, or the port cannot answer
+             *     at the address announced. A node announces its machine port
+             *     whenever it has one, listening or not, so the root never takes
+             *     it for an older version; this says why the root cannot reach it
+             *     yet, and becomes `Node.machineTls.detail` (`door_down`). Signed
+             *     like `tlsNextPin`, under its own name. Kept by this root in
+             *     memory only, and dropped by the next announcement without it.
+             *
+             *     **An announcement without `machineUrl` and `tlsPin` keeps the
+             *     ones on record** (agent#38). Only a new enrolment replaces
+             *     them, so no answer on the network can make a machine look
+             *     like an older version. A node rolled back to a version before
+             *     machine ports is therefore unreachable until it is removed
+             *     and joined again; its link says so.
+             */
+            machineError?: string;
         };
         NodeAddressAck: {
             name: string;
