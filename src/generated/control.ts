@@ -2106,9 +2106,11 @@ export interface paths {
         put?: never;
         /**
          * A site answers an operation it claimed
-         * @description A site token, for this site's own operations only. The answer is at
-         *     most 70,000 bytes, and reaches the caller only after the caller's
-         *     access is checked once more.
+         * @description A site token, for this site's own operations only. The complete
+         *     result body is at most 8 MiB (8,388,608 bytes), and reaches the caller
+         *     only after the caller's access is checked once more. Results are
+         *     held in memory, never in the log; the per-site running-job limit
+         *     bounds how many can be held at once.
          */
         post: operations["finishSiteOperation"];
         delete?: never;
@@ -2454,7 +2456,8 @@ export interface paths {
          *     J14b, for a person with a key, the site answers `held` (`held` says
          *     what to sign) until the call comes again with `approval`, signed by
          *     the person; this root carries it and cannot make one. The
-         *     request is at most 40,000 bytes; the answer at most 70,000. A `tools/call` the site
+         *     request is at most 40,000 bytes; the site allows answers up to
+         *     8 MiB for `tools/call` and 70,000 bytes for other answers. A `tools/call` the site
          *     claimed but did not confirm is `uncertain`: it may have acted.
          */
         post: operations["callSiteServer"];
@@ -4006,6 +4009,66 @@ export interface components {
              *     what this root saw, so it is never replicated.
              */
             lastError?: string | null;
+            /**
+             * @description Why this root refused the last address announcement that this
+             *     machine signed (row 36). Present only while that refusal is the
+             *     latest word from the machine: an announcement this root accepts,
+             *     the machine's removal and its re-enrollment clear it. An
+             *     observation of the active root, never replicated: a standby, or
+             *     a root that restarted, learns it at the machine's next attempt.
+             *     `null` when there is none.
+             */
+            announcementRefused?: components["schemas"]["NodeAnnouncementRefusal"] | null;
+            /**
+             * @description Announcements sent under this machine's name that it did not
+             *     sign, as a count and the time of the last one. `null` when there
+             *     is none. Never the text they carried: anyone who can reach this
+             *     root can send one, and it must not put words on the owner's
+             *     screen.
+             */
+            unverifiedAnnouncements?: components["schemas"]["NodeUnverifiedAnnouncements"] | null;
+        };
+        /**
+         * @description * `open_internet`: the machine tried to move itself onto the open
+         *       internet. Re-enrolling the machine is the confirmation.
+         *     * `anothers_address`: the address is another machine's.
+         *     * `not_a_node`: the address can never be a machine's (a metadata,
+         *       link-local, multicast or wildcard address, or not http or https).
+         *     * `machine_port`: the machine port or its key was refused.
+         *     * `stale_sequence`: the announcement does not advance past the
+         *       sequence on record; the machine's identity file was restored from
+         *       a backup, or this is a replay.
+         *     * `no_signing_key`: the machine enrolled before machines signed
+         *       announcements, so nothing on record can verify one.
+         * @enum {string}
+         */
+        NodeAnnouncementRefusalReason: "open_internet" | "anothers_address" | "not_a_node" | "machine_port" | "stale_sequence" | "no_signing_key";
+        /**
+         * @description The last refusal of an announcement that verified against the
+         *     machine's signing key (row 36). `title` and `detail` are the
+         *     problem the machine was sent, in the root's words, and `detail`
+         *     names the addresses involved.
+         */
+        NodeAnnouncementRefusal: {
+            /** Format: date-time */
+            at: string;
+            reason: components["schemas"]["NodeAnnouncementRefusalReason"];
+            title: string;
+            detail: string;
+            /**
+             * @description The address the machine announced. `null` for `no_signing_key`:
+             *     nothing on record can verify what the request carried.
+             */
+            announcedUrl?: string | null;
+        };
+        /**
+         * @description Announcements under a machine's name that were malformed or whose
+         *     signature did not verify (row 36).
+         */
+        NodeUnverifiedAnnouncements: {
+            count: number;
+            /** Format: date-time */
+            lastAt: string;
         };
         /**
          * Format: uri
@@ -9951,7 +10014,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The answer is larger than 70,000 bytes. */
+            /** @description The answer is larger than 8 MiB. Ask for less. */
             413: {
                 headers: {
                     [name: string]: unknown;
