@@ -12,6 +12,17 @@ export const DEFAULT_CLIENT_LIMITS: ClientKeyLimits = {
   writeLogs: false,
   maxConcurrentRequests: 2,
   requestsPerMinute: 60,
+  // Row 11. A band and a queue bound at their defaults are not sent
+  // (`cleanClientLimits`): the root fills them in, as a root a release behind,
+  // which refuses fields it does not know, needs.
+  maxQueuedRequests: 8,
+};
+
+/** A key's queue band (row 11), in the words a person reads. */
+export const BAND_LABELS: Record<NonNullable<ClientKeyLimits["band"]>, string> = {
+  interactive: "Interactive",
+  background: "Background",
+  sheddable: "Dropped first when busy",
 };
 
 /** Whether a key may have the hub search the web for it: `allowedTools`
@@ -176,17 +187,65 @@ export function ClientKeyLimitsEditor({
         Shared across gateways. Waking and streaming count as active requests. Accepted requests
         count toward the rolling minute even if cancelled or failed.
       </p>
+      {/* Row 11: past its limit a request waits in line instead of being refused. */}
+      <div className="flex flex-wrap gap-3">
+        <label>
+          Priority{" "}
+          <select
+            aria-label="Priority"
+            className={field}
+            value={value.band ?? "interactive"}
+            onChange={(e) =>
+              onChange({ ...value, band: e.target.value as NonNullable<ClientKeyLimits["band"]> })
+            }
+          >
+            {Object.entries(BAND_LABELS).map(([band, label]) => (
+              <option key={band} value={band}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Requests that may wait{" "}
+          <input
+            aria-label="Requests that may wait"
+            className={`${field} w-20`}
+            type="number"
+            min={0}
+            max={64}
+            value={value.maxQueuedRequests ?? ""}
+            placeholder="8 (default)"
+            onChange={(e) =>
+              onChange({ ...value, maxQueuedRequests: whole(e.target.value) as number })
+            }
+          />
+        </label>
+      </div>
+      <p className="text-[color:var(--muted)]">
+        When the machines are busy, requests wait in line: interactive first, then background, and
+        each person in turn. A request past this many waiting is refused; 0 refuses at once. A
+        signed-in person&rsquo;s groups can set their own priority.
+      </p>
     </fieldset>
   );
 }
 
-export function cleanClientLimits(value: ClientKeyLimits): ClientKeyLimits {
+/** The limits as they are sent: trimmed model ids, and row 11's band and queue
+ * bound only when they are not the defaults (interactive, 8). */
+export type ClientKeyLimitsBody = Omit<ClientKeyLimits, "band" | "maxQueuedRequests"> &
+  Partial<Pick<ClientKeyLimits, "band" | "maxQueuedRequests">>;
+
+export function cleanClientLimits(value: ClientKeyLimits): ClientKeyLimitsBody {
+  const { band, maxQueuedRequests, ...rest } = value;
   return {
-    ...value,
+    ...rest,
     allowedModels:
       value.allowedModels == null
         ? null
         : [...new Set(value.allowedModels.map((s) => s.trim()).filter(Boolean))],
+    ...(band && band !== "interactive" ? { band } : {}),
+    ...(maxQueuedRequests != null && maxQueuedRequests !== 8 ? { maxQueuedRequests } : {}),
   };
 }
 
@@ -200,5 +259,8 @@ export function describeClientLimits(value?: ClientKeyLimits | null): string {
         : value.allowedModels.join(", ");
   const search = mayWebSearch(value) ? "" : " · No web search";
   const logs = value.writeLogs ? " · Sends logs" : "";
-  return `${models}${value.localOnly ? " · Local-only" : ""}${search}${logs} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute`;
+  const band = value.band && value.band !== "interactive" ? ` · ${BAND_LABELS[value.band]}` : "";
+  const waiting = value.maxQueuedRequests ?? 8;
+  const line = waiting === 0 ? "none may wait" : `${waiting} may wait`;
+  return `${models}${value.localOnly ? " · Local-only" : ""}${search}${logs}${band} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute · ${line}`;
 }

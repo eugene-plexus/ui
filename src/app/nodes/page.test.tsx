@@ -639,6 +639,19 @@ describe("the join command", () => {
     expect(document.body.textContent).not.toMatch(/uninstall it there first/i);
   });
 
+  it("puts the name the machine is shown as into both commands", async () => {
+    // Row 8: the installers take -Label / --label and pass it to the join.
+    const user = userEvent.setup({ delay: null });
+    await mint();
+    await screen.findByTestId("join-command-windows");
+    await user.type(screen.getByLabelText(/Shown as/), "Studio PC");
+    expect(screen.getByTestId("join-command-windows")).toHaveTextContent("-Label 'Studio PC'");
+    expect(screen.getByTestId("join-command-posix")).toHaveTextContent("--label 'Studio PC'");
+    expect(screen.queryByTestId("label-problem")).toBeNull();
+    await user.type(screen.getByLabelText(/Shown as/), '"');
+    expect(screen.getByTestId("label-problem")).toHaveTextContent("double quote");
+  });
+
   it("warns that a loopback address will fail on the other machine", async () => {
     nodesBody = {
       nodes: [

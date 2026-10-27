@@ -11,6 +11,8 @@ import { ModelName } from "@/components/ModelName";
 import { ServingMeasurements } from "@/components/ServingMeasurements";
 import { ApiError, api, describeError } from "@/lib/api";
 import { offeredOnThisNode } from "@/lib/engineCompat";
+import { ownBuildSpec } from "@/lib/ownBuild";
+import { approvalQuestion } from "@/lib/execTrust";
 import { describeControlRoot } from "@/lib/controlRoot";
 import {
   type NodeDetail,
@@ -49,7 +51,9 @@ import type {
   EngineDescriptor,
   EngineInstall,
   EngineList,
+  ExecTrust,
   RoutingTableView,
+  Runtime,
   RuntimeList,
   RuntimePlacementList,
   RuntimeStatus,
@@ -596,29 +600,32 @@ function NodeSection({
   // runtime started (CX1). The engines line reads its list again after.
   const [installStart, setInstallStart] = useState<InstallStart | null>(null);
   const [enginesRead, setEnginesRead] = useState(0);
-  async function installAndStart(row: Row, engine: string) {
-    if (!row.runtime) return;
+  async function installEngine(engine: string, runtime: string) {
     const target = targetFor(name, localName);
     const path = `/v1/engines/${encodeURIComponent(engine)}/install`;
-    const runtime = row.runtime;
     setInstallStart({ runtime, text: `Installing ${engineWord(engine)}…`, error: null });
+    let record: EngineInstall;
     try {
-      let record: EngineInstall;
-      try {
-        record = await api.post<EngineInstall>(target, path, {});
-      } catch (err) {
-        // 409: an install is already under way; follow that one.
-        if (!(err instanceof ApiError && err.status === 409)) throw err;
-        record = await api.get<EngineInstall>(target, path);
-      }
-      while (inFlight(record.state)) {
-        setInstallStart({ runtime, text: installProgress(record), error: null });
-        await new Promise((resolve) => setTimeout(resolve, INSTALL_POLL_MS));
-        record = await api.get<EngineInstall>(target, path);
-      }
-      if (record.state !== "done") {
-        throw new Error(record.error ?? record.message ?? `The install ended ${record.state}.`);
-      }
+      record = await api.post<EngineInstall>(target, path, {});
+    } catch (err) {
+      // 409: an install is already under way; follow that one.
+      if (!(err instanceof ApiError && err.status === 409)) throw err;
+      record = await api.get<EngineInstall>(target, path);
+    }
+    while (inFlight(record.state)) {
+      setInstallStart({ runtime, text: installProgress(record), error: null });
+      await new Promise((resolve) => setTimeout(resolve, INSTALL_POLL_MS));
+      record = await api.get<EngineInstall>(target, path);
+    }
+    if (record.state !== "done") {
+      throw new Error(record.error ?? record.message ?? `The install ended ${record.state}.`);
+    }
+  }
+  async function installAndStart(row: Row, engine: string) {
+    if (!row.runtime) return;
+    const runtime = row.runtime;
+    try {
+      await installEngine(engine, runtime);
       setInstallStart(null);
       setEnginesRead((n) => n + 1);
       onAct(row.node, runtime, "start");
@@ -627,6 +634,58 @@ function NodeSection({
         runtime,
         text: "",
         error: `${engineWord(engine)} could not be installed: ${describeError(err)}`,
+      });
+    }
+  }
+  // Row 8: Eugene's own account will not run the program a runtime's
+  // `binary` names. Its own build of the engine runs instead: installed
+  // first when there is none, then the runtime declared without `binary`.
+  async function useOwnBuild(row: Row, engine: string, declared: Runtime) {
+    if (!row.runtime) return;
+    const runtime = row.runtime;
+    try {
+      if (engines?.find((e) => e.engine === engine)?.available !== true) {
+        await installEngine(engine, runtime);
+      }
+      setInstallStart({
+        runtime,
+        text: `Switching to Eugene's ${engineWord(engine)}…`,
+        error: null,
+      });
+      await api.patch<Runtime>(
+        targetFor(name, localName),
+        `/v1/runtimes/${encodeURIComponent(runtime)}`,
+        ownBuildSpec(declared),
+      );
+      setInstallStart(null);
+      setEnginesRead((n) => n + 1);
+      onAct(row.node, runtime, "start");
+    } catch (err) {
+      setInstallStart({
+        runtime,
+        text: "",
+        error: `Eugene's own ${engineWord(engine)} could not be used: ${describeError(err)}`,
+      });
+    }
+  }
+  // Row 8c: the owner approves a program one other account can change, as
+  // the node showed it (its path and SHA-256), then the runtime starts.
+  async function approveProgram(row: Row, trust: ExecTrust) {
+    if (!row.runtime) return;
+    const runtime = row.runtime;
+    try {
+      setInstallStart({ runtime, text: "Approving…", error: null });
+      await api.post(targetFor(name, localName), "/v1/exec-approvals", {
+        path: trust.path,
+        sha256: trust.sha256,
+      });
+      setInstallStart(null);
+      onAct(row.node, runtime, "start");
+    } catch (err) {
+      setInstallStart({
+        runtime,
+        text: "",
+        error: `${trust.path} was not approved: ${describeError(err)}`,
       });
     }
   }
@@ -676,6 +735,8 @@ function NodeSection({
                   onAutoStart={onAutoStart}
                   onRemove={onRemove}
                   onInstallAndStart={installAndStart}
+                  onUseOwnBuild={useOwnBuild}
+                  onApproveProgram={approveProgram}
                   installStart={installStart?.runtime === row.runtime ? installStart : null}
                   contexts={contexts}
                   marked={marked !== null && marked !== undefined && row.driver === marked}
@@ -733,6 +794,8 @@ function RowView({
   onAutoStart,
   onRemove,
   onInstallAndStart,
+  onUseOwnBuild,
+  onApproveProgram,
   installStart,
   contexts,
   marked,
@@ -753,6 +816,10 @@ function RowView({
   onRemove: (row: Row) => void;
   /** Install the engine a stopped runtime lacks, then start it. */
   onInstallAndStart: (row: Row, engine: string) => void;
+  /** Run Eugene's own build in place of a program it will not run (row 8). */
+  onUseOwnBuild: (row: Row, engine: string, declared: Runtime) => void;
+  /** Approve a program one other account can change, then start (row 8c). */
+  onApproveProgram: (row: Row, trust: ExecTrust) => void;
   /** That install, while it runs or after it failed, for this row. */
   installStart: InstallStart | null;
   /** Each served model's context window, said beside its name. */
@@ -766,11 +833,23 @@ function RowView({
   // While remove asks, start, stop and restart step aside: the question and
   // its two answers take the action cell rather than widening it (ui#14).
   const [asking, setAsking] = useState(false);
+  // "Not now" on the question before running someone's program (row 8c).
+  const [notNow, setNotNow] = useState<string | null>(null);
   // S7's two honest states. Both are built from what is actually known
   // and say which: nothing reports where a model's weights went, and
   // nothing counts a model load, so neither line is ever a guess
   // dressed as a measurement.
   const own = row.runtime ? (detail?.runtimes.get(row.runtime) ?? null) : null;
+  // Row 8c: a program only one other account can change, shown until the
+  // owner answers it (a changed file asks again: "Not now" is per hash).
+  const trust = own?.execTrust ?? null;
+  const approvalAsked =
+    trust !== null &&
+    trust.kind === "needs_approval" &&
+    Boolean(trust.sha256) &&
+    notNow !== (trust.sha256 ?? trust.path)
+      ? trust
+      : null;
   const compute = describeCompute(
     { engine: own?.engine ?? row.engine, flags: own?.flags ?? null },
     // `?? null` and never `?? []`: a node that answered its runtimes but
@@ -1072,6 +1151,73 @@ function RowView({
             data-testid="runtime-failure"
           >
             {failure}
+          </div>
+        )}
+        {own && approvalAsked && (
+          <div className="space-y-1 text-[0.6875rem]" data-testid="exec-approval">
+            <div>{approvalQuestion(approvalAsked)}</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={smallButton}
+                disabled={busy !== null || (installStart !== null && installStart.error === null)}
+                onClick={() => onApproveProgram(row, approvalAsked)}
+                data-testid="exec-approve"
+              >
+                Run it
+              </button>
+              <button
+                type="button"
+                className={smallButton}
+                onClick={() => setNotNow(approvalAsked.sha256 ?? approvalAsked.path)}
+                data-testid="exec-not-now"
+              >
+                Not now
+              </button>
+              {own.refusedBinary && (
+                <button
+                  type="button"
+                  className={smallButton}
+                  disabled={busy !== null || (installStart !== null && installStart.error === null)}
+                  onClick={() => onUseOwnBuild(row, own.engine, own)}
+                  data-testid="use-own-build"
+                >
+                  {`Use Eugene's own ${engineWord(own.engine)}`}
+                </button>
+              )}
+            </div>
+            {installStart && installStart.error === null && (
+              <div className="text-[color:var(--muted)]">{installStart.text}</div>
+            )}
+            {installStart?.error && (
+              <div role="alert" style={{ color: "var(--status-error-fg)" }}>
+                {installStart.error}
+              </div>
+            )}
+          </div>
+        )}
+        {own?.refusedBinary && !approvalAsked && (
+          <div className="space-y-1 text-[0.6875rem]" data-testid="refused-binary">
+            <div>
+              Eugene won&apos;t run <span className="font-mono">{own.refusedBinary}</span>: someone
+              else can change it.
+            </div>
+            <button
+              type="button"
+              className={smallButton}
+              disabled={busy !== null || (installStart !== null && installStart.error === null)}
+              onClick={() => onUseOwnBuild(row, own.engine, own)}
+              data-testid="use-own-build"
+            >
+              {installStart && installStart.error === null
+                ? installStart.text
+                : `Use Eugene's own ${engineWord(own.engine)}`}
+            </button>
+            {installStart?.error && (
+              <div role="alert" style={{ color: "var(--status-error-fg)" }}>
+                {installStart.error}
+              </div>
+            )}
           </div>
         )}
         {row.eligible === false && row.ineligibleReason && (

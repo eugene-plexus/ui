@@ -3686,14 +3686,57 @@ export interface components {
              * @default false
              */
             writeLogs: boolean;
-            /** @default 2 */
+            /**
+             * @description How many of this key's requests run at once, across every
+             *     gateway. A request past it waits in the gateway's queue (row 11)
+             *     while `maxQueuedRequests` allows, and is refused when it does not.
+             * @default 2
+             */
             maxConcurrentRequests: number;
             /** @default 60 */
             requestsPerMinute: number;
+            /**
+             * @description The key's queue band (row 11): which of its requests wait or are
+             *     turned away first when the machines are busy. Absent means
+             *     `interactive`. A verified person's band from their permission
+             *     groups (`ClientAdmissionResult.queueBand`) replaces it, and a
+             *     request's `X-Eugene-Band` header can only lower it. Not part of
+             *     the policy a running request is bound to: changing it never cuts
+             *     a request that is already running.
+             */
+            band?: components["schemas"]["QueueBand"];
+            /**
+             * @description How many of this key's requests may wait in one gateway's queue
+             *     for each person (row 11): Workbench's one app key serves
+             *     everyone, so each verified person has a line of their own. A
+             *     request past it is refused with `key_queue_full` and
+             *     `Retry-After`. `0` refuses at once, as before the queue. Not part
+             *     of the policy a running request is bound to.
+             *
+             *     **Absent means 8**, and no default is declared here on purpose:
+             *     a declared default is filled into every answer a generated model
+             *     writes, and a reader a release behind refuses the field
+             *     (`extra='forbid'`), so the authority and the agent send it only
+             *     when it was set to something else, as `band` and row 70's
+             *     `queueBand`.
+             */
+            maxQueuedRequests?: number;
         };
         ClientKeyUpdateRequest: {
             limits: components["schemas"]["ClientKeyLimits"];
         };
+        /**
+         * @description Since row 11 the gateway sends `check` when a request arrives and
+         *     `acquire` when the request leaves its queue, so a request that waits
+         *     holds no lease. A `check` that names a `model` applies the key's
+         *     `allowedModels` as `acquire` does, and takes nothing.
+         *
+         *     An `acquire` refused for the key's limits is a 429 with
+         *     `Retry-After` and `X-Eugene-Refusal-Reason`: `concurrency` when the
+         *     key already runs `maxConcurrentRequests` requests (on any gateway;
+         *     the gateway keeps the request's place and asks again), `rate` when
+         *     its `requestsPerMinute` are used (the gateway refuses the request).
+         */
         ClientAdmissionRequest: {
             /** @enum {string} */
             action: "check" | "acquire" | "renew" | "release";
@@ -3752,6 +3795,16 @@ export interface components {
          * @enum {string}
          */
         QueueBand: "interactive" | "background" | "sheddable";
+        /**
+         * @description Why an `acquire` was refused with a 429, in its
+         *     `X-Eugene-Refusal-Reason` header (row 11): `concurrency`, the key
+         *     already runs `maxConcurrentRequests` requests; `rate`, its
+         *     `requestsPerMinute` are used. An agent that forwards the root's
+         *     answer passes the header on, and a standalone agent sets it the same
+         *     way.
+         * @enum {string}
+         */
+        AdmissionRefusalReason: "concurrency" | "rate";
         ClientKey: {
             id: string;
             name: string;
@@ -4134,13 +4187,19 @@ export interface components {
              *       traffic to it is plain (refused once encryption is required).
              *     * `unreachable`: it has a key on record and its machine port did
              *       not answer.
+             *     * `door_down`: as `unreachable`, and the node said why
+             *       (`NodeAddressAnnouncement.machineError`), or it last announced
+             *       no machine port at all; `detail` holds its words.
              *     * `refused`: its machine port presented a key it did not
              *       register. A security event; nothing was sent.
              *     * `unknown`: not polled yet.
              * @enum {string}
              */
-            state: "encrypted" | "no_key" | "unreachable" | "refused" | "unknown";
-            /** @description The reason in the probe client's words, for the last three. */
+            state: "encrypted" | "no_key" | "unreachable" | "door_down" | "refused" | "unknown";
+            /**
+             * @description The reason: the probe client's words for `unreachable` and
+             *     `refused`, the node's own for `door_down`.
+             */
             detail?: string | null;
         };
         SignedMachineList: {
@@ -4423,6 +4482,13 @@ export interface components {
             url?: string;
             machineUrl?: components["schemas"]["MachineUrl"];
             tlsPin?: components["schemas"]["TlsPin"];
+            /**
+             * @description Why the node's machine port does not answer yet, when it joins
+             *     with it still binding (agent#38): the same words as
+             *     `NodeAddressAnnouncement.machineError`, so its link says why
+             *     (`door_down`) from the join, before its first announcement.
+             */
+            machineError?: string;
             agentVersion?: string;
             /** @enum {string} */
             os?: "windows" | "linux" | "macos";
@@ -4498,6 +4564,25 @@ export interface components {
              *     `sequence`.
              */
             tlsNextPin?: components["schemas"]["TlsPin"];
+            /**
+             * @description Why this node's machine port does not answer, in the node's own
+             *     words, while it does not (agent#38): another program holds the
+             *     port, the machine key does not load, or the port cannot answer
+             *     at the address announced. A node announces its machine port
+             *     whenever it has one, listening or not, so the root never takes
+             *     it for an older version; this says why the root cannot reach it
+             *     yet, and becomes `Node.machineTls.detail` (`door_down`). Signed
+             *     like `tlsNextPin`, under its own name. Kept by this root in
+             *     memory only, and dropped by the next announcement without it.
+             *
+             *     **An announcement without `machineUrl` and `tlsPin` keeps the
+             *     ones on record** (agent#38). Only a new enrolment replaces
+             *     them, so no answer on the network can make a machine look
+             *     like an older version. A node rolled back to a version before
+             *     machine ports is therefore unreachable until it is removed
+             *     and joined again; its link says so.
+             */
+            machineError?: string;
         };
         NodeAddressAck: {
             name: string;
@@ -7658,10 +7743,16 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Shared concurrency/rate allowance exhausted. */
+            /**
+             * @description Shared concurrency/rate allowance exhausted. `X-Eugene-Refusal-Reason`
+             *     says which (row 11): the gateway keeps a request refused for
+             *     `concurrency` in its queue and asks again, and refuses one refused
+             *     for `rate`.
+             */
             429: {
                 headers: {
                     "Retry-After"?: number;
+                    "X-Eugene-Refusal-Reason"?: components["schemas"]["AdmissionRefusalReason"];
                     [name: string]: unknown;
                 };
                 content?: never;

@@ -109,6 +109,18 @@ test.describe("the resource tree", () => {
     ).toBeVisible();
   });
 
+  test("says the version of the machine serving the console, at the bottom", async ({ page }) => {
+    await page.goto("/");
+    await loaded(page);
+    // Row 75. The agent matches its commits to a release or Edge; a runner
+    // that installs from checkouts says "development build", and one that
+    // has not matched yet says it does not know. Whichever it is, the line
+    // is there, and it never carries a commit.
+    const line = page.getByTestId("tree-column").getByTestId("tree-version-label");
+    await expect(line).toContainText("Eugene Plexus");
+    await expect(line).not.toContainText(/[0-9a-f]{7,}/);
+  });
+
   test("every object in the tree selects and arrives", async ({ page }) => {
     await page.goto("/");
     await loaded(page);

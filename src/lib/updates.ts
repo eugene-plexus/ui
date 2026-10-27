@@ -23,6 +23,8 @@
 
 import type { NodeIdentity, UpdateRun, UpdateStep } from "./types";
 
+type NodeVersion = NonNullable<NodeIdentity["version"]>;
+
 export type UpdateState =
   /** The machine did not answer. */
   | "unknown"
@@ -87,6 +89,50 @@ export function buildStamps(identity: NodeIdentity | null): string[] {
  * those is only its commits, which `buildStamps` gives to Details: null.
  */
 export function versionLabel(identity: NodeIdentity | null): string | null {
+  // **The agent's own answer comes first** (row 75): it matched the seven
+  // commits against the published releases and the Edge marker. `unknown`
+  // is "not matched yet", and falls through to what the commits already
+  // prove (below), and to "not known yet" when they prove nothing.
+  const reported = identity?.version;
+  const named = reported ? nameVersion(reported) : null;
+  if (named) return named;
+  const found = installedVersion(identity);
+  return found ?? (reported ? "version not known yet" : null);
+}
+
+/** The words for a version the agent matched; null for `unknown`. */
+function nameVersion(version: NodeVersion): string | null {
+  switch (version.kind) {
+    case "release":
+      return version.release ?? null;
+    case "edge":
+      // The day, in UTC: the same text in every timezone and locale.
+      return version.publishedAt ? `Edge, built ${version.publishedAt.slice(0, 10)}` : "Edge";
+    case "development":
+      return "development build";
+    case "unmatched":
+      return "not a published release";
+    default:
+      return null;
+  }
+}
+
+/**
+ * What the machine says its version is, and nothing else: null from an
+ * agent that sent no `version` (older than row 75), and for one that has
+ * not matched yet it says so. For the bottom of the tree, which must not
+ * fill in what an older agent did not say.
+ */
+export function reportedVersion(identity: NodeIdentity | null): string | null {
+  return identity?.version ? versionLabel(identity) : null;
+}
+
+/** Why the version is not known, for a Details line: the lookup's own cause. */
+export function versionNote(identity: NodeIdentity | null): string | null {
+  return identity?.version?.error ?? null;
+}
+
+function installedVersion(identity: NodeIdentity | null): string | null {
   const install = identity?.install;
   if (!install) return "version not recorded";
   if (install.development) return "development build";

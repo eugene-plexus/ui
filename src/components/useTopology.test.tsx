@@ -28,7 +28,18 @@ beforeEach(() => {
           headers: { "content-type": "application/json" },
         });
       if (route === "agent/v1/components") return json({ components: [] });
-      if (route === "agent/v1/node") return json({ enrolled: true, name: "box" });
+      if (route === "agent/v1/node") {
+        return json({
+          enrolled: true,
+          name: "box",
+          version: { kind: "release", release: "v0.4.0" },
+          install: {
+            mechanism: "none",
+            development: false,
+            components: [{ name: "agent", state: "stamped", commit: "a".repeat(40) }],
+          },
+        });
+      }
       if (!rootUp) return json({ detail: "starting" }, 503);
       if (route === "control/v1/components") return json({ components: [] });
       if (route === "control/v1/nodes") return json({ nodes: [{ name: "box" }, { name: "gpu" }] });
@@ -52,7 +63,8 @@ function Probe() {
     <p data-testid="topology">
       {ready
         ? `${topology.rootUnreachable ? "unreachable" : "up"} ${topology.nodes.join(",")}` +
-          ` sites:${(topology.sites ?? []).map((x) => `${x.id}=${x.label}`).join(",")}`
+          ` sites:${(topology.sites ?? []).map((x) => `${x.id}=${x.label}`).join(",")}` +
+          ` version:${topology.version?.label ?? "none"} ${topology.version?.stamps.join(",") ?? ""}`
         : ""}
     </p>
   );
@@ -67,4 +79,10 @@ it("asks again, so a root that came up later appears without leaving the page", 
   expect(screen.getByTestId("topology")).toHaveTextContent("up box,gpu");
   // Job sites come from the root's own list, beside the machines and never in them.
   expect(screen.getByTestId("topology")).toHaveTextContent("sites:s-abc=Work laptop");
+});
+
+it("carries the version of the machine serving the console, from its own node report", async () => {
+  render(<Probe />);
+  await act(() => vi.advanceTimersByTimeAsync(0));
+  expect(screen.getByTestId("topology")).toHaveTextContent("version:v0.4.0 agent aaaaaaa");
 });

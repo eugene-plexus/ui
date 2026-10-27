@@ -30,6 +30,9 @@ import type { AppList, ComponentList, NodeIdentity } from "@/lib/types";
 import { useRefreshWithIssues } from "@/lib/useIssues";
 import { usePolling } from "@/lib/usePolling";
 
+import { buildStamps, reportedVersion, versionNote } from "@/lib/updates";
+
+import { More } from "./Help";
 import { LayerIcon } from "./LayerIcon";
 import { recordNodeLabels } from "@/lib/nodeLabels";
 
@@ -178,8 +181,17 @@ export function useTopology(): { topology: Topology; ready: boolean } {
           : [],
       ),
     );
+    const label = reportedVersion(node);
     const next: Topology = {
       localNode: node?.name ?? null,
+      version: label
+        ? {
+            label,
+            named: node?.version?.kind === "release" || node?.version?.kind === "edge",
+            stamps: buildStamps(node),
+            note: versionNote(node),
+          }
+        : null,
       apps,
       sites,
       nodes: (nodeNames?.nodes ?? [])
@@ -217,6 +229,7 @@ export function ResourceTree({
   selected,
   ready,
   onNavigate,
+  version,
 }: {
   tree: TreeNode;
   localNode: string | null;
@@ -225,6 +238,8 @@ export function ResourceTree({
   ready: boolean;
   /** Called after a link is followed, so a narrow drawer can close. */
   onNavigate?: () => void;
+  /** The version of the machine serving the console (`Topology.version`). */
+  version?: Topology["version"];
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [focused, setFocused] = useState<string | null>(null);
@@ -376,7 +391,40 @@ export function ResourceTree({
           Reading topology…
         </p>
       )}
+      {version && <VersionLine version={version} />}
     </nav>
+  );
+}
+
+/**
+ * "Eugene Plexus v0.4.0", at the bottom: small and muted, the version of the
+ * machine serving this console. The commits and the lookup's cause are one
+ * click away, never in the line (Troy: no internals in the main message).
+ */
+function VersionLine({ version }: { version: NonNullable<Topology["version"]> }) {
+  return (
+    <div
+      data-testid="tree-version"
+      className="font-ui mt-auto px-2 pt-2 text-[0.6875rem] text-[color:var(--muted)]"
+    >
+      <p data-testid="tree-version-label">
+        Eugene Plexus{version.named ? " " : ": "}
+        {version.label}
+      </p>
+      {(version.stamps.length > 0 || version.note) && (
+        <More
+          summary="Details"
+          summaryClassName="text-[0.6875rem] text-[color:var(--muted)] underline"
+          label="this version"
+          testId="tree-version-details"
+        >
+          {version.note && <p className="break-words">{version.note}</p>}
+          {version.stamps.length > 0 && (
+            <p className="font-mono break-words">{version.stamps.join(" · ")}</p>
+          )}
+        </More>
+      )}
+    </div>
   );
 }
 

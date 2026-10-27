@@ -224,3 +224,70 @@ describe("a row's whole name", () => {
     expect(screen.getByTitle("Eugene Plexus · control root unreachable")).toBeInTheDocument();
   });
 });
+
+describe("the version at the bottom of the tree (row 75)", () => {
+  it("says the version of the machine serving the console, small and muted", () => {
+    render(
+      <ResourceTree
+        tree={TREE}
+        localNode={null}
+        selected={null}
+        ready
+        version={{ label: "v0.4.0", named: true, stamps: ["agent 85e9e76"], note: null }}
+      />,
+    );
+    const line = screen.getByTestId("tree-version");
+    expect(line).toHaveTextContent("Eugene Plexus v0.4.0");
+    expect(line.className).toMatch(/muted/);
+    // It is outside the tree: the tree holds the install's machines and parts.
+    expect(within(screen.getByRole("tree", { name: "Install" })).queryByText(/v0/)).toBeNull();
+  });
+
+  it("keeps the commits behind Details", () => {
+    render(
+      <ResourceTree
+        tree={TREE}
+        localNode={null}
+        selected={null}
+        ready
+        version={{
+          label: "not a published release",
+          named: false,
+          stamps: ["agent 85e9e76", "ui 1234567"],
+          note: null,
+        }}
+      />,
+    );
+    const line = screen.getByTestId("tree-version");
+    expect(line).toHaveTextContent("Eugene Plexus: not a published release");
+    const details = screen.getByTestId("tree-version-details");
+    expect(details.tagName).toBe("DETAILS");
+    expect(details).not.toHaveAttribute("open");
+    expect(details).toHaveTextContent("agent 85e9e76 · ui 1234567");
+    // The main line carries no commit.
+    expect(screen.getByTestId("tree-version-label")).not.toHaveTextContent("85e9e76");
+  });
+
+  it("names the cause of an unknown version in Details", () => {
+    render(
+      <ResourceTree
+        tree={TREE}
+        localNode={null}
+        selected={null}
+        ready
+        version={{
+          label: "version not known yet",
+          named: false,
+          stamps: [],
+          note: "GitHub did not answer",
+        }}
+      />,
+    );
+    expect(screen.getByTestId("tree-version-details")).toHaveTextContent("GitHub did not answer");
+  });
+
+  it("shows nothing for a machine that sent no version", () => {
+    render(<ResourceTree tree={TREE} localNode={null} selected={null} ready />);
+    expect(screen.queryByTestId("tree-version")).toBeNull();
+  });
+});

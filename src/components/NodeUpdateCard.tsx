@@ -8,7 +8,7 @@ import { More } from "@/components/Help";
 import { api, describeError } from "@/lib/api";
 import type { NodeIdentity, NodeUpdate } from "@/lib/types";
 import { refreshIssues } from "@/lib/useIssues";
-import { RESTARTING, buildStamps, describeUpdate } from "@/lib/updates";
+import { RESTARTING, buildStamps, describeUpdate, versionNote } from "@/lib/updates";
 import { useNodeLabels } from "@/lib/nodeLabels";
 
 /** After this long without the machine reporting back, say so. */
@@ -50,6 +50,7 @@ export function NodeUpdateCard({
   const [requested, setRequested] = useState<{ at: number; label: string } | null>(null);
   const view = describeUpdate(identity, now, versionsDiffer);
   const stamps = buildStamps(identity);
+  const versionCause = versionNote(identity);
 
   // An update this page asked for is over once the machine says it finished
   // after the request -- or, having never reported back, after a long wait.
@@ -205,11 +206,18 @@ export function NodeUpdateCard({
       )}
       {/* The commits are for whoever is chasing a build, not for a status
           line: one click away. */}
-      {stamps.length > 0 && (
+      {(stamps.length > 0 || versionCause) && (
         <More summary="Details" label={shown} testId="node-update-details" className="mt-2">
-          <p className="font-mono text-xs break-words text-[color:var(--muted)]">
-            {stamps.join(" · ")}
-          </p>
+          {versionCause && (
+            <p className="text-xs break-words text-[color:var(--muted)]">
+              The version could not be looked up: {versionCause}
+            </p>
+          )}
+          {stamps.length > 0 && (
+            <p className="font-mono text-xs break-words text-[color:var(--muted)]">
+              {stamps.join(" · ")}
+            </p>
+          )}
         </More>
       )}
     </section>
