@@ -162,6 +162,224 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/responses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep one response, after it has ended, with the items it was given and made.
+         * @description The gateway sends this before it gives the client the response's
+         *     last event, so the client's next request can name it at once.
+         *     `id` is the gateway's own (the client has already seen it).
+         *
+         *     With `previousResponseId`, that response must be the owner's and
+         *     not have ended: the new one joins its chain (`rootId` is the
+         *     chain's first response) and every response before it in the chain
+         *     ends no sooner than this one. With `conversationId`, that
+         *     conversation must be the owner's: the response's `input` and
+         *     `output` items are added to it, in the same transaction, and its
+         *     end moves. A response may name one of the two, not both.
+         *
+         *     Answers 403 when the owner turned responses off or the owner is a
+         *     person Eugene removed, 404 when the previous response or the
+         *     conversation is not the owner's (the same body as one that does
+         *     not exist), 409 when the id is already kept, and 413 with the
+         *     numbers when the owner's quota would be passed.
+         */
+        post: operations["keepStoredResponse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/responses/{responseId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                responseId: components["parameters"]["ResponseId"];
+            };
+            cookie?: never;
+        };
+        /** One of the owner's stored responses, as the client was given it. */
+        get: operations["getStoredResponse"];
+        put?: never;
+        post?: never;
+        /** Delete one of the owner's stored responses, for good. */
+        delete: operations["deleteStoredResponse"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/responses/{responseId}/input_items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                responseId: components["parameters"]["ResponseId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The items the model was given for this response, one page.
+         * @description The conversation as the model received it: for a chained response,
+         *     each earlier response's input and output items, oldest first, then
+         *     its own input; for a response in a conversation, the
+         *     conversation's items before it, then its own input (OpenAI: "items
+         *     from this conversation are prepended"). Paged by item id in
+         *     `order`.
+         */
+        get: operations["listStoredResponseInputItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/responses/{responseId}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                responseId: components["parameters"]["ResponseId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The conversation so far, to continue from this response.
+         * @description What a request with `previous_response_id` continues: every
+         *     response of the chain from its first to this one, oldest first,
+         *     each one's input items then its output items. Every link is read
+         *     for the owner only. 403 when responses are off; 404 when the
+         *     response is not the owner's; 409 when a response earlier in the
+         *     chain was deleted; 413 when the history is more than one request
+         *     can carry (`maxContextBytes`).
+         */
+        get: operations["getStoredResponseContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a conversation, with up to 20 items. */
+        post: operations["createStoredConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{conversationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        /** One of the owner's conversations. */
+        get: operations["getStoredConversation"];
+        put?: never;
+        /** Replace a conversation's metadata (OpenAI updates with POST). */
+        post: operations["updateStoredConversation"];
+        /**
+         * Delete a conversation and its items, for good.
+         * @description The responses kept in it stay until their own end, as OpenAI
+         *     keeps them.
+         */
+        delete: operations["deleteStoredConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{conversationId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        /** One page of a conversation's items. */
+        get: operations["listStoredConversationItems"];
+        put?: never;
+        /** Add up to 20 items to the end of a conversation. */
+        post: operations["addStoredConversationItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{conversationId}/items/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /** One item of a conversation. */
+        get: operations["getStoredConversationItem"];
+        put?: never;
+        post?: never;
+        /** Delete one item of a conversation, for good. */
+        delete: operations["deleteStoredConversationItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{conversationId}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Every item of a conversation, oldest first, to continue it.
+         * @description What a Responses request with `conversation` continues. 403 when
+         *     responses are off; 404 when the conversation is not the owner's;
+         *     413 when it is more than one request can carry.
+         */
+        get: operations["getStoredConversationContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/owners": {
         parameters: {
             query?: never;
@@ -172,8 +390,8 @@ export interface paths {
         /**
          * Counts and bytes per owner, for the owner's console. Never content.
          * @description An operator session only. Each owner as the store names it, with
-         *     how many files and bytes it keeps and how many uploads are in
-         *     progress. No file name, purpose or byte of content: the install
+         *     how many files, stored responses and conversations and how many
+         *     bytes it keeps, and how many uploads are in progress. No file name, purpose or byte of content: the install
          *     owner does not read people's objects (LD6).
          */
         get: operations["listStoreOwners"];
@@ -235,7 +453,8 @@ export interface paths {
         /**
          * Delete now, everything a removed person kept here.
          * @description An operator session only. The owner's Delete now (MRC27): every
-         *     file and upload of a hidden person, at once and for good, with
+         *     file, upload, stored response and conversation of a hidden
+         *     person, at once and for good, with
          *     their rows in every copy kept before a migration. Only a person
          *     Eugene removed (one `/v1/owners` lists with `deleteAt`): a person
          *     Eugene still has keeps their files.
@@ -409,14 +628,160 @@ export interface components {
             /** @description Eugene's check of the joined file. */
             sha256?: string;
         };
+        /**
+         * @description One item in OpenAI's shape (a message, a function call, its
+         *     output, reasoning, ...), as the gateway sent it. The store reads
+         *     only `id`, which is unique within its response or conversation.
+         *     An id has OpenAI's shape, a short prefix and hex digits, so no id
+         *     carries words into a path, a log line or an error: the gateway
+         *     gives a new one to an item whose id has another shape, and the
+         *     store refuses one (400, the id not repeated).
+         */
+        StoredItem: {
+            id: string;
+            type?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * @description How the response ended. A stream the client left is kept with what
+         *     was sent, `incomplete`.
+         * @enum {string}
+         */
+        StoredResponseStatus: "completed" | "incomplete" | "failed" | "cancelled";
+        StoredResponseRequest: {
+            /** @description The gateway's id for the response, which the client already has. */
+            id: string;
+            model: string;
+            status: components["schemas"]["StoredResponseStatus"];
+            /** @description The response this one continues (its chain). */
+            previousResponseId?: string;
+            /** @description The conversation this response belongs to; its items are added to it. */
+            conversationId?: string;
+            /**
+             * @description With `conversationId`: the conversation's `position` when its
+             *     context was read for this request (`StoredContext.position`).
+             *     The items before it are what the response was given, whatever
+             *     another turn added meanwhile; absent, the conversation's end
+             *     when the response is kept.
+             */
+            conversationPosition?: number;
+            /**
+             * @description The items the request itself sent (not the chain's or the
+             *     conversation's), each with an id.
+             */
+            input: components["schemas"]["StoredItem"][];
+            output: components["schemas"]["StoredItem"][];
+            /**
+             * @description The response object as the client was given it, without
+             *     `output` (kept once, above). `GET` gives it back whole.
+             */
+            response: {
+                [key: string]: unknown;
+            };
+        };
+        StoredResponse: {
+            id: string;
+            model: string;
+            status: components["schemas"]["StoredResponseStatus"];
+            /** @description Unix seconds. */
+            createdAt: number;
+            /**
+             * @description Unix seconds: `responseDays` after it was kept, or later when a
+             *     response after it in its chain was kept later.
+             */
+            expiresAt: number;
+            /** @description The first response of its chain; its own id when it starts one. */
+            rootId: string;
+            previousResponseId?: string;
+            conversationId?: string;
+            /** @description What it holds, counted against the owner's quota. */
+            bytes: number;
+            /** @description The response object, `output` included. Present on `GET`. */
+            response?: {
+                [key: string]: unknown;
+            };
+        };
+        StoredObjectDeleted: {
+            id: string;
+            /** @constant */
+            deleted: true;
+        };
+        StoredItemList: {
+            data: components["schemas"]["StoredItem"][];
+            hasMore: boolean;
+        };
+        StoredItemsRequest: {
+            /**
+             * @description Added at the end, in order, in one transaction. The gateway
+             *     takes OpenAI's 20 at a time from a client; a turn kept with
+             *     `store: false` adds all its items in one call.
+             */
+            items: components["schemas"]["StoredItem"][];
+        };
+        /** @description The conversation so far, oldest first. */
+        StoredContext: {
+            items: components["schemas"]["StoredItem"][];
+            bytes: number;
+            /** @description For a chain, its first response. */
+            rootId?: string;
+            /** @description For a conversation, its id. */
+            conversationId?: string;
+            /**
+             * @description For a conversation, the place after its last item when it was
+             *     read: sent back as `conversationPosition` when the response is
+             *     kept.
+             */
+            position?: number;
+            /**
+             * @description For a chain, whether the response named was made with
+             *     `instructions`, which are not carried to the next (OpenAI's
+             *     rule), so the door can say so.
+             */
+            hadInstructions?: boolean;
+        };
+        /**
+         * @description OpenAI's metadata: 16 pairs at most, a key of at most 64
+         *     characters and a value of at most 512 (the gateway checks both).
+         */
+        StoredMetadata: {
+            [key: string]: string;
+        };
+        StoredConversationRequest: {
+            metadata?: components["schemas"]["StoredMetadata"];
+            items?: components["schemas"]["StoredItem"][];
+        };
+        StoredConversationUpdate: {
+            metadata: components["schemas"]["StoredMetadata"] | null;
+        };
+        StoredConversation: {
+            id: string;
+            createdAt: number;
+            /**
+             * @description Unix seconds, `conversationDays` after its last use. Absent,
+             *     the conversation is kept until it is deleted (the default, as
+             *     OpenAI keeps one).
+             */
+            expiresAt?: number;
+            metadata: components["schemas"]["StoredMetadata"];
+            /** @description How many items it holds. */
+            items: number;
+        };
         StoreOwner: {
             /** @description `install`, `person:<id>`, `key:<id>` or `component:<sub>`. */
             owner: string;
             files: number;
-            /** @description The bytes of the owner's files and of its uploads in progress. */
+            /**
+             * @description The bytes of the owner's files, its uploads in progress, its
+             *     stored responses and its conversations.
+             */
             bytes: number;
             /** @description Uploads in progress. */
             uploads: number;
+            /** @description Stored responses (row 54). */
+            responses?: number;
+            /** @description Conversations (row 54). */
+            conversations?: number;
             /**
              * @description Unix seconds. Set for a person Eugene removed: their objects
              *     have been hidden from everyone since then.
@@ -478,6 +843,10 @@ export interface components {
             /** @description Blob files unlinked. */
             blobs: number;
             freedBytes: number;
+            /** @description Stored responses deleted, ended or removed (row 54). */
+            responses?: number;
+            /** @description Conversations deleted, with their items, ended or removed (row 54). */
+            conversations?: number;
             removal?: components["schemas"]["RemovalCheck"];
             /** @description Why the sweep could not finish. */
             error?: string;
@@ -485,6 +854,12 @@ export interface components {
         StoreParts: {
             /** @description `/v1/files` and `/v1/uploads` keep files. */
             files: boolean;
+            /**
+             * @description `/v1/responses` keeps responses when apps ask (`store: true`),
+             *     and `/v1/conversations` keeps conversations (row 54,
+             *     `responsesEnabled`).
+             */
+            responses?: boolean;
         };
         StoreStatus: {
             parts: components["schemas"]["StoreParts"];
@@ -1094,6 +1469,30 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /**
+         * @description A response earlier in this chain was deleted, so the conversation
+         *     cannot be rebuilt. `detail` names it (it is the owner's own).
+         */
+        ChainBroken: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description The conversation so far is more than one request can carry.
+         *     `detail` says the numbers.
+         */
+        ContextTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
     };
     parameters: {
         /**
@@ -1104,6 +1503,13 @@ export interface components {
         Owner: string;
         FileId: string;
         UploadId: string;
+        ResponseId: string;
+        ConversationId: string;
+        /** @description OpenAI's bounds. */
+        ItemLimit: number;
+        ItemOrder: components["schemas"]["StoredListOrder"];
+        /** @description An item id; the page starts after it, in `order`. */
+        ItemAfter: string;
     };
     requestBodies: never;
     headers: never;
@@ -1453,6 +1859,508 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    keepStoredResponse: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoredResponseRequest"];
+            };
+        };
+        responses: {
+            /** @description The response, kept. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description A response with this id is already kept. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            413: components["responses"]["OverQuota"];
+        };
+    };
+    getStoredResponse: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                responseId: components["parameters"]["ResponseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteStoredResponse: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                responseId: components["parameters"]["ResponseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredObjectDeleted"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listStoredResponseInputItems: {
+        parameters: {
+            query?: {
+                /** @description OpenAI's bounds. */
+                limit?: components["parameters"]["ItemLimit"];
+                order?: components["parameters"]["ItemOrder"];
+                /** @description An item id; the page starts after it, in `order`. */
+                after?: components["parameters"]["ItemAfter"];
+            };
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                responseId: components["parameters"]["ResponseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of items. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredItemList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["ChainBroken"];
+        };
+    };
+    getStoredResponseContext: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                responseId: components["parameters"]["ResponseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conversation so far. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredContext"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["ChainBroken"];
+            413: components["responses"]["ContextTooLarge"];
+        };
+    };
+    createStoredConversation: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoredConversationRequest"];
+            };
+        };
+        responses: {
+            /** @description The conversation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredConversation"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["OverQuota"];
+        };
+    };
+    getStoredConversation: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredConversation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateStoredConversation: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoredConversationUpdate"];
+            };
+        };
+        responses: {
+            /** @description The conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredConversation"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteStoredConversation: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredObjectDeleted"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listStoredConversationItems: {
+        parameters: {
+            query?: {
+                /** @description OpenAI's bounds. */
+                limit?: components["parameters"]["ItemLimit"];
+                order?: components["parameters"]["ItemOrder"];
+                /** @description An item id; the page starts after it, in `order`. */
+                after?: components["parameters"]["ItemAfter"];
+            };
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of items. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredItemList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addStoredConversationItems: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoredItemsRequest"];
+            };
+        };
+        responses: {
+            /** @description The items added, in order. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredItemList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description An item with one of these ids is already in the conversation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            413: components["responses"]["OverQuota"];
+        };
+    };
+    getStoredConversationItem: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The item, as it was kept. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredItem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteStoredConversationItem: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conversation the item was deleted from (OpenAI's answer). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredConversation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getStoredConversationContext: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Whose object this is, said by the gateway from its own admission
+                 *     (see the description above). Believed only beside a gateway's
+                 *     service token.
+                 */
+                "X-Eugene-Plexus-Owner": components["parameters"]["Owner"];
+            };
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conversation so far. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredContext"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["ContextTooLarge"];
         };
     };
     listStoreOwners: {

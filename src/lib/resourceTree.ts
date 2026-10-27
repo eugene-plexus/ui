@@ -110,6 +110,14 @@ export interface Topology {
    */
   sites?: SitePlacement[];
   /**
+   * The version of the machine serving this console, from its own
+   * `GET /v1/node` (row 75). Absent when that agent sent none. `named` is a
+   * release or Edge (read "Eugene Plexus v0.4.0"); otherwise the label
+   * follows a colon. `stamps` are the commits and `note` the lookup's cause:
+   * both for Details.
+   */
+  version?: { label: string; named: boolean; stamps: string[]; note: string | null } | null;
+  /**
    * True when the control root could not be reached or answered `503
    * Locked`. The tree still renders; it says what is missing.
    */
