@@ -1239,6 +1239,144 @@ describe("a row says its state in a sentence (CX1)", () => {
   });
 });
 
+describe("a program Eugene's own account will not run (row 8)", () => {
+  it("names it, and one button runs Eugene's own build instead", async () => {
+    let installs = 0;
+    let patched = 0;
+    let started = 0;
+    const refused = "/opt/homebrew/bin/llama-server";
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: {
+        runtimes: [
+          nodeRuntime({
+            status: "crashed",
+            binary: refused,
+            refusedBinary: refused,
+            lastError: `${refused} belongs to troy; Eugene's own account runs programs only from folders it or root owns. Move it, or let Eugene fetch its own build`,
+          }),
+        ],
+      },
+    }));
+    handlers.set("GET agent/v1/engines", () => ({
+      status: 200,
+      body: {
+        engines: [
+          {
+            engine: "llama_cpp",
+            available: installs > 0,
+            modelFormats: ["gguf"],
+            acquisition: { installable: true },
+          },
+        ],
+      },
+    }));
+    handlers.set("POST agent/v1/engines/llama_cpp/install", () => {
+      installs += 1;
+      return { status: 202, body: { engine: "llama_cpp", state: "done" } };
+    });
+    handlers.set("PATCH agent/v1/runtimes/gemma-a", () => {
+      patched += 1;
+      return { status: 200, body: nodeRuntime({ status: "starting" }) };
+    });
+    handlers.set("POST agent/v1/runtimes/gemma-a/start", () => {
+      started += 1;
+      return { status: 202, body: {} };
+    });
+    const row = await rowFor("gemma-3-27b");
+    const said = await within(row).findByTestId("refused-binary", {}, { timeout: 5000 });
+    expect(said).toHaveTextContent(`Eugene won't run ${refused}: someone else can change it.`);
+    const button = within(said).getByTestId("use-own-build");
+    expect(button).toHaveTextContent("Use Eugene's own llama.cpp");
+    fireEvent.click(button);
+    await waitFor(() => expect(started).toBe(1));
+    expect(installs).toBe(1);
+    expect(patched).toBe(1);
+    const calls = vi.mocked(fetch).mock.calls;
+    const patch = calls.find(([, init]) => init?.method === "PATCH");
+    const body = JSON.parse(String(patch?.[1]?.body));
+    expect(body.name).toBe("gemma-a");
+    expect(body.modelPath).toBe("/models/gemma-27b-Q6_K_L.gguf");
+    expect("binary" in body).toBe(false);
+    expect("refusedBinary" in body).toBe(false);
+  });
+
+  it("says nothing of the kind for a runtime Eugene runs", async () => {
+    const row = await rowFor("gemma-3-27b");
+    await within(row).findByTestId("backend-model");
+    expect(within(row).queryByTestId("refused-binary")).toBeNull();
+    expect(within(row).queryByTestId("exec-approval")).toBeNull();
+  });
+
+  // Part 8c (call R8-EXEC-TRUST): a program only one other account can
+  // change runs once the owner says so; the console asks, plainly.
+  const program = "/home/ada/bin/llama-server";
+  const asking = (kind: "needs_approval" | "refused") =>
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: {
+        runtimes: [
+          nodeRuntime({
+            status: "crashed",
+            binary: program,
+            refusedBinary: program,
+            // The kind decides, whatever else a node sends.
+            execTrust: { kind, path: program, account: "ada", sha256: "ab".repeat(32) },
+            lastError: `Eugene's own account runs ${program} only once an owner approves it`,
+          }),
+        ],
+      },
+    }));
+
+  it("asks before running a program one other account can change, and runs it once approved", async () => {
+    let started = 0;
+    asking("needs_approval");
+    handlers.set("POST agent/v1/exec-approvals", () => ({ status: 201, body: {} }));
+    handlers.set("POST agent/v1/runtimes/gemma-a/start", () => {
+      started += 1;
+      return { status: 202, body: {} };
+    });
+    const row = await rowFor("gemma-3-27b");
+    const ask = await within(row).findByTestId("exec-approval", {}, { timeout: 5000 });
+    expect(ask).toHaveTextContent(
+      "Run llama-server from /home/ada/bin as Eugene's account? Anyone who can change this file (ada) can then act as Eugene.",
+    );
+    // Eugene's own build stays on offer beside the question.
+    expect(within(ask).getByTestId("use-own-build")).toHaveTextContent(
+      "Use Eugene's own llama.cpp",
+    );
+    expect(within(row).queryByTestId("refused-binary")).toBeNull();
+    fireEvent.click(within(ask).getByTestId("exec-approve"));
+    await waitFor(() => expect(started).toBe(1));
+    const approval = vi
+      .mocked(fetch)
+      .mock.calls.find(
+        ([url, init]) => init?.method === "POST" && String(url).includes("exec-approvals"),
+      );
+    expect(JSON.parse(String(approval?.[1]?.body))).toEqual({
+      path: program,
+      sha256: "ab".repeat(32),
+    });
+  });
+
+  it("Not now approves nothing", async () => {
+    asking("needs_approval");
+    const row = await rowFor("gemma-3-27b");
+    const ask = await within(row).findByTestId("exec-approval", {}, { timeout: 5000 });
+    fireEvent.click(within(ask).getByTestId("exec-not-now"));
+    await waitFor(() => expect(within(row).queryByTestId("exec-approval")).toBeNull());
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(calls.some(([url]) => String(url).includes("exec-approvals"))).toBe(false);
+  });
+
+  it("does not offer to approve a program others can change", async () => {
+    asking("refused");
+    const row = await rowFor("gemma-3-27b");
+    await within(row).findByTestId("refused-binary", {}, { timeout: 5000 });
+    expect(within(row).queryByTestId("exec-approval")).toBeNull();
+  });
+});
+
 describe("a running model's repeatable answers (row 20)", () => {
   it.each([true, false])("shows the effective launch setting: %s", async (enabled) => {
     handlers.set("GET agent/v1/runtimes", () => ({

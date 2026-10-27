@@ -6,6 +6,7 @@ import {
   installerBase,
   isLoopbackUrl,
   joinTokenState,
+  labelProblem,
   posixJoinCommand,
   rootControlUrl,
   windowsJoinCommand,
@@ -44,6 +45,37 @@ describe("the join commands", () => {
     expect(windowsJoinCommand(odd)).toContain("-NodeName 'Troy''s box'");
     expect(posixJoinCommand(odd)).toContain("--join 'http://<this-host>:8083'");
     expect(posixJoinCommand(odd)).toContain(`--name 'Troy'"'"'s box'`);
+  });
+
+  it("names how the machine is shown, quoted as one word in each shell", () => {
+    // Row 8: install.ps1 -Label and install.sh --label pass it to the join.
+    const shown = { ...details, label: "Studio PC" };
+    expect(windowsJoinCommand(shown)).toBe(
+      `& ([scriptblock]::Create((irm ${base}/install.ps1))) -Join http://192.168.16.252:8283 ` +
+        "-Token example-join-token_not-a-secret -NodeName Amish_Station -Label 'Studio PC'",
+    );
+    expect(posixJoinCommand(shown)).toBe(
+      `curl -fsSL ${base}/install.sh | sh -s -- --join http://192.168.16.252:8283 ` +
+        "--token example-join-token_not-a-secret --name Amish_Station --label 'Studio PC'",
+    );
+    // An apostrophe, a dollar sign and a space stay inside the one word.
+    const odd = { ...details, label: "Troy's $HOME box" };
+    expect(windowsJoinCommand(odd)).toContain("-Label 'Troy''s $HOME box'");
+    expect(posixJoinCommand(odd)).toContain(`--label 'Troy'"'"'s $HOME box'`);
+  });
+
+  it("leaves the label out when none was given", () => {
+    for (const label of [undefined, null, "", "   "]) {
+      expect(windowsJoinCommand({ ...details, label })).not.toContain("-Label");
+      expect(posixJoinCommand({ ...details, label })).not.toContain("--label");
+    }
+  });
+
+  it("says when a name cannot reach the Windows installer", () => {
+    expect(labelProblem("Studio PC")).toBeNull();
+    expect(labelProblem("")).toBeNull();
+    expect(labelProblem('The "big" one')).toMatch(/double quote/);
+    expect(labelProblem("C:\\")).toMatch(/backslash/);
   });
 
   it("joins a job site naming its owner and the root key, and never a password", () => {
