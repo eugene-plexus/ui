@@ -301,6 +301,60 @@ describe("a root that has not polled yet", () => {
     expect(await screen.findByTestId("node-last-error")).toHaveTextContent("connection refused");
   });
 
+  it("says why a refused address was refused, above the probe error (row 36)", async () => {
+    // Before, this machine read "connection refused" -- the OLD address's
+    // error -- and sent the owner to firewalls and keys.
+    withNodes([
+      {
+        name: "nas",
+        role: "worker",
+        reachable: false,
+        url: "http://192.168.1.5:8079",
+        lastError: "connection refused",
+        announcementRefused: {
+          at: "2026-10-26T14:05:00Z",
+          reason: "open_internet",
+          title: "Address puts this node on the open internet",
+          detail: "Node 'nas' announced http://8.8.8.8:8079 (public).",
+          announcedUrl: "http://8.8.8.8:8079/",
+        },
+        unverifiedAnnouncements: { count: 3, lastAt: "2026-10-26T14:05:00Z" },
+      },
+    ]);
+    render(<NodesPage />);
+    const refused = await screen.findByTestId("node-announcement-refused");
+    expect(refused).toHaveTextContent("Node 'nas' announced http://8.8.8.8:8079 (public).");
+    expect(refused).toHaveTextContent("re-enroll it to confirm");
+    // The way to confirm is re-enrollment, and the page says where.
+    const action = within(refused).getByRole("link", { name: "Re-enroll this machine" });
+    expect(action).toHaveAttribute("href", "/nodes#add-machine");
+    // No button accepts the address from here.
+    expect(screen.queryByText(/accept this address/i)).toBeNull();
+    // The count of unsigned announcements is one line, never their text.
+    expect(await screen.findByTestId("node-unverified-announcements")).toHaveTextContent(
+      /^3 announcements not signed by this machine were refused, the last at /,
+    );
+    // And the refusal comes first.
+    const probe = screen.getByTestId("node-last-error");
+    expect(refused.compareDocumentPosition(probe) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows no refusal for a machine that has none", async () => {
+    withNodes([
+      {
+        name: "nas",
+        role: "worker",
+        reachable: true,
+        url: "http://a:8079",
+        announcementRefused: null,
+      },
+    ]);
+    render(<NodesPage />);
+    await screen.findByTestId("node-liveness");
+    expect(screen.queryByTestId("node-announcement-refused")).toBeNull();
+    expect(screen.queryByTestId("node-unverified-announcements")).toBeNull();
+  });
+
   it("says when a down node was last seen", async () => {
     withNodes([
       {

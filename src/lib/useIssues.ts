@@ -279,11 +279,15 @@ export function useRefreshWithIssues(load: () => Promise<void>): void {
 async function readSources(token: string): Promise<IssueSources> {
   const options = reads(token);
 
-  const [routing, drivers, local, roster] = await Promise.all([
+  const [routing, drivers, local, roster, rootAuth] = await Promise.all([
     api.get<RoutingTableView>("gateway", "/v1/admin/routing", options).catch(() => null),
     api.get<DriversInfo>("gateway", "/v1/admin/drivers", options).catch(() => null),
     readIdentity("agent", options),
     readRoster(options),
+    // Row 5: whether the root's passphrase file still holds its passphrase.
+    api
+      .get<{ passphraseFile?: "matches" | "old" | "none" }>("control", "/v1/auth/status", options)
+      .catch(() => null),
   ]);
 
   // The local node's name is what tells the others apart from it, and
@@ -325,6 +329,7 @@ async function readSources(token: string): Promise<IssueSources> {
     perNode,
     routing,
     drivers: drivers?.drivers ?? null,
+    controlPassphraseFile: rootAuth?.passphraseFile ?? null,
   };
 }
 

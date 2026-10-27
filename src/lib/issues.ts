@@ -52,6 +52,7 @@ import type {
   RuntimeList,
 } from "./types";
 import { nodeLiveness } from "./nodeLiveness";
+import { describeRefusal, refusalText, type AnnouncementRefusal } from "./announcementRefusal";
 import { describeUpdate, releaseName, versionDifference, type VersionDifference } from "./updates";
 import { labelOf } from "@/lib/nodeLabels";
 import type { HostHistory } from "./hostHistory";
@@ -65,6 +66,7 @@ export type IssueKind =
   | "control-sealed"
   | "component-down"
   | "node-down"
+  | "announcement-refused"
   | "folder-unreachable"
   | "clock-skew"
   | "trust-stale"
@@ -77,7 +79,8 @@ export type IssueKind =
   | "update-failed"
   | "versions-differ"
   | "account-list-failed"
-  | "routing-target-unserved";
+  | "routing-target-unserved"
+  | "passphrase-file-old";
 
 /**
  * `blocking` means the install is not doing its job right now;
@@ -162,6 +165,8 @@ export interface ControlNodeRow {
    * since it started -- see `nodeLiveness`. */
   lastSeenAt?: string | null;
   devices?: ComputeDevice[] | null;
+  /** Row 36: why the root refused the address this machine last announced. */
+  announcementRefused?: AnnouncementRefusal | null;
 }
 
 export interface IssueSources {
@@ -188,6 +193,12 @@ export interface IssueSources {
   routing?: Pick<RoutingTableView, "slots"> | null;
   /** The gateway's view of each driver, for an account's list status. */
   drivers?: DriverHealth[] | null;
+  /**
+   * Row 5: whether the file the control root unlocks from holds this
+   * install's passphrase (`AuthStatus.passphraseFile`), checked by the root
+   * at each start, every hour and after a change. Absent when unknown.
+   */
+  controlPassphraseFile?: "matches" | "old" | "none" | null;
 }
 
 /**
@@ -219,7 +230,9 @@ export const TRUST_STALE_SECONDS = 600;
 export function issuesFrom(sources: IssueSources): Issue[] {
   const issues: Issue[] = [
     ...sealedRootIssue(sources),
+    ...passphraseFileIssue(sources),
     ...nodeDownIssues(sources.nodes),
+    ...announcementRefusedIssues(sources.nodes),
     ...clockSkewIssues(sources.perNode),
     ...accountListIssues(sources.drivers),
     ...unservedTargetIssues(sources.routing),
@@ -369,6 +382,27 @@ function sealedRootIssue(sources: IssueSources): Issue[] {
   ];
 }
 
+/**
+ * Row 5: after a passphrase change the control root rewrites the file it
+ * unlocks from, but a container secret is read-only. Until someone puts
+ * the new passphrase there, a restart leaves the root locked.
+ */
+function passphraseFileIssue(sources: IssueSources): Issue[] {
+  if (sources.controlPassphraseFile !== "old") return [];
+  return [
+    {
+      id: "passphrase-file-old",
+      kind: "passphrase-file-old",
+      severity: "warning",
+      title: "The control root's passphrase file holds the old passphrase",
+      detail:
+        "After a restart Eugene stays locked until someone signs in. Put the new passphrase " +
+        "in the file the control root unlocks from (in a container, its passphrase secret).",
+      href: "/nodes",
+    },
+  ];
+}
+
 // --- nodes --------------------------------------------------------------
 
 /**
@@ -399,11 +433,43 @@ function nodeDownIssues(nodes: ControlNodeRow[] | null): Issue[] {
       kind: "node-down" as const,
       severity: "blocking" as const,
       title: `${labelOf(n.name)} is not answering`,
-      detail: n.lastError
-        ? `The last attempt to reach it said: ${n.lastError}`
-        : "Nothing has come back from it, and no reason was recorded. Check that the machine " +
-          "is on and that Eugene is running there.",
-      href: "/nodes",
+      // Row 36: a refused address is the reason, and the probe error is
+      // about the old address, so it is left out.
+      detail: n.announcementRefused
+        ? `Its new address was refused. ${refusalText(n.announcementRefused)}`
+        : n.lastError
+          ? `The last attempt to reach it said: ${n.lastError}`
+          : "Nothing has come back from it, and no reason was recorded. Check that the machine " +
+            "is on and that Eugene is running there.",
+      href: n.announcementRefused ? describeRefusal(n.announcementRefused).href : "/nodes",
+      node: n.name,
+    }));
+}
+
+/**
+ * Row 36: a machine that still answers at its old address and announced a
+ * new one the root refused. The unreachable case is `node-down`'s detail,
+ * not a second issue. A warning: nothing is down, and the move the machine
+ * tried did not happen.
+ */
+function announcementRefusedIssues(nodes: ControlNodeRow[] | null): Issue[] {
+  return (nodes ?? [])
+    .filter(
+      (n) =>
+        n.announcementRefused &&
+        !(
+          n.reachable === false &&
+          nodeLiveness({ reachable: false, lastError: n.lastError, lastSeenAt: n.lastSeenAt }) ===
+            "down"
+        ),
+    )
+    .map((n) => ({
+      id: `announcement-refused:${n.name}`,
+      kind: "announcement-refused" as const,
+      severity: "warning" as const,
+      title: `The new address of ${labelOf(n.name)} was refused`,
+      detail: refusalText(n.announcementRefused as AnnouncementRefusal),
+      href: describeRefusal(n.announcementRefused as AnnouncementRefusal).href,
       node: n.name,
     }));
 }

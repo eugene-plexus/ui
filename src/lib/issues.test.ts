@@ -449,6 +449,78 @@ describe("a node that is not answering", () => {
   });
 });
 
+// --- a refused announcement (row 36) --------------------------------------
+
+describe("a machine whose new address the root refused", () => {
+  const REFUSED =
+    '{"at":"2026-10-26T14:05:00Z","reason":"open_internet",' +
+    '"title":"Address puts this node on the open internet",' +
+    '"detail":"Node \'nas\' is enrolled at http://192.168.1.5:8079 (private) and announced ' +
+    "http://8.8.8.8:8079 (public). A node may not move itself onto the open internet. " +
+    'Re-enroll the node to confirm the new address.",' +
+    '"announcedUrl":"http://8.8.8.8:8079/"}';
+
+  it("gives the refusal, not the probe error, as why an unreachable machine is down", () => {
+    // Before: "The last attempt to reach it said: connection refused" -- the
+    // OLD address's error, which sent the owner to firewalls and keys.
+    const nodes = body<ControlNodeRow[]>(
+      '[{"name":"nas","reachable":false,"lastError":"connection refused",' +
+        `"announcementRefused":${REFUSED}}]`,
+    );
+    const found = issuesFrom({ ...NOTHING, nodes });
+    // One issue, not two.
+    expect(found).toHaveLength(1);
+    const [issue] = found;
+    expect(issue!.kind).toBe("node-down");
+    expect(issue!.detail).toContain("announced http://8.8.8.8:8079");
+    expect(issue!.detail).toContain("re-enroll it");
+    expect(issue!.detail).not.toContain("connection refused");
+    expect(issue!.href).toBe("/nodes#add-machine");
+  });
+
+  it("warns about a reachable machine whose old address still works", () => {
+    const nodes = body<ControlNodeRow[]>(
+      `[{"name":"nas","reachable":true,"announcementRefused":${REFUSED}}]`,
+    );
+    const [issue] = issuesFrom({ ...NOTHING, nodes });
+    expect(issue!.kind).toBe("announcement-refused");
+    expect(issue!.severity).toBe("warning");
+    expect(issue!.node).toBe("nas");
+    expect(issue!.detail).toContain("announced http://8.8.8.8:8079");
+    expect(issue!.href).toBe("/nodes#add-machine");
+  });
+
+  it("offers no way to accept the address from here", () => {
+    const nodes = body<ControlNodeRow[]>(
+      `[{"name":"nas","reachable":true,"announcementRefused":${REFUSED}}]`,
+    );
+    const [issue] = issuesFrom({ ...NOTHING, nodes });
+    expect(JSON.stringify(issue)).not.toMatch(/accept this address/i);
+    expect(issue!.action).toBeUndefined();
+  });
+
+  it("sends a refusal that re-enrolling does not fix to Machines, not to a join token", () => {
+    const nodes = body<ControlNodeRow[]>(
+      '[{"name":"nas","reachable":true,"announcementRefused":{"reason":"anothers_address",' +
+        '"title":"Another machine\'s address",' +
+        '"detail":"http://192.168.1.9:8079 is box\'s. If that machine has moved, this one is ' +
+        'let in once it says where."}}]',
+    );
+    const [issue] = issuesFrom({ ...NOTHING, nodes });
+    expect(issue!.href).toBe("/nodes");
+    expect(issue!.detail).toContain("If it is gone, remove it");
+  });
+
+  it("is not raised without a refusal, and is not counted for unsigned announcements", () => {
+    const nodes = body<ControlNodeRow[]>(
+      '[{"name":"nas","reachable":true,"announcementRefused":null,' +
+        '"unverifiedAnnouncements":{"count":3,"lastAt":"2026-10-26T14:05:00Z"}}]',
+    );
+    // Not something the owner can fix, so no issue.
+    expect(issuesFrom({ ...NOTHING, nodes })).toEqual([]);
+  });
+});
+
 // --- clocks -------------------------------------------------------------
 
 const T0 = Date.parse("2026-09-16T14:03:21.000Z");
@@ -1632,5 +1704,17 @@ describe("describeCopying a model of several files (LS7)", () => {
       copyProgress: { bytesCopied: 50, totalBytes: 100, files: 1, filesCopied: 0 },
     });
     expect(one?.text).not.toContain("files");
+  });
+});
+
+describe("the control root's passphrase file (row 5)", () => {
+  it("is a warning when it holds the old passphrase, and nothing otherwise", () => {
+    const old = issuesFrom({ ...NOTHING, controlPassphraseFile: "old" });
+    expect(old.map((issue) => [issue.kind, issue.severity])).toEqual([
+      ["passphrase-file-old", "warning"],
+    ]);
+    expect(old[0]?.detail).toContain("stays locked until someone signs in");
+    for (const fine of ["matches", "none", null, undefined] as const)
+      expect(issuesFrom({ ...NOTHING, controlPassphraseFile: fine })).toEqual([]);
   });
 });

@@ -69,6 +69,12 @@ import { usePolling } from "@/lib/usePolling";
 import { expertHint } from "@/lib/vocabulary";
 import { logsHref } from "@/lib/logs";
 import {
+  describeRefusal,
+  unverifiedLine,
+  type AnnouncementRefusal,
+  type UnverifiedAnnouncements,
+} from "@/lib/announcementRefusal";
+import {
   describeEncryption,
   describeMachineLink,
   ENCRYPTION_SETTING_HREF,
@@ -119,6 +125,10 @@ interface NodeRow {
     unreachable: string[];
     notReady?: string[] | null;
   } | null;
+  /** Row 36: why the root refused the address this machine last announced,
+   * and how many announcements it did not sign. */
+  announcementRefused?: AnnouncementRefusal | null;
+  unverifiedAnnouncements?: UnverifiedAnnouncements | null;
 }
 
 /** What a node serves, from the two views that know: the control root's
@@ -668,6 +678,17 @@ export default function NodesPage() {
                             column said only "down" while the probe client held
                             "HTTP 401: ... not yet valid (iat)" -- half a second
                             of clock skew that read as a key problem. */}
+                          {n.announcementRefused ? (
+                            <AnnouncementRefusedCell refusal={n.announcementRefused} />
+                          ) : null}
+                          {n.unverifiedAnnouncements ? (
+                            <div
+                              className="mt-0.5 max-w-md text-sm text-[color:var(--muted)]"
+                              data-testid="node-unverified-announcements"
+                            >
+                              {unverifiedLine(n.unverifiedAnnouncements)}
+                            </div>
+                          ) : null}
                           {!n.reachable && n.lastError ? (
                             <div
                               className="mt-0.5 max-w-md text-sm text-[color:var(--muted)]"
@@ -885,11 +906,12 @@ export default function NodesPage() {
           {/* Hidden rather than disabled while locked: minting a join token
           is a control-root write, so the button could only produce the
           same 503 the panel above already explains. */}
-          <section hidden={locked} className="section-panel">
+          <section id="add-machine" hidden={locked} className="section-panel">
             <h2 className="section-heading font-ui text-base font-semibold">Add a machine</h2>
             <p className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]">
               Make a token, then run the command it gives you on the other machine. A token works
-              once and is <strong>shown once</strong>.
+              once and is <strong>shown once</strong>. To enroll a machine again, give its name
+              here.
             </p>
 
             <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -1197,6 +1219,30 @@ function behindHint(seen: number, root: number): string {
     expertHint(", and the root is at ") +
     root +
     "."
+  );
+}
+
+/**
+ * Row 36: why the root refused this machine's new address, in the root's
+ * own words, then the next step. Re-enrollment is the only way to confirm a
+ * move onto the open internet, so there is no button that accepts it.
+ */
+function AnnouncementRefusedCell({ refusal }: { refusal: AnnouncementRefusal }) {
+  const view = describeRefusal(refusal);
+  return (
+    <div
+      className="text-status-error mt-0.5 max-w-md text-sm"
+      data-testid="node-announcement-refused"
+      data-reason={refusal.reason}
+    >
+      <div className="font-medium">{refusal.title}</div>
+      <div>{[view.detail, view.next].filter(Boolean).join(" ")}</div>
+      {view.action ? (
+        <Link href={view.href} className="underline">
+          {view.action}
+        </Link>
+      ) : null}
+    </div>
   );
 }
 
