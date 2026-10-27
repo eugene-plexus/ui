@@ -34,6 +34,7 @@ const SERVED: Record<string, string[]> = {
   agent: [
     "firstRunComplete:setup",
     "securityMode:security",
+    "maxTrustBundleAgeHours:security",
     "uiTheme:ui",
     "uiFontSize:ui",
     "engineBinaryRoots:engines",
@@ -156,6 +157,10 @@ describe("every served field has a topic", () => {
     expect(topicOf("control", { key: "securityMode", category: "security" })).toBe("access");
     expect(topicOf("gateway", { key: "corsEnabled", category: "clients" })).toBe("access");
     expect(topicOf("agent", { key: "advertiseUrl", category: "node" })).toBe("access");
+    // Row 46: the limit on frozen trust is where a person looks for access.
+    expect(topicOf("agent", { key: "maxTrustBundleAgeHours", category: "security" })).toBe(
+      "access",
+    );
   });
 
   it("lets a knob the map has never heard of fall back to its own category, labelled by the schema", () => {
@@ -370,8 +375,11 @@ describe("the cards", () => {
     expect(access.sections.map((s) => [s.owner.id, s.keys])).toEqual([
       ["gateway", ["corsEnabled", "corsAllowedOrigins"]],
       ["control", ["securityMode", "joinTokenTtlSeconds"]],
-      ["agent:Amish_Station", ["securityMode", "advertiseUrl", "allowedHosts"]],
-      ["agent:nas", ["securityMode", "advertiseUrl", "allowedHosts"]],
+      [
+        "agent:Amish_Station",
+        ["securityMode", "maxTrustBundleAgeHours", "advertiseUrl", "allowedHosts"],
+      ],
+      ["agent:nas", ["securityMode", "maxTrustBundleAgeHours", "advertiseUrl", "allowedHosts"]],
     ]);
     // Engines is per machine: two sections, one per agent.
     const engines = cards.find((c) => c.topic === "engines")!;

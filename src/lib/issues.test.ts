@@ -1496,6 +1496,37 @@ describe("a machine that has not heard from the control root", () => {
     const days = issuesFrom({ ...NOTHING, perNode: [heardFrom(3 * 86400)] });
     expect(days[0]?.title).toMatch(/for 3 days$/);
   });
+
+  // Row 46: past its limit the machine refuses changes from other machines,
+  // and says so; the second line repeats it, and only when it says so.
+  function frozen(age: number, refusing: boolean | undefined): NodeFacts {
+    const json = JSON.stringify({
+      enrolled: true,
+      name: "Amish_Station",
+      trustBundleAgeSeconds: age,
+      trustBundleMaxAgeSeconds: 24 * 3600,
+      trustBundleFrozen: refusing,
+    });
+    return facts({
+      name: "Amish_Station",
+      label: "Amish_Station",
+      identity: body<NodeIdentity>(json),
+    });
+  }
+
+  it("says changes from other machines are refused once the machine refuses them", () => {
+    const [issue] = issuesFrom({ ...NOTHING, perNode: [frozen(31 * 3600, true)] });
+    expect(issue?.title).toBe("Amish_Station has not heard from the control root for 31 hours");
+    expect(issue?.detail.startsWith("Changes from other machines are refused here. ")).toBe(true);
+  });
+
+  it("does not guess: no second line until the machine says it refuses", () => {
+    for (const refusing of [false, undefined]) {
+      const [issue] = issuesFrom({ ...NOTHING, perNode: [frozen(31 * 3600, refusing)] });
+      expect(issue?.kind).toBe("trust-stale");
+      expect(issue?.detail).not.toContain("refused");
+    }
+  });
 });
 
 // --- a CPU build on a machine with a card --------------------------------
