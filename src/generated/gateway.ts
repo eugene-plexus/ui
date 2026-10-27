@@ -519,6 +519,15 @@ export interface paths {
                  *     Use off for intentional repeated passages.
                  */
                 "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+                /**
+                 * @description Lower this request's queue band (row 11): `background` or
+                 *     `sheddable` waits behind `interactive` work when the machines are
+                 *     busy. The band in effect is the lower of this header and the band
+                 *     the operator gave the person's groups or the key. A value that asks
+                 *     for a higher band is ignored, never refused, and the band used is on
+                 *     the request's metrics row. Read on every door that waits in line.
+                 */
+                "X-Eugene-Band"?: components["parameters"]["QueueBandHeader"];
             };
             path?: never;
             cookie?: never;
@@ -755,6 +764,15 @@ export interface paths {
                  *     Use off for intentional repeated passages.
                  */
                 "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+                /**
+                 * @description Lower this request's queue band (row 11): `background` or
+                 *     `sheddable` waits behind `interactive` work when the machines are
+                 *     busy. The band in effect is the lower of this header and the band
+                 *     the operator gave the person's groups or the key. A value that asks
+                 *     for a higher band is ignored, never refused, and the band used is on
+                 *     the request's metrics row. Read on every door that waits in line.
+                 */
+                "X-Eugene-Band"?: components["parameters"]["QueueBandHeader"];
             };
             path?: never;
             cookie?: never;
@@ -1209,6 +1227,15 @@ export interface paths {
                  *     Use off for intentional repeated passages.
                  */
                 "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+                /**
+                 * @description Lower this request's queue band (row 11): `background` or
+                 *     `sheddable` waits behind `interactive` work when the machines are
+                 *     busy. The band in effect is the lower of this header and the band
+                 *     the operator gave the person's groups or the key. A value that asks
+                 *     for a higher band is ignored, never refused, and the band used is on
+                 *     the request's metrics row. Read on every door that waits in line.
+                 */
+                "X-Eugene-Band"?: components["parameters"]["QueueBandHeader"];
             };
             path?: never;
             cookie?: never;
@@ -1789,6 +1816,15 @@ export interface paths {
                  *     Use off for intentional repeated passages.
                  */
                 "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+                /**
+                 * @description Lower this request's queue band (row 11): `background` or
+                 *     `sheddable` waits behind `interactive` work when the machines are
+                 *     busy. The band in effect is the lower of this header and the band
+                 *     the operator gave the person's groups or the key. A value that asks
+                 *     for a higher band is ignored, never refused, and the band used is on
+                 *     the request's metrics row. Read on every door that waits in line.
+                 */
+                "X-Eugene-Band"?: components["parameters"]["QueueBandHeader"];
             };
             path?: never;
             cookie?: never;
@@ -2947,23 +2983,38 @@ export interface paths {
          *     * **`swapWaitSeconds`** (`duration`) — how long a request waits
          *       for a `startOnDemand` runtime to reach `ready` before the next
          *       tier is tried. Engine-dependent: llama.cpp loads a small
-         *       model in seconds; vLLM's silent load is minutes. **Since
-         *       2026-10-02 (CB3) also how long a chat turn waits for room in a
-         *       runtime's shared context.** A runtime whose agent reports
+         *       model in seconds; vLLM's silent load is minutes. **Since row 11
+         *       also how long a request waits for a runtime that is already
+         *       starting** (one shared poll a runtime), where it was refused at
+         *       once with a 503 before. A runtime whose agent reports
          *       `capabilities.contextPoolTokens` gets no more prompt tokens in
-         *       flight than 90% of it: each turn counted as its conversation's
-         *       last prompt tokens, plus its new text at ~3.5 characters a
-         *       token (the whole request's, for a new conversation), plus its
-         *       `max_tokens`. A turn that does not fit waits — on the replica
-         *       that holds its conversation while it holds one, else on any
-         *       replica of the tier with room — and after this long is sent
-         *       in the usual order. A request bigger than the whole pool is
-         *       sent at once, and the engine's own refusal is the answer.
-         *       Measured on an 8B at 64k with four agents a replica: 158 of
-         *       204 turns failed before, when a few prompts overflowed a pool
-         *       and the engine's refusal was counted as a broken backend. That
-         *       refusal (the driver's `#backend-capacity`) now cascades and is
-         *       not counted by a backend's circuit.
+         *       flight than 90% of it (CB3): each turn counted as its
+         *       conversation's last prompt tokens, plus its new text at ~3.5
+         *       characters a token (the whole request's, for a new
+         *       conversation), plus room for its answer (see
+         *       `answerReserveFloorTokens`). A request bigger than the whole
+         *       pool is sent at once, and the engine's own refusal is the
+         *       answer. That refusal (the driver's `#backend-capacity`)
+         *       cascades and is not counted by a backend's circuit. **The wait
+         *       for room is the queue's since row 11** ("Waiting in line"):
+         *       `queueWaitSeconds` bounds it, not this.
+         *     * **`queueWaitSeconds`** (`duration`, default 60, 5 to 600; row
+         *       11) — how long a request waits in line. After it, a request
+         *       waiting for a runtime moves to its slot's next tier when the
+         *       slot has one, and is refused (`queue_timeout`) when it does not;
+         *       a request waiting for its key's turn is refused
+         *       (`key_queue_timeout`).
+         *     * **`queueMaxRequests`** (`integer`, default 256, 16 to 4,096; row
+         *       11) — how many requests may wait in this gateway at once. Past
+         *       it a request of a higher band takes the place of the newest one
+         *       of the lowest band waiting (`set_aside`); any other is refused
+         *       (`queue_full`).
+         *     * **`answerReserveFloorTokens`** (`integer`, default 1,024, 0 to
+         *       131,072; row 11, CB-C2) — the least room a turn holds for its
+         *       answer in a runtime's shared context. A turn holds the lower of
+         *       its `max_tokens` and its conversation's long answers (the length
+         *       95 of 100 of its last 16 were shorter than), or 4,096 for a new
+         *       conversation, and never less than this.
          *     * **`idleCheckSeconds`** (`duration`) — how often the gateway
          *       checks each runtime's idle timeout.
          *     * **`controlUrl`** (`url`, optional) — the control root, when
@@ -6959,6 +7010,8 @@ export interface components {
         Percentiles: {
             p50: number;
             p90: number;
+            /** @description Present where a reader shows it (`queuedMs`, row 11). */
+            p95?: number;
             p99?: number;
             max: number;
         };
@@ -7093,6 +7146,25 @@ export interface components {
             tierCounts?: {
                 [key: string]: number;
             };
+            /**
+             * @description How long requests waited in line (row 11), with `p95`, over the
+             *     group's requests that waited at all. Null when none waited.
+             *     Refused requests are not in a group; `MetricsSummary.refused`
+             *     counts them.
+             */
+            queuedMs?: components["schemas"]["Percentiles"] | null;
+            /**
+             * @description Times a request moved to its slot's next tier after it waited
+             *     `queueWaitSeconds` for a runtime (row 11). Absent on stores
+             *     from before schema v14.
+             */
+            tierMoves?: number;
+            /**
+             * @description Answers longer than the room their turn held for them in a
+             *     shared context (row 11, CB-C2). Many of them mean the floor
+             *     (`answerReserveFloorTokens`) is too low for this model's work.
+             */
+            outranReserve?: number;
         };
         /**
          * @description Prompt tokens and the part of them served from an engine's
@@ -7148,7 +7220,61 @@ export interface components {
              */
             truncated?: boolean;
             groups: components["schemas"]["MetricsGroup"][];
+            /**
+             * @description Requests refused in the window, by `QueueRefusalCode` (row 11),
+             *     each kept as a row with outcome `refused`. Absent when none
+             *     were.
+             */
+            refused?: {
+                [key: string]: number;
+            };
+            /**
+             * @description What waits in this gateway's line now (row 11), one entry for
+             *     each runtime something waits for, and one with no runtime for
+             *     requests that wait only for their key's turn. Live, not a
+             *     figure over the window.
+             */
+            queue?: components["schemas"]["MetricsQueueRuntime"][];
         };
+        MetricsQueueRuntime: {
+            /** @description The model the requests asked for. */
+            model?: string | null;
+            /** @description The runtime they wait for. Null for a wait for the key's turn only. */
+            runtime?: string | null;
+            node?: string | null;
+            waiting: components["schemas"]["MetricsQueueBands"];
+            /** @description Requests this gateway runs on the runtime now. */
+            running: number;
+            /** @description The runtime's `parallelSlots`, when its agent reports them. */
+            slots?: number | null;
+        };
+        MetricsQueueBands: {
+            interactive: number;
+            background: number;
+            sheddable: number;
+        };
+        /**
+         * @description Which requests wait or are turned away first when the machines are
+         *     busy. From highest to lowest: `interactive` (a person waiting at a
+         *     chat), `background` (work nobody watches), `sheddable` (refused first
+         *     under load). With no policy the install's default is `interactive`.
+         * @enum {string}
+         */
+        QueueBand: "interactive" | "background" | "sheddable";
+        /**
+         * @description Why the queue refused a request (row 11), on its
+         *     `X-Eugene-Refusal-Reason` header and its metrics row. "Waiting in
+         *     line" in this document's description has the table.
+         * @enum {string}
+         */
+        QueueRefusalCode: "key_queue_full" | "queue_full" | "set_aside" | "key_queue_timeout" | "queue_timeout" | "still_starting" | "shutting_down" | "rate_limited";
+        /**
+         * @description `refused` (row 11, schema v14): the queue turned the request away
+         *     before any backend was asked, for the `refusal` the row names.
+         *     Named rather than inline, so a new value cannot rename an enum.
+         * @enum {string}
+         */
+        MetricOutcome: "served" | "error" | "refused";
         /** @description One backend touched by one request, in the order tried. */
         MetricAttempt: {
             /**
@@ -7330,8 +7456,24 @@ export interface components {
             images?: number | null;
             /** @description For a video job, the seconds asked for (P5, schema v9). */
             videoSeconds?: number | null;
-            /** @enum {string} */
-            outcome: "served" | "error";
+            outcome: components["schemas"]["MetricOutcome"];
+            /**
+             * @description How long the request waited in line (row 11, schema v14): for
+             *     its key's turn, for a runtime, or both. Not the wake, which is
+             *     `waitedMs`. Null on rows from before v14.
+             */
+            queuedMs?: number | null;
+            /** @description The queue band the request ran or waited in. Null on rows from before v14. */
+            band?: components["schemas"]["QueueBand"] | null;
+            /** @description Why the queue refused it, when `outcome` is `refused`. */
+            refusal?: components["schemas"]["QueueRefusalCode"] | null;
+            /** @description Times it moved to its slot's next tier after waiting (row 11). */
+            tierMoves?: number | null;
+            /**
+             * @description Its answer was longer than the room its turn held for it in a
+             *     shared context (row 11, CB-C2). Null where nothing was held.
+             */
+            outranReserve?: boolean | null;
             tries: components["schemas"]["MetricAttempt"][];
             /**
              * @description Each search this install ran for the request (P8, schema v10),
@@ -8487,6 +8629,15 @@ export interface components {
         StoredItemOrder: components["schemas"]["StoredItemOrder"];
         /** @description An item id; the page starts after it, in `order`. */
         StoredItemAfter: string;
+        /**
+         * @description Lower this request's queue band (row 11): `background` or
+         *     `sheddable` waits behind `interactive` work when the machines are
+         *     busy. The band in effect is the lower of this header and the band
+         *     the operator gave the person's groups or the key. A value that asks
+         *     for a higher band is ignored, never refused, and the band used is on
+         *     the request's metrics row. Read on every door that waits in line.
+         */
+        QueueBandHeader: components["schemas"]["QueueBand"];
     };
     requestBodies: never;
     headers: never;
@@ -9641,6 +9792,15 @@ export interface operations {
                  *     Use off for intentional repeated passages.
                  */
                 "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+                /**
+                 * @description Lower this request's queue band (row 11): `background` or
+                 *     `sheddable` waits behind `interactive` work when the machines are
+                 *     busy. The band in effect is the lower of this header and the band
+                 *     the operator gave the person's groups or the key. A value that asks
+                 *     for a higher band is ignored, never refused, and the band used is on
+                 *     the request's metrics row. Read on every door that waits in line.
+                 */
+                "X-Eugene-Band"?: components["parameters"]["QueueBandHeader"];
             };
             path?: never;
             cookie?: never;
@@ -9849,6 +10009,15 @@ export interface operations {
                  */
                 "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
                 /**
+                 * @description Lower this request's queue band (row 11): `background` or
+                 *     `sheddable` waits behind `interactive` work when the machines are
+                 *     busy. The band in effect is the lower of this header and the band
+                 *     the operator gave the person's groups or the key. A value that asks
+                 *     for a higher band is ignored, never refused, and the band used is on
+                 *     the request's metrics row. Read on every door that waits in line.
+                 */
+                "X-Eugene-Band"?: components["parameters"]["QueueBandHeader"];
+                /**
                  * @description Anthropic's API version, `2023-06-01` from every observed
                  *     client. Accepted and not enforced: we serve local models, so
                  *     there is no dated behaviour of ours for it to select.
@@ -10046,6 +10215,15 @@ export interface operations {
                  *     Use off for intentional repeated passages.
                  */
                 "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+                /**
+                 * @description Lower this request's queue band (row 11): `background` or
+                 *     `sheddable` waits behind `interactive` work when the machines are
+                 *     busy. The band in effect is the lower of this header and the band
+                 *     the operator gave the person's groups or the key. A value that asks
+                 *     for a higher band is ignored, never refused, and the band used is on
+                 *     the request's metrics row. Read on every door that waits in line.
+                 */
+                "X-Eugene-Band"?: components["parameters"]["QueueBandHeader"];
             };
             path?: never;
             cookie?: never;
@@ -10831,6 +11009,15 @@ export interface operations {
                  *     Use off for intentional repeated passages.
                  */
                 "X-Eugene-Repetition-Mode"?: components["parameters"]["RepetitionMode"];
+                /**
+                 * @description Lower this request's queue band (row 11): `background` or
+                 *     `sheddable` waits behind `interactive` work when the machines are
+                 *     busy. The band in effect is the lower of this header and the band
+                 *     the operator gave the person's groups or the key. A value that asks
+                 *     for a higher band is ignored, never refused, and the band used is on
+                 *     the request's metrics row. Read on every door that waits in line.
+                 */
+                "X-Eugene-Band"?: components["parameters"]["QueueBandHeader"];
             };
             path?: never;
             cookie?: never;
@@ -12706,11 +12893,11 @@ export interface operations {
                 cursor?: string;
                 model?: string;
                 /**
-                 * @description Restrict to one outcome. `error` and `cascaded` are the two
-                 *     worth filtering for; `cascaded` means `attempts > 1`
-                 *     whether or not the request eventually succeeded.
+                 * @description Restrict to one outcome. `error`, `refused` (row 11) and
+                 *     `cascaded` are the ones worth filtering for; `cascaded` means
+                 *     `attempts > 1` whether or not the request eventually succeeded.
                  */
-                outcome?: "served" | "error" | "cascaded";
+                outcome?: "served" | "error" | "refused" | "cascaded";
             };
             header?: never;
             path?: never;

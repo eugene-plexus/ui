@@ -69,9 +69,34 @@ import { logsHref } from "@/lib/logs";
 interface Percentiles {
   p50: number;
   p90: number;
+  p95?: number;
   p99?: number;
   max: number;
 }
+
+type Band = "interactive" | "background" | "sheddable";
+
+/** One runtime's line now (row 11), or requests waiting only for their key's turn. */
+interface QueueRuntime {
+  model?: string | null;
+  runtime?: string | null;
+  node?: string | null;
+  waiting: Record<Band, number>;
+  running: number;
+  slots?: number | null;
+}
+
+/** Why the queue refused a request, in the words the page uses (`QueueRefusalCode`). */
+const REFUSAL_WORDS: Record<string, string> = {
+  key_queue_full: "key's line full",
+  queue_full: "queue full",
+  set_aside: "set aside",
+  key_queue_timeout: "waited too long for the key",
+  queue_timeout: "waited too long",
+  still_starting: "still starting",
+  shutting_down: "gateway restarting",
+  rate_limited: "over the key's requests a minute",
+};
 
 interface Throughput {
   p50: number;
@@ -109,6 +134,12 @@ interface MetricsGroup {
    * absent from a gateway older than metrics v12. */
   affinity?: { hit: number; new: number; moved: number; evicted?: number } | null;
   tierCounts?: Record<string, number>;
+  /** Row 11: how long requests waited in line; null when none waited. */
+  queuedMs?: Percentiles | null;
+  /** Requests that moved to the slot's next target after waiting. */
+  tierMoves?: number;
+  /** Answers longer than the room their turn kept for them (CB-C2). */
+  outranReserve?: number;
 }
 
 interface MetricsSummary {
@@ -118,6 +149,10 @@ interface MetricsSummary {
   rowsDropped: number;
   truncated?: boolean;
   groups: MetricsGroup[];
+  /** Row 11: refusals in the window, by `QueueRefusalCode`. */
+  refused?: Record<string, number> | null;
+  /** Row 11: what waits in line now. */
+  queue?: QueueRuntime[] | null;
 }
 
 interface MetricAttempt {
@@ -167,7 +202,12 @@ interface MetricRequest {
   streamed?: boolean;
   promptTokens?: number | null;
   completionTokens?: number | null;
-  outcome: "served" | "error";
+  outcome: "served" | "error" | "refused";
+  /** Row 11: how long it waited in line, its band, and why it was refused. */
+  queuedMs?: number | null;
+  band?: Band | null;
+  refusal?: string | null;
+  tierMoves?: number | null;
   tries: MetricAttempt[];
   routingMs?: number | null;
   refreshed?: boolean;
@@ -271,6 +311,85 @@ function ms(value: number): string {
   if (value < 1000) return `${value} ms`;
   if (value < 60_000) return `${(value / 1000).toFixed(1)} s`;
   return `${Math.round(value / 60_000)} min`;
+}
+
+/** The line (row 11): how long requests waited in it over the window, what
+ * waits now, what was refused and why, and what the wait did. Nothing is
+ * shown when nothing waited, so an idle install keeps a quiet page. */
+function WaitingInLine({
+  totals,
+  summary,
+}: {
+  totals: MetricsSummary | null;
+  summary: MetricsSummary;
+}) {
+  const groups = totals?.groups ?? summary.groups;
+  const queued = groups.find((g) => g.queuedMs)?.queuedMs ?? null;
+  const moves = groups.reduce((n, g) => n + (g.tierMoves ?? 0), 0);
+  const outran = groups.reduce((n, g) => n + (g.outranReserve ?? 0), 0);
+  const waiting = (summary.queue ?? []).filter((q) => Object.values(q.waiting).some((n) => n > 0));
+  const refused = Object.entries(summary.refused ?? {}).filter(([, n]) => n > 0);
+  if (!queued && waiting.length === 0 && refused.length === 0 && !moves && !outran) return null;
+  return (
+    <section
+      aria-label="Waiting in line"
+      className="font-ui mb-6 space-y-2 rounded-[var(--radius)] border border-[color:var(--border)] p-3 text-sm"
+    >
+      <h2 className="font-semibold">Waiting in line</h2>
+      {queued && (
+        <p className="flex flex-wrap items-baseline gap-2">
+          <span>Waited in line</span>
+          <strong>{ms(queued.p50)}</strong>
+          <span className="text-[color:var(--muted)]">
+            median · {ms(queued.p95 ?? queued.p90)} p95
+          </span>
+        </p>
+      )}
+      {waiting.length > 0 && (
+        <ul className="space-y-1">
+          {waiting.map((q) => {
+            const total = Object.values(q.waiting).reduce((n, v) => n + v, 0);
+            const what = q.runtime
+              ? `${q.model ?? q.runtime}${q.node ? ` on ${q.node}` : ""}`
+              : null;
+            const bands = (Object.entries(q.waiting) as [Band, number][])
+              .filter(([, n]) => n > 0)
+              .map(([band, n]) => `${n} ${band === "sheddable" ? "dropped first" : band}`)
+              .join(", ");
+            return (
+              <li key={`${q.model}|${q.runtime}|${q.node}`} className="flex flex-wrap gap-2">
+                <span>
+                  {what
+                    ? `${total} waiting for ${what}`
+                    : `${total} waiting for its key's turn (${q.model ?? "any model"})`}
+                </span>
+                <span className="text-[color:var(--muted)]">
+                  {bands}
+                  {q.slots ? ` · ${q.running} of ${q.slots} slots busy` : ""}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {refused.length > 0 && (
+        <p>
+          {`Refused: ${refused
+            .map(([code, n]) => `${n} ${REFUSAL_WORDS[code] ?? code}`)
+            .join(", ")}`}
+        </p>
+      )}
+      {moves > 0 && <p>{`Moved to the next target after waiting: ${moves}`}</p>}
+      {outran > 0 && (
+        <p>
+          {`Answers longer than the room kept for them: ${outran}. `}
+          <Link href="/config?sel=gateway#answerReserveFloorTokens" className="underline">
+            Raise the smallest room kept for an answer
+          </Link>
+        </p>
+      )}
+    </section>
+  );
 }
 
 function groupKey(g: MetricsGroup): string {
@@ -689,6 +808,8 @@ export default function MetricsPage() {
                   <RequestOutcomes requests={tiles.requests} errors={tiles.errors} />
                 </section>
               )}
+
+              <WaitingInLine totals={totals} summary={summary} />
 
               {points.length > 1 && tiles && tiles.requests > 0 && (
                 <DashboardSection
@@ -1144,6 +1265,7 @@ export default function MetricsPage() {
                   <option value="error">Failures</option>
                   <option value="cascaded">Failovers</option>
                   <option value="served">Served</option>
+                  <option value="refused">Refused</option>
                 </select>
               </div>
               {recent && recent.length === 0 && (
@@ -1182,8 +1304,10 @@ export default function MetricsPage() {
                             {formatTimestamp(r.startedAt)}
                           </span>
                         </span>{" "}
-                        <span className={r.outcome === "error" ? "text-status-error" : ""}>
-                          {r.outcome}
+                        <span className={r.outcome === "served" ? "" : "text-status-error"}>
+                          {r.outcome === "refused" && r.refusal
+                            ? `refused: ${REFUSAL_WORDS[r.refusal] ?? r.refusal}`
+                            : r.outcome}
                         </span>{" "}
                         {r.clientKeyId && (
                           <span title={r.clientKeyId} className="mr-2">
@@ -1211,6 +1335,9 @@ export default function MetricsPage() {
                           {r.completionTokens != null && ` · ${r.completionTokens} tok`}
                           {r.streamed && " · streamed"}
                           {r.swappedIn && ` · woken after ${ms(r.waitedMs ?? 0)}`}
+                          {r.queuedMs ? ` · ${ms(r.queuedMs)} in line` : ""}
+                          {r.band && r.band !== "interactive" && ` · ${r.band}`}
+                          {r.tierMoves ? ` · moved to the next target` : ""}
                           {r.tier != null && r.tier > 1 && ` · tier ${r.tier}`}
                           {/* A refresh is the surprising cost: HTTP to the agent
                           and to every driver, inside this request. Called out

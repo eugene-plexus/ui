@@ -668,3 +668,84 @@ describe("each model's context window, beside its name", () => {
     expect(screen.queryByTestId("model-context")).toBeNull();
   });
 });
+
+describe("the line requests wait in (row 11)", () => {
+  it("shows how long requests waited, what waits now, and what was refused", async () => {
+    const groups = (summary as { groups: object[] }).groups;
+    summary = {
+      ...(summary as object),
+      groups: [
+        {
+          ...groups[0],
+          queuedMs: { p50: 1200, p90: 3000, p95: 4000, max: 5000 },
+          tierMoves: 2,
+          outranReserve: 1,
+        },
+        ...groups.slice(1),
+      ],
+      refused: { queue_full: 4, queue_timeout: 1 },
+      queue: [
+        {
+          model: "qwen3-8b",
+          runtime: "qwen",
+          node: "tower",
+          waiting: { interactive: 2, background: 1, sheddable: 0 },
+          running: 2,
+          slots: 2,
+        },
+        {
+          model: "dolphin3-8b",
+          runtime: null,
+          node: null,
+          waiting: { interactive: 1, background: 0, sheddable: 0 },
+          running: 0,
+          slots: null,
+        },
+      ],
+    };
+    render(<MetricsPage />);
+    const line = await screen.findByRole("region", { name: "Waiting in line" });
+    expect(within(line).getByText("Waited in line")).toBeInTheDocument();
+    expect(within(line).getByText("1.2 s")).toBeInTheDocument();
+    expect(within(line).getByText(/4\.0 s p95/)).toBeInTheDocument();
+    expect(within(line).getByText("3 waiting for qwen3-8b on tower")).toBeInTheDocument();
+    expect(
+      within(line).getByText("1 waiting for its key's turn (dolphin3-8b)"),
+    ).toBeInTheDocument();
+    expect(within(line).getByText("Refused: 4 queue full, 1 waited too long")).toBeInTheDocument();
+    expect(within(line).getByText(/Moved to the next target after waiting: 2/)).toBeInTheDocument();
+    expect(
+      within(line).getByText(/Answers longer than the room kept for them: 1/),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing waited rather than showing an empty line", async () => {
+    render(<MetricsPage />);
+    await screen.findByText("116.8");
+    expect(screen.queryByRole("region", { name: "Waiting in line" })).not.toBeInTheDocument();
+  });
+
+  it("says why a recent request was refused, how long it waited, and its band", async () => {
+    requests = {
+      requests: [
+        {
+          requestId: "r-1",
+          startedAt: new Date().toISOString(),
+          requestedModel: "qwen3-8b",
+          attempts: 0,
+          totalMs: 60000,
+          outcome: "refused",
+          refusal: "queue_timeout",
+          queuedMs: 60000,
+          band: "background",
+          tries: [],
+        },
+      ],
+    };
+    render(<MetricsPage />);
+    expect(await screen.findByText(/refused: waited too long/)).toBeInTheDocument();
+    expect(screen.getByText(/1 min in line/)).toBeInTheDocument();
+    expect(screen.getByText(/background/)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Refused" })).toBeInTheDocument();
+  });
+});
