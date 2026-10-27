@@ -242,7 +242,13 @@ function AppShellInner({
         {/* Desk width: a column. Narrow: a drawer over the content, because
             430px has no room for three columns. */}
         <div data-testid="tree-column" className="hidden w-60 shrink-0 lg:block">
-          <ResourceTree tree={tree} localNode={topology.localNode} selected={sel} ready={ready} />
+          <ResourceTree
+            tree={tree}
+            localNode={topology.localNode}
+            selected={sel}
+            ready={ready}
+            version={topology.version}
+          />
         </div>
         {drawerOpen && (
           // A backdrop, so a tap outside the drawer closes it. Without
@@ -264,6 +270,7 @@ function AppShellInner({
               localNode={topology.localNode}
               selected={sel}
               ready={ready}
+              version={topology.version}
               onNavigate={() => setDrawerOpen(false)}
             />
           </div>

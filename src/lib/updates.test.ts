@@ -7,7 +7,15 @@ import { describe, expect, it } from "vitest";
 
 import { issuesFrom, unexplainedVersionDifference, type NodeFacts } from "./issues";
 import type { NodeIdentity } from "./types";
-import { ago, buildStamps, describeUpdate, versionDifference, versionLabel } from "./updates";
+import {
+  ago,
+  buildStamps,
+  describeUpdate,
+  versionDifference,
+  versionLabel,
+  reportedVersion,
+  versionNote,
+} from "./updates";
 
 const NOW = Date.parse("2026-09-27T18:00:00Z");
 const EDGE = "b8b30bd18a790a4af55e9b44786b61be4783adaa";
@@ -568,5 +576,49 @@ describe("the issues", () => {
       facts("unraid", other),
     ];
     expect(unexplainedVersionDifference(withDev)?.title).toBe("Machines run different versions");
+  });
+});
+
+describe("the version the agent names (row 75)", () => {
+  const withVersion = (version: NodeIdentity["version"], update: Partial<Update> | null = {}) =>
+    identity(update, { version });
+
+  it("says the release, Edge with the day it was built, and a checkout", () => {
+    expect(versionLabel(withVersion({ kind: "release", release: "v0.4.0" }))).toBe("v0.4.0");
+    expect(versionLabel(withVersion({ kind: "edge", publishedAt: "2026-10-24T09:30:00Z" }))).toBe(
+      "Edge, built 2026-10-24",
+    );
+    expect(versionLabel(withVersion({ kind: "edge" }))).toBe("Edge");
+    expect(versionLabel(withVersion({ kind: "development" }))).toBe("development build");
+  });
+
+  it("says honestly that commits that match nothing are not a release", () => {
+    const view = describeUpdate(withVersion({ kind: "unmatched" }), NOW);
+    expect(view.version).toBe("not a published release");
+    expect(view.version).not.toMatch(/[0-9a-f]{7}/);
+  });
+
+  it("does not name a release the agent did not match", () => {
+    // The newest on the channel is a release this install is exactly at, and
+    // the agent has not matched yet: nothing here invents a name beyond what
+    // the comparison itself proves.
+    expect(versionLabel(withVersion({ kind: "unknown" }, { newest: NEWEST }))).toBe(
+      "version not known yet",
+    );
+    expect(versionLabel(withVersion({ kind: "unknown", error: "GitHub did not answer" }))).toBe(
+      "version not known yet",
+    );
+  });
+
+  it("shows no version of its own for an agent from before the field", () => {
+    expect(versionLabel(identity({}))).toBeNull();
+    expect(reportedVersion(identity({}))).toBeNull();
+    expect(reportedVersion(withVersion({ kind: "release", release: "v0.4.0" }))).toBe("v0.4.0");
+  });
+
+  it("names the stamps and the cause for a Details line, never in the label", () => {
+    const unmatched = withVersion({ kind: "unknown", error: "GitHub did not answer" });
+    expect(versionNote(unmatched)).toBe("GitHub did not answer");
+    expect(versionNote(identity({}))).toBeNull();
   });
 });
