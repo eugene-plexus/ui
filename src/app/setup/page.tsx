@@ -153,6 +153,9 @@ export default function WizardPage() {
   // The agent runs under its own account and unlocks itself from a file
   // (the Linux system install). Not a choice: the screen says so.
   const [passphraseFile, setPassphraseFile] = useState(false);
+  // That file is the one the operator gave the control root (agent#44, the
+  // container): the screen asks for the passphrase it holds.
+  const [fileFromOperator, setFileFromOperator] = useState(false);
   // CX2. "resume" once the agent's passphrase is set: from then on screen 1
   // carries on from the first step not done and never initializes again.
   const [form, setForm] = useState<"fresh" | "resume">("fresh");
@@ -260,9 +263,12 @@ export default function WizardPage() {
       // Last, so it wins over the keyring branch above: an agent under its
       // own account has no keyring (false) and needs none. The control
       // root on this host reads the same file, so step 3 writes the mode
-      // to both, as it does for the keyring.
+      // to both, as it does for the keyring. In a container the file is
+      // the operator's, given to the root, and the agent reads it too
+      // (agent#44).
       if (status?.passphraseFile === true) {
         setPassphraseFile(true);
+        setFileFromOperator(status.passphraseFileFromOperator === true);
         setDraft((prev) => ({ ...prev, securityMode: "passphrase_file" }));
       }
 
@@ -685,6 +691,7 @@ export default function WizardPage() {
                 securityMode={draft.securityMode}
                 keyringAvailable={keyringAvailable}
                 passphraseFile={passphraseFile}
+                passphraseFileFromOperator={fileFromOperator}
                 onSecurityMode={(v) => patchDraft({ securityMode: v })}
               />
             )}
@@ -695,6 +702,7 @@ export default function WizardPage() {
                 securityMode={draft.securityMode}
                 keyringAvailable={keyringAvailable}
                 passphraseFile={passphraseFile}
+                passphraseFileFromOperator={fileFromOperator}
                 machineName={machineName}
                 onMachineName={setMachineName}
                 onPassphrase={setPassphrase}

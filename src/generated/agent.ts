@@ -5343,17 +5343,36 @@ export interface components {
              */
             keyringAvailable?: boolean;
             /**
-             * @description True when this agent unlocks itself from a passphrase file:
-             *     `securityMode` is `passphrase_file` and
-             *     `EUGENE_PLEXUS_AGENT_PASSPHRASE_FILE` names where the file
-             *     goes. The Linux system install, where the agent runs under
-             *     its own account and has no keyring (2026-09-24). The wizard
-             *     then says the install unlocks itself after a restart, offers
-             *     no keyring choice, and sets the control root to the same
-             *     mode. Absent from an agent that predates the field, and false
-             *     everywhere else.
+             * @description True when this agent can unlock itself from a passphrase
+             *     file. Two cases:
+             *
+             *     * Its own file: `securityMode` is `passphrase_file` and
+             *       `EUGENE_PLEXUS_AGENT_PASSPHRASE_FILE` names where the file
+             *       goes. The Linux system install, where the agent runs under
+             *       its own account and has no keyring (2026-09-24).
+             *     * The operator's file (agent#44): no file of its own, and
+             *       `EUGENE_PLEXUS_CONTROL_PASSPHRASE_FILE`, the control root's
+             *       variable, is set on this host. The container. True whatever
+             *       `securityMode` is now, because the wizard reads it before
+             *       anything is set; `passphraseFileFromOperator` is then true.
+             *
+             *     The wizard then says the install unlocks itself after a
+             *     restart, offers no keyring choice, and sets this agent and
+             *     the control root to `passphrase_file`. Absent from an agent
+             *     that predates the field, and false everywhere else.
              */
             passphraseFile?: boolean;
+            /**
+             * @description True when the file `passphraseFile` means is the one the
+             *     operator gave this host (`EUGENE_PLEXUS_CONTROL_PASSPHRASE_FILE`),
+             *     which this agent reads at every start and never writes. The
+             *     wizard then asks for the passphrase that file holds: a
+             *     different one leaves a restart locked. Not the file's path,
+             *     which this unauthenticated answer does not give. Present only
+             *     when `passphraseFile` is true; absent from an agent that
+             *     predates the field.
+             */
+            passphraseFileFromOperator?: boolean;
             /**
              * @description The agent config's `firstRunComplete`: true once first-run
              *     setup has finished (screen 2's Finish). Here so the console's

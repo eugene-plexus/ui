@@ -43,7 +43,8 @@ export const TOTAL_SCREENS = 2;
 /**
  * `passphrase_file` is never a choice on screen: the agent reports it
  * (`passphraseFile`) when it runs under its own account on the Linux system
- * install, and the wizard follows. So a restored draft never carries it -
+ * install, or when the control root on its host was given a passphrase file
+ * (the container, agent#44), and the wizard follows. So a restored draft never carries it -
  * `restoreDraft` accepts only the two a person can pick.
  */
 export type SecurityMode = "prompt_on_startup" | "os_keyring" | "passphrase_file";
@@ -58,9 +59,14 @@ export interface AuthStatusView {
   initialized: boolean;
   unlocked?: boolean | null;
   keyringAvailable?: boolean | null;
-  /** True when the agent unlocks itself from a passphrase file only its own
-   * account can read (2026-09-24). Absent from an older agent. */
+  /** True when the agent can unlock itself from a passphrase file: its own,
+   * which only its account can read (2026-09-24), or the one the operator
+   * gave the control root on this host (agent#44). Absent from an older
+   * agent. */
   passphraseFile?: boolean | null;
+  /** True when that file is the operator's (agent#44, the container): the
+   * wizard asks for the passphrase it holds. Absent otherwise. */
+  passphraseFileFromOperator?: boolean | null;
   /** Whether first-run setup finished (CX2-C1); absent from an older agent. */
   firstRunComplete?: boolean | null;
 }

@@ -451,6 +451,41 @@ describe("screen 1: what Continue commits", () => {
     expect(controlPatches.map((c) => c.body)).toEqual([{ securityMode: "passphrase_file" }]);
   });
 
+  it("in a container, asks for the operator's file's passphrase and sets both to it", async () => {
+    // agent#44: the control root's file is the only one on this host. Before,
+    // the agent reported no file, the wizard wrote prompt_on_startup for it, and
+    // its providers' saved keys waited for a sign-in after every restart.
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: {
+        initialized: false,
+        unlocked: false,
+        keyringAvailable: false,
+        passphraseFile: true,
+        passphraseFileFromOperator: true,
+      },
+    }));
+
+    const user = newUser();
+    render(<WizardPage />);
+
+    await waitFor(() => expect(screen.getByTestId("passphrase-file-note")).toBeVisible());
+    const note = screen.getByTestId("passphrase-file-note").textContent ?? "";
+    expect(note).toMatch(/^Use the passphrase in the file you gave this machine\./);
+    expect(note).toMatch(/does not change it/);
+    // Not the Linux system install's file, which Eugene keeps itself.
+    expect(note).not.toMatch(/its own account/);
+    expect(screen.queryByRole("checkbox", { name: /unlock eugene on its own/i })).toBeNull();
+    expect(screen.queryByTestId("no-keyring-note")).toBeNull();
+
+    await continuePastPassphrase(user);
+
+    const agentPatches = calls.filter((c) => key(c) === "PATCH agent/v1/config");
+    const controlPatches = calls.filter((c) => key(c) === "PATCH control/v1/config");
+    expect(agentPatches.map((c) => c.body)).toEqual([{ securityMode: "passphrase_file" }]);
+    expect(controlPatches.map((c) => c.body)).toEqual([{ securityMode: "passphrase_file" }]);
+  });
+
   it("keeps a choice the operator made before a tab refresh", async () => {
     handlers.set("GET agent/v1/auth/status", () => ({
       status: 200,
