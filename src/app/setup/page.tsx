@@ -156,6 +156,9 @@ export default function WizardPage() {
   // That file is the one the operator gave the control root (agent#44, the
   // container): the screen asks for the passphrase it holds.
   const [fileFromOperator, setFileFromOperator] = useState(false);
+  // What the agent's Test said about that file after step 3, when it would
+  // not unlock this machine; shown on screen 2.
+  const [fileProblem, setFileProblem] = useState<string | null>(null);
   // CX2. "resume" once the agent's passphrase is set: from then on screen 1
   // carries on from the first step not done and never initializes again.
   const [form, setForm] = useState<"fresh" | "resume">("fresh");
@@ -490,6 +493,7 @@ export default function WizardPage() {
       patchDraft({ securityMode: mode });
     }
     if (!screenOneLeft(read, mode)) {
+      await checkOperatorsFile(mode);
       finishScreenOne();
       return;
     }
@@ -573,7 +577,32 @@ export default function WizardPage() {
       }
     }
 
+    await checkOperatorsFile(mode);
     finishScreenOne();
+  }
+
+  /** Review of agent#44: the screen said the install unlocks itself from the
+   * operator's file, so check that it will, as a restart reads it. After
+   * initialize, with the session this tab holds, so it is no guessing check.
+   * The agent's Test reads the file and verifies it. Never blocks setup: the
+   * person can fix the file at any time, and the line says what is wrong. */
+  async function checkOperatorsFile(mode: SecurityMode) {
+    if (!fileFromOperator || mode !== "passphrase_file") return;
+    setMessage("Checking the passphrase file…");
+    try {
+      const test = await api.post<{ ok: boolean; error?: string | null }>(
+        "agent",
+        "/v1/config/test",
+        {},
+      );
+      setFileProblem(
+        test.ok ? null : (test.error ?? "The passphrase file would not unlock this machine."),
+      );
+    } catch (e) {
+      setFileProblem(
+        `Could not check the passphrase file: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
   /** Committed. The passphrase has done its job and need not stay in
@@ -709,6 +738,14 @@ export default function WizardPage() {
                 onPassphraseConfirm={setPassphraseConfirm}
                 onSecurityMode={(v) => patchDraft({ securityMode: v })}
               />
+            )}
+            {screen === 2 && fileProblem && (
+              <p
+                data-testid="operator-file-problem"
+                className="status-warn mb-6 rounded-[var(--radius)] border px-3 py-2 text-sm"
+              >
+                {fileProblem}
+              </p>
             )}
             {screen === 2 && (
               <ScreenFolders draft={draft} proposal={proposal} onChange={patchDraft} />

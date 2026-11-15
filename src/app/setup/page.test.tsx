@@ -486,6 +486,62 @@ describe("screen 1: what Continue commits", () => {
     expect(controlPatches.map((c) => c.body)).toEqual([{ securityMode: "passphrase_file" }]);
   });
 
+  it("checks the operator's file after setting the mode, and says when it would not unlock", async () => {
+    // Review of agent#44: setup said the install unlocks itself without checking.
+    // After step 3, with the session it holds (so not a guessing check before
+    // initialize), it asks the agent's Test, and shows its error in one line.
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: {
+        initialized: false,
+        unlocked: false,
+        keyringAvailable: false,
+        passphraseFile: true,
+        passphraseFileFromOperator: true,
+      },
+    }));
+    const said =
+      "/data/passphrase does not hold this install's passphrase, so every restart leaves this agent locked.";
+    handlers.set("POST agent/v1/config/test", () => ({
+      status: 200,
+      body: { ok: false, component: "agent", latencyMs: 1, error: said },
+    }));
+
+    const user = newUser();
+    render(<WizardPage />);
+    await waitFor(() => expect(screen.getByTestId("passphrase-file-note")).toBeVisible());
+    await continuePastPassphrase(user);
+
+    expect(
+      routesFrom(["PATCH agent/v1/config", "PATCH control/v1/config", "POST agent/v1/config/test"]),
+    ).toEqual(["PATCH agent/v1/config", "PATCH control/v1/config", "POST agent/v1/config/test"]);
+    const problem = await screen.findByTestId("operator-file-problem");
+    expect(problem.textContent).toBe(said);
+  });
+
+  it("shows nothing when the operator's file would unlock", async () => {
+    handlers.set("GET agent/v1/auth/status", () => ({
+      status: 200,
+      body: {
+        initialized: false,
+        unlocked: false,
+        keyringAvailable: false,
+        passphraseFile: true,
+        passphraseFileFromOperator: true,
+      },
+    }));
+    handlers.set("POST agent/v1/config/test", () => ({
+      status: 200,
+      body: { ok: true, component: "agent", latencyMs: 1, summary: "unlocks itself" },
+    }));
+    const user = newUser();
+    render(<WizardPage />);
+    await waitFor(() => expect(screen.getByTestId("passphrase-file-note")).toBeVisible());
+    await continuePastPassphrase(user);
+    expect(routesFrom(["POST agent/v1/config/test"])).toEqual(["POST agent/v1/config/test"]);
+    expect(screen.queryByTestId("operator-file-problem")).toBeNull();
+  });
+
   it("keeps a choice the operator made before a tab refresh", async () => {
     handlers.set("GET agent/v1/auth/status", () => ({
       status: 200,
