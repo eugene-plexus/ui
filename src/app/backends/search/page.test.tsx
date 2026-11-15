@@ -256,3 +256,54 @@ describe("the search account helpers", () => {
     expect(remedyFor("google", "refused this account's API key")).toContain("aistudio.google.com");
   });
 });
+
+describe("adding a Tavily search account (row 59a)", () => {
+  it("asks for a Tavily key and a depth, with each depth's cost in one line", async () => {
+    stub(
+      new Map<string, Handler>([
+        ...install({ ok: true, summary: "tavily answered." }),
+        ["PATCH tavily/v1/config", () => ({ status: 200, body: { applied: ["provider"] } })],
+        ["POST tavily/v1/config/test", () => ({ status: 200, body: { ok: true } })],
+      ]),
+    );
+    const user = userEvent.setup({ delay: null });
+    render(<AddSearchAccountPage />);
+    await user.click(await screen.findByTestId("search-provider-tavily"));
+    expect(screen.queryByTestId("search-address")).toBeNull();
+    expect(screen.getByTestId("search-key")).toHaveAttribute("type", "password");
+    const page = screen.getByTestId("search-add").textContent ?? "";
+    expect(page).toContain("app.tavily.com");
+    expect(screen.getByTestId("search-depth-cost")).toHaveTextContent(
+      "Basic costs 1 credit a search; advanced costs 2.",
+    );
+    expect(screen.getByTestId("search-depth-basic")).toBeChecked();
+    // The depth is Tavily's alone.
+    await user.click(screen.getByTestId("search-provider-brave"));
+    expect(screen.queryByTestId("search-depth-basic")).toBeNull();
+    await user.click(screen.getByTestId("search-provider-tavily"));
+    await user.click(screen.getByTestId("search-depth-advanced"));
+    await user.type(screen.getByTestId("search-key"), " tvly-test ");
+    await user.click(screen.getByTestId("search-add-button"));
+    await screen.findByTestId("search-added");
+    const patched = calls.find((c) => key(c) === "PATCH tavily/v1/config");
+    expect(patched?.body).toEqual({
+      provider: "tavily",
+      apiKey: "tvly-test",
+      searchDepth: "advanced",
+    });
+    for (const word of BANNED) expect(page.toLowerCase(), word).not.toContain(word);
+  });
+
+  it("patches, completes and remedies a Tavily draft", () => {
+    expect(searchPatch({ provider: "tavily", address: "x", apiKey: " t " })).toEqual({
+      provider: "tavily",
+      apiKey: "t",
+      searchDepth: "basic",
+    });
+    expect(searchDraftComplete({ ...blankSearch(), provider: "tavily" })).toBe(false);
+    expect(searchDraftComplete({ ...blankSearch(), provider: "tavily", apiKey: "k" })).toBe(true);
+    expect(remedyFor("tavily", "Tavily refused this account's API key (HTTP 401)")).toContain(
+      "app.tavily.com",
+    );
+  });
+});
