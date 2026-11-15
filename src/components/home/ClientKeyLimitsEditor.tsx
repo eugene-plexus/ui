@@ -10,7 +10,6 @@ export const DEFAULT_CLIENT_LIMITS: ClientKeyLimits = {
   allowedModels: null,
   allowedTools: null,
   writeLogs: false,
-  readMetrics: false,
   maxConcurrentRequests: 2,
   requestsPerMinute: 60,
   // Row 11. A band and a queue bound at their defaults are not sent

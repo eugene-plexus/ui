@@ -5462,13 +5462,19 @@ export interface components {
              *     runs no inference unless `allowedModels` also names a model, and a
              *     key without it is refused at every metrics path with 403.
              *
+             *     **Absent means off**, and no default is declared here on purpose: a
+             *     declared default is filled into every answer a generated model
+             *     writes, and a reader a release behind refuses the field
+             *     (`extra='forbid'`), so the authority and the agent send it only when
+             *     it is on. Found by the specs integration: a gateway a release behind
+             *     refused every request on a key whose answer said `readMetrics: false`.
+             *
              *     The console's "Make a scrape key" sets it together with
              *     `allowedModels: []`, so the key can read numbers and run nothing.
              *     The metrics paths ask the authority with admission purpose
              *     `metrics`: a check that names no model and takes no lease.
-             * @default false
              */
-            readMetrics: boolean;
+            readMetrics?: boolean;
             /**
              * @description How many of this key's requests run at once, across every
              *     gateway. A request past it waits in the gateway's queue (row 11)
