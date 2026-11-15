@@ -143,3 +143,31 @@ describe("the key's place in line (row 11)", () => {
     expect(describeClientLimits(DEFAULT_CLIENT_LIMITS)).not.toMatch(/Background|Dropped/);
   });
 });
+
+describe("the May read metrics switch (row 12)", () => {
+  it("is off by default, turns readMetrics on, and says so in the summary", () => {
+    const seen: ClientKeyLimits[] = [];
+    render(<Harness start={DEFAULT_CLIENT_LIMITS} seen={seen} />);
+    const box = screen.getByTestId("key-read-metrics");
+    expect(box).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "May read metrics" })).toBe(box);
+    fireEvent.click(box);
+    expect(seen.at(-1)?.readMetrics).toBe(true);
+    expect(describeClientLimits({ ...DEFAULT_CLIENT_LIMITS, readMetrics: true })).toMatch(
+      /Reads metrics/,
+    );
+    expect(describeClientLimits(DEFAULT_CLIENT_LIMITS)).not.toMatch(/metrics/);
+  });
+
+  it("shows a key that may read as checked", () => {
+    render(<Harness start={{ ...DEFAULT_CLIENT_LIMITS, readMetrics: true }} seen={[]} />);
+    expect(screen.getByTestId("key-read-metrics")).toBeChecked();
+  });
+
+  it("is sent only when on, because a root a release behind refuses a field it does not know", () => {
+    expect(cleanClientLimits(DEFAULT_CLIENT_LIMITS)).not.toHaveProperty("readMetrics");
+    expect(cleanClientLimits({ ...DEFAULT_CLIENT_LIMITS, readMetrics: true }).readMetrics).toBe(
+      true,
+    );
+  });
+});

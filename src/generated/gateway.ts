@@ -1335,6 +1335,12 @@ export interface paths {
          *     `image_generation` runs
          *     through this install's image models (P8e, "Server-run tools"
          *     above) or is refused with a 400 naming why.
+         *     `mcp` (remote MCP, row 59b) runs on a tool-driver under the
+         *     owner's `remoteMcp` setting, with approvals, as "Remote MCP" above
+         *     describes; when it cannot run, the 400 names why. Its items --
+         *     `mcp_list_tools`, `mcp_call`, `mcp_approval_request` -- come back
+         *     in `output`, and `mcp_approval_response` answers a request in the
+         *     next `input`.
          *
          *     ### Client-run tools (row 57)
          *
@@ -1371,8 +1377,7 @@ export interface paths {
          *     Tools still refused return a 400 naming their observed cause:
          *     `computer_use_preview` (no local model is trained for it),
          *     `code_interpreter` (Eugene has no sandbox; use a function tool and
-         *     run it yourself), `mcp` (remote MCP execution needs row 59), and
-         *     `file_search` (file search needs row 56).
+         *     run it yourself), and `file_search` (file search needs row 56).
          *
          *     A `compaction` input item from `/v1/responses/compact` is
          *     decrypted and authenticated by this gateway and expanded into a
@@ -2809,6 +2814,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This gateway's numbers in Prometheus text format (row 12).
+         * @description What a Prometheus scraper reads, on the gateway's own port. Every
+         *     name starts with `eugene_` and is kept until a major release: an
+         *     alert or a dashboard built on one keeps working. `eugene_build_info`
+         *     says which build answered.
+         *
+         *     Counters and histograms count requests this process served since it
+         *     started (a scraper reads rates, so a restart is a counter reset).
+         *     Gauges are read when the scrape arrives, from the routing table, the
+         *     token budget and the queue.
+         *
+         *     **No prompts, no answers, no person names.** Labels are bounded: `model`
+         *     is a configured model or `other`, so a made-up model name makes no
+         *     series; `key_id` is bounded by the key registry.
+         *
+         *     An operator session, or a client key with `readMetrics`. No
+         *     credential is a 401; a key without the grant is a 403.
+         */
+        get: operations["getPrometheusMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/metrics/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where this gateway's numbers go, and how it is going (row 12).
+         * @description The state of the two ways out: the Prometheus path and the optional
+         *     OTLP exporter. The console's "Export" panel reads it. An operator
+         *     session, or a client key with `readMetrics`; 401 and 403 as for
+         *     `GET /metrics`.
+         */
+        get: operations["getMetricsExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/metrics/clients": {
         parameters: {
             query?: never;
@@ -2889,7 +2952,7 @@ export interface paths {
          *
          *     Newest first, cursor-paged. Raw rows exist only within
          *     `metricsRetentionDays`; older traffic survives only as hourly
-         *     rollups, which no endpoint serves yet.
+         *     rollups, which `GET /v1/metrics?bucket=hour` serves (row 12).
          */
         get: operations["getMetricRequests"];
         put?: never;
@@ -3041,9 +3104,30 @@ export interface paths {
          *     * **`metricsRollupEnabled`** (`boolean`, default `true`) —
          *       hourly aggregates, kept indefinitely because they are a few
          *       hundred rows a day and they are the only record that survives
-         *       retention. Written but not yet served: they hold sums and a
-         *       max, and no endpoint reports a percentile it cannot compute
-         *       from those.
+         *       retention. `GET /v1/metrics?bucket=hour` serves the hours past
+         *       retention from them (row 12): counts, a mean and a max, and no
+         *       percentile, because none can be computed from those.
+         *
+         *     The metrics-export fields (row 12). Prometheus needs none: `GET
+         *     /metrics` is always there for a key that may read metrics. These
+         *     are the optional push to an OTLP/HTTP collector, off by default.
+         *     Every one takes effect at the next push, with no restart. Nothing
+         *     exported carries a prompt, an answer or a person's name.
+         *
+         *     * **`telemetryOtlpEndpoint`** (`url`, empty is off) — the
+         *       collector's address, for example `http://collector:4318`.
+         *       Metrics go to `<endpoint>/v1/metrics` and traces to
+         *       `<endpoint>/v1/traces`.
+         *     * **`telemetryOtlpAuthorization`** (`secret`) — the whole
+         *       `Authorization` header value the collector wants. Redacted when
+         *       read.
+         *     * **`telemetryOtlpSignals`** (`enum`, `metrics`, `traces` or
+         *       `both`, default `both`).
+         *     * **`telemetryTraceSampleRatio`** (`number`, 0 to 1, default 1) —
+         *       the share of requests that get a trace, chosen once at the front
+         *       door.
+         *     * **`telemetryOtlpIntervalSeconds`** (`integer`, 5 to 3,600,
+         *       default 60) — how often the exporter sends.
          */
         get: operations["getConfig"];
         put?: never;
@@ -6555,6 +6639,15 @@ export interface components {
          *     `image_generation_call` handed back (P8e), which becomes a line
          *     naming the prompt the image was made for -- its base64 is not
          *     sent to the model.
+         *     Remote MCP's items (row 59b): `mcp_list_tools` (`server_label`,
+         *     `tools`) is the server's tool list, used instead of listing again;
+         *     `mcp_call` (`server_label`, `name`, `arguments`, `output`, `error`,
+         *     `approval_request_id`) becomes the call and its result in the
+         *     history; `mcp_approval_request` (`id`, `server_label`, `name`,
+         *     `arguments`) becomes the call the model asked for, and
+         *     `mcp_approval_response` (`approval_request_id`, `approve`,
+         *     `reason`) answers it -- an approval whose id no request in `input`
+         *     carries is a 400.
          *     Codex drops `id` and `status` when it sends items back
          *     (measured), so neither is required. Refused: `item_reference` and
          *     any other type.
@@ -6597,6 +6690,23 @@ export interface components {
              *     string that this gateway can authenticate before using it.
              */
             encrypted_content?: string | null;
+            /** @description The MCP server an `mcp_*` item belongs to (row 59b). */
+            server_label?: string;
+            /**
+             * @description On `mcp_approval_response`, the `mcp_approval_request` it
+             *     answers; on `mcp_call`, the approval it ran under.
+             */
+            approval_request_id?: string | null;
+            /** @description An `mcp_approval_response`'s answer. */
+            approve?: boolean;
+            /** @description Why an approval was given or refused; told to the model when refused. */
+            reason?: string | null;
+            /** @description An `mcp_call`'s or `mcp_list_tools`' failure, as words. */
+            error?: unknown;
+            /** @description An `mcp_list_tools` item's tools (`name`, `description`, `input_schema`, `annotations`). */
+            tools?: {
+                [key: string]: unknown;
+            }[];
         } & {
             [key: string]: unknown;
         };
@@ -6643,7 +6753,10 @@ export interface components {
          *     endpoint). `web_search` runs on this install's search account, or
          *     is removed and named when it cannot (see the endpoint);
          *     `image_generation` runs on this install's image models, or is
-         *     refused naming why (P8e).
+         *     refused naming why (P8e). `mcp` (`server_label`, `server_url`,
+         *     `headers`, `authorization`, `allowed_tools`, `require_approval`,
+         *     `server_description`) is a remote MCP server the gateway lists
+         *     and calls through a tool-driver (row 59b, "Remote MCP" above).
          *
          *     `custom` (`name`, `description`, `format`) maps to a function with
          *     one string parameter `input`; `local_shell` maps to a function
@@ -6693,6 +6806,35 @@ export interface components {
             } & {
                 [key: string]: unknown;
             };
+            /** @description An `mcp` tool's name for its server, unique in the request. */
+            server_label?: string;
+            /**
+             * @description An `mcp` tool's Streamable HTTP endpoint. `https` on the
+             *     internet under the default `remoteMcp`; see "Remote MCP".
+             */
+            server_url?: string;
+            /** @description An `mcp` tool's words about its server, added to each of its tools' descriptions. */
+            server_description?: string;
+            /**
+             * @description An `mcp` tool's headers for its server, sent for this request
+             *     only and never echoed, logged or kept. Headers that frame the
+             *     request (`Host`, `Content-Type`, `Accept`, ...) are refused.
+             */
+            headers?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * @description An `mcp` tool's OAuth access token, sent as `Authorization:
+             *     Bearer`, under the same rules as `headers`.
+             */
+            authorization?: string | null;
+            /** @description An `mcp` tool's tool names to offer, as a list or `{"tool_names"}`. */
+            allowed_tools?: unknown;
+            /**
+             * @description `always` (the default), `never`, or `{"always": {"tool_names"},
+             *     "never": {"tool_names"}}`.
+             */
+            require_approval?: unknown;
         } & {
             [key: string]: unknown;
         };
@@ -6748,6 +6890,12 @@ export interface components {
          *     "status", "result", "revised_prompt", "size", "quality",
          *     "background", "output_format", "action": "generate"}` -- `result`
          *     the base64 image, null and `status: failed` when none was made.
+         *     Remote MCP (row 59b) adds `{"type": "mcp_list_tools", "id",
+         *     "server_label", "tools": [{"name", "description", "input_schema",
+         *     "annotations"}]}`, `{"type": "mcp_call", "id", "status",
+         *     "server_label", "name", "arguments", "output", "error",
+         *     "approval_request_id"}` and `{"type": "mcp_approval_request", "id",
+         *     "server_label", "name", "arguments"}`.
          *
          *     Client-run calls are `custom_tool_call` (`id`, `call_id`, `name`,
          *     `input`), `local_shell_call` and `shell_call` (`id`, `call_id`,
@@ -6758,7 +6906,7 @@ export interface components {
          */
         ResponsesOutputItem: {
             /** @enum {string} */
-            type: "reasoning" | "message" | "function_call" | "web_search_call" | "image_generation_call" | "custom_tool_call" | "local_shell_call" | "shell_call" | "apply_patch_call" | "compaction";
+            type: "reasoning" | "message" | "function_call" | "web_search_call" | "image_generation_call" | "mcp_list_tools" | "mcp_call" | "mcp_approval_request" | "custom_tool_call" | "local_shell_call" | "shell_call" | "apply_patch_call" | "compaction";
             id?: string;
             call_id?: string;
             name?: string;
@@ -6803,10 +6951,17 @@ export interface components {
          *     their Responses `item`, including the complete action or operation
          *     on done. Internal function-adapter arguments are not exposed as
          *     function-call events for these client-run tools.
+         *
+         *     Remote MCP (row 59b): a tool list read is
+         *     `response.mcp_list_tools.in_progress` then `.completed`; a call is
+         *     `response.mcp_call.in_progress`, `response.mcp_call_arguments.done`
+         *     (`arguments`), then `response.mcp_call.completed` or `.failed`; each
+         *     with `item_id` and `output_index`, between its item's added and
+         *     done. An `mcp_approval_request` is an item added and done.
          */
         ResponsesStreamEvent: {
             /** @enum {string} */
-            type: "response.created" | "response.in_progress" | "response.output_item.added" | "response.output_item.done" | "response.content_part.added" | "response.content_part.done" | "response.output_text.delta" | "response.output_text.done" | "response.reasoning_text.delta" | "response.reasoning_text.done" | "response.function_call_arguments.delta" | "response.function_call_arguments.done" | "response.custom_tool_call_input.delta" | "response.custom_tool_call_input.done" | "response.shell_call_command.added" | "response.shell_call_command.delta" | "response.shell_call_command.done" | "response.completed" | "response.incomplete" | "response.failed";
+            type: "response.created" | "response.in_progress" | "response.output_item.added" | "response.output_item.done" | "response.content_part.added" | "response.content_part.done" | "response.output_text.delta" | "response.output_text.done" | "response.reasoning_text.delta" | "response.reasoning_text.done" | "response.function_call_arguments.delta" | "response.function_call_arguments.done" | "response.custom_tool_call_input.delta" | "response.custom_tool_call_input.done" | "response.shell_call_command.added" | "response.shell_call_command.delta" | "response.shell_call_command.done" | "response.mcp_list_tools.in_progress" | "response.mcp_list_tools.completed" | "response.mcp_call.in_progress" | "response.mcp_call_arguments.done" | "response.mcp_call.completed" | "response.mcp_call.failed" | "response.completed" | "response.incomplete" | "response.failed";
             sequence_number: number;
             response?: components["schemas"]["ResponsesResponse"];
             item?: components["schemas"]["ResponsesOutputItem"];
@@ -6816,6 +6971,8 @@ export interface components {
             delta?: string;
             input?: string;
             command?: string;
+            /** @description An MCP call's arguments, as a JSON string, on `response.mcp_call_arguments.done`. */
+            arguments?: string;
         } & {
             [key: string]: unknown;
         };
@@ -7038,6 +7195,20 @@ export interface components {
          *     under `groupBy=total`, `model` is too.
          */
         MetricsGroup: {
+            source?: components["schemas"]["MetricsSource"];
+            /**
+             * @description Mean request latency in milliseconds, from the stored sums. Present
+             *     on a `source: rollup` group, which has no percentiles.
+             */
+            latencyMeanMs?: number;
+            /** @description The slowest request of the hour. Present on a `source: rollup` group. */
+            latencyMaxMs?: number;
+            /**
+             * @description Completion tokens over the serving attempts' time, from the stored
+             *     sums, for a `source: rollup` group whose requests reported usage.
+             *     Absent otherwise. A mean, so it is not given as `p50`.
+             */
+            tokensPerSecondMean?: number;
             /**
              * Format: date-time
              * @description Present only when `bucket=hour`.
@@ -7075,7 +7246,8 @@ export interface components {
              *     way to see what it costs.
              */
             swappedIn: number;
-            latencyMs: components["schemas"]["Percentiles"];
+            /** @description Absent on a `source: rollup` group, which has `latencyMeanMs` and `latencyMaxMs` instead. */
+            latencyMs?: components["schemas"]["Percentiles"];
             /**
              * @description Null when no request in this group reported token usage.
              *     Whole-attempt rate: the serving attempt's elapsed time
@@ -7175,6 +7347,46 @@ export interface components {
             requests: number;
             promptTokens: number;
             cachedTokens: number;
+        };
+        /**
+         * @description Where a group's numbers came from (row 12): `raw`, the retained request
+         *     rows (percentiles are real); `rollup`, the stored hourly aggregates of
+         *     hours past `metricsRetentionDays` (counts, mean and max only).
+         * @enum {string}
+         */
+        MetricsSource: "raw" | "rollup";
+        /**
+         * @description The two ways this gateway's numbers leave it. Prometheus is pulled, so
+         *     the gateway says when it was last read and by which key. OTLP is pushed
+         *     and optional, so it says whether the last push worked, and why not.
+         */
+        MetricsExport: {
+            prometheus: {
+                /** @description The path to scrape, on this gateway's own port. Always `/metrics`. */
+                path: string;
+                /**
+                 * Format: date-time
+                 * @description When a scraper last read `/metrics`. Null before the first scrape since the gateway started.
+                 */
+                lastScrapeAt?: string | null;
+                /** @description The name of the key that scraper used, or `operator` for a signed-in session. Never the key itself. */
+                lastScrapeKeyName?: string | null;
+            };
+            otlp: {
+                /**
+                 * @description `off` with no `telemetryOtlpEndpoint`. `ok` after a push the collector
+                 *     accepted. `failing` when the last push did not arrive; `lastError` says
+                 *     why. A failing export never slows or refuses a request.
+                 * @enum {string}
+                 */
+                state: "off" | "ok" | "failing";
+                /** @description The collector address, with no credential in it. */
+                endpoint?: string | null;
+                /** Format: date-time */
+                lastSuccessAt?: string | null;
+                /** @description The observed cause of the last failed push, in words. */
+                lastError?: string | null;
+            };
         };
         /**
          * @description Requests by what conversation affinity did with them. `evicted`
@@ -7440,10 +7652,23 @@ export interface components {
              */
             affinity?: string | null;
             /**
+             * @description Which key placed this request (gateway#19, schema v15): `chain`, a
+             *     stored conversation's id or a `previous_response_id` chain's first
+             *     response (row 54); `client`, the caller's `prompt_cache_key`;
+             *     `session`, Claude Code's session id; `start`, the hash of the
+             *     conversation's opening words. Null when no key was made (affinity
+             *     off, or a door that does not place by conversation). **Never the key
+             *     itself**: a hash of a person's first words is not a metric.
+             * @enum {string|null}
+             */
+            affinityKey?: "chain" | "client" | "session" | "start" | null;
+            /**
              * @description Which door the request came in by (P3b): `speech`,
              *     `transcription`, `translation` (P3-4), `images` (P4, schema v8),
-             *     `videos` (P5, schema v9, the submit's row), `moderation` (P6)
-             *     or `completion` (P6, a row that carries tokens as chat's does).
+             *     `videos` (P5, schema v9, the submit's row), `moderation` (P6),
+             *     `completion` (P6, a row that carries tokens as chat's does) or
+             *     `decisions` (row 12, `POST /v1/systemone`: a row that carries the
+             *     decision's tokens).
              *     Null on rows from before schema v7 and on every other door,
              *     whose rows carry tokens.
              */
@@ -7487,6 +7712,14 @@ export interface components {
              *     kept, for the same reason. Absent on rows written before P8e.
              */
             imageGenerations?: components["schemas"]["MetricToolExecution"][];
+            /**
+             * @description Each remote MCP call the install made for the request (row
+             *     59b), in order: the tool-driver that made it, the outcome and
+             *     the time. Not the server, the tool's name or its arguments,
+             *     which are the caller's words, and never its credential. Absent
+             *     when the request made none.
+             */
+            mcpCalls?: components["schemas"]["MetricToolExecution"][];
         };
         /**
          * @description `over_limit` is a call past the request's limit, answered without
@@ -7497,7 +7730,11 @@ export interface components {
          */
         MetricToolOutcome: "ok" | "error" | "over_limit";
         MetricToolExecution: {
-            /** @description The tool that ran -- `web_search` or `image_generation`. */
+            /**
+             * @description The tool that ran -- `web_search`, `image_generation`, or `mcp`
+             *     (a remote MCP call, row 59b; the row names neither the server
+             *     nor the tool, which are the caller's words).
+             */
             tool: string;
             /**
              * @description The tool-driver (search account) that ran a search, or the
@@ -12773,6 +13010,50 @@ export interface operations {
             };
         };
     };
+    getPrometheusMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Prometheus text exposition format, version 0.0.4. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
+    getMetricsExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsExport"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
     getClientUsage: {
         parameters: {
             query?: {
@@ -12824,13 +13105,15 @@ export interface operations {
                  *     the whole window. `hour` additionally splits each group by
                  *     hour, which is what a history chart reads.
                  *
-                 *     Both are computed from **raw rows**, so both are bounded by
-                 *     `metricsRetentionDays`. Hourly rollups are written and kept
-                 *     past retention, but they are not served here and deliberately
-                 *     so: a rollup can carry sums and a max, and a percentile
-                 *     cannot be reconstructed from those. Serving a mean through a
-                 *     field named `p50` would be a quieter error than serving
-                 *     nothing.
+                 *     `none` is computed from **raw rows** and is bounded by
+                 *     `metricsRetentionDays`. `hour` serves the hours inside that
+                 *     window from raw rows (`source: raw`, with percentiles) and the
+                 *     hours past it from the stored hourly rollups (`source: rollup`,
+                 *     row 12): counts, a mean and a max, and no percentiles, because a
+                 *     percentile cannot be rebuilt from sums. A rollup group says so in
+                 *     `source`, and carries `latencyMeanMs` and `latencyMaxMs` where a
+                 *     raw group carries `latencyMs`. Serving a mean through a field
+                 *     named `p50` would be a quieter error than serving nothing.
                  */
                 bucket?: "none" | "hour";
                 /**

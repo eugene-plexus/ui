@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This machine's engines in Prometheus text format (row 12).
+         * @description What a Prometheus scraper reads from this agent: for each engine
+         *     runtime it supervises that is running, `eugene_engine_*` series with the
+         *     labels `node`, `runtime`, `model` and `engine`, and the engine's own
+         *     series under upstream's names with the same labels. The agent reads
+         *     each running engine's own `/metrics` when the scrape arrives, in
+         *     parallel, two seconds each; an engine that does not answer makes
+         *     `eugene_engine_scrape_ok` 0 and nothing else. **A counter the engine
+         *     does not have has no series, never a 0.**
+         *
+         *     Each machine serves its own engines: Prometheus already reports a
+         *     machine that is down, and gathering through the gateway would slow
+         *     every scrape to the slowest machine.
+         *
+         *     An operator session, or a client key with `readMetrics`. No credential
+         *     is a 401; a key without the grant is a 403.
+         */
+        get: operations["getPrometheusMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/logs": {
         parameters: {
             query?: never;
@@ -5393,7 +5427,8 @@ export interface components {
             allowedModels?: string[] | null;
             /**
              * @description The tools the hub runs itself (P8) that this key may have run
-             *     on its behalf -- `web_search` today. **Null permits every tool
+             *     on its behalf -- `web_search`, `image_generation`, and `mcp`
+             *     (remote MCP servers the key's caller names, row 59b). **Null permits every tool
              *     the install runs** (design call #5: a key is allowed search once
              *     a search account exists, and can be denied it here). Empty
              *     permits none. An entry is a tool name or a pattern with `*`,
@@ -5420,6 +5455,20 @@ export interface components {
              * @default false
              */
             writeLogs: boolean;
+            /**
+             * @description Whether this key may read `GET /metrics` on a gateway or an agent,
+             *     and `GET /v1/metrics/export` on a gateway (row 12): the numbers a
+             *     Prometheus scraper reads. **It grants nothing else.** A key with it
+             *     runs no inference unless `allowedModels` also names a model, and a
+             *     key without it is refused at every metrics path with 403.
+             *
+             *     The console's "Make a scrape key" sets it together with
+             *     `allowedModels: []`, so the key can read numbers and run nothing.
+             *     The metrics paths ask the authority with admission purpose
+             *     `metrics`: a check that names no model and takes no lease.
+             * @default false
+             */
+            readMetrics: boolean;
             /**
              * @description How many of this key's requests run at once, across every
              *     gateway. A request past it waits in the gateway's queue (row 11)
@@ -5477,13 +5526,15 @@ export interface components {
             keyId: string;
             requestId: string;
             /**
-             * @description Logs and catalog permit only a check without a model/person token; neither acquires or renews inference. Catalog is only GET /v1/models with X-Eugene-App-Operation set to catalog, for app settings.
+             * @description Metrics (row 12) is a check for a scraper that reads `GET /metrics`: it names no model and no person token, takes no lease, and is refused with 403 ("This key may not read metrics.") unless the key's `readMetrics` is on. It never acquires, renews or releases.
+             *
+             *     Logs and catalog permit only a check without a model/person token; neither acquires or renews inference. Catalog is only GET /v1/models with X-Eugene-App-Operation set to catalog, for app settings.
              *
              *     Search is a web search that names no model (POST /v1/web_search, the door Open WebUI's external search engine calls). It takes the same check, acquire, renew and release as inference, and the same concurrency and rolling-minute limits, but it carries no `model` (a body that names one is refused with 422) and the key's `allowedModels` does not apply. The gateway checks the key's `allowedTools` and `localOnly`, as for every tool.
              * @default inference
              * @enum {string}
              */
-            purpose: "inference" | "logs" | "catalog" | "search";
+            purpose: "inference" | "logs" | "catalog" | "search" | "metrics";
             model?: string;
             /**
              * @description Root-issued OIDC access token carried alongside the app key in
@@ -10253,6 +10304,28 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getPrometheusMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Prometheus text exposition format, version 0.0.4. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
     readLogs: {
         parameters: {
             query?: {
