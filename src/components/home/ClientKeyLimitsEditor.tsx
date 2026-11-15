@@ -133,6 +133,23 @@ export function ClientKeyLimitsEditor({
         What they send appears on the Logs page under the key&rsquo;s name. It lets them write logs
         and nothing else: reading the logs still needs you.
       </p>
+      {/* Row 12: a Prometheus scraper reads `GET /metrics` with a key that has this
+          on. It grants nothing else; "Make a scrape key" on the Metrics page makes
+          one with no models. */}
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={value.readMetrics === true}
+          onChange={(e) => onChange({ ...value, readMetrics: e.target.checked })}
+          data-testid="key-read-metrics"
+        />
+        May read metrics
+      </label>
+      <p className="text-[color:var(--muted)]">
+        Lets a scraper such as Prometheus read this install&rsquo;s counters and timings. It reads
+        numbers and nothing else: no prompts, no answers, and it runs no model unless the key also
+        allows one.
+      </p>
       {selected && (
         <label className="block" htmlFor={`${id}-models`}>
           Allowed model IDs (one per line)
@@ -233,17 +250,22 @@ export function ClientKeyLimitsEditor({
 
 /** The limits as they are sent: trimmed model ids, and row 11's band and queue
  * bound only when they are not the defaults (interactive, 8). */
-export type ClientKeyLimitsBody = Omit<ClientKeyLimits, "band" | "maxQueuedRequests"> &
-  Partial<Pick<ClientKeyLimits, "band" | "maxQueuedRequests">>;
+export type ClientKeyLimitsBody = Omit<
+  ClientKeyLimits,
+  "band" | "maxQueuedRequests" | "readMetrics"
+> &
+  Partial<Pick<ClientKeyLimits, "band" | "maxQueuedRequests" | "readMetrics">>;
 
 export function cleanClientLimits(value: ClientKeyLimits): ClientKeyLimitsBody {
-  const { band, maxQueuedRequests, ...rest } = value;
+  const { band, maxQueuedRequests, readMetrics, ...rest } = value;
   return {
     ...rest,
     allowedModels:
       value.allowedModels == null
         ? null
         : [...new Set(value.allowedModels.map((s) => s.trim()).filter(Boolean))],
+    // Sent only when on: a root a release behind refuses a field it does not know.
+    ...(readMetrics === true ? { readMetrics } : {}),
     ...(band && band !== "interactive" ? { band } : {}),
     ...(maxQueuedRequests != null && maxQueuedRequests !== 8 ? { maxQueuedRequests } : {}),
   };
@@ -259,8 +281,9 @@ export function describeClientLimits(value?: ClientKeyLimits | null): string {
         : value.allowedModels.join(", ");
   const search = mayWebSearch(value) ? "" : " · No web search";
   const logs = value.writeLogs ? " · Sends logs" : "";
+  const metrics = value.readMetrics ? " · Reads metrics" : "";
   const band = value.band && value.band !== "interactive" ? ` · ${BAND_LABELS[value.band]}` : "";
   const waiting = value.maxQueuedRequests ?? 8;
   const line = waiting === 0 ? "none may wait" : `${waiting} may wait`;
-  return `${models}${value.localOnly ? " · Local-only" : ""}${search}${logs}${band} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute · ${line}`;
+  return `${models}${value.localOnly ? " · Local-only" : ""}${search}${logs}${metrics}${band} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute · ${line}`;
 }

@@ -53,6 +53,7 @@ import {
   GatewayEfficiency,
 } from "@/components/GatewayOperations";
 import { CopyButton } from "@/components/CopyButton";
+import { MetricsExportPanel } from "@/components/MetricsExport";
 import { More } from "@/components/Help";
 import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
@@ -697,6 +698,7 @@ export default function MetricsPage() {
                 ["capacity", "Capacity"],
                 ["efficiency", "Efficiency"],
                 ["requests", "Requests"],
+                ["export", "Export"],
               ].map(([id, label]) => (
                 <a
                   key={id}
@@ -1416,11 +1418,14 @@ export default function MetricsPage() {
               )}
 
               <p className="mt-8 text-[0.6875rem] text-[color:var(--muted)]">
-                Recorded on this machine, beside the gateway&rsquo;s config, and never sent
-                anywhere. A standby promoted later starts with no history.
+                Recorded on this machine, beside the gateway&rsquo;s config. Nothing is sent
+                anywhere unless you name a collector under Export, and then only counters, timings
+                and traces: never a prompt or an answer. A standby promoted later starts with no
+                history.
               </p>
             </>
           )}
+          <MetricsExportPanel />
         </div>
       </main>
     </AppShell>

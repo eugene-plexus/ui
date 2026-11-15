@@ -185,6 +185,7 @@ export type PathMapping = AgentComponents["schemas"]["PathMapping"];
 // every JWT this install mints shares the same prefix.
 export type ClientKeyLimits = AgentComponents["schemas"]["ClientKeyLimits"];
 export type ClientUsageSummary = GatewayComponents["schemas"]["ClientUsageSummary"];
+export type MetricsExport = GatewayComponents["schemas"]["MetricsExport"];
 export type ClientKey = AgentComponents["schemas"]["ClientKey"];
 export type ClientKeyList = AgentComponents["schemas"]["ClientKeyList"];
 export type ClientKeyCreated = AgentComponents["schemas"]["ClientKeyCreated"];
