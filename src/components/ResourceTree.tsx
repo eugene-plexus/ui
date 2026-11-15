@@ -35,6 +35,8 @@ import { buildStamps, reportedVersion, versionNote } from "@/lib/updates";
 import { More } from "./Help";
 import { LayerIcon } from "./LayerIcon";
 import { recordNodeLabels } from "@/lib/nodeLabels";
+import { getOperationsSession, machineFor, machinesInScope } from "@/lib/operations";
+import { getSessionToken } from "@/lib/session";
 
 /**
  * The install as a tree, down the left side.
@@ -114,6 +116,31 @@ export function useTopology(): { topology: Topology; ready: boolean } {
   }, []);
 
   const load = useCallback(async () => {
+    // Row 39: a person who is not the owner sees the machines their powers
+    // reach and what runs on each, from the root's answer for them.
+    const operations = getOperationsSession();
+    if (operations !== null && getSessionToken() === null) {
+      const [machines, localName] = await Promise.all([
+        machinesInScope(operations).catch(() => null),
+        machineFor(operations, "agent").catch(() => null),
+      ]);
+      if (!live.current) return;
+      recordNodeLabels((machines ?? []).map((m) => ({ name: m.name, label: m.label ?? null })));
+      const next: Topology = {
+        localNode: localName,
+        nodes: (machines ?? []).map((m) => m.name),
+        components: (machines ?? []).flatMap((m) =>
+          m.kinds.map((kind) => ({ name: kind, kind, node: m.name }) as ComponentPlacement),
+        ),
+        apps: [],
+        sites: [],
+        version: null,
+        rootUnreachable: machines === null,
+      };
+      setTopology((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+      setReady(true);
+      return;
+    }
     const [local, node, placement, nodeNames, siteList] = await Promise.all([
       api.get<ComponentList>("agent", "/v1/components").catch(() => null),
       api.get<NodeIdentity>("agent", "/v1/node").catch(() => null),

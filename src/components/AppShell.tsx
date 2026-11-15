@@ -26,6 +26,14 @@ import {
   type Selection,
   type TreeNode,
 } from "@/lib/resourceTree";
+import {
+  allowedPath,
+  clearOperationsSession,
+  getOperationsSession,
+  inOperationsMode,
+  operationsLine,
+  type OperationsSession,
+} from "@/lib/operations";
 import { clearSessionToken } from "@/lib/session";
 
 import { LayerIcon } from "./LayerIcon";
@@ -131,6 +139,14 @@ function AppShellInner({
   });
   useDocumentTitle(title);
 
+  // Row 39: a person who is not the owner. Read after mount: the page is
+  // exported statically and sessionStorage exists only in the browser.
+  const [operations, setOperations] = useState<OperationsSession | null>(null);
+  useEffect(() => {
+    setOperations(inOperationsMode() ? getOperationsSession() : null);
+  }, []);
+  const ownersOnly = operations !== null && !allowedPath(pathname ?? "/", operations.powers);
+
   const [mapOpen, setMapOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const mapToggleRef = useRef<HTMLButtonElement | null>(null);
@@ -162,6 +178,16 @@ function AppShellInner({
   }, [mapOpen, drawerOpen, closeMap, closeDrawer]);
 
   async function handleLogout() {
+    if (operations !== null) {
+      try {
+        await api.delete("control", "/v1/auth/administration/session");
+      } catch {
+        // Abandoned either way, as below.
+      }
+      clearOperationsSession();
+      router.push("/administration");
+      return;
+    }
     try {
       await api.delete("agent", "/v1/auth/sessions/current");
     } catch {
@@ -194,8 +220,13 @@ function AppShellInner({
         <Link href="/" aria-label="Eugene Plexus" className="flex shrink-0 items-center">
           <Image src="/eugene-icon.svg" alt="" width={22} height={22} priority />
         </Link>
+        {operations !== null && (
+          <span data-testid="operations-line" className="font-ui text-sm text-[color:var(--muted)]">
+            {operationsLine(operations)}
+          </span>
+        )}
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
-          <SettingsSearch topology={topology} ready={ready} />
+          {operations === null && <SettingsSearch topology={topology} ready={ready} />}
           {/* Background work, from every signed-in screen (hobbyist UX P7):
               a download started on Discover is visible from Config. */}
           <TasksTray />
@@ -284,13 +315,20 @@ function AppShellInner({
             localNode={topology.localNode}
             pathname={pathname}
             controls={controls}
+            operations={operations}
           />
           <div id="main-content" tabIndex={-1} className="flex min-h-0 flex-1 flex-col">
             {/* The page reads the same topology the tree was built from,
                 so a page that lists the install's machines (Settings)
                 cannot disagree with the tree beside it. */}
             <TopologyContext.Provider value={{ topology, ready }}>
-              {children}
+              {ownersOnly ? (
+                <p role="status" data-testid="owners-only" className="status-warn m-4">
+                  Only the owner can do this. Your powers do not include this page.
+                </p>
+              ) : (
+                children
+              )}
             </TopologyContext.Provider>
           </div>
         </div>
@@ -323,6 +361,7 @@ function PageMenu({
   localNode,
   pathname,
   controls,
+  operations = null,
 }: {
   node: TreeNode | null;
   selection: Selection | null;
@@ -330,11 +369,15 @@ function PageMenu({
   localNode: string | null;
   pathname: string | null;
   controls?: React.ReactNode;
+  /** Row 39: a person who is not the owner sees only the pages their powers use. */
+  operations?: OperationsSession | null;
 }) {
   // From the selection's kind, not from the resolved row: the pages are
   // knowable before the topology answers, and reading them off the row
   // left the menu empty for the first frames.
-  const pages: PageRef[] = sel ? pagesForSelection(selection) : [];
+  const pages: PageRef[] = (sel ? pagesForSelection(selection) : []).filter(
+    (page) => operations === null || allowedPath(page.route, operations.powers),
+  );
   const current = activePage(pages, pathname);
   const accent = node?.layer ? layerOf(node.layer).accent : "left";
 

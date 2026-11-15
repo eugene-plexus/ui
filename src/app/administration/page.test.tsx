@@ -26,7 +26,14 @@ beforeEach(() => {
     personId: "manager",
     name: "Manager",
     owner: false,
-    grants: { managePeople: false, manageGroups: false, membershipGroups: ["allowed"] },
+    grants: {
+      managePeople: false,
+      manageGroups: false,
+      membershipGroups: ["allowed"],
+      operateModels: false,
+      operateMachines: false,
+      operationsMachines: null,
+    },
   };
   people = [{ ...person }];
   calls = [];
@@ -115,7 +122,14 @@ it("uses named credentials and keeps unassigned memberships while limiting the t
 });
 
 it("creates an account without implicitly assigning access", async () => {
-  session.grants = { managePeople: true, manageGroups: false, membershipGroups: [] };
+  session.grants = {
+    managePeople: true,
+    manageGroups: false,
+    membershipGroups: [],
+    operateModels: false,
+    operateMachines: false,
+    operationsMachines: null,
+  };
   const user = await signIn();
   await user.click(screen.getByText("Add a person"));
   await user.type(screen.getByLabelText("Account name"), "Tom");
@@ -149,7 +163,14 @@ it("does not offer changes to other administrators or individual-access membersh
   people = [
     {
       ...person,
-      administration: { managePeople: false, manageGroups: true, membershipGroups: [] },
+      administration: {
+        managePeople: false,
+        manageGroups: true,
+        membershipGroups: [],
+        operateModels: false,
+        operateMachines: false,
+        operationsMachines: null,
+      },
     },
     { ...person, id: "tom", name: "Tom", groups: null },
   ];
@@ -184,4 +205,28 @@ it("shows permitted account editors without disclosures and keeps destructive ac
     screen.queryByRole("region", { name: "Administration permissions" }),
   ).not.toBeInTheDocument();
   expect(screen.getByRole("article").querySelector("details")).toBeNull();
+});
+
+it("opens the console for a person with operations powers, and reads no directory", async () => {
+  session.grants = {
+    managePeople: false,
+    manageGroups: false,
+    membershipGroups: [],
+    operateModels: true,
+    operateMachines: false,
+    operationsMachines: ["gpu-a"],
+  };
+  const assign = vi.fn();
+  vi.stubGlobal("location", { ...window.location, assign, pathname: "/administration" });
+  const user = await signIn();
+  const panel = screen.getByRole("region", { name: "Run the machines" });
+  expect(within(panel).getByText(/Models: download, delete and run models/)).toBeVisible();
+  await user.click(within(panel).getByRole("button", { name: "Open the console" }));
+  expect(assign).toHaveBeenCalledWith("/");
+  expect(JSON.parse(sessionStorage.getItem("eugene-operations-session") ?? "{}")).toEqual({
+    token: "named-token",
+    name: "Manager",
+    powers: ["operate-models"],
+  });
+  expect(calls.some((c) => c.path === "/v1/people")).toBe(false);
 });

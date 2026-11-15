@@ -2983,6 +2983,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/node/operations-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who changed what on this machine (row 39).
+         * @description Row 39 (`docs/design/rows/row-39.md`). One row per change made on
+         *     this machine through a route in the operations power table, by the
+         *     owner or by a person with an operations power: the agent's own
+         *     routes and the routes of this machine's library. Kept in a SQLite
+         *     file in the agent's state directory for 90 days, at most 10,000
+         *     rows. The person comes from the verified token, never from a
+         *     header. Newest first. Owner only.
+         */
+        get: operations["getOperationsLog"];
+        put?: never;
+        /**
+         * This machine's library records one change it made (row 39).
+         * @description Only this machine's own library, with the service token its agent
+         *     gave it. It reports the person it read from the operations token
+         *     or the owner's session it verified itself.
+         */
+        post: operations["reportOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node/history": {
         parameters: {
             query?: never;
@@ -4347,6 +4379,42 @@ export interface components {
             min: (number | null)[];
             mean: (number | null)[];
             max: (number | null)[];
+        };
+        /**
+         * @description Row 39, as `control.yaml` names it.
+         * @enum {string}
+         */
+        OperationsPower: "operate-models" | "operate-machines";
+        OperationReport: {
+            /** @description The person's id, or `operator` for the owner. */
+            personId: string;
+            /** @description The name to show for them. */
+            name: string;
+            owner: boolean;
+            /** @description The power the route needs (`control.yaml` `OperationsPower`). */
+            power?: components["schemas"]["OperationsPower"] | null;
+            /** @description What was done, a short verb phrase such as `stop runtime`. */
+            action: string;
+            /** @description What it was done to (a runtime, an engine, a model), or empty. */
+            target: string;
+            /** @description The HTTP status the change answered with. */
+            status: number;
+        };
+        /** @description One row of `OperationsLog`, an `OperationReport` with when and where. */
+        OperationRecord: {
+            /** Format: date-time */
+            at: string;
+            component: string;
+            personId: string;
+            name: string;
+            owner: boolean;
+            power?: components["schemas"]["OperationsPower"] | null;
+            action: string;
+            target: string;
+            status: number;
+        };
+        OperationsLog: {
+            entries: components["schemas"]["OperationRecord"][];
         };
         /** @description What this host's hardware did over a window (`GET /v1/node/history`). */
         HostHistory: {
@@ -14388,6 +14456,53 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+        };
+    };
+    getOperationsLog: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The newest rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsLog"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
+    reportOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationReport"];
+            };
+        };
+        responses: {
+            /** @description Recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
         };
     };
     getNodeHistory: {
