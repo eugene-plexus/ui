@@ -41,6 +41,7 @@ import { LibraryServices } from "@/components/LibraryServices";
 import { ReportOllama } from "@/components/OllamaKeep";
 import { LeaveInstall } from "@/components/LeaveInstall";
 import { MachineKeyCard } from "@/components/MachineKeyCard";
+import { ModelPause } from "@/components/ModelPause";
 import { Hardware } from "@/components/Hardware";
 import { RemoveMachine } from "@/components/RemoveMachine";
 import { StandbyPanel } from "@/components/StandbyPanel";
@@ -707,6 +708,14 @@ export default function NodesPage() {
                           <MachineLinkCell node={n} />
                           <ReportOllama node={n.name} />
                           <LibraryServices target={`node:${n.name}`} />
+                          {/* Row 35: pause this machine's models, or resume
+                            them; as in effect on that machine, on every OS. */}
+                          <ModelPause
+                            name={n.name}
+                            target={readings[n.name]?.target ?? `node:${n.name}`}
+                            pause={readings[n.name]?.identity?.pause}
+                            onChanged={refreshVersions}
+                          />
                           {/* Every machine but the root's own (CX6); more
                             plainly on one that is down. */}
                           {n.role !== "control" && (
