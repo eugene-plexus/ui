@@ -25,7 +25,7 @@ const POLL_MS = 15_000;
  *
  * Prometheus pulls, so the panel says when it last did and gives the file that
  * makes it. A scrape key is a key that reads numbers and runs nothing
- * (`readMetrics` on, no models), so a stolen scrape file reaches no model. The
+ * (`readMetrics` on, no models, no tools), so a stolen scrape file reaches no model. The
  * key is shown once, as every key is, and it is in the copied file only while
  * this panel still holds it.
  *
@@ -163,8 +163,8 @@ export function MetricsExportPanel({ id = "export" }: { id?: string }) {
       {!fresh && (
         <p className="mt-2 text-xs text-[color:var(--muted)]">
           The copied file has a placeholder for the key until you make one here. A scrape key can
-          read numbers and run no model. Turn <span className="font-mono">May read metrics</span> on
-          for any other key under{" "}
+          read numbers and run no model and no tool. Turn{" "}
+          <span className="font-mono">May read metrics</span> on for any other key under{" "}
           <Link href="/connect" className="underline">
             Connect apps
           </Link>

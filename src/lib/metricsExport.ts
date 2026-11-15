@@ -10,9 +10,17 @@
 import { clockTime } from "./relativeTime";
 import type { MetricsExport } from "./types";
 
-/** What "Make a scrape key" makes: a key that reads numbers and runs nothing. */
+/**
+ * What "Make a scrape key" makes: a key that reads numbers and runs nothing. No model,
+ * and no tool: an absent `allowedTools` permits every tool the install runs, so the key
+ * in a Prometheus file could otherwise run web searches.
+ */
 export const SCRAPE_KEY_NAME = "Prometheus";
-export const SCRAPE_KEY_LIMITS = { allowedModels: [] as string[], readMetrics: true } as const;
+export const SCRAPE_KEY_LIMITS = {
+  allowedModels: [] as string[],
+  allowedTools: [] as string[],
+  readMetrics: true,
+} as const;
 
 /** The placeholder a copied file carries until a scrape key is made. */
 export const SCRAPE_KEY_PLACEHOLDER = "YOUR_SCRAPE_KEY";

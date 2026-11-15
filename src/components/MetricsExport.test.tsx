@@ -72,7 +72,7 @@ describe("the Export panel", () => {
     expect(await screen.findByTestId("export-fresh-key")).toHaveTextContent("shown once");
     expect(post).toHaveBeenCalledWith("agent", "/v1/auth/client-keys", {
       name: "Prometheus",
-      limits: { allowedModels: [], readMetrics: true },
+      limits: { allowedModels: [], allowedTools: [], readMetrics: true },
     });
     expect(screen.getByText("shown-once-token")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Copy scrape configuration/ }));

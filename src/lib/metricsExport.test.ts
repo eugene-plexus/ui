@@ -110,7 +110,8 @@ describe("the scrape configuration", () => {
 });
 
 describe("a scrape key", () => {
-  it("may read metrics and run no model", () => {
-    expect(SCRAPE_KEY_LIMITS).toEqual({ allowedModels: [], readMetrics: true });
+  it("may read metrics and run no model and no tool", () => {
+    // An absent allowedTools permits every tool, web search among them.
+    expect(SCRAPE_KEY_LIMITS).toEqual({ allowedModels: [], allowedTools: [], readMetrics: true });
   });
 });
