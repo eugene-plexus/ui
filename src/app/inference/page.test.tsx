@@ -1129,6 +1129,18 @@ describe("a stop that outlives a reboot, and whether a model starts with Eugene 
     );
   });
 
+  it("reads Paused for a runtime Pause stopped (row 35)", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: { runtimes: [nodeRuntime({ status: "stopped", stopReason: "paused" })] },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    await waitFor(() =>
+      expect(within(row).getByTestId("runtime-paused")).toHaveTextContent("Paused"),
+    );
+    expect(within(row).queryByTestId("stop-reason")).toBeNull();
+  });
+
   it("saves Start when Eugene starts without restarting the model", async () => {
     // The node's own read is slower than this screen: it still says true
     // after the save, and the box shows what was saved.
