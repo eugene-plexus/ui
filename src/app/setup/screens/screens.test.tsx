@@ -137,6 +137,26 @@ describe("the passphrase screen under its own account", () => {
     expect(screen.queryByTestId("no-keyring-note")).toBeNull();
   });
 
+  it("says the file is the operator's when it is (agent#44)", () => {
+    render(
+      <ScreenPassphrase
+        passphrase=""
+        passphraseConfirm=""
+        securityMode="passphrase_file"
+        keyringAvailable={false}
+        passphraseFile
+        passphraseFileFromOperator
+        onPassphrase={vi.fn()}
+        onPassphraseConfirm={vi.fn()}
+        onSecurityMode={vi.fn()}
+      />,
+    );
+    const note = screen.getByTestId("passphrase-file-note").textContent ?? "";
+    expect(note).toMatch(/^Use the passphrase in the file you gave this machine\./);
+    expect(note).not.toMatch(/its own account/);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
   it("never restores the file mode from a saved draft: it is not a choice", () => {
     const restored = restoreDraft({ ...blankDraft(), securityMode: "passphrase_file" });
     expect(restored?.securityMode).toBe("prompt_on_startup");

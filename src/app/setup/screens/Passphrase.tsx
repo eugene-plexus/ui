@@ -28,6 +28,7 @@ export function ScreenPassphrase({
   securityMode,
   keyringAvailable,
   passphraseFile = false,
+  passphraseFileFromOperator = false,
   machineName = "",
   onMachineName = () => {},
   onPassphrase,
@@ -44,6 +45,9 @@ export function ScreenPassphrase({
    * only that account can read (the Linux system install, 2026-09-24).
    * Then there is nothing to choose, and the screen says what happens. */
   passphraseFile?: boolean;
+  /** That file is the one the operator gave the control root on this host
+   * (agent#44, the container): the screen asks for the passphrase in it. */
+  passphraseFileFromOperator?: boolean;
   /** What every screen calls this machine (node-labels.md); empty uses
    * its network name, which on a container is its ID. */
   machineName?: string;
@@ -110,6 +114,7 @@ export function ScreenPassphrase({
         securityMode={securityMode}
         keyringAvailable={keyringAvailable}
         passphraseFile={passphraseFile}
+        passphraseFileFromOperator={passphraseFileFromOperator}
         onSecurityMode={onSecurityMode}
       />
     </section>
@@ -149,18 +154,30 @@ export function RestartChoice({
   securityMode,
   keyringAvailable,
   passphraseFile,
+  passphraseFileFromOperator = false,
   onSecurityMode,
 }: {
   securityMode: SecurityMode;
   keyringAvailable: boolean | null;
   passphraseFile: boolean;
+  passphraseFileFromOperator?: boolean;
   onSecurityMode: (v: SecurityMode) => void;
 }) {
   const noKeyring = keyringAvailable === false;
   return (
     <>
       <h3 className="font-ui mb-3 text-sm font-semibold">After a reboot</h3>
-      {passphraseFile ? (
+      {passphraseFile && passphraseFileFromOperator ? (
+        // agent#44: the file is the operator's. A passphrase other than the
+        // one in it would leave every restart locked.
+        <p
+          className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
+          data-testid="passphrase-file-note"
+        >
+          Use the passphrase in the file you gave this machine. Eugene reads that file to unlock
+          itself after a restart; setup does not change it.
+        </p>
+      ) : passphraseFile ? (
         <p
           className="mb-4 text-sm leading-relaxed text-[color:var(--muted)]"
           data-testid="passphrase-file-note"

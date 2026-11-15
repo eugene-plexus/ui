@@ -34,6 +34,7 @@ export function ScreenResume({
   securityMode,
   keyringAvailable,
   passphraseFile,
+  passphraseFileFromOperator = false,
   onSecurityMode,
 }: {
   /** `null` until the install has been read, which takes a session. */
@@ -47,6 +48,8 @@ export function ScreenResume({
   securityMode: SecurityMode;
   keyringAvailable: boolean | null;
   passphraseFile: boolean;
+  /** The file is the operator's (agent#44). */
+  passphraseFileFromOperator?: boolean;
   onSecurityMode: (v: SecurityMode) => void;
 }) {
   return (
@@ -90,6 +93,7 @@ export function ScreenResume({
             securityMode={securityMode}
             keyringAvailable={keyringAvailable}
             passphraseFile={passphraseFile}
+            passphraseFileFromOperator={passphraseFileFromOperator}
             onSecurityMode={onSecurityMode}
           />
         </>
