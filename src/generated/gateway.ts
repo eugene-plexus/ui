@@ -1335,6 +1335,12 @@ export interface paths {
          *     `image_generation` runs
          *     through this install's image models (P8e, "Server-run tools"
          *     above) or is refused with a 400 naming why.
+         *     `mcp` (remote MCP, row 59b) runs on a tool-driver under the
+         *     owner's `remoteMcp` setting, with approvals, as "Remote MCP" above
+         *     describes; when it cannot run, the 400 names why. Its items --
+         *     `mcp_list_tools`, `mcp_call`, `mcp_approval_request` -- come back
+         *     in `output`, and `mcp_approval_response` answers a request in the
+         *     next `input`.
          *
          *     ### Client-run tools (row 57)
          *
@@ -1371,8 +1377,7 @@ export interface paths {
          *     Tools still refused return a 400 naming their observed cause:
          *     `computer_use_preview` (no local model is trained for it),
          *     `code_interpreter` (Eugene has no sandbox; use a function tool and
-         *     run it yourself), `mcp` (remote MCP execution needs row 59), and
-         *     `file_search` (file search needs row 56).
+         *     run it yourself), and `file_search` (file search needs row 56).
          *
          *     A `compaction` input item from `/v1/responses/compact` is
          *     decrypted and authenticated by this gateway and expanded into a
@@ -6555,6 +6560,15 @@ export interface components {
          *     `image_generation_call` handed back (P8e), which becomes a line
          *     naming the prompt the image was made for -- its base64 is not
          *     sent to the model.
+         *     Remote MCP's items (row 59b): `mcp_list_tools` (`server_label`,
+         *     `tools`) is the server's tool list, used instead of listing again;
+         *     `mcp_call` (`server_label`, `name`, `arguments`, `output`, `error`,
+         *     `approval_request_id`) becomes the call and its result in the
+         *     history; `mcp_approval_request` (`id`, `server_label`, `name`,
+         *     `arguments`) becomes the call the model asked for, and
+         *     `mcp_approval_response` (`approval_request_id`, `approve`,
+         *     `reason`) answers it -- an approval whose id no request in `input`
+         *     carries is a 400.
          *     Codex drops `id` and `status` when it sends items back
          *     (measured), so neither is required. Refused: `item_reference` and
          *     any other type.
@@ -6597,6 +6611,23 @@ export interface components {
              *     string that this gateway can authenticate before using it.
              */
             encrypted_content?: string | null;
+            /** @description The MCP server an `mcp_*` item belongs to (row 59b). */
+            server_label?: string;
+            /**
+             * @description On `mcp_approval_response`, the `mcp_approval_request` it
+             *     answers; on `mcp_call`, the approval it ran under.
+             */
+            approval_request_id?: string | null;
+            /** @description An `mcp_approval_response`'s answer. */
+            approve?: boolean;
+            /** @description Why an approval was given or refused; told to the model when refused. */
+            reason?: string | null;
+            /** @description An `mcp_call`'s or `mcp_list_tools`' failure, as words. */
+            error?: unknown;
+            /** @description An `mcp_list_tools` item's tools (`name`, `description`, `input_schema`, `annotations`). */
+            tools?: {
+                [key: string]: unknown;
+            }[];
         } & {
             [key: string]: unknown;
         };
@@ -6643,7 +6674,10 @@ export interface components {
          *     endpoint). `web_search` runs on this install's search account, or
          *     is removed and named when it cannot (see the endpoint);
          *     `image_generation` runs on this install's image models, or is
-         *     refused naming why (P8e).
+         *     refused naming why (P8e). `mcp` (`server_label`, `server_url`,
+         *     `headers`, `authorization`, `allowed_tools`, `require_approval`,
+         *     `server_description`) is a remote MCP server the gateway lists
+         *     and calls through a tool-driver (row 59b, "Remote MCP" above).
          *
          *     `custom` (`name`, `description`, `format`) maps to a function with
          *     one string parameter `input`; `local_shell` maps to a function
@@ -6693,6 +6727,35 @@ export interface components {
             } & {
                 [key: string]: unknown;
             };
+            /** @description An `mcp` tool's name for its server, unique in the request. */
+            server_label?: string;
+            /**
+             * @description An `mcp` tool's Streamable HTTP endpoint. `https` on the
+             *     internet under the default `remoteMcp`; see "Remote MCP".
+             */
+            server_url?: string;
+            /** @description An `mcp` tool's words about its server, added to each of its tools' descriptions. */
+            server_description?: string;
+            /**
+             * @description An `mcp` tool's headers for its server, sent for this request
+             *     only and never echoed, logged or kept. Headers that frame the
+             *     request (`Host`, `Content-Type`, `Accept`, ...) are refused.
+             */
+            headers?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * @description An `mcp` tool's OAuth access token, sent as `Authorization:
+             *     Bearer`, under the same rules as `headers`.
+             */
+            authorization?: string | null;
+            /** @description An `mcp` tool's tool names to offer, as a list or `{"tool_names"}`. */
+            allowed_tools?: unknown;
+            /**
+             * @description `always` (the default), `never`, or `{"always": {"tool_names"},
+             *     "never": {"tool_names"}}`.
+             */
+            require_approval?: unknown;
         } & {
             [key: string]: unknown;
         };
@@ -6748,6 +6811,12 @@ export interface components {
          *     "status", "result", "revised_prompt", "size", "quality",
          *     "background", "output_format", "action": "generate"}` -- `result`
          *     the base64 image, null and `status: failed` when none was made.
+         *     Remote MCP (row 59b) adds `{"type": "mcp_list_tools", "id",
+         *     "server_label", "tools": [{"name", "description", "input_schema",
+         *     "annotations"}]}`, `{"type": "mcp_call", "id", "status",
+         *     "server_label", "name", "arguments", "output", "error",
+         *     "approval_request_id"}` and `{"type": "mcp_approval_request", "id",
+         *     "server_label", "name", "arguments"}`.
          *
          *     Client-run calls are `custom_tool_call` (`id`, `call_id`, `name`,
          *     `input`), `local_shell_call` and `shell_call` (`id`, `call_id`,
@@ -6758,7 +6827,7 @@ export interface components {
          */
         ResponsesOutputItem: {
             /** @enum {string} */
-            type: "reasoning" | "message" | "function_call" | "web_search_call" | "image_generation_call" | "custom_tool_call" | "local_shell_call" | "shell_call" | "apply_patch_call" | "compaction";
+            type: "reasoning" | "message" | "function_call" | "web_search_call" | "image_generation_call" | "mcp_list_tools" | "mcp_call" | "mcp_approval_request" | "custom_tool_call" | "local_shell_call" | "shell_call" | "apply_patch_call" | "compaction";
             id?: string;
             call_id?: string;
             name?: string;
@@ -6803,10 +6872,17 @@ export interface components {
          *     their Responses `item`, including the complete action or operation
          *     on done. Internal function-adapter arguments are not exposed as
          *     function-call events for these client-run tools.
+         *
+         *     Remote MCP (row 59b): a tool list read is
+         *     `response.mcp_list_tools.in_progress` then `.completed`; a call is
+         *     `response.mcp_call.in_progress`, `response.mcp_call_arguments.done`
+         *     (`arguments`), then `response.mcp_call.completed` or `.failed`; each
+         *     with `item_id` and `output_index`, between its item's added and
+         *     done. An `mcp_approval_request` is an item added and done.
          */
         ResponsesStreamEvent: {
             /** @enum {string} */
-            type: "response.created" | "response.in_progress" | "response.output_item.added" | "response.output_item.done" | "response.content_part.added" | "response.content_part.done" | "response.output_text.delta" | "response.output_text.done" | "response.reasoning_text.delta" | "response.reasoning_text.done" | "response.function_call_arguments.delta" | "response.function_call_arguments.done" | "response.custom_tool_call_input.delta" | "response.custom_tool_call_input.done" | "response.shell_call_command.added" | "response.shell_call_command.delta" | "response.shell_call_command.done" | "response.completed" | "response.incomplete" | "response.failed";
+            type: "response.created" | "response.in_progress" | "response.output_item.added" | "response.output_item.done" | "response.content_part.added" | "response.content_part.done" | "response.output_text.delta" | "response.output_text.done" | "response.reasoning_text.delta" | "response.reasoning_text.done" | "response.function_call_arguments.delta" | "response.function_call_arguments.done" | "response.custom_tool_call_input.delta" | "response.custom_tool_call_input.done" | "response.shell_call_command.added" | "response.shell_call_command.delta" | "response.shell_call_command.done" | "response.mcp_list_tools.in_progress" | "response.mcp_list_tools.completed" | "response.mcp_call.in_progress" | "response.mcp_call_arguments.done" | "response.mcp_call.completed" | "response.mcp_call.failed" | "response.completed" | "response.incomplete" | "response.failed";
             sequence_number: number;
             response?: components["schemas"]["ResponsesResponse"];
             item?: components["schemas"]["ResponsesOutputItem"];
@@ -6816,6 +6892,8 @@ export interface components {
             delta?: string;
             input?: string;
             command?: string;
+            /** @description An MCP call's arguments, as a JSON string, on `response.mcp_call_arguments.done`. */
+            arguments?: string;
         } & {
             [key: string]: unknown;
         };
@@ -7487,6 +7565,14 @@ export interface components {
              *     kept, for the same reason. Absent on rows written before P8e.
              */
             imageGenerations?: components["schemas"]["MetricToolExecution"][];
+            /**
+             * @description Each remote MCP call the install made for the request (row
+             *     59b), in order: the tool-driver that made it, the outcome and
+             *     the time. Not the server, the tool's name or its arguments,
+             *     which are the caller's words, and never its credential. Absent
+             *     when the request made none.
+             */
+            mcpCalls?: components["schemas"]["MetricToolExecution"][];
         };
         /**
          * @description `over_limit` is a call past the request's limit, answered without
@@ -7497,7 +7583,11 @@ export interface components {
          */
         MetricToolOutcome: "ok" | "error" | "over_limit";
         MetricToolExecution: {
-            /** @description The tool that ran -- `web_search` or `image_generation`. */
+            /**
+             * @description The tool that ran -- `web_search`, `image_generation`, or `mcp`
+             *     (a remote MCP call, row 59b; the row names neither the server
+             *     nor the tool, which are the caller's words).
+             */
             tool: string;
             /**
              * @description The tool-driver (search account) that ran a search, or the

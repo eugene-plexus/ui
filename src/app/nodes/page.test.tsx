@@ -1094,3 +1094,63 @@ describe("nodes page, machine keys (row 3, part 3b)", () => {
     );
   });
 });
+
+describe("pause a machine's models from its card (row 35)", () => {
+  let posted: string[];
+  let amishPause: Record<string, unknown>;
+
+  beforeEach(() => {
+    sealed = false;
+    posted = [];
+    amishPause = {
+      paused: true,
+      by: "tray",
+      since: "2026-10-27T20:14:00Z",
+      runtimes: ["qwen3-30b"],
+      trayChannel: "serving",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        const json = (body: unknown, status = 200) =>
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { "content-type": "application/json" },
+          });
+        if (method === "POST" && /\/v1\/node\/(pause|resume)$/.test(url)) {
+          posted.push(url);
+          amishPause = { paused: false, trayChannel: "serving" };
+          return json({ pause: amishPause, results: [{ name: "qwen3-30b", state: "started" }] });
+        }
+        if (url.includes("/node:Amish_Station/v1/node")) {
+          return json({ enrolled: true, name: "Amish_Station", os: "windows", pause: amishPause });
+        }
+        // The root's own agent, from before row 35: no `pause`, so no button.
+        if (url.includes("/agent/v1/node")) return json({ enrolled: true, name: "unraid" });
+        if (url.includes("/v1/sites")) return json({ sites: [], installMode: "production" });
+        if (url.includes("/v1/nodes/join-tokens")) return json({ tokens: [] });
+        if (url.includes("/v1/nodes")) return json(NODES);
+        if (url.includes("/v1/control/status")) return json({ role: "control", epoch: 1 });
+        return json({});
+      }),
+    );
+  });
+
+  it("shows the pause as in effect and resumes it through that machine's agent", async () => {
+    const user = userEvent.setup();
+    render(<NodesPage />);
+    const card = await screen.findByTestId("model-pause-Amish_Station");
+    expect(within(card).getByTestId("model-pause-line")).toHaveTextContent(
+      /^Models paused from the tray icon since /,
+    );
+    // An agent that cannot pause offers nothing.
+    expect(screen.queryByTestId("model-pause-unraid")).toBeNull();
+    await user.click(within(card).getByRole("button", { name: "Resume models on Amish_Station" }));
+    await waitFor(() => expect(posted).toEqual(["/api/proxy/node:Amish_Station/v1/node/resume"]));
+    expect(await within(card).findByTestId("model-pause-said")).toHaveTextContent(
+      "Resumed 1 of 1 models.",
+    );
+  });
+});

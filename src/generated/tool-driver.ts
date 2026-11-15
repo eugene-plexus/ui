@@ -44,6 +44,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tools/mcp/list_tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List a remote MCP server's tools, for one Responses request.
+         * @description Row 59b. Opens one session with the MCP server at `serverUrl`
+         *     (Streamable HTTP: `initialize`, `notifications/initialized`, then
+         *     `tools/list` page by page), and answers its tools. Only the
+         *     install's gateway may call it (a `gateway` service token); a
+         *     person's session is refused, because `reach` is the owner's
+         *     setting and only the gateway reads it.
+         *
+         *     **Where it may connect.** The host is resolved once per
+         *     connection, **every** address it resolves to is checked against
+         *     `reach`, and the connection goes to an address that was checked,
+         *     so a second lookup (DNS rebinding) cannot switch it. A redirect is
+         *     followed only to the same origin and only as a 307 or 308, through
+         *     the same check. The user's proxy is not used: through a proxy the
+         *     proxy would resolve the name, and the check would mean nothing.
+         *
+         *     * `internet` (the default): only globally reachable addresses,
+         *       over `https`. Loopback, private (RFC 1918, unique-local IPv6),
+         *       the carrier range 100.64.0.0/10, link-local, multicast,
+         *       reserved, the unspecified address and IPv6 forms that carry one
+         *       of those IPv4 addresses (IPv4-mapped, 6to4, Teredo, NAT64) are
+         *       refused.
+         *     * `network`: the owner's expert choice. Addresses on the owner's
+         *       network (private ranges, unique-local IPv6, 100.64.0.0/10) are
+         *       also allowed, and plain `http` is allowed to them only. This
+         *       machine's loopback stays refused: its services are this
+         *       install's own.
+         *     * Under every reach: link-local (cloud metadata services listen
+         *       at 169.254.169.254), known metadata addresses (100.100.100.200,
+         *       fd00:ec2::254), multicast, reserved and unspecified addresses
+         *       are refused.
+         *
+         *     A refusal is 403 `address_refused` naming the rule and the address
+         *     it found; a scheme the reach does not allow is 400
+         *     `scheme_refused`.
+         *
+         *     **Limits** (each names itself when hit): 30 s for the whole call;
+         *     8 MiB for all the server sends in the call (a list split over
+         *     pages is one answer; 502 `too_large`); at most 64 tools after
+         *     `allowedTools` (413 `too_many_tools`), and at most 32 pages.
+         *
+         *     **The caller's headers** go only to this server, and only for
+         *     this call. They are never logged, never stored and never part of
+         *     an error's words: every value of eight characters or more, and a
+         *     credential header's value whatever its length, is scrubbed from
+         *     errors (before they are cut short), descriptions and outputs, and a
+         *     tool named with one refuses the listing (502
+         *     `credential_in_tool_name`). No cookie is kept or sent: callers
+         *     share one client. The words of a failure name the server by its
+         *     origin (`https://host:port`) only, never its path or query, which
+         *     can carry a key too. The server refusing the caller's credential
+         *     (401 or 403) is 424 `server_refused_credentials`. JSON nested
+         *     deeper than 64 levels is 502 `too_deep`. The `DELETE` that ends the
+         *     session is sent uncompressed-only and never read.
+         */
+        post: operations["mcpListTools"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tools/mcp/call": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call one tool on a remote MCP server, for one Responses request.
+         * @description Row 59b. One session (`initialize`, `notifications/initialized`,
+         *     `tools/call`), under the same address rules, limits and handling
+         *     of the caller's headers as `/v1/tools/mcp/list_tools`. A tool that
+         *     ran and reported a failure (`isError`) is a 200 with `error`: the
+         *     model is told the tool failed. A server that could not be reached,
+         *     refused the credential, or did not answer in time is a problem
+         *     response, and the gateway tells the model the call failed and why.
+         */
+        post: operations["mcpCallTool"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/info": {
         parameters: {
             query?: never;
@@ -180,18 +278,23 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * @description A tool the hub runs itself. `web_search` only today; the gateway's
-         *     `image_generation` (P8e) runs through the install's own images door
-         *     and needs no tool-driver.
+         * @description A tool the hub runs itself. `web_search` runs on the account's
+         *     search provider; `mcp` is remote MCP (row 59b), which needs no
+         *     account settings and so is listed whether or not the search is
+         *     set up. The gateway's `image_generation` (P8e) runs through the
+         *     install's own images door and needs no tool-driver.
          * @enum {string}
          */
-        ToolName: "web_search";
+        ToolName: "web_search" | "mcp";
         ToolDriverInfo: {
-            /** @description The provider key, `searxng`, `brave` or `google`. */
+            /** @description The provider key, `searxng`, `brave`, `google` or `tavily`. */
             provider: string;
             /** @description The provider's display name. */
             label?: string;
-            /** @description The tools this process runs. Empty until it is configured. */
+            /**
+             * @description The tools this process runs. `web_search` only once the account
+             *     is configured; `mcp` always (row 59b).
+             */
             tools: components["schemas"]["ToolName"][];
             /**
              * @description Where a query goes. Always `internet`: even a SearXNG on the
@@ -205,8 +308,8 @@ export interface components {
             version?: string;
         };
         /**
-         * @description Whether the provider bills each search (`per_search`: Brave) or not
-         *     (`free`: SearXNG). The gateway tries a free account before one that
+         * @description Whether the provider bills each search (`per_search`: Brave,
+         *     Google, Tavily) or not (`free`: SearXNG). The gateway tries a free account before one that
          *     bills, so an install with both pays only when the free one could not
          *     answer. Absent is read as `per_search`: an account that does not say
          *     is not assumed to cost nothing.
@@ -241,8 +344,9 @@ export interface components {
             results: components["schemas"]["WebSearchResult"][];
             /**
              * @description Text the provider itself wrote in answer to the query (SearXNG's
-             *     instant answers), or null. A provider that searches by asking a
-             *     hosted model answers here, with its citations in `results`.
+             *     instant answers, Tavily's `answer`), or null. A provider that
+             *     searches by asking a hosted model answers here, with its
+             *     citations in `results`.
              */
             answer?: string | null;
             provider: string;
@@ -266,6 +370,85 @@ export interface components {
             snippet?: string;
             /** @description When the page was published, as the provider reported it (ISO 8601 where it gave one). */
             publishedAt?: string | null;
+        };
+        /**
+         * @description Which addresses a remote MCP call may connect to: the gateway's
+         *     `remoteMcp` setting, which the owner sets (call R59-MCP).
+         *     `internet`, the default: globally reachable addresses only, over
+         *     `https`. `network`: also the owner's own network (private ranges,
+         *     unique-local IPv6, 100.64.0.0/10), where plain `http` is allowed
+         *     too. Loopback, link-local, metadata, multicast, reserved and
+         *     unspecified addresses are refused under both. The setting's third
+         *     value, `off`, never reaches this component: the gateway refuses
+         *     the request itself.
+         * @enum {string}
+         */
+        McpReach: "internet" | "network";
+        McpListToolsRequest: {
+            /** @description The MCP server's Streamable HTTP endpoint, as the caller named it. */
+            serverUrl: string;
+            /**
+             * @description The caller's headers for this server, its `authorization` already
+             *     turned into `Authorization: Bearer ...` by the gateway. Sent to
+             *     this server only, for this call only. Headers that frame the
+             *     request (`Host`, `Content-Length`, `Content-Type`, `Accept`,
+             *     `Connection`, `Transfer-Encoding`, `Mcp-Session-Id`,
+             *     `MCP-Protocol-Version` and the like) are refused with a 400
+             *     naming the header, never its value.
+             */
+            headers?: {
+                [key: string]: string;
+            };
+            reach: components["schemas"]["McpReach"];
+            /**
+             * @description Only these tools, by name. Null or absent keeps every tool the
+             *     server lists (up to the limit of 64).
+             */
+            allowedTools?: string[] | null;
+        };
+        McpListToolsResponse: {
+            tools: components["schemas"]["McpTool"][];
+            latencyMs?: number;
+        };
+        McpTool: {
+            name: string;
+            description?: string | null;
+            /** @description The tool's JSON Schema for its arguments, as the server gave it. */
+            inputSchema: {
+                [key: string]: unknown;
+            };
+            /** @description The server's hints about the tool (`readOnlyHint` and others), as given. */
+            annotations?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        McpCallRequest: {
+            serverUrl: string;
+            /** @description As on `McpListToolsRequest`. */
+            headers?: {
+                [key: string]: string;
+            };
+            reach: components["schemas"]["McpReach"];
+            name: string;
+            /** @description The arguments the model gave, as a JSON object. Absent is `{}`. */
+            arguments?: {
+                [key: string]: unknown;
+            };
+        };
+        McpCallResponse: {
+            /**
+             * @description The tool's text content, joined. A part that is not text (an
+             *     image, audio) is named in a line of its own and not carried; a
+             *     tool with only structured content answers it as JSON. Null when
+             *     `error` is set.
+             */
+            output?: string | null;
+            /**
+             * @description The tool's own words when it ran and reported a failure
+             *     (`isError`), or null.
+             */
+            error?: string | null;
+            latencyMs?: number;
         };
         WebSearchUserLocation: {
             /** @constant */
@@ -920,6 +1103,67 @@ export interface operations {
             429: components["responses"]["Problem"];
             502: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
+            504: components["responses"]["Problem"];
+        };
+    };
+    mcpListTools: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpListToolsRequest"];
+            };
+        };
+        responses: {
+            /** @description The server's tools, filtered by `allowedTools`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpListToolsResponse"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            413: components["responses"]["Problem"];
+            424: components["responses"]["Problem"];
+            502: components["responses"]["Problem"];
+            504: components["responses"]["Problem"];
+        };
+    };
+    mcpCallTool: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpCallRequest"];
+            };
+        };
+        responses: {
+            /** @description What the tool answered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpCallResponse"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            424: components["responses"]["Problem"];
+            502: components["responses"]["Problem"];
             504: components["responses"]["Problem"];
         };
     };
