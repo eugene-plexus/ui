@@ -70,8 +70,11 @@ describe("the words", () => {
     );
   });
 
-  it("warns only when another program holds the tray's channel", () => {
+  it("warns when the tray's channel is held by another program or could not open", () => {
     expect(trayChannelLine({ paused: false, trayChannel: "taken" })).toMatch(/another program/);
+    expect(trayChannelLine({ paused: false, trayChannel: "unavailable" })).toBe(
+      "Tray pause unavailable: its channel could not open. The agent's log says why.",
+    );
     expect(trayChannelLine({ paused: false, trayChannel: "serving" })).toBeNull();
     expect(trayChannelLine({ paused: false })).toBeNull();
   });

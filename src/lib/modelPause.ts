@@ -77,5 +77,8 @@ export function trayChannelLine(pause: NodePause | null | undefined): string | n
   if (pause?.trayChannel === "taken") {
     return "Tray pause unavailable: another program holds its channel.";
   }
+  if (pause?.trayChannel === "unavailable") {
+    return "Tray pause unavailable: its channel could not open. The agent's log says why.";
+  }
   return null;
 }
