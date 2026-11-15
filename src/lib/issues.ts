@@ -945,8 +945,8 @@ function staleBuildIssues(node: NodeFacts): Issue[] {
         title:
           stale.length === 1
             ? `${label(stale[0]!)} is running on ${engineName(engine)} ${stale[0]!.engineVersion}, not the ${current} that is installed`
-            : `${stale.length} models on ${node.label} are running on an older ${engineName(engine)} than the ${current} that is installed`,
-        detail: "Restarting them picks up the new build.",
+            : `${stale.length} models on ${node.label} are running on another ${engineName(engine)} build than the ${current} in use`,
+        detail: `Restarting them starts them on ${current}, the build in use.`,
         more: [
           "Until then the gateway shares requests between two engine versions, which can make " +
             "one model slower than another.",

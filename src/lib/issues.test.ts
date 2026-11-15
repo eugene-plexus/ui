@@ -913,7 +913,9 @@ describe("a model left on an older engine build", () => {
     expect(issue!.title).toBe(
       "gemma-3-27b is running on llama.cpp b10948, not the b10990 that is installed",
     );
-    expect(issue!.detail).toContain("Restarting them picks up the new build");
+    // Row 13 review #10: the build a restart picks up is the build in use, which
+    // may be older than the one a stopped update left a model running on.
+    expect(issue!.detail).toBe("Restarting them starts them on b10990, the build in use.");
   });
 
   it("counts them when there is more than one", () => {
@@ -931,7 +933,7 @@ describe("a model left on an older engine build", () => {
     });
     const [issue] = issuesFrom({ ...NOTHING, perNode: [node] });
     expect(issue!.title).toBe(
-      "2 models on Amish_Station are running on an older llama.cpp than the b10990 that is installed",
+      "2 models on Amish_Station are running on another llama.cpp build than the b10990 in use",
     );
   });
 

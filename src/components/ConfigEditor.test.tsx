@@ -22,7 +22,12 @@ let partialWithRestart = false;
 /** The restart endpoint itself fails, which leaves the dialog up with Close. */
 let failRestart = false;
 let patches: Record<string, unknown>[];
+/** Row 13: what `GET /v1/admin/drain` answers, one per poll, for a gateway;
+ * "down" is the moment between the old process and the new. Null: not a
+ * gateway (404). */
+let drainStates: string[] | null = null;
 beforeEach(() => {
+  drainStates = null;
   fields = ["modelRoots", "scanOnStartup", "logLevel", "starterModelsFile", "futureSetting"].map(
     (key) => ({
       key,
@@ -55,7 +60,16 @@ beforeEach(() => {
           headers: { "content-type": "application/problem+json" },
         });
       else if (url.endsWith("/v1/admin/restart")) body = { delayMs: 10 };
-      else if (url.endsWith("/healthz")) body = { status: "ok" };
+      else if (url.endsWith("/v1/admin/drain")) {
+        if (drainStates === null)
+          return new Response(JSON.stringify({ title: "Not Found", status: 404 }), {
+            status: 404,
+            headers: { "content-type": "application/problem+json" },
+          });
+        const state = drainStates.length > 1 ? drainStates.shift()! : drainStates[0]!;
+        if (state === "down") throw new TypeError("Failed to fetch");
+        body = { state, running: state === "serving" ? 0 : 1 };
+      } else if (url.endsWith("/healthz")) body = { status: "ok" };
       else if (init?.method === "PATCH" && partialWithRestart) {
         const patch = JSON.parse(String(init.body)) as Record<string, unknown>;
         patches.push(patch);
@@ -356,6 +370,19 @@ it("keeps a refusal and its typed value through the restart the rest of the save
   expect(screen.getByText(/Invalid address/, { selector: "li" })).toBeInTheDocument();
 });
 
+it("says a gateway is back only once its new process serves, not while the old one drains", async () => {
+  // Review #5: the draining old gateway answers /healthz, so the dialog said
+  // "back online" and cleared the pending-restart marks while the old process,
+  // with the old settings, still ran.
+  partialWithRestart = true;
+  drainStates = ["draining", "draining", "draining", "exiting", "down", "serving"];
+  render(<ConfigEditor target="gateway" label="the gateway" />);
+  fireEvent.change(await screen.findByDisplayValue("new"), { target: { value: "newer" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await screen.findByText("the gateway is back online.", {}, { timeout: 8000 });
+  expect(drainStates).toEqual(["serving"]);
+}, 10_000);
+
 it("shows neither the wizard's flag nor the dead appearance knobs, whichever page renders it", async () => {
   // HIDDEN_KEYS (settingsTopics.ts): the Settings page filters them
   // before the editor sees them, so this is the editor's own guard, for
@@ -388,9 +415,9 @@ describe("a save that restarts says so before the click (CX7)", () => {
     expect(screen.getByTestId("restart-note")).toHaveTextContent("Restarts Library.");
   });
 
-  it("says a gateway restart stops answers in apps", () => {
+  it("says a gateway restart lets the answers in apps finish first (row 13)", () => {
     expect(restartNoteText("the gateway", "gateway")).toBe(
-      "Restarts the gateway. Answers that apps are reading stop.",
+      "Restarts the gateway once the answers apps are reading finish, at most 2 minutes.",
     );
     expect(restartNoteText("Library", "library")).toBe("Restarts Library.");
   });

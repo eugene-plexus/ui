@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { api, describeError } from "@/lib/api";
+import { ApiError, api, describeError } from "@/lib/api";
 import {
   configGroups,
   isFieldVisible,
@@ -82,9 +82,12 @@ function componentEndpoints(target: ProxyTarget): ConfigEndpoints {
     config: "/v1/config",
     restart: async () => {
       const result = await api.post<RestartResult>(target, "/v1/admin/restart", {});
-      return `Process exiting in ~${result.delayMs}ms — waiting for it to come back…`;
+      // Row 13: a gateway finishes the answers in flight first, and says so.
+      return result.message && result.delayMs === 0
+        ? result.message
+        : `Process exiting in ~${result.delayMs}ms — waiting for it to come back…`;
     },
-    waitUntilBack: (timeoutMs) => waitForHealthz(target, timeoutMs),
+    waitUntilBack: (timeoutMs) => waitForRestart(target, timeoutMs),
     canTest: true,
   };
 }
@@ -1217,6 +1220,38 @@ function providerDependentKeys(schema: ConfigSchema): string[] {
 }
 
 /**
+ * Row 13 (review #5): a gateway drains before it exits, and its old process
+ * answers `/healthz` all the while. So for a gateway, "back" is its drain
+ * reading `serving` again, which only a new process says: the restart put
+ * the old one in `draining` before it answered. The wait allows the drain's
+ * own limit (`deadline`) on top of `timeoutMs`. A component with no drain
+ * (404) is waited for on `/healthz`, as before.
+ */
+async function waitForRestart(target: ProxyTarget, timeoutMs: number): Promise<boolean> {
+  const start = Date.now();
+  let until = start + timeoutMs;
+  await sleep(250);
+  while (Date.now() < until) {
+    try {
+      const drain = await api.get<{ state?: string; deadline?: string }>(target, "/v1/admin/drain");
+      if (drain.state === "serving") return true;
+      if (drain.state !== "draining" && drain.state !== "exiting") {
+        return waitForHealthz(target, Math.max(0, until - Date.now()));
+      }
+      const deadline = drain.deadline ? Date.parse(drain.deadline) : NaN;
+      if (!Number.isNaN(deadline)) until = Math.max(until, deadline + timeoutMs);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        return waitForHealthz(target, Math.max(0, until - Date.now()));
+      }
+      // Between the old process and the new one: nothing answers.
+    }
+    await sleep(500);
+  }
+  return false;
+}
+
+/**
  * Poll `/healthz` until it returns 200 or the deadline passes. Used
  * after a restart to know when the process is back. Starts polling
  * after a brief delay so we don't catch the *outgoing* process before
@@ -1343,6 +1378,6 @@ function ClearModelCopies({ target }: { target: ProxyTarget }) {
  */
 export function restartNoteText(label: string, component?: string | null): string {
   return component === "gateway"
-    ? `Restarts ${label}. Answers that apps are reading stop.`
+    ? `Restarts ${label} once the answers apps are reading finish, at most 2 minutes.`
     : `Restarts ${label}.`;
 }
