@@ -982,13 +982,33 @@ describe("another build of an engine", () => {
     await waitFor(() => expect(installBodies()).toEqual([{ variant: "win-sycl-x64" }]));
   });
 
-  it("left on the default, asks for the default", async () => {
+  it("left on the default, Update moves the models to the newest build, checked (row 13)", async () => {
+    handlers.set("POST agent/v1/engines/llama_cpp/rollout", () => ({
+      status: 202,
+      body: {
+        id: "x",
+        engine: "llama_cpp",
+        version: "b11300",
+        state: "installing",
+        switch: "auto",
+        startedAt: "2026-11-15T00:00:00Z",
+        runtimes: [],
+        check: { models: [] },
+      },
+    }));
     render(<InferencePage />);
     await screen.findByTestId("engine-build-choice", {}, { timeout: 5000 });
     await act(async () => {
       screen.getByRole("button", { name: "Update llama.cpp" }).click();
     });
-    await waitFor(() => expect(installBodies()).toEqual([{}]));
+    const rollouts = () =>
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(([, init]) => init?.method === "POST")
+        .filter(([url]) => String(url).endsWith("/v1/engines/llama_cpp/rollout"))
+        .map(([, init]) => JSON.parse(String(init?.body ?? "{}")));
+    await waitFor(() => expect(rollouts()).toEqual([{}]));
+    expect(installBodies()).toEqual([]);
   });
 
   it("a build the agent refuses says why", async () => {
@@ -1011,6 +1031,95 @@ describe("another build of an engine", () => {
       screen.getByRole("button", { name: "Install llama.cpp" }).click();
     });
     expect(await screen.findByRole("alert")).toHaveTextContent("is not a build release b11211");
+  });
+});
+
+describe("a checked engine update (row 13)", () => {
+  function engines(managed: Record<string, unknown>, rollout?: Record<string, unknown>) {
+    handlers.set("GET agent/v1/engines", () => ({
+      status: 200,
+      body: {
+        engines: [
+          {
+            engine: "llama_cpp",
+            available: true,
+            version: "b11211",
+            modelFormats: ["gguf"],
+            managed: {
+              version: "b11211",
+              binaryPath: "C:/Eugene/engines/llama_cpp/b11211/llama-server.exe",
+              variant: "win-vulkan-x64",
+              ...managed,
+            },
+            ...(rollout ? { rollout } : {}),
+            acquisition: { installable: true, variant: "win-vulkan-x64" },
+          },
+        ],
+      },
+    }));
+    handlers.set("GET agent/v1/engines/llama_cpp/install", () => ({
+      status: 404,
+      body: { detail: "no install yet" },
+    }));
+    handlers.set("POST agent/v1/engines/llama_cpp/rollout", () => ({
+      status: 202,
+      body: { state: "installing" },
+    }));
+  }
+
+  function rolloutBodies(): unknown[] {
+    return vi
+      .mocked(fetch)
+      .mock.calls.filter(([, init]) => init?.method === "POST")
+      .filter(([url]) => String(url).endsWith("/v1/engines/llama_cpp/rollout"))
+      .map(([, init]) => JSON.parse(String(init?.body ?? "{}")));
+  }
+
+  it("leads with the build in use, says who is held and why, and offers the way back", async () => {
+    engines({
+      previousVersion: "b11100",
+      heldRuntimes: [
+        { runtime: "gemma", version: "b11100", reason: "b11211 could not run gemma: exit 3" },
+      ],
+    });
+    render(<InferencePage />);
+    expect(await screen.findByTestId("engine-build-line", {}, { timeout: 5000 })).toHaveTextContent(
+      "b11211 in use",
+    );
+    expect(screen.getByTestId("engine-held")).toHaveTextContent(
+      "gemma stays on b11100: b11211 could not run gemma: exit 3",
+    );
+    await act(async () => {
+      screen.getByRole("button", { name: "Use b11100 again" }).click();
+    });
+    await waitFor(() => expect(rolloutBodies()).toEqual([{ version: "b11100" }]));
+  });
+
+  it("while an update runs, says where it stands and offers no second one", async () => {
+    engines(
+      {},
+      {
+        id: "x",
+        engine: "llama_cpp",
+        version: "b11300",
+        from: "b11211",
+        state: "switching",
+        switch: "auto",
+        startedAt: "2026-11-15T00:00:00Z",
+        runtimes: [
+          { name: "a", state: "moved" },
+          { name: "b", state: "starting" },
+        ],
+        check: { models: [] },
+        message: "1 of 2 runtimes on b11300",
+      },
+    );
+    render(<InferencePage />);
+    expect(await screen.findByTestId("engine-build-line", {}, { timeout: 5000 })).toHaveTextContent(
+      "b11211 in use · Updating: 1 of 2 runtimes on b11300",
+    );
+    expect(screen.getByRole("button", { name: "Stop the update" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Update llama.cpp" })).toBeDisabled();
   });
 });
 

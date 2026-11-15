@@ -57,6 +57,7 @@ import { describeUpdate, releaseName, versionDifference, type VersionDifference 
 import { labelOf } from "@/lib/nodeLabels";
 import type { HostHistory } from "./hostHistory";
 import { recentlyBusy, throttleText } from "./hardware";
+import { rolloutActive } from "./engineRollout";
 
 export type IssueKind =
   | "gpu-link-narrow"
@@ -72,6 +73,7 @@ export type IssueKind =
   | "trust-stale"
   | "engine-unavailable"
   | "engine-build-stale"
+  | "engine-build-held"
   | "engine-build-cpu"
   | "engine-build-missing-backend"
   | "runtime-on-cpu"
@@ -245,6 +247,7 @@ export function issuesFrom(sources: IssueSources): Issue[] {
       ...folderIssues(node),
       ...engineIssues(node),
       ...staleBuildIssues(node),
+      ...heldBuildIssues(node),
       ...cpuBuildIssues(node),
       ...missingBackendIssues(node),
       ...cpuRuntimeIssues(node),
@@ -902,8 +905,21 @@ function engineIssues(node: NodeFacts): Issue[] {
  * started and neither matches anything.
  */
 function staleBuildIssues(node: NodeFacts): Issue[] {
+  // Row 13: a runtime held on its old build has its own issue, with why, and
+  // while an update moves the runtimes one at a time a mixed fleet is its
+  // work in flight, which needs nobody.
+  const held = new Set<string>();
+  const updating = new Set<string>();
+  for (const e of node.engines?.engines ?? []) {
+    for (const h of e.managed?.heldRuntimes ?? []) held.add(h.runtime);
+    if (rolloutActive(e.rollout)) updating.add(e.engine);
+  }
   const running = (node.runtimes?.runtimes ?? []).filter(
-    (r) => r.engineVersion && isLive(r.status),
+    (r) =>
+      r.engineVersion &&
+      isLive(r.status) &&
+      !held.has(r.name) &&
+      !updating.has(String(r.engine ?? "")),
   );
   if (running.length === 0) return [];
   const installed = new Map<string, string>();
@@ -950,6 +966,31 @@ function staleBuildIssues(node: NodeFacts): Issue[] {
         severity: "warning",
         title: `${node.label} is running two versions of ${engineName(engine)} at once`,
         detail: `${[...versions].join(" and ")} are both serving. Restart the models so they all run the same build.`,
+        href: "/inference",
+        node: node.name,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Row 13 (R13-CHECK-2): a model the build in use could not run stays on its
+ * old build, and the reason is the update's own words. It needs a person:
+ * a newer build, or a model the engine reads. The next update tries again.
+ */
+function heldBuildIssues(node: NodeFacts): Issue[] {
+  const out: Issue[] = [];
+  for (const e of node.engines?.engines ?? []) {
+    for (const h of e.managed?.heldRuntimes ?? []) {
+      const runtime = (node.runtimes?.runtimes ?? []).find((r) => r.name === h.runtime);
+      const name = runtime ? label(runtime) : h.runtime;
+      out.push({
+        id: `held-build:${node.name ?? "local"}:${e.engine}:${h.runtime}`,
+        kind: "engine-build-held",
+        severity: "warning",
+        title: `${name} stays on ${engineName(e.engine)} ${h.version} on ${node.label}`,
+        detail: `${h.reason.replace(/\.$/, "")}. The next update tries it again.`,
         href: "/inference",
         node: node.name,
       });
@@ -1110,7 +1151,9 @@ function label(runtime: Runtime): string {
 /** Running, in any of the senses that mean a process is alive. A
  * `stopped` runtime on the processor is not slow, it is off. */
 function isLive(status: string | null | undefined): boolean {
-  return status === "ready" || status === "loading" || status === "starting";
+  return (
+    status === "ready" || status === "draining" || status === "loading" || status === "starting"
+  );
 }
 
 // --- what the Inference screen says about one runtime ------------------
