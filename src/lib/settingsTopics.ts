@@ -76,7 +76,7 @@ export const TOPICS: readonly Topic[] = [
     id: "access",
     label: "Access & security",
     blurb:
-      "Unlocking at boot, the address other machines reach this one on, and which browsers may call the gateway.",
+      "Unlocking at boot, the address other machines reach this one on, which browsers may call the gateway, and which MCP servers apps may reach.",
   },
   {
     id: "machines",
@@ -168,10 +168,12 @@ const BY_CATEGORY: Record<string, Record<string, TopicId>> = {
 /**
  * By key, where a category mixes two topics. The gateway files the
  * address of the control root under *Routing* because that is what reads
- * it; to a person it is about which machines are in the install.
+ * it; to a person it is about which machines are in the install. Its
+ * `remoteMcp` (row 59b) sits beside the tool settings it reads with, but
+ * to a person it is about what an app may reach through Eugene.
  */
 const BY_KEY: Record<string, Record<string, TopicId>> = {
-  gateway: { controlUrl: "machines" },
+  gateway: { controlUrl: "machines", remoteMcp: "access" },
 };
 
 /**
