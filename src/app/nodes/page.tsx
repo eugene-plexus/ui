@@ -46,6 +46,8 @@ import { Hardware } from "@/components/Hardware";
 import { RemoveMachine } from "@/components/RemoveMachine";
 import { StandbyPanel } from "@/components/StandbyPanel";
 import { UpdateAllPanel } from "@/components/UpdateAllPanel";
+import { OperationsLog } from "@/components/OperationsLog";
+import { inOperationsMode } from "@/lib/operations";
 import { ApiError, api } from "@/lib/api";
 import { isLockedError } from "@/lib/controlUnlock";
 import {
@@ -815,7 +817,8 @@ export default function NodesPage() {
           {!locked && nodes && nodes.length > 0 && (
             <section className="section-panel mb-6" data-testid="node-versions">
               <h2 className="section-heading font-ui text-base font-semibold">Versions</h2>
-              <UpdateAllPanel onChanged={refreshVersions} />
+              {/* Update all is the owner's (row 39 review S1). */}
+              {!inOperationsMode() && <UpdateAllPanel onChanged={refreshVersions} />}
               {difference && (
                 <div
                   data-testid="version-difference"
@@ -897,6 +900,21 @@ export default function NodesPage() {
                     );
                   })}
               </div>
+            </section>
+          )}
+
+          {/* Row 39: who changed what on each machine, the owner's own
+              changes and those of people given operations powers. */}
+          {!locked && nodes && nodes.length > 0 && !inOperationsMode() && (
+            <section className="section-panel mb-6 space-y-3" data-testid="operations-logs">
+              <h2 className="section-heading font-ui text-base font-semibold">Who changed what</h2>
+              {nodes.map((n) => (
+                <OperationsLog
+                  key={n.name}
+                  target={readings[n.name]?.target ?? `node:${n.name}`}
+                  label={n.label || n.name}
+                />
+              ))}
             </section>
           )}
 

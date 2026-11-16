@@ -36,6 +36,40 @@ it("delegates independent capabilities and an explicit membership scope", async 
     managePeople: true,
     manageGroups: false,
     membershipGroups: ["builders"],
+    operateModels: false,
+    operateMachines: false,
+    operationsMachines: null,
+  });
+  put.mockRestore();
+});
+
+it("gives operations powers on chosen machines and says what never comes with them", async () => {
+  const put = vi.spyOn(api, "put").mockResolvedValue({});
+  const user = userEvent.setup();
+  render(
+    <AdministrationGrants
+      person={{ id: "dana", name: "Dana", disabled: false, createdAt: "", passwordChangedAt: "" }}
+      groups={[]}
+      machines={[{ name: "gpu-a", label: "Big GPU" }, { name: "gpu-b" }]}
+      onChanged={vi.fn().mockResolvedValue(undefined)}
+    />,
+  );
+  expect(screen.getByText(/Never: secrets, chats, sign-in keys/)).toBeVisible();
+  expect(screen.getByText(/read machine logs/)).toBeVisible();
+  // Review S7: how long a removed power can last, truly (10 + 5 of clock leeway).
+  expect(screen.getByText(/up to 15 minutes/)).toBeVisible();
+  await user.click(screen.getByRole("checkbox", { name: /^Models/ }));
+  await user.click(screen.getByRole("radio", { name: "Only the machines I choose" }));
+  await user.click(screen.getByLabelText("Allow running Big GPU"));
+  await user.click(screen.getByRole("button", { name: "Save administration access" }));
+  await screen.findByText("Administration access saved.");
+  expect(put).toHaveBeenCalledWith("control", "/v1/people/dana/administration", {
+    managePeople: false,
+    manageGroups: false,
+    membershipGroups: [],
+    operateModels: true,
+    operateMachines: false,
+    operationsMachines: ["gpu-a"],
   });
   put.mockRestore();
 });

@@ -650,8 +650,72 @@ export interface paths {
         get: operations["getAdministrationSession"];
         put?: never;
         post?: never;
-        /** Revoke the presented administration session */
+        /**
+         * Revoke the presented administration session
+         * @description Also ends every operations token made from this session (row 39), on every machine that can fetch the trust bundle.
+         */
         delete: operations["logoutAdministration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/operations-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a named administration session for an operations token for one machine
+         * @description Row 39 (`docs/design/rows/row-39.md`). A person the owner gave an
+         *     operations power (`operateModels`, `operateMachines`) presents
+         *     their administration session and names one machine. Control
+         *     checks, at every exchange, that the session is current
+         *     (`administrationVersion`), that the person is enabled and holds an
+         *     operations power, and that the machine is enrolled and inside
+         *     `operationsMachines`. It answers with an `ep-operations+jwt`
+         *     addressed to `node:<machine>` only, living 10 minutes, carrying
+         *     the person (`sub`, `name`), the powers (`ops`), the session it
+         *     came from (`sid`) and the administration version.
+         *
+         *     The machine's agent, library and gateway accept it only on the
+         *     routes their power table lists. Signing out of the session, and
+         *     any change to the person's grants, password or enabled state,
+         *     revoke it through the trust bundle. The owner's session is refused:
+         *     the owner's console already reaches every machine.
+         */
+        post: operations["exchangeOperationsToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/operations-machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The machines a person's operations powers reach, and what runs on each
+         * @description Row 39. For a person with an operations power, from their
+         *     administration session: each enrolled machine inside
+         *     `operationsMachines`, with its label and the kinds of component it
+         *     runs (read live from each machine, as `GET /v1/components` does),
+         *     so the console knows which machine's operations token to send to
+         *     the library or the gateway. A machine that did not answer is listed
+         *     in `unreachableNodes` with no kinds. The owner's session is refused.
+         */
+        get: operations["listOperationsMachines"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -669,7 +733,7 @@ export interface paths {
         get?: never;
         /**
          * Owner-only delegation of directory administration
-         * @description Replaces the person's explicit administration grants and invalidates their existing administration sessions. Groups never confer these grants. Password recovery and app registration remain owner-only.
+         * @description Replaces the person's explicit administration grants and invalidates their existing administration sessions and operations tokens (row 39). Groups never confer these grants. Password recovery and app registration remain owner-only.
          */
         put: operations["setPersonAdministration"];
         post?: never;
@@ -5215,6 +5279,50 @@ export interface components {
              * @default []
              */
             membershipGroups: string[];
+            /**
+             * @description Row 39. Download, delete and re-scan models; edit profiles; create, start, stop, restart and change runtimes, on the machines in operationsMachines. Never secrets, chats or sign-in keys.
+             * @default false
+             */
+            operateModels: boolean;
+            /**
+             * @description Row 39. Update Eugene and engines (Update all), install and remove engine builds, restart components, and read the machines' logs (call R39-LOGS), on the machines in operationsMachines. Never secrets, chats or sign-in keys.
+             * @default false
+             */
+            operateMachines: boolean;
+            /**
+             * @description Row 39. The machines (node names) the operations powers reach. Null is every machine; an empty list is none.
+             * @default null
+             */
+            operationsMachines: string[] | null;
+        };
+        /**
+         * @description Row 39. An operations power as an operations token carries it
+         *     (`ops`): `operate-models` is `AdministrationGrants.operateModels`,
+         *     `operate-machines` is `operateMachines`.
+         * @enum {string}
+         */
+        OperationsPower: "operate-models" | "operate-machines";
+        OperationsTokenRequest: {
+            /** @description The node name of the one machine the token is for. */
+            machine: string;
+        };
+        OperationsToken: {
+            /** @description An `ep-operations+jwt` addressed to `node:<machine>` only. */
+            token: string;
+            /** Format: date-time */
+            expiresAt: string;
+            machine: string;
+            powers: components["schemas"]["OperationsPower"][];
+        };
+        MachineInScope: {
+            name: string;
+            label?: string | null;
+            /** @description The kinds of component this machine runs (`gateway`, `library`, ...). */
+            kinds: string[];
+        };
+        OperationsMachineList: {
+            machines: components["schemas"]["MachineInScope"][];
+            unreachableNodes: string[];
         };
         AdministrationLoginRequest: {
             name: string;
@@ -8447,6 +8555,55 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Problem"];
+        };
+    };
+    exchangeOperationsToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationsTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The token for that one machine. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsToken"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
+    listOperationsMachines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The machines in scope. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsMachineList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
         };
     };
     setPersonAdministration: {

@@ -20,6 +20,7 @@ import type {
   Person,
   PersonList,
 } from "@/lib/types";
+import { MACHINES, MODELS, type Power, powersOf, setOperationsSession } from "@/lib/operations";
 import { usePolling } from "@/lib/usePolling";
 
 const KEY = "eugene-administration-token";
@@ -215,16 +216,28 @@ function Directory({ token, onEnded }: { token: string; onEnded: (message: strin
   const load = useCallback(async () => {
     try {
       const options = { bearer: token };
-      const [session, people, groups, clients] = await Promise.all([
-        api.get<AdministrationSession>("control", "/v1/auth/administration/session", options),
-        api.get<PersonList>("control", "/v1/people", options),
-        api.get<PermissionGroupList>("control", "/v1/permission-groups", options),
-        api.get<OidcClientList>("control", "/v1/oidc/clients", options),
-      ]);
+      const session = await api.get<AdministrationSession>(
+        "control",
+        "/v1/auth/administration/session",
+        options,
+      );
+      // Row 39: a person with only operations powers runs machines; the
+      // directory is not theirs to read, and the root refuses it.
+      const directory =
+        session.grants.managePeople ||
+        session.grants.manageGroups ||
+        !!session.grants.membershipGroups?.length;
+      const [people, groups, clients] = directory
+        ? await Promise.all([
+            api.get<PersonList>("control", "/v1/people", options),
+            api.get<PermissionGroupList>("control", "/v1/permission-groups", options),
+            api.get<OidcClientList>("control", "/v1/oidc/clients", options),
+          ])
+        : [{ people: [] }, { groups: [] }, { clients: [] }];
       setLoaded({
         session,
         people: people.people,
-        groups: groups.groups,
+        groups: groups.groups ?? [],
         clients: clients.clients,
       });
       setError(null);
@@ -272,6 +285,13 @@ function Directory({ token, onEnded }: { token: string; onEnded: (message: strin
       )}
       {loaded && (
         <>
+          {powersOf(loaded.session.grants).length > 0 && (
+            <RunTheMachines
+              token={token}
+              name={loaded.session.name}
+              powers={powersOf(loaded.session.grants)}
+            />
+          )}
           <section className="section-panel flex flex-col gap-3" aria-label="Your permissions">
             <h2 className="font-semibold">Your permissions</h2>
             <ul className="list-inside list-disc text-sm">
@@ -293,30 +313,58 @@ function Directory({ token, onEnded }: { token: string; onEnded: (message: strin
               Private conversations belong to each person.
             </p>
           </section>
-          <PeopleDirectory
-            people={loaded.people}
-            groups={loaded.groups}
-            introduction={
-              loaded.session.grants.managePeople && <CreateAccount token={token} onChanged={load} />
-            }
-            renderPerson={(person) => (
-              <Account person={person} loaded={loaded} token={token} onChanged={load} />
-            )}
-          >
-            {loaded.session.grants.manageGroups && (
-              <PermissionGroups
-                groups={loaded.groups}
-                clients={loaded.clients}
-                people={loaded.people}
-                error={null}
-                bearer={token}
-                onChanged={load}
-              />
-            )}
-          </PeopleDirectory>
+          {(loaded.session.grants.managePeople ||
+            loaded.session.grants.manageGroups ||
+            !!loaded.session.grants.membershipGroups?.length) && (
+            <PeopleDirectory
+              people={loaded.people}
+              groups={loaded.groups}
+              introduction={
+                loaded.session.grants.managePeople && (
+                  <CreateAccount token={token} onChanged={load} />
+                )
+              }
+              renderPerson={(person) => (
+                <Account person={person} loaded={loaded} token={token} onChanged={load} />
+              )}
+            >
+              {loaded.session.grants.manageGroups && (
+                <PermissionGroups
+                  groups={loaded.groups}
+                  clients={loaded.clients}
+                  people={loaded.people}
+                  error={null}
+                  bearer={token}
+                  onChanged={load}
+                />
+              )}
+            </PeopleDirectory>
+          )}
         </>
       )}
     </>
+  );
+}
+
+/** Row 39: the way into the console for a person with operations powers. */
+function RunTheMachines({ token, name, powers }: { token: string; name: string; powers: Power[] }) {
+  return (
+    <section className="section-panel flex flex-col gap-3" aria-label="Run the machines">
+      <h2 className="font-semibold">Run the machines</h2>
+      <p className="text-sm">
+        {powers.includes(MODELS) && "Models: download, delete and run models. "}
+        {powers.includes(MACHINES) && "Updates and restarts: update, restart and read logs."}
+      </p>
+      <button
+        className={button}
+        onClick={() => {
+          setOperationsSession({ token, name, powers });
+          window.location.assign("/");
+        }}
+      >
+        Open the console
+      </button>
+    </section>
   );
 }
 

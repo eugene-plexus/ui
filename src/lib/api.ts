@@ -15,6 +15,12 @@
  */
 
 import type { ProxyTarget } from "./config";
+import {
+  bearerFor,
+  clearOperationsSession,
+  getOperationsSession,
+  OperationsError,
+} from "./operations";
 import { clearSessionToken, getSessionToken } from "./session";
 
 export class ApiError extends Error {
@@ -201,6 +207,52 @@ function proxyHeaders(init: RequestInit, options: RequestOptions, accept: string
 }
 
 /**
+ * Row 39: a person who is not the owner runs the console with a named
+ * session and an operations token per machine. When this tab holds no
+ * owner session but holds theirs, each request carries the token of the
+ * machine that serves its target. The root refusing the named session at
+ * an exchange ends it and returns them to `/administration`; a machine or
+ * an owner-only route refusing a request is that answer, shown in place.
+ */
+async function operationsBearer(
+  target: ProxyTarget,
+  headers: Headers,
+  options: RequestOptions,
+): Promise<void> {
+  if (options.skipAuth || options.bearer || headers.has("authorization")) return;
+  if (getSessionToken() !== null) return;
+  const session = getOperationsSession();
+  if (session === null) return;
+  try {
+    const token = await bearerFor(session, target);
+    if (token) headers.set("authorization", `Bearer ${token}`);
+  } catch (e) {
+    if (e instanceof OperationsError) {
+      if (e.status === 401) operationsRefused();
+      throw new ApiError(e.status, "operations token refused", e.body, target);
+    }
+    throw e;
+  }
+}
+
+function operationsRefused(): void {
+  clearOperationsSession();
+  if (typeof window === "undefined") return;
+  if (!window.location.pathname.startsWith("/administration")) {
+    window.location.replace("/administration/?reason=expired");
+  }
+}
+
+function inOperations(options: RequestOptions): boolean {
+  return (
+    !options.skipAuth &&
+    !options.bearer &&
+    getSessionToken() === null &&
+    getOperationsSession() !== null
+  );
+}
+
+/**
  * The stored session this request will carry, or null when it carries
  * none (a public call, or a caller-supplied bearer).
  *
@@ -288,12 +340,17 @@ async function openStream(
   accept = "text/event-stream",
 ): Promise<Response> {
   const sent = sessionCarried(options);
+  const operations = inOperations(options);
+  const headers = proxyHeaders(init, options, accept);
+  await operationsBearer(target, headers, options);
   const response = await fetch(proxyUrl(target, path), {
     ...init,
-    headers: proxyHeaders(init, options, accept),
+    headers,
     signal: options.signal,
   });
-  if (response.status === 401 && !options.skipAuth && !options.bearer) {
+  // In operations mode a 401 is one machine's or route's answer, shown in
+  // place; only the exchange refusing the named session ends it.
+  if (response.status === 401 && !operations && !options.skipAuth && !options.bearer) {
     sessionRefused(sent);
   }
   if (!response.ok) {
@@ -318,6 +375,8 @@ async function jsonRequest<T>(
   const url = proxyUrl(target, path);
   const headers = proxyHeaders(init, options, "application/json");
   const sent = sessionCarried(options);
+  const operations = inOperations(options);
+  await operationsBearer(target, headers, options);
 
   // Per-call timeout via AbortController. Without this, a hung upstream
   // component (e.g. a completion waiting on a stuck local engine)
@@ -361,7 +420,7 @@ async function jsonRequest<T>(
       parsed = text;
     }
   }
-  if (response.status === 401 && !options.skipAuth && !options.bearer) {
+  if (response.status === 401 && !operations && !options.skipAuth && !options.bearer) {
     // Session expired or token rejected — clear it and bounce to login.
     sessionRefused(sent);
   }
