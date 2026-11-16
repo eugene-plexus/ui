@@ -5,7 +5,7 @@
  * while `next build` runs. When Google did not answer, the build failed with
  * 24 Turbopack errors and no test failed (three CI runs on 2026-11-15). It
  * also fails for anyone who builds with no network. The fonts are vendored in
- * `src/app/fonts/` and loaded with `next/font/local` instead.
+ * `src/fonts/` and loaded with `next/font/local` instead.
  *
  * Reads sources as text: a font import is a build-time macro, not a value a
  * test can import in jsdom.
@@ -17,7 +17,7 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const SRC = join(__dirname, "..");
-const FONTS = join(__dirname, "fonts");
+const FONTS = join(__dirname, "..", "fonts");
 
 function sources(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -45,7 +45,9 @@ describe("fonts are served from the repository", () => {
   it("layout loads every font with next/font/local, and each file exists", () => {
     const layout = readFileSync(join(__dirname, "layout.tsx"), "utf8");
     expect(layout).toContain('from "next/font/local"');
-    const files = [...layout.matchAll(/path:\s*"\.\/fonts\/([^"]+)"/g)].map((m) => m[1] as string);
+    const files = [...layout.matchAll(/path:\s*"\.\.\/fonts\/([^"]+)"/g)].map(
+      (m) => m[1] as string,
+    );
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
       expect(existsSync(join(FONTS, file)), file).toBe(true);

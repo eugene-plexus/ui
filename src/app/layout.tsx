@@ -3,7 +3,7 @@ import localFont from "next/font/local";
 
 import "./globals.css";
 
-// The fonts are vendored in `./fonts` (latin subset, woff2, each with its
+// The fonts are vendored in `src/fonts` (latin subset, woff2, each with its
 // OFL license) and loaded with `next/font/local`, not `next/font/google`:
 // the Google loader downloads the files while `next build` runs, and the
 // build failed whenever Google Fonts did not answer (ui#28). A build now
@@ -14,7 +14,7 @@ import "./globals.css";
 
 // Modern theme uses Inter for everything.
 const inter = localFont({
-  src: [{ path: "./fonts/inter-latin-wght-normal.woff2", weight: "100 900", style: "normal" }],
+  src: [{ path: "../fonts/inter-latin-wght-normal.woff2", weight: "100 900", style: "normal" }],
   variable: "--font-inter",
   display: "swap",
 });
@@ -26,10 +26,10 @@ const inter = localFont({
 // `cyberpunk` theme on 2026-09-16 -- its only consumer.
 const ibmPlexSans = localFont({
   src: [
-    { path: "./fonts/ibm-plex-sans-latin-400-normal.woff2", weight: "400", style: "normal" },
-    { path: "./fonts/ibm-plex-sans-latin-500-normal.woff2", weight: "500", style: "normal" },
-    { path: "./fonts/ibm-plex-sans-latin-600-normal.woff2", weight: "600", style: "normal" },
-    { path: "./fonts/ibm-plex-sans-latin-700-normal.woff2", weight: "700", style: "normal" },
+    { path: "../fonts/ibm-plex-sans-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/ibm-plex-sans-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/ibm-plex-sans-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "../fonts/ibm-plex-sans-latin-700-normal.woff2", weight: "700", style: "normal" },
   ],
   variable: "--font-ibm-plex-sans",
   display: "swap",
@@ -37,9 +37,9 @@ const ibmPlexSans = localFont({
 
 const ibmPlexMono = localFont({
   src: [
-    { path: "./fonts/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
-    { path: "./fonts/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
-    { path: "./fonts/ibm-plex-mono-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "../fonts/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/ibm-plex-mono-latin-600-normal.woff2", weight: "600", style: "normal" },
   ],
   variable: "--font-ibm-plex-mono",
   display: "swap",
@@ -47,7 +47,7 @@ const ibmPlexMono = localFont({
 
 const jetbrainsMono = localFont({
   src: [
-    { path: "./fonts/jetbrains-mono-latin-wght-normal.woff2", weight: "100 800", style: "normal" },
+    { path: "../fonts/jetbrains-mono-latin-wght-normal.woff2", weight: "100 800", style: "normal" },
   ],
   variable: "--font-jetbrains-mono",
   display: "swap",
@@ -56,7 +56,7 @@ const jetbrainsMono = localFont({
 // Editorial theme uses DM Sans for UI + body (mono falls through to
 // the OS chain per the design preset).
 const dmSans = localFont({
-  src: [{ path: "./fonts/dm-sans-latin-wght-normal.woff2", weight: "100 1000", style: "normal" }],
+  src: [{ path: "../fonts/dm-sans-latin-wght-normal.woff2", weight: "100 1000", style: "normal" }],
   variable: "--font-dm-sans",
   display: "swap",
 });
