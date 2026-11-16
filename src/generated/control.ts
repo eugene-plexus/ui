@@ -646,6 +646,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/oidc/active-group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which of their groups a person works from (row 37)
+         * @description A bearer access token from `/oidc/token`, as `/oidc/userinfo`. The
+         *     person's groups and the one whose models and routing they work
+         *     from. An app (Workbench Settings) shows it as "Work with".
+         */
+        get: operations["oidcActiveGroup"];
+        put?: never;
+        /**
+         * Choose the group a person works from (row 37)
+         * @description A bearer access token from `/oidc/token`: the person chooses for
+         *     themselves. A POST, as every other write under `/oidc`, so it
+         *     passes through a machine's agent as they do. `group` is one of their groups, or null for the first in
+         *     their list. The gateway applies it to their next request; the
+         *     sign-in claims do not carry it (they keep the row 70 policies only).
+         *     A person changes it at most once a minute: sooner is a 429 with
+         *     `Retry-After`, because each change is a record in the replicated
+         *     log. Their routing by role follows it; their model limits do not:
+         *     every group's model list applies whichever group they work from
+         *     (call R37-SELF).
+         */
+        post: operations["oidcSetActiveGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/oidc/revoke": {
         parameters: {
             query?: never;
@@ -4072,6 +4107,13 @@ export interface components {
              */
             personToken?: string;
         };
+        /**
+         * @description Row 37: an agent or gateway from before row 37 refuses an answer that
+         *     carries `roleRouting`, `routingGroup` or `modelLimits` (its model
+         *     forbids unknown fields), so a person whose groups set them is refused
+         *     there until that machine is updated: it fails closed, never open.
+         *     The root sends them only when a group sets them.
+         */
         ClientAdmissionResult: {
             keyId: string;
             keyName: string;
@@ -4098,6 +4140,34 @@ export interface components {
              *     install's default, applies. Never taken from the caller.
              */
             queueBand?: components["schemas"]["QueueBand"];
+            /**
+             * @description The verified person's routing by model role (row 37), from their
+             *     active group (`Person.activeGroup`). Present only when the root
+             *     verified a person and that group routes at least one role. A
+             *     request for `role:<role>` that this names tries these models in
+             *     order, after the gateway drops every model outside the allowed
+             *     set (`modelLimits` and the key's list); a role it does not name
+             *     uses the install's slot. Absent: the
+             *     install's routing for every role, as before row 37. Never taken
+             *     from the caller.
+             */
+            roleRouting?: components["schemas"]["RoleRouting"];
+            /**
+             * @description The group `roleRouting` comes from (row 37): the person's active
+             *     group. Present with `roleRouting`.
+             */
+            routingGroup?: components["schemas"]["ModelGroup"];
+            /**
+             * @description Row 37 (call R37-SELF, Choice 3): the model list of every group
+             *     the verified person is in that sets one, sorted by group name. A
+             *     model is allowed only when the key's own `allowedModels` and
+             *     every list here allow it, for the model asked for, every fallback
+             *     and every model a server-run tool calls; the person's choice of
+             *     active group never widens it. A `role:<role>` name is not checked
+             *     against these lists: the role's models are. Absent when no group
+             *     of theirs sets a list: no limit beyond the key's.
+             */
+            modelLimits?: components["schemas"]["GroupModelLimit"][];
         };
         /**
          * @description Which requests wait or are turned away first when the machines are
@@ -4107,6 +4177,26 @@ export interface components {
          * @enum {string}
          */
         QueueBand: "interactive" | "background" | "sheddable";
+        /**
+         * @description Row 37: for each model role, the models a person's requests for
+         *     `role:<role>` try, in order. A role not named here uses the
+         *     install's slot (`modelSlots`). The keys are `ModelRole` values
+         *     (`components/common.yaml`); a root refuses any other.
+         */
+        RoleRouting: {
+            [key: string]: string[];
+        };
+        /** @description A permission group, as a refusal names it (row 37). */
+        ModelGroup: {
+            id: string;
+            name: string;
+        };
+        /** @description One group's model list, as it limits a person (row 37). */
+        GroupModelLimit: {
+            group: components["schemas"]["ModelGroup"];
+            /** @description Exact ids or patterns with `*`, at most 8 `*` in one entry. Empty allows none. */
+            models: string[];
+        };
         /**
          * @description Why an `acquire` was refused with a 429, in its
          *     `X-Eugene-Refusal-Reason` header (row 11): `concurrency`, the key
@@ -5103,7 +5193,9 @@ export interface components {
              *     Absent until it has pulled since this root started. Log
              *     version 1 adds `retireOidcKeys` and `changePassphrase`: this
              *     root refuses to write either while its standby reports less,
-             *     because the standby's copy would stop there.
+             *     because the standby's copy would stop there. Log version 4
+             *     (row 37) adds `setPersonActiveGroup`, and the group and person
+             *     fields of row 37, under the same rule.
              */
             logVersion?: number;
         };
@@ -5185,6 +5277,16 @@ export interface components {
          *     or clears (`price` null) the owner's rate for one model:
          *     `{model, price}`. Log version 3, not 2: row 38's `setAlerting` is 2,
          *     and a standby with row 38 alone must not be sent row 40's op.
+         *
+         *     **`setPersonActiveGroup` (row 37, log version 4)** sets one
+         *     person's `activeGroup` and nothing else of their record: `{id,
+         *     activeGroup}`, where `activeGroup` is one of their groups or null.
+         *     It is how a person's own choice at `/oidc/active-group` is written,
+         *     applied to the record as it is then, so a choice cannot write back
+         *     anything the owner changed meanwhile. Log version 4 also covers a
+         *     group record that sets `roleRouting` or `allowedModels` and a person
+         *     record with `activeGroup`: the root refuses to write any of them
+         *     (409) while its standby reports a log version below 4.
          *
          *     **`retireOidcKeys` (row 5, log version 1)** keeps only the sign-in
          *     keys named in `keep` (`{keep: [kid]}`, at least one held key) and
@@ -5278,7 +5380,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames" | "retireOidcKeys" | "changePassphrase" | "setModelPrice" | "setAlerting";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames" | "retireOidcKeys" | "changePassphrase" | "setModelPrice" | "setAlerting" | "setPersonActiveGroup";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -5481,6 +5583,13 @@ export interface components {
             devGrants?: components["schemas"]["SiteDevGrant"][];
         };
         SnapshotPerson: {
+            /**
+             * @description Row 37: the one of their `groups` whose `roleRouting` applies to
+             *     them (every group's `allowedModels` applies, call R37-SELF).
+             *     Absent is the first in their list. Kept only when set; a standby from before row 37 cannot
+             *     apply a person who has one. Cleared when they leave the group.
+             */
+            activeGroup?: string;
             administration?: components["schemas"]["AdministrationGrants"];
             /** @description Absent is zero. Increased on delegation, disable/enable and password changes to invalidate administration sessions. */
             administrationVersion?: number;
@@ -5533,6 +5642,13 @@ export interface components {
          */
         Person: {
             administration?: components["schemas"]["AdministrationGrants"];
+            /**
+             * @description Row 37: the one of their `groups` whose `roleRouting` applies to
+             *     them (every group's `allowedModels` applies, call R37-SELF).
+             *     Absent is the first in their list. Kept only when set; a standby from before row 37 cannot
+             *     apply a person who has one. Cleared when they leave the group.
+             */
+            activeGroup?: string;
             /** @description Null or absent keeps individual access. A list uses only the union of these groups; an empty list grants no access. Individual app/permission settings are retained but inactive in group mode. */
             groups?: string[] | null;
             /** @description Stable; the `sub` in their ID tokens. */
@@ -5688,6 +5804,12 @@ export interface components {
             permissions?: components["schemas"]["PersonPermission"][] | null;
         };
         PersonUpdateRequest: {
+            /**
+             * @description Row 37, owner only: the group whose routing by role the person
+             *     works from, one of their groups after this change; null for the
+             *     first in their list. A group they are not in is refused (422).
+             */
+            activeGroup?: string | null;
             /** @description Null or absent keeps individual access. A list uses only the union of these groups; an empty list grants no access. Individual app/permission settings are retained but inactive in group mode. */
             groups?: string[] | null;
             displayName?: string;
@@ -6101,7 +6223,7 @@ export interface components {
             permissions: components["schemas"]["PersonPermission"][];
             /**
              * @description The group's policies: a policy set inside is set, a `null` one is
-             *     cleared, and an absent one keeps its current value (row 40), so a
+             *     cleared, and an absent one keeps its current value (rows 37 and 40), so a
              *     console that predates a policy never clears it. Omitted from a
              *     replace, the group keeps every current policy. Omitted from a
              *     create, the group sets none. An older root refuses this field
@@ -6113,9 +6235,36 @@ export interface components {
          * @description Policies a permission group sets for its members (row 70). Not set
          *     is no policy: a person whose groups set none gets the install's
          *     default. A person in several groups gets the most generous value of
-         *     each: the highest queue band, the larger percent.
+         *     each: the highest queue band, the larger percent. `roleRouting`
+         *     (row 37) is not combined: it comes from the person's active group
+         *     alone (`Person.activeGroup`). `allowedModels` narrows: a model must
+         *     be in the list of every group of theirs that sets one (call
+         *     R37-SELF, Choice 3).
+         *
+         *     In a write, a policy left out keeps the group's current value and
+         *     `null` clears it (rows 37 and 40), so a console that predates a
+         *     policy never clears it. The root refuses to write a group that sets
+         *     `roleRouting` or `allowedModels` while its standby reports a log
+         *     version below 4 (row 37).
          */
         GroupPolicies: {
+            /**
+             * @description Row 37: the models the members' requests for each role try, in
+             *     order. A role not named, or null, uses the install's routing.
+             *     Every model listed must be in this group's own `allowedModels`
+             *     when it sets one (a write that breaks this is a 422). Models
+             *     outside a member's allowed set are dropped when a request runs;
+             *     a role whose list keeps none uses the install's list, filtered.
+             */
+            roleRouting?: components["schemas"]["RoleRouting"] | null;
+            /**
+             * @description Row 37: the models the members may reach: exact ids or patterns
+             *     with `*` (at most 8 in one entry). Null is every model. A member
+             *     in several groups reaches only models every such list allows, and
+             *     an app key's own `allowedModels` still applies too. Changes apply
+             *     to a member's next request.
+             */
+            allowedModels?: string[] | null;
             /** @description Queue priority for the members' requests. The root returns it in the admission check of a verified person. */
             queueBand?: components["schemas"]["QueueBand"] | null;
             /** @description The percent of a model's context at which Workbench starts summarising a long chat. With no policy, Workbench uses 80. */
@@ -6235,18 +6384,51 @@ export interface components {
         /**
          * @description The policies that apply to a person now (row 70), from the groups
          *     they are in: the most generous value of each. An absent value is no
-         *     policy. Individual access (`groups` null) sets none. The same object
-         *     is the `eugene_policies` sign-in claim.
+         *     policy. Individual access (`groups` null) sets none. The
+         *     `eugene_policies` sign-in claim is this object without the row 37
+         *     fields (`activeGroup`, `roleRouting`, `modelLimits` and their
+         *     `setBy`): an app reads its routing from the gateway, and a
+         *     Workbench from before row 37 refuses a claim with fields it does
+         *     not know.
          */
         PoliciesInEffect: {
             queueBand?: components["schemas"]["QueueBand"];
             summaryContextPercent?: number;
+            /**
+             * @description Row 37: the group `roleRouting` comes from: the person's chosen
+             *     `activeGroup`, else the first of their `groups` that exists.
+             *     Present only when that group routes a role; `/oidc/active-group`
+             *     always says which group is in effect.
+             */
+            activeGroup?: string;
+            /** @description Row 37. The active group's routing by role. Absent is the install's. */
+            roleRouting?: components["schemas"]["RoleRouting"];
+            /**
+             * @description Row 37 (call R37-SELF, Choice 3): each group of theirs that sets a
+             *     model list, with its list, sorted by group name. A model must be
+             *     in every one. Absent is every model.
+             */
+            modelLimits?: components["schemas"]["GroupModelLimit"][];
             setBy?: components["schemas"]["PoliciesSetBy"];
         };
         /** @description For each policy value in effect, the ids of the groups that set that value, sorted by group name. */
         PoliciesSetBy: {
             queueBand?: string[];
             summaryContextPercent?: string[];
+            /** @description Row 37. The active group, when it routes a role. */
+            roleRouting?: string[];
+        };
+        ActiveGroupRequest: {
+            /** @description One of the person's groups, or null for the first in their list. */
+            group: string | null;
+        };
+        ActiveGroupState: {
+            /** @description The person's groups, in the order the owner lists them. */
+            groups: components["schemas"]["OidcGroup"][];
+            /** @description The group they chose; null when they chose none. */
+            activeGroup?: string | null;
+            /** @description The group whose models and routing apply now; null with no group. */
+            inEffect?: string | null;
         };
         /** @description All permission groups in the central directory. */
         PermissionGroupList: {
@@ -9100,6 +9282,122 @@ export interface operations {
                 };
             };
             /** @description `temporarily_unavailable`: the root is a standby; ask the active one. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+        };
+    };
+    oidcActiveGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The person's groups and the group in effect. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveGroupState"];
+                };
+            };
+            /** @description `invalid_token`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `temporarily_unavailable`: the root is a standby; ask the active one. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+        };
+    };
+    oidcSetActiveGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActiveGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description Chosen. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveGroupState"];
+                };
+            };
+            /** @description `invalid_request`: the body is not `{group}`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `invalid_token`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `not_a_member`: the person is not in that group. `not_a_person`: the token is the owner's, who is in no group. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `temporarily_unavailable`: the install's standby runs an older Eugene and could not copy the choice; the owner updates it first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `slow_down`: they changed it less than a minute ago. `Retry-After` says when they may again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `temporarily_unavailable`: the root is a standby, or locked. */
             503: {
                 headers: {
                     [name: string]: unknown;

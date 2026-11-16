@@ -11,7 +11,15 @@
  * Pure, so the page's sentences are tested against the wire's shapes.
  */
 
-import type { GroupPolicies, OidcClient, PermissionGroup, Person, QueueBand } from "./types";
+import { ROLE_LABELS } from "./modelRoles";
+import type {
+  GroupPolicies,
+  ModelRole,
+  OidcClient,
+  PermissionGroup,
+  Person,
+  QueueBand,
+} from "./types";
 
 /**
  * What a person may do with job sites (J77, `job-sites-own-enrollment.md`
@@ -101,21 +109,40 @@ export function rootKnowsPolicies(
   );
 }
 
-/** A group's policies as the console sends them: every policy, null when not set.
- * Row 40's allowances only to a root that knows them (`allowances` given): an
- * older root refuses a field it does not know. */
+/** Row 37: what a group's form holds for its routing, a list per role (empty: install default). */
+export type RoleRoutingDraft = Partial<Record<ModelRole, string[]>>;
+
+/**
+ * A group's policies as the console sends them: every policy, null when not set.
+ * Row 37's routing and models only when `withModels`, and row 40's allowances only
+ * when given: a root that predates either refuses a field it does not know.
+ */
 export function groupPoliciesBody(
-  band: QueueBand | "",
-  percent: number | null,
+  form: {
+    band: QueueBand | "";
+    percent: number | null;
+    allowedModels?: string[] | null;
+    roleRouting?: RoleRoutingDraft;
+  },
+  withModels = true,
   allowances?: {
     tokensPerDay?: number | null;
     tokensPerMonth?: number | null;
     costPerMonthMicros?: number | null;
   },
 ): GroupPolicies {
+  const routed = Object.fromEntries(
+    Object.entries(form.roleRouting ?? {}).filter(([, models]) => models && models.length > 0),
+  );
   return {
-    queueBand: band || null,
-    summaryContextPercent: percent,
+    queueBand: form.band || null,
+    summaryContextPercent: form.percent,
+    ...(withModels
+      ? {
+          roleRouting: Object.keys(routed).length ? routed : null,
+          allowedModels: form.allowedModels ?? null,
+        }
+      : {}),
     ...(allowances
       ? {
           tokensPerDay: allowances.tokensPerDay ?? null,
@@ -126,6 +153,73 @@ export function groupPoliciesBody(
   };
 }
 
+/** Row 37: whether the root's group records show it knows routing and model lists. */
+export function rootKnowsModels(groups: Pick<PermissionGroup, "policies">[] | null): boolean {
+  return (groups ?? []).some((g) => g.policies != null && "allowedModels" in g.policies);
+}
+
+/**
+ * Row 37 (call R37-SELF, Choice 3): a person's model limits in words: every
+ * group of theirs that sets a list, each with its list. A model must be in
+ * all of them.
+ */
+export function modelLimitsLabel(
+  limits: { group: { name: string }; models: string[] }[] | null | undefined,
+): string {
+  if (!limits?.length) return "All models";
+  if (limits.length === 1)
+    return `${modelsLabel(limits[0]!.models)} (from ${limits[0]!.group.name})`;
+  const each = limits.map((l) => `${modelsLabel(l.models)} (${l.group.name})`);
+  return `Only models in every list: ${each.join("; ")}`;
+}
+
+/** Row 37: the models one per line (or comma), as the console edits them: trimmed, once each. */
+export function modelLines(text: string): string[] {
+  return [
+    ...new Set(
+      text
+        .split(/[\r\n,]+/)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/** Row 37: a group's or person's model list, in words. */
+export function modelsLabel(allowed: string[] | null | undefined): string {
+  if (allowed == null) return "All models";
+  return allowed.length ? allowed.join(", ") : "No models";
+}
+
+/** Row 37: the roles a group routes, each with its models in order, in the contract's order. */
+export function routingLabel(routing: Record<string, string[]> | null | undefined): string {
+  const routed = (Object.keys(ROLE_LABELS) as ModelRole[]).filter(
+    (role) => (routing?.[role]?.length ?? 0) > 0,
+  );
+  if (!routed.length) return "Install default for every role";
+  const parts = routed.map((role) => `${ROLE_LABELS[role]}: ${routing![role]!.join(", then ")}`);
+  return `${parts.join(". ")}. Other roles: install default`;
+}
+
+/**
+ * Row 37 (R37-FIRST): the groups a person may work from: the default (the
+ * first of their groups), then each of their groups. Empty with individual
+ * access or no group.
+ */
+export function activeGroupChoices(
+  person: Pick<Person, "groups">,
+  groups: Pick<PermissionGroup, "id" | "name">[] | null,
+): { id: string; label: string }[] {
+  const theirs = (person.groups ?? [])
+    .map((id) => groups?.find((g) => g.id === id))
+    .filter((g): g is Pick<PermissionGroup, "id" | "name"> => g !== undefined);
+  if (!theirs.length) return [];
+  return [
+    { id: "", label: `The first of their groups (${theirs[0]!.name})` },
+    ...theirs.map((g) => ({ id: g.id, label: g.name })),
+  ];
+}
+
 /**
  * What applies to a person now, each value with the groups that set it,
  * from the root's `policiesInEffect`. Null for an older root, which has
@@ -134,7 +228,7 @@ export function groupPoliciesBody(
 export function policiesSummary(
   person: Pick<Person, "policiesInEffect">,
   groups: Pick<PermissionGroup, "id" | "name">[] | null,
-): { queue: string; summary: string } | null {
+): { queue: string; summary: string; models: string; routing: string } | null {
   const effect = person.policiesInEffect;
   if (effect === undefined) return null;
   const from = (ids: string[] | undefined) => {
@@ -151,6 +245,8 @@ export function policiesSummary(
         ? "Not set"
         : summaryPercentLabel(effect.summaryContextPercent) +
           from(effect.setBy?.summaryContextPercent),
+    models: modelLimitsLabel(effect.modelLimits),
+    routing: routingLabel(effect.roleRouting) + from(effect.setBy?.roleRouting),
   };
 }
 

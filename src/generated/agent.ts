@@ -6076,6 +6076,13 @@ export interface components {
              */
             personToken?: string;
         };
+        /**
+         * @description Row 37: an agent or gateway from before row 37 refuses an answer that
+         *     carries `roleRouting`, `routingGroup` or `modelLimits` (its model
+         *     forbids unknown fields), so a person whose groups set them is refused
+         *     there until that machine is updated: it fails closed, never open.
+         *     The root sends them only when a group sets them.
+         */
         ClientAdmissionResult: {
             keyId: string;
             keyName: string;
@@ -6102,6 +6109,34 @@ export interface components {
              *     install's default, applies. Never taken from the caller.
              */
             queueBand?: components["schemas"]["QueueBand"];
+            /**
+             * @description The verified person's routing by model role (row 37), from their
+             *     active group (`Person.activeGroup`). Present only when the root
+             *     verified a person and that group routes at least one role. A
+             *     request for `role:<role>` that this names tries these models in
+             *     order, after the gateway drops every model outside the allowed
+             *     set (`modelLimits` and the key's list); a role it does not name
+             *     uses the install's slot. Absent: the
+             *     install's routing for every role, as before row 37. Never taken
+             *     from the caller.
+             */
+            roleRouting?: components["schemas"]["RoleRouting"];
+            /**
+             * @description The group `roleRouting` comes from (row 37): the person's active
+             *     group. Present with `roleRouting`.
+             */
+            routingGroup?: components["schemas"]["ModelGroup"];
+            /**
+             * @description Row 37 (call R37-SELF, Choice 3): the model list of every group
+             *     the verified person is in that sets one, sorted by group name. A
+             *     model is allowed only when the key's own `allowedModels` and
+             *     every list here allow it, for the model asked for, every fallback
+             *     and every model a server-run tool calls; the person's choice of
+             *     active group never widens it. A `role:<role>` name is not checked
+             *     against these lists: the role's models are. Absent when no group
+             *     of theirs sets a list: no limit beyond the key's.
+             */
+            modelLimits?: components["schemas"]["GroupModelLimit"][];
         };
         /**
          * @description Why an `acquire` was refused with a 429, in its
@@ -9782,6 +9817,26 @@ export interface components {
          * @enum {string}
          */
         QueueBand: "interactive" | "background" | "sheddable";
+        /**
+         * @description Row 37: for each model role, the models a person's requests for
+         *     `role:<role>` try, in order. A role not named here uses the
+         *     install's slot (`modelSlots`). The keys are `ModelRole` values
+         *     (`components/common.yaml`); a root refuses any other.
+         */
+        RoleRouting: {
+            [key: string]: string[];
+        };
+        /** @description A permission group, as a refusal names it (row 37). */
+        ModelGroup: {
+            id: string;
+            name: string;
+        };
+        /** @description One group's model list, as it limits a person (row 37). */
+        GroupModelLimit: {
+            group: components["schemas"]["ModelGroup"];
+            /** @description Exact ids or patterns with `*`, at most 8 `*` in one entry. Empty allows none. */
+            models: string[];
+        };
         /**
          * @description Issued on successful login. The UI stores `sessionToken` as a
          *     Secure / HttpOnly / SameSite=Strict cookie or in memory; every
