@@ -1674,6 +1674,54 @@ describe("vLLM from its official container (row 42)", () => {
     expect(pulled).toHaveTextContent("before it: 0.32.0");
   });
 
+  it("offers Uninstall for the pulled images and names them (review S4)", async () => {
+    engines(
+      {
+        installable: true,
+        pulled: {
+          version: "0.33.0",
+          image: IMAGE,
+          previousVersion: "0.32.0",
+          sizeBytes: 9_000_000_000,
+        },
+      },
+      { kind: "docker", version: "27.3.1", usable: true, gpus: true },
+    );
+    handlers.set("POST agent/v1/engines/vllm/uninstall", () => ({ status: 204, body: null }));
+    render(<InferencePage />);
+    const button = await screen.findByRole(
+      "button",
+      { name: "Uninstall vLLM container" },
+      { timeout: 5000 },
+    );
+    await act(async () => {
+      button.click();
+    });
+    const prompt = await screen.findByText(/Remove the vLLM container images Eugene pulled/);
+    expect(prompt).toHaveTextContent("vLLM 0.33.0 (");
+    expect(prompt).toHaveTextContent("and vLLM 0.32.0");
+    expect(prompt).toHaveTextContent("before Eugene stay");
+  });
+
+  it("says why GPUs do not reach containers (review S5)", async () => {
+    engines(
+      { installable: true },
+      {
+        kind: "docker",
+        version: "27.3.1",
+        usable: true,
+        gpus: false,
+        desktop: true,
+        gpuNote:
+          "Docker Desktop passes only NVIDIA GPUs to containers, and this machine's GPU is AMD's",
+      },
+    );
+    render(<InferencePage />);
+    expect(
+      await screen.findByTestId("container-gpu-note", {}, { timeout: 5000 }),
+    ).toHaveTextContent("this machine's GPU is AMD's");
+  });
+
   it("says why the container cannot run here, with the fix", async () => {
     engines(
       { installable: false, reason: "This account may not use Docker: permission denied" },

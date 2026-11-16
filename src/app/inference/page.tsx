@@ -51,6 +51,7 @@ import type {
   ContainerRuntime,
   DriversInfo,
   EngineContainer,
+  ManagedImage,
   EngineDescriptor,
   EngineInstall,
   EngineList,
@@ -1811,6 +1812,18 @@ function EngineManagement({
                       onPull={() => void install(e.engine, "container")}
                     />
                   )}
+                  {!e.managed && e.container?.pulled && (
+                    <ConfirmButton
+                      label="Uninstall"
+                      ariaLabel={`Uninstall ${engineWord(e.engine)} container`}
+                      confirmLabel="Uninstall engine"
+                      cancelLabel="Keep engine"
+                      prompt={containerUninstallPrompt(e.engine, e.container.pulled)}
+                      disabled={posting !== null}
+                      className={dangerButton}
+                      onConfirm={() => uninstall(e.engine)}
+                    />
+                  )}
                   {e.managed && !e.acquisition?.installable && (
                     <ConfirmButton
                       label="Uninstall"
@@ -2043,6 +2056,11 @@ function EngineContainerLine({
       >
         {containerRuntimeLine(runtime, container)}
       </p>
+      {runtime?.usable && !runtime.gpus && runtime.gpuNote && (
+        <p data-testid="container-gpu-note" className="text-status-warn">
+          {runtime.gpuNote}
+        </p>
+      )}
       {pulled && (
         <p data-testid="container-image" className="text-[color:var(--muted)]">
           Container image: {name} {pulled.version}
@@ -2067,6 +2085,19 @@ function EngineContainerLine({
         </button>
       )}
     </div>
+  );
+}
+
+/** Row 42 review S4: which images an uninstall removes, with their size. */
+function containerUninstallPrompt(engine: string, pulled: ManagedImage): string {
+  const name = engineWord(engine);
+  const size = pulled.sizeBytes ? ` (${formatBytesShort(pulled.sizeBytes)})` : "";
+  const images = [`${name} ${pulled.version}${size}`];
+  if (pulled.previousVersion) images.push(`${name} ${pulled.previousVersion}`);
+  return (
+    `Remove the ${name} container images Eugene pulled: ${images.join(" and ")}? ` +
+    "Images that were on this machine before Eugene stay. Models and saved settings stay. " +
+    "Stop its models first."
   );
 }
 

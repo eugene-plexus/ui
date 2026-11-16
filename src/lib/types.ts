@@ -141,6 +141,7 @@ export type EngineDescriptor = AgentComponents["schemas"]["EngineDescriptor"];
 // Row 42: Docker or Podman on a machine, and vLLM's container image.
 export type ContainerRuntime = AgentComponents["schemas"]["ContainerRuntime"];
 export type EngineContainer = AgentComponents["schemas"]["EngineContainer"];
+export type ManagedImage = AgentComponents["schemas"]["ManagedImage"];
 // Row 13: checked engine updates and the runtime drain.
 export type EngineRollout = AgentComponents["schemas"]["EngineRollout"];
 export type EngineRolloutChoice = AgentComponents["schemas"]["EngineRolloutChoice"];
