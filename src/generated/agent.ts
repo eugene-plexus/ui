@@ -5992,6 +5992,28 @@ export interface components {
              *     `queueBand`.
              */
             maxQueuedRequests?: number;
+            /**
+             * @description Row 40: how many tokens (in and out) this key's lineage may use in
+             *     one UTC day, across every gateway. A request is refused before it
+             *     runs once the day's tokens reach it (429, `insufficient_quota`,
+             *     `X-Eugene-Refusal-Reason: allowance`); a request that crosses the
+             *     line while it runs finishes. **Absent means no limit**, and no
+             *     default is declared on purpose, as for `readMetrics`: the
+             *     authority writes it only when it is set. Not part of the policy a
+             *     running request is bound to, and never sent in an admission answer.
+             */
+            tokensPerDay?: number;
+            /** @description Row 40. As `tokensPerDay`, for one calendar month (UTC). Absent means no limit. */
+            tokensPerMonth?: number;
+            /**
+             * @description Row 40: how much this key's lineage may spend in one calendar month
+             *     (UTC), in millionths of a US dollar, at the install's prices (the
+             *     owner's rate for a model, else its provider's published price, else
+             *     nothing for a local model). A model with no price is refused while
+             *     this is set, because its cost cannot be counted. `0` allows only
+             *     models that cost nothing. Absent means no limit.
+             */
+            costPerMonthMicros?: number;
         };
         ClientKeyUpdateRequest: {
             limits: components["schemas"]["ClientKeyLimits"];
@@ -6024,6 +6046,21 @@ export interface components {
              */
             purpose: "inference" | "logs" | "catalog" | "search" | "metrics";
             model?: string;
+            /**
+             * @description Row 40, `acquire` only: how the gateway sees the requested model's
+             *     price, so the authority can tell whether a money allowance can
+             *     count it. An authority before row 40 refuses the field (422) and
+             *     the gateway asks again without it.
+             */
+            price?: components["schemas"]["ModelPriceHint"];
+            /**
+             * @description Row 40, `release` only: what the request used. The authority counts
+             *     it for the key's lineage, the person it verified at `acquire`, and
+             *     that person's groups. Absent (a request that was never served, or a
+             *     gateway before row 40) counts nothing. An authority before row 40
+             *     refuses the field (422) and the gateway releases again without it.
+             */
+            usage?: components["schemas"]["AdmissionUsage"];
             /**
              * @description Root-issued OIDC access token carried alongside the app key in
              *     X-Eugene-Person-Token. The root checks its signature, session,
@@ -6064,12 +6101,17 @@ export interface components {
          * @description Why an `acquire` was refused with a 429, in its
          *     `X-Eugene-Refusal-Reason` header (row 11): `concurrency`, the key
          *     already runs `maxConcurrentRequests` requests; `rate`, its
-         *     `requestsPerMinute` are used. An agent that forwards the root's
+         *     `requestsPerMinute` are used; `allowance` (row 40), a token or money
+         *     allowance of the key, the person or one of their groups is spent, or
+         *     the model has no price while a money allowance applies. An
+         *     `allowance` refusal is final until the allowance resets: its
+         *     `Retry-After` is the seconds until then, and its `detail` is the
+         *     sentence the caller is shown. An agent that forwards the root's
          *     answer passes the header on, and a standalone agent sets it the same
          *     way.
          * @enum {string}
          */
-        AdmissionRefusalReason: "concurrency" | "rate";
+        AdmissionRefusalReason: "concurrency" | "rate" | "allowance";
         ClientKey: {
             id: string;
             name: string;
@@ -9676,6 +9718,45 @@ export interface components {
             retryDisposition?: "safe" | "terminal" | "indeterminate";
             /** @description Parsed provider Retry-After delay; a scheduling hint, not permission to replay. */
             retryAfterSeconds?: number;
+        };
+        /**
+         * @description Where a model runs, as the gateway's `ModelLocality` says it (row 40).
+         * @enum {string}
+         */
+        ModelPriceLocality: "local" | "external" | "unknown";
+        /**
+         * @description Row 40: a model's rate, in millionths of a US dollar for each million
+         *     tokens. One micro-dollar for a million tokens is one pico-dollar a
+         *     token, so a request's cost is a whole number of pico-dollars:
+         *     `promptTokens * inputPerMillionMicros + completionTokens *
+         *     outputPerMillionMicros`. Integers, so every sum is exact.
+         */
+        ModelPrice: {
+            inputPerMillionMicros: number;
+            outputPerMillionMicros: number;
+        };
+        /**
+         * @description Row 40: what a gateway knows about a model's price from its drivers.
+         *     `locality` is the model's `ModelLocality` (`local` only when every
+         *     backend serving it is local). `providerPrice` is the price its
+         *     provider publishes, as its driver reported it; absent when no driver
+         *     reported one, or when two backends report different prices and one
+         *     of them has none. The authority's owner rate wins over both.
+         */
+        ModelPriceHint: {
+            locality: components["schemas"]["ModelPriceLocality"];
+            providerPrice?: components["schemas"]["ModelPrice"];
+        };
+        /**
+         * @description Row 40: what one served request used, as the gateway that served it
+         *     measured it. `model` is the model that served it (a fallback's, not
+         *     the one asked for), and `price` that model's hint.
+         */
+        AdmissionUsage: {
+            model: string;
+            promptTokens: number;
+            completionTokens: number;
+            price: components["schemas"]["ModelPriceHint"];
         };
         /**
          * @description Which requests wait or are turned away first when the machines are

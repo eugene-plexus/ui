@@ -2076,7 +2076,37 @@ export interface components {
                 [key: string]: string;
             };
             capabilities?: components["schemas"]["Capabilities"];
+            /**
+             * @description Row 40: the provider's published price for this model's tokens,
+             *     when the driver knows it. An OpenRouter account reads it from the
+             *     listing (`pricing.prompt` and `pricing.completion`, dollars a
+             *     token); an OpenAI, Anthropic or Gemini account from Eugene's price
+             *     table (`specs/docs/data/model-prices.json`, copied into the driver
+             *     and refreshed at each release). Absent for a local engine and for
+             *     a model the driver has no price for. The owner's own rate, kept at
+             *     the control root, wins over it.
+             */
+            price?: components["schemas"]["DriverModelPrice"];
         };
+        /**
+         * @description Millionths of a US dollar for each million tokens (one pico-dollar a
+         *     token). A provider price finer than that is rounded up.
+         */
+        DriverModelPrice: {
+            inputPerMillionMicros: number;
+            outputPerMillionMicros: number;
+            source: components["schemas"]["DriverPriceSource"];
+            /**
+             * Format: date
+             * @description The day the listing was read, or the table's date.
+             */
+            asOf?: string;
+        };
+        /**
+         * @description Where a driver read a model's price (row 40).
+         * @enum {string}
+         */
+        DriverPriceSource: "openrouter" | "table";
         /**
          * @description Present only on a **provider account**, and its presence is what
          *     makes the gateway prefix this driver's model ids. Says where the

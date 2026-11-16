@@ -4102,6 +4102,17 @@ export interface components {
             /** @description For a `video` model, at least one backend takes an `input_reference`. */
             video_first_frame?: boolean;
             /**
+             * @description Row 40: what the model's provider publishes for its tokens, as its
+             *     drivers report it (`DriverModel.price`), so the console can show it
+             *     beside the owner's rate. **Listed only when every backend serving
+             *     the model reports a price**, and the highest when they differ.
+             *     Absent for a local model and for a cloud model none of whose
+             *     drivers knows a price: *no price listed*, never free. The owner's
+             *     rate, kept at the control root (`GET /v1/usage/prices`), wins over
+             *     it when the root counts a request.
+             */
+            provider_price?: components["schemas"]["ProviderModelPrice"];
+            /**
              * @description For a `video` model: the provider's price list, as its driver
              *     reads it (OpenRouter's `pricing_skus`), so a client can say
              *     what a job will cost before it sends one. **Listed only when
@@ -4197,6 +4208,21 @@ export interface components {
              *     at least one declared `startOnDemand`.
              */
             on_demand?: boolean;
+        };
+        /**
+         * @description A model's token price, in millionths of a US dollar per million
+         *     tokens (one pico-dollar a token), as its provider publishes it.
+         */
+        ProviderModelPrice: {
+            input_per_million_micros: number;
+            output_per_million_micros: number;
+            /** @description Where the driver read it (`openrouter`, or `table` for Eugene's price table of OpenAI, Anthropic and Gemini). */
+            source?: string;
+            /**
+             * Format: date
+             * @description The date the price was read or the table was made.
+             */
+            as_of?: string;
         };
         /**
          * @description What one unit of a `VideoPrice` is: a second of video made, one
@@ -7571,12 +7597,15 @@ export interface components {
          */
         QueueBand: "interactive" | "background" | "sheddable";
         /**
-         * @description Why the queue refused a request (row 11), on its
+         * @description `insufficient_quota` (row 40): a usage allowance is spent, as the
+         *     root said.
+         *
+         *     Why the queue refused a request (row 11), on its
          *     `X-Eugene-Refusal-Reason` header and its metrics row. "Waiting in
          *     line" in this document's description has the table.
          * @enum {string}
          */
-        QueueRefusalCode: "key_queue_full" | "queue_full" | "set_aside" | "key_queue_timeout" | "queue_timeout" | "still_starting" | "shutting_down" | "rate_limited";
+        QueueRefusalCode: "key_queue_full" | "queue_full" | "set_aside" | "key_queue_timeout" | "queue_timeout" | "still_starting" | "shutting_down" | "rate_limited" | "insufficient_quota";
         /**
          * @description `refused` (row 11, schema v14): the queue turned the request away
          *     before any backend was asked, for the `refusal` the row names.

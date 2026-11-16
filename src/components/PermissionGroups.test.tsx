@@ -180,3 +180,55 @@ describe("a group's policies", () => {
     expect(screen.queryByTestId("group-memory-servers-g-desk")).not.toBeInTheDocument();
   });
 });
+
+describe("a group's usage allowances (row 40)", () => {
+  const ALLOWANCES_UNSET = {
+    ...UNSET,
+    tokensPerDay: null,
+    tokensPerMonth: null,
+    costPerMonthMicros: null,
+  };
+
+  it("are offered and saved, the spend as exact micro-dollars, by a root that knows them", async () => {
+    const put = vi.spyOn(api, "put").mockResolvedValue({});
+    const user = userEvent.setup();
+    show([group("g-sales", "Sales", { policies: ALLOWANCES_UNSET })]);
+    const card = within(screen.getByTestId("group-g-sales"));
+    expect(card.getByTestId("group-allowances-g-sales")).toHaveTextContent("No limit");
+    await user.click(card.getByText("Edit Sales"));
+    await user.type(card.getByLabelText("Tokens a day"), "30");
+    await user.type(card.getByLabelText("Spend a month"), "4.00");
+    await user.click(card.getByRole("button", { name: "Save group" }));
+    await card.findByText("Group saved.");
+    expect(put).toHaveBeenLastCalledWith(
+      "control",
+      "/v1/permission-groups/g-sales",
+      expect.objectContaining({
+        policies: {
+          ...ALLOWANCES_UNSET,
+          tokensPerDay: 30,
+          costPerMonthMicros: 4_000_000,
+        },
+      }),
+      { bearer: undefined },
+    );
+  });
+
+  it("are neither shown nor sent to a root before row 40", async () => {
+    const put = vi.spyOn(api, "put").mockResolvedValue({});
+    const user = userEvent.setup();
+    show([group("g-desk", "Desk", { policies: UNSET })]);
+    const card = within(screen.getByTestId("group-g-desk"));
+    expect(card.queryByTestId("group-allowances-g-desk")).toBeNull();
+    await user.click(card.getByText("Edit Desk"));
+    expect(card.queryByTestId("group-allowance-fields")).toBeNull();
+    await user.click(card.getByRole("button", { name: "Save group" }));
+    await card.findByText("Group saved.");
+    expect(put).toHaveBeenLastCalledWith(
+      "control",
+      "/v1/permission-groups/g-desk",
+      expect.objectContaining({ policies: UNSET }),
+      { bearer: undefined },
+    );
+  });
+});

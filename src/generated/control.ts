@@ -250,6 +250,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Usage and allowances per key, person and group (row 40)
+         * @description What each key lineage, person and permission group used, across every
+         *     gateway of the install, in one UTC day, one calendar month and an
+         *     optional range of days, with the allowances that apply and what is
+         *     left of them. Costs are at the install's prices (`GET
+         *     /v1/usage/prices`) as they were when each request was counted.
+         *
+         *     The owner sees every key, person and group. A directory
+         *     administrator (row 39) sees people and groups but no keys: one who
+         *     may manage people or groups sees all of them, one who manages the
+         *     membership of some groups sees those groups and their members. Active
+         *     root only. Day counters are kept for 62 days and month counters for
+         *     13 months; a period older than that answers zero, and `kept` says
+         *     how long counters are kept.
+         */
+        get: operations["getUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/usage/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A signed-in person's own usage (row 40)
+         * @description The caller's own usage today and this month, and the allowances that
+         *     apply to them (their own groups'), for an app such as Workbench to
+         *     show. Authenticated with the person's access token from this root
+         *     (`Authorization: Bearer`, as `/oidc/userinfo`); no other credential.
+         *     Answers only for the person the token names. `subjects` holds one
+         *     `person` subject and one `group` subject for each of their groups
+         *     that sets an allowance.
+         */
+        get: operations["getOwnUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/usage/prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The owner's price for each served model (row 40)
+         * @description The rates the owner set. Owner or directory administrator. A model
+         *     not listed has no owner rate: a cloud model is counted at its
+         *     provider's published price (the gateway's `/v1/models` lists it as
+         *     `provider_price`), a local model costs nothing, and a cloud model
+         *     with neither has an unknown cost.
+         */
+        get: operations["getModelPrices"];
+        /**
+         * Set or clear the owner's price for one model (owner only, row 40)
+         * @description Sets the rate a model is counted at from the next request; requests
+         *     already counted keep the cost they had. `price: null` clears the
+         *     owner's rate, and the model falls back to its provider's price or to
+         *     free for a local model. Replicated (`setModelPrice`).
+         */
+        put: operations["setModelPrice"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/client-keys/{keyId}/limits": {
         parameters: {
             query?: never;
@@ -3807,6 +3896,28 @@ export interface components {
              *     `queueBand`.
              */
             maxQueuedRequests?: number;
+            /**
+             * @description Row 40: how many tokens (in and out) this key's lineage may use in
+             *     one UTC day, across every gateway. A request is refused before it
+             *     runs once the day's tokens reach it (429, `insufficient_quota`,
+             *     `X-Eugene-Refusal-Reason: allowance`); a request that crosses the
+             *     line while it runs finishes. **Absent means no limit**, and no
+             *     default is declared on purpose, as for `readMetrics`: the
+             *     authority writes it only when it is set. Not part of the policy a
+             *     running request is bound to, and never sent in an admission answer.
+             */
+            tokensPerDay?: number;
+            /** @description Row 40. As `tokensPerDay`, for one calendar month (UTC). Absent means no limit. */
+            tokensPerMonth?: number;
+            /**
+             * @description Row 40: how much this key's lineage may spend in one calendar month
+             *     (UTC), in millionths of a US dollar, at the install's prices (the
+             *     owner's rate for a model, else its provider's published price, else
+             *     nothing for a local model). A model with no price is refused while
+             *     this is set, because its cost cannot be counted. `0` allows only
+             *     models that cost nothing. Absent means no limit.
+             */
+            costPerMonthMicros?: number;
         };
         ClientKeyUpdateRequest: {
             limits: components["schemas"]["ClientKeyLimits"];
@@ -3839,6 +3950,21 @@ export interface components {
              */
             purpose: "inference" | "logs" | "catalog" | "search" | "metrics";
             model?: string;
+            /**
+             * @description Row 40, `acquire` only: how the gateway sees the requested model's
+             *     price, so the authority can tell whether a money allowance can
+             *     count it. An authority before row 40 refuses the field (422) and
+             *     the gateway asks again without it.
+             */
+            price?: components["schemas"]["ModelPriceHint"];
+            /**
+             * @description Row 40, `release` only: what the request used. The authority counts
+             *     it for the key's lineage, the person it verified at `acquire`, and
+             *     that person's groups. Absent (a request that was never served, or a
+             *     gateway before row 40) counts nothing. An authority before row 40
+             *     refuses the field (422) and the gateway releases again without it.
+             */
+            usage?: components["schemas"]["AdmissionUsage"];
             /**
              * @description Root-issued OIDC access token carried alongside the app key in
              *     X-Eugene-Person-Token. The root checks its signature, session,
@@ -3887,12 +4013,51 @@ export interface components {
          * @description Why an `acquire` was refused with a 429, in its
          *     `X-Eugene-Refusal-Reason` header (row 11): `concurrency`, the key
          *     already runs `maxConcurrentRequests` requests; `rate`, its
-         *     `requestsPerMinute` are used. An agent that forwards the root's
+         *     `requestsPerMinute` are used; `allowance` (row 40), a token or money
+         *     allowance of the key, the person or one of their groups is spent, or
+         *     the model has no price while a money allowance applies. An
+         *     `allowance` refusal is final until the allowance resets: its
+         *     `Retry-After` is the seconds until then, and its `detail` is the
+         *     sentence the caller is shown. An agent that forwards the root's
          *     answer passes the header on, and a standalone agent sets it the same
          *     way.
          * @enum {string}
          */
-        AdmissionRefusalReason: "concurrency" | "rate";
+        AdmissionRefusalReason: "concurrency" | "rate" | "allowance";
+        /**
+         * @description Row 40: a model's rate, in millionths of a US dollar for each million
+         *     tokens. One micro-dollar for a million tokens is one pico-dollar a
+         *     token, so a request's cost is a whole number of pico-dollars:
+         *     `promptTokens * inputPerMillionMicros + completionTokens *
+         *     outputPerMillionMicros`. Integers, so every sum is exact.
+         */
+        ModelPrice: {
+            inputPerMillionMicros: number;
+            outputPerMillionMicros: number;
+        };
+        /**
+         * @description Row 40: what a gateway knows about a model's price from its drivers.
+         *     `locality` is the model's `ModelLocality` (`local` only when every
+         *     backend serving it is local). `providerPrice` is the price its
+         *     provider publishes, as its driver reported it; absent when no driver
+         *     reported one, or when two backends report different prices and one
+         *     of them has none. The authority's owner rate wins over both.
+         */
+        ModelPriceHint: {
+            locality: components["schemas"]["ModelPriceLocality"];
+            providerPrice?: components["schemas"]["ModelPrice"];
+        };
+        /**
+         * @description Row 40: what one served request used, as the gateway that served it
+         *     measured it. `model` is the model that served it (a fallback's, not
+         *     the one asked for), and `price` that model's hint.
+         */
+        AdmissionUsage: {
+            model: string;
+            promptTokens: number;
+            completionTokens: number;
+            price: components["schemas"]["ModelPriceHint"];
+        };
         ClientKey: {
             id: string;
             name: string;
@@ -4994,7 +5159,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames" | "retireOidcKeys" | "changePassphrase";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames" | "retireOidcKeys" | "changePassphrase" | "setModelPrice";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -5025,6 +5190,25 @@ export interface components {
                 [key: string]: unknown;
             };
             accessAudit?: components["schemas"]["AccessAuditEvent"][];
+            /**
+             * @description Row 40: the usage counters per key lineage, person and group, per
+             *     UTC day (62 kept) and calendar month (13 kept), and the subjects
+             *     of each running request a person was verified for (`open`, by
+             *     request id), so its release counts for them. Written by
+             *     `putClientAdmission` entries (`usageOpen` at an acquire, `usage`
+             *     at a release). A root before row 40 ignores it.
+             */
+            clientUsage?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Row 40: the owner's price for each model, by model id, as
+             *     `setModelPrice` wrote it (`{model, price}`; `price: null`
+             *     removes it).
+             */
+            modelPrices?: {
+                [key: string]: components["schemas"]["ModelPrice"];
+            };
             clientKeys?: components["schemas"]["ClientKey"][];
             /** Format: int64 */
             index: number;
@@ -5814,6 +5998,117 @@ export interface components {
             queueBand?: components["schemas"]["QueueBand"] | null;
             /** @description The percent of a model's context at which Workbench starts summarising a long chat. With no policy, Workbench uses 80. */
             summaryContextPercent?: number | null;
+            /**
+             * @description Row 40: how many tokens (in and out) the group's members may use
+             *     together in one UTC day, across every gateway: one allowance for
+             *     the whole group, counted from each request of a member that the
+             *     root verified (an app such as Workbench sends the person's token).
+             *     A person whose groups set it is refused while every one of those
+             *     groups has spent it (the most generous applies). A person's own
+             *     limit is a group of one. Never in `PoliciesInEffect`. An older
+             *     root refuses it, and an older standby stops at a group that sets
+             *     it until it is updated.
+             */
+            tokensPerDay?: number | null;
+            /** @description Row 40. As `tokensPerDay`, for one calendar month (UTC). */
+            tokensPerMonth?: number | null;
+            /**
+             * @description Row 40: how much the group's members may spend together in one
+             *     calendar month (UTC), in millionths of a US dollar, at the
+             *     install's prices. While it is the only allowance that admits a
+             *     member, a model with no price is refused to them.
+             */
+            costPerMonthMicros?: number | null;
+        };
+        /** @description The owner's price for each model that has one (row 40). */
+        ModelPriceList: {
+            prices: components["schemas"]["OwnerModelPrice"][];
+        };
+        OwnerModelPrice: {
+            model: string;
+            inputPerMillionMicros: number;
+            outputPerMillionMicros: number;
+        };
+        ModelPriceWrite: {
+            model: string;
+            /** @description The rate, or null to clear the owner's rate. */
+            price: components["schemas"]["ModelPrice"] | null;
+        };
+        /** @enum {string} */
+        UsageSubjectKind: "key" | "person" | "group";
+        /** @enum {string} */
+        UsageAllowanceKind: "tokensPerDay" | "tokensPerMonth" | "costPerMonth";
+        /** @description Row 40, `GET /v1/usage` and `GET /v1/usage/me`. */
+        UsageReport: {
+            /**
+             * Format: date
+             * @description The UTC day each subject's `day` reports.
+             */
+            day: string;
+            /** @description The calendar month (`YYYY-MM`) each subject's `month` reports. */
+            month: string;
+            /** Format: date */
+            from?: string;
+            /** Format: date */
+            to?: string;
+            /** @description How many days and months of counters the root keeps. */
+            kept: {
+                days: number;
+                months: number;
+            };
+            subjects: components["schemas"]["UsageSubject"][];
+        };
+        UsageSubject: {
+            kind: components["schemas"]["UsageSubjectKind"];
+            /** @description A key's lineage (its first key's id), a person's id, or a group's id. */
+            id: string;
+            /** @description The key's, person's or group's name now. A subject that no longer exists keeps its id as its name. */
+            name: string;
+            day: components["schemas"]["UsageTotals"];
+            month: components["schemas"]["UsageTotals"];
+            range?: components["schemas"]["UsageTotals"];
+            allowances: components["schemas"]["UsageAllowance"][];
+        };
+        UsageTotals: {
+            requests: number;
+            promptTokens: number;
+            completionTokens: number;
+            tokens: number;
+            /**
+             * @description US dollars, exact: a decimal with twelve places (one pico-dollar).
+             *     A string, so no reader rounds it through a float.
+             */
+            costUsd: string;
+            /** @description Requests whose model had no price when they were counted. Their cost is unknown and is not in `costUsd`. */
+            unpricedRequests: number;
+            /** @description The same counts by the model that served each request. Past 32 models in one period, the rest are under `*`. */
+            models: components["schemas"]["UsageModelTotals"][];
+        };
+        UsageModelTotals: {
+            model: string;
+            requests: number;
+            promptTokens: number;
+            completionTokens: number;
+            costUsd: string;
+            unpricedRequests: number;
+        };
+        /**
+         * @description One allowance that applies to the subject, and how much of it is
+         *     used. `limit`, `used` and `left` are token counts for a token
+         *     allowance and exact US dollar strings (twelve places) for
+         *     `costPerMonth`.
+         */
+        UsageAllowance: {
+            kind: components["schemas"]["UsageAllowanceKind"];
+            limit: string;
+            used: string;
+            left: string;
+            /** @description True when the next request is refused for it. */
+            spent: boolean;
+            /** Format: date-time */
+            resetsAt: string;
+            /** @description For a person, the id of the group that sets it. Absent for a key's or a group's own allowance. */
+            setBy?: string;
         };
         /**
          * @description The policies that apply to a person now (row 70), from the groups
@@ -5835,6 +6130,11 @@ export interface components {
         PermissionGroupList: {
             groups: components["schemas"]["PermissionGroup"][];
         };
+        /**
+         * @description Where a model runs, as the gateway's `ModelLocality` says it (row 40).
+         * @enum {string}
+         */
+        ModelPriceLocality: "local" | "external" | "unknown";
         /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
          *     Eugene Plexus component returns this for 4xx / 5xx responses.
@@ -7879,7 +8179,11 @@ export interface operations {
              * @description Shared concurrency/rate allowance exhausted. `X-Eugene-Refusal-Reason`
              *     says which (row 11): the gateway keeps a request refused for
              *     `concurrency` in its queue and asks again, and refuses one refused
-             *     for `rate`.
+             *     for `rate`. Row 40: `allowance`, a token or money
+             *     allowance of the key, the person or one of their groups is spent
+             *     (or the model has no price under a money allowance); `detail` is
+             *     the sentence for the caller and `Retry-After` the seconds until
+             *     the allowance resets. The gateway refuses the request.
              */
             429: {
                 headers: {
@@ -7896,6 +8200,110 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getUsage: {
+        parameters: {
+            query?: {
+                /** @description The UTC day. Absent, today. */
+                day?: string;
+                /** @description The calendar month, `YYYY-MM`. Absent, this month. */
+                month?: string;
+                /** @description First day of a range, with `to`. Both or neither. */
+                from?: string;
+                /** @description Last day of the range (included). At most 62 days after `from`. */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The usage report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageReport"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getOwnUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The person's usage. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageReport"];
+                };
+            };
+            /** @description No valid access token from this root, or the person's sign-in ended. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getModelPrices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The owner's prices. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelPriceList"];
+                };
+            };
+        };
+    };
+    setModelPrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelPriceWrite"];
+            };
+        };
+        responses: {
+            /** @description The owner's prices after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelPriceList"];
+                };
+            };
+            422: components["responses"]["Problem"];
         };
     };
     setClientKeyLimits: {

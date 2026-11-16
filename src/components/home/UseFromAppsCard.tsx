@@ -601,7 +601,12 @@ export function UseFromAppsCard({
       )}
 
       <form onSubmit={mint} className="mt-3 flex flex-wrap items-center gap-2">
-        <ClientKeyLimitsEditor value={limits} onChange={setLimits} disabled={busy} />
+        <ClientKeyLimitsEditor
+          value={limits}
+          onChange={setLimits}
+          disabled={busy}
+          allowances={registry?.scope === "install"}
+        />
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -751,6 +756,7 @@ export function UseFromAppsCard({
                       value={editLimits}
                       onChange={setEditLimits}
                       disabled={busy}
+                      allowances={registry?.scope === "install"}
                     />
                     <button type="submit" disabled={busy} className="mr-3 underline">
                       Save limits

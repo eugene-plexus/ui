@@ -506,6 +506,7 @@ describe("the page menu", () => {
     expect(pagesOf("gateway")).toEqual([
       "Connect apps",
       "Metrics",
+      "Usage",
       "Routing",
       "Model roles",
       "Settings",

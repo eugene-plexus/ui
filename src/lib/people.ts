@@ -101,12 +101,29 @@ export function rootKnowsPolicies(
   );
 }
 
-/** A group's policies as the console sends them: every policy, null when not set. */
+/** A group's policies as the console sends them: every policy, null when not set.
+ * Row 40's allowances only to a root that knows them (`allowances` given): an
+ * older root refuses a field it does not know. */
 export function groupPoliciesBody(
   band: QueueBand | "",
   percent: number | null,
-): Required<GroupPolicies> {
-  return { queueBand: band || null, summaryContextPercent: percent };
+  allowances?: {
+    tokensPerDay?: number | null;
+    tokensPerMonth?: number | null;
+    costPerMonthMicros?: number | null;
+  },
+): GroupPolicies {
+  return {
+    queueBand: band || null,
+    summaryContextPercent: percent,
+    ...(allowances
+      ? {
+          tokensPerDay: allowances.tokensPerDay ?? null,
+          tokensPerMonth: allowances.tokensPerMonth ?? null,
+          costPerMonthMicros: allowances.costPerMonthMicros ?? null,
+        }
+      : {}),
+  };
 }
 
 /**

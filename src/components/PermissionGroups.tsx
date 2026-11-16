@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { DollarInput } from "@/components/home/ClientKeyLimitsEditor";
 import { api, describeError } from "@/lib/api";
 import {
   groupPoliciesBody,
@@ -19,6 +20,7 @@ import type {
   Person,
   QueueBand,
 } from "@/lib/types";
+import { type Allowances, describeAllowances, rootKnowsAllowances } from "@/lib/usage";
 
 const button =
   "action-button rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm disabled:opacity-40";
@@ -85,6 +87,7 @@ export function PermissionGroups({
           <GroupForm
             clients={clients}
             withPolicies={knowsPolicies}
+            withAllowances={rootKnowsAllowances(groups)}
             onSave={async (body) => {
               await api.post("control", "/v1/permission-groups", body, { bearer });
               await onChanged();
@@ -154,6 +157,12 @@ export function PermissionGroups({
               <p className="text-sm" data-testid={`group-summary-${group.id}`}>
                 Summarise long chats at: {summaryPercentLabel(group.policies.summaryContextPercent)}
               </p>
+              {"tokensPerDay" in group.policies && (
+                <p className="text-sm" data-testid={`group-allowances-${group.id}`}>
+                  Usage allowances for the whole group:{" "}
+                  {describeAllowances(group.policies) || "No limit"}
+                </p>
+              )}
               {workbenchSettings && (
                 <p className="text-sm" data-testid={`group-memory-servers-${group.id}`}>
                   Memory servers for this group:{" "}
@@ -178,6 +187,7 @@ export function PermissionGroups({
               group={group}
               clients={clients}
               withPolicies={group.policies !== undefined}
+              withAllowances={group.policies != null && "tokensPerDay" in group.policies}
               onSave={async (body) => {
                 await api.put(
                   "control",
@@ -203,12 +213,15 @@ function GroupForm({
   group,
   clients,
   withPolicies,
+  withAllowances = false,
   onSave,
 }: {
   group?: PermissionGroup;
   clients: OidcClient[];
   /** Show and send the Policies section: only to a root that knows them. */
   withPolicies: boolean;
+  /** Row 40: the usage allowances, only to a root that knows them. */
+  withAllowances?: boolean;
   onSave: (body: PermissionGroupWrite) => Promise<void>;
 }) {
   const [name, setName] = useState(group?.name ?? "");
@@ -223,9 +236,18 @@ function GroupForm({
   const [percent, setPercent] = useState<number | null>(
     group?.policies?.summaryContextPercent ?? null,
   );
+  const [allowances, setAllowances] = useState<Allowances>({
+    tokensPerDay: group?.policies?.tokensPerDay ?? null,
+    tokensPerMonth: group?.policies?.tokensPerMonth ?? null,
+    costPerMonthMicros: group?.policies?.costPerMonthMicros ?? null,
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const count = (raw: string): number | null => {
+    const n = Number(raw);
+    return raw.trim() === "" || !Number.isFinite(n) ? null : n;
+  };
   return (
     <form
       className="mt-3 flex max-w-xl flex-col gap-3"
@@ -241,7 +263,15 @@ function GroupForm({
             description,
             apps: all ? null : apps,
             permissions,
-            ...(withPolicies ? { policies: groupPoliciesBody(band, percent) } : {}),
+            ...(withPolicies
+              ? {
+                  policies: groupPoliciesBody(
+                    band,
+                    percent,
+                    withAllowances ? allowances : undefined,
+                  ),
+                }
+              : {}),
           });
           setSaved(true);
         } catch (e) {
@@ -370,6 +400,55 @@ function GroupForm({
                 Workbench summarises a chat when it fills this much of the model&rsquo;s context.
               </span>
             </div>
+            {withAllowances && (
+              <div className="flex flex-col gap-1" data-testid="group-allowance-fields">
+                <span className="font-semibold">Usage allowances for the whole group</span>
+                <div className="flex flex-wrap gap-3">
+                  <label className="flex flex-col gap-1">
+                    Tokens a day
+                    <input
+                      className={input}
+                      type="number"
+                      min={1}
+                      placeholder="No limit"
+                      value={allowances.tokensPerDay ?? ""}
+                      onChange={(e) =>
+                        setAllowances({ ...allowances, tokensPerDay: count(e.target.value) })
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    Tokens a month
+                    <input
+                      className={input}
+                      type="number"
+                      min={1}
+                      placeholder="No limit"
+                      value={allowances.tokensPerMonth ?? ""}
+                      onChange={(e) =>
+                        setAllowances({ ...allowances, tokensPerMonth: count(e.target.value) })
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    Spend a month, US$
+                    <DollarInput
+                      label="Spend a month"
+                      className={input}
+                      micros={allowances.costPerMonthMicros}
+                      onChange={(micros) =>
+                        setAllowances({ ...allowances, costPerMonthMicros: micros ?? null })
+                      }
+                    />
+                  </label>
+                </div>
+                <span className="text-xs text-[color:var(--muted)]">
+                  One allowance shared by every member, for requests made as them (from Workbench,
+                  for example). A person in several groups that set one is refused only when all of
+                  them are used up. For one person&rsquo;s own limit, make a group of one.
+                </span>
+              </div>
+            )}
           </fieldset>
         )}
         <button className={`${button} self-start`} disabled={!name.trim()}>
