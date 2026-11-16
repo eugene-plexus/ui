@@ -13,6 +13,23 @@ function engine(overrides: Partial<EngineDescriptor>): EngineDescriptor {
 }
 
 describe("offeredOnThisNode", () => {
+  it("vLLM is offered where its container can run, Windows included (row 42)", () => {
+    const onWindows = engine({
+      engine: "vllm",
+      available: false,
+      acquisition: { policy: "manual", installable: false, manualInstall: { docsUrl: "x" } },
+      container: { image: "vllm/vllm-openai@sha256:" + "d".repeat(64), installable: true },
+    } as Partial<EngineDescriptor>);
+    expect(offeredOnThisNode(onWindows)).toBe(true);
+    const noDocker = engine({
+      engine: "vllm",
+      available: false,
+      acquisition: { policy: "manual", installable: false, manualInstall: { docsUrl: "x" } },
+      container: { image: "x", installable: false, reason: "No Docker" },
+    } as Partial<EngineDescriptor>);
+    expect(offeredOnThisNode(noDocker)).toBe(false);
+  });
+
   it("an engine Eugene installs itself is listed even when it cannot be installed now", () => {
     // "Not installable" on llama.cpp is a reason worth reading: GitHub's
     // hourly limit, a build not published yet.

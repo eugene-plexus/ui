@@ -1,4 +1,4 @@
-import type { EngineDescriptor } from "./types";
+import type { ContainerRuntime, EngineDescriptor } from "./types";
 
 /**
  * Whether an engine belongs on a node's engine list at all.
@@ -20,8 +20,16 @@ import type { EngineDescriptor } from "./types";
  * being one on 2026-09-30 (A4, GitHub's macOS runners), and the rule is
  * about where an engine can run, not about how proven it is.
  */
-export function offeredOnThisNode(e: EngineDescriptor): boolean {
+export function offeredOnThisNode(
+  e: EngineDescriptor,
+  containerRuntime?: ContainerRuntime | null,
+): boolean {
   if (e.available) return true;
+  // Row 42: vLLM from its container image runs wherever Docker or Podman can,
+  // Windows through Docker Desktop included; and where one is installed but
+  // cannot be used yet, the line says why and what to do.
+  if (e.container?.installable || e.container?.pulled) return true;
+  if (e.container && containerRuntime?.kind) return true;
   const acquisition = e.acquisition;
   if (acquisition?.policy !== "manual") return true;
   return Boolean(acquisition.installable || acquisition.manualInstall?.command);

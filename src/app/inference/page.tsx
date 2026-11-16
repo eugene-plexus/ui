@@ -48,7 +48,10 @@ import { expertHint } from "@/lib/vocabulary";
 import { drainLine, engineBuildLine, rolloutActive } from "@/lib/engineRollout";
 import type {
   ComponentPlacementList,
+  ContainerRuntime,
   DriversInfo,
+  EngineContainer,
+  ManagedImage,
   EngineDescriptor,
   EngineInstall,
   EngineList,
@@ -612,7 +615,12 @@ function NodeSection({
     setInstallStart({ runtime, text: `Installing ${engineWord(engine)}…`, error: null });
     let record: EngineInstall;
     try {
-      record = await api.post<EngineInstall>(target, path, {});
+      // Row 42: the one vLLM install Eugene makes is its container image.
+      record = await api.post<EngineInstall>(
+        target,
+        path,
+        engine === "vllm" ? { variant: "container" } : {},
+      );
     } catch (err) {
       // 409: an install is already under way; follow that one.
       if (!(err instanceof ApiError && err.status === 409)) throw err;
@@ -1441,6 +1449,8 @@ function EngineManagement({
   readAgain?: number;
 }) {
   const [engines, setEngines] = useState<EngineDescriptor[] | null>(null);
+  // Row 42: Docker or Podman on this machine, read with the engines.
+  const [containerRuntime, setContainerRuntime] = useState<ContainerRuntime | null>(null);
   const [installs, setInstalls] = useState<Record<string, EngineInstall | null>>({});
   const [error, setError] = useState<string | null>(null);
   // A refused install, beside the engine it was for. It used to replace
@@ -1457,6 +1467,7 @@ function EngineManagement({
     try {
       const list = await api.get<EngineList>(target, "/v1/engines");
       setEngines(list.engines ?? []);
+      setContainerRuntime(list.containerRuntime ?? null);
       onEngines?.(list.engines ?? []);
       setError(null);
       // **Ask what is already under way, once.** Installs started this
@@ -1466,7 +1477,7 @@ function EngineManagement({
       if (!seeded.current) {
         seeded.current = true;
         const offered = (list.engines ?? []).filter(
-          (e) => offeredOnThisNode(e) && e.acquisition?.installable,
+          (e) => offeredOnThisNode(e) && (e.acquisition?.installable || e.container?.installable),
         );
         const found = await Promise.all(
           offered.map((e) =>
@@ -1524,8 +1535,8 @@ function EngineManagement({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [installing, Object.keys(installs).sort().join(","), load, target]);
 
-  async function install(engine: string) {
-    const variant = builds[engine] || undefined;
+  async function install(engine: string, chosen?: string) {
+    const variant = chosen ?? (builds[engine] || undefined);
     setPosting(engine);
     setInstallErrors((prev) => ({ ...prev, [engine]: "" }));
     try {
@@ -1617,7 +1628,7 @@ function EngineManagement({
     );
   }
   if (engines === null) return null;
-  const offered = engines.filter(offeredOnThisNode);
+  const offered = engines.filter((e) => offeredOnThisNode(e, containerRuntime));
   const installed = offered.filter((e) => e.available).length;
 
   return (
@@ -1783,13 +1794,35 @@ function EngineManagement({
                       </div>
                     </>
                   ) : (
-                    !e.available && (
+                    !e.available &&
+                    !e.container?.installable && (
                       <p className="text-xs text-[color:var(--muted)]">
                         {manual
                           ? "Requires manual setup."
                           : "Automatic installation is unavailable."}
                       </p>
                     )
+                  )}
+                  {e.container && (
+                    <EngineContainerLine
+                      engine={e}
+                      container={e.container}
+                      runtime={containerRuntime}
+                      busy={posting !== null}
+                      onPull={() => void install(e.engine, "container")}
+                    />
+                  )}
+                  {!e.managed && e.container?.pulled && (
+                    <ConfirmButton
+                      label="Uninstall"
+                      ariaLabel={`Uninstall ${engineWord(e.engine)} container`}
+                      confirmLabel="Uninstall engine"
+                      cancelLabel="Keep engine"
+                      prompt={containerUninstallPrompt(e.engine, e.container.pulled)}
+                      disabled={posting !== null}
+                      className={dangerButton}
+                      onConfirm={() => uninstall(e.engine)}
+                    />
                   )}
                   {e.managed && !e.acquisition?.installable && (
                     <ConfirmButton
@@ -1995,7 +2028,95 @@ function EngineUpdate({
   );
 }
 
+/**
+ * Row 42: an engine's official container image -- Docker or Podman here, the
+ * image in use, and the pull. The fix comes with any reason it cannot run.
+ */
+function EngineContainerLine({
+  engine,
+  container,
+  runtime,
+  busy,
+  onPull,
+}: {
+  engine: EngineDescriptor;
+  container: EngineContainer;
+  runtime: ContainerRuntime | null;
+  busy: boolean;
+  onPull: () => void;
+}) {
+  const pulled = container.pulled;
+  const current = pulled != null && pulled.image === container.image;
+  const name = engineWord(engine.engine);
+  return (
+    <div className="space-y-1 text-xs" data-testid="engine-container">
+      <p
+        data-testid="container-runtime"
+        className={runtime?.usable ? "text-[color:var(--muted)]" : "text-status-warn"}
+      >
+        {containerRuntimeLine(runtime, container)}
+      </p>
+      {runtime?.usable && !runtime.gpus && runtime.gpuNote && (
+        <p data-testid="container-gpu-note" className="text-status-warn">
+          {runtime.gpuNote}
+        </p>
+      )}
+      {pulled && (
+        <p data-testid="container-image" className="text-[color:var(--muted)]">
+          Container image: {name} {pulled.version}
+          {pulled.previousVersion ? ` · before it: ${pulled.previousVersion}` : ""}
+        </p>
+      )}
+      {container.untested && (
+        <p data-testid="container-untested" className="text-status-warn">
+          Untested on this kind of GPU.
+        </p>
+      )}
+      {container.installable && !current && (
+        <button
+          type="button"
+          onClick={onPull}
+          disabled={busy}
+          aria-label={`${pulled ? "Update" : "Install"} ${name} container`}
+          className={smallButton}
+        >
+          {pulled ? "Update container" : "Install container"}
+          {container.version ? ` (${name} ${container.version})` : ""}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Row 42 review S4: which images an uninstall removes, with their size. */
+function containerUninstallPrompt(engine: string, pulled: ManagedImage): string {
+  const name = engineWord(engine);
+  const size = pulled.sizeBytes ? ` (${formatBytesShort(pulled.sizeBytes)})` : "";
+  const images = [`${name} ${pulled.version}${size}`];
+  if (pulled.previousVersion) images.push(`${name} ${pulled.previousVersion}`);
+  return (
+    `Remove the ${name} container images Eugene pulled: ${images.join(" and ")}? ` +
+    "Images that were on this machine before Eugene stay. Models and saved settings stay. " +
+    "Stop its models first."
+  );
+}
+
+function containerRuntimeLine(
+  runtime: ContainerRuntime | null,
+  container: EngineContainer,
+): string {
+  if (runtime == null) return container.reason ?? "Container runtime not reported.";
+  if (!runtime.usable) {
+    return [runtime.error, runtime.fix].filter(Boolean).join(" ") || "Container runtime unusable.";
+  }
+  const kind = runtime.kind === "podman" ? "Podman" : "Docker";
+  const version = runtime.version ? ` ${runtime.version}` : "";
+  return `${kind}${version}, ${runtime.gpus ? "GPUs available" : "no GPUs reach containers"}`;
+}
+
 function installProgress(state: EngineInstall): string {
+  // Row 42: a pull counts layers, not bytes; its message says how far it is.
+  if (state.engine === "vllm" && state.message) return state.message;
   const total = state.bytesTotal ?? 0;
   if (state.state === "downloading" && total > 0) {
     const percent = Math.min(100, Math.round(((state.bytesDownloaded ?? 0) / total) * 100));
