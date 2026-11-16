@@ -1599,3 +1599,111 @@ describe("a running model's prompt cache on disk (row 15)", () => {
     expect(line).toHaveTextContent("it applies at the next start");
   });
 });
+
+describe("vLLM from its official container (row 42)", () => {
+  const IMAGE = "vllm/vllm-openai@sha256:" + "d".repeat(64);
+
+  function engines(container: Record<string, unknown>, runtime: Record<string, unknown>) {
+    handlers.set("GET agent/v1/engines", () => ({
+      status: 200,
+      body: {
+        containerRuntime: runtime,
+        engines: [
+          {
+            engine: "vllm",
+            available: Boolean(container.pulled),
+            version: container.pulled ? "0.33.0" : undefined,
+            modelFormats: ["safetensors"],
+            acquisition: {
+              policy: "manual",
+              installable: false,
+              manualInstall: { docsUrl: "https://docs.vllm.ai/" },
+            },
+            container: { image: IMAGE, version: "0.33.0", source: "pinned", ...container },
+          },
+        ],
+      },
+    }));
+    handlers.set("GET agent/v1/engines/vllm/install", () => ({
+      status: 404,
+      body: { detail: "no install yet" },
+    }));
+    handlers.set("POST agent/v1/engines/vllm/install", () => ({
+      status: 202,
+      body: {
+        engine: "vllm",
+        state: "downloading",
+        message: "pulling vLLM 0.33.0: 3 of 20 layers",
+      },
+    }));
+  }
+
+  function pullBodies(): unknown[] {
+    return vi
+      .mocked(fetch)
+      .mock.calls.filter(([, init]) => init?.method === "POST")
+      .filter(([url]) => String(url).endsWith("/v1/engines/vllm/install"))
+      .map(([, init]) => JSON.parse(String(init?.body ?? "{}")));
+  }
+
+  it("on a machine where Docker reaches the GPUs, offers the container and pulls it", async () => {
+    engines({ installable: true }, { kind: "docker", version: "27.3.1", usable: true, gpus: true });
+    render(<InferencePage />);
+    const line = await screen.findByTestId("container-runtime", {}, { timeout: 5000 });
+    expect(line).toHaveTextContent("Docker 27.3.1, GPUs available");
+    await act(async () => {
+      screen.getByRole("button", { name: "Install vLLM container" }).click();
+    });
+    await waitFor(() => expect(pullBodies()).toEqual([{ variant: "container" }]));
+    expect(await screen.findByTestId("engine-install-progress")).toHaveTextContent(
+      "pulling vLLM 0.33.0: 3 of 20 layers",
+    );
+  });
+
+  it("names the image in use and the one kept before it", async () => {
+    engines(
+      {
+        installable: true,
+        pulled: { version: "0.33.0", image: IMAGE, previousVersion: "0.32.0" },
+      },
+      { kind: "docker", version: "27.3.1", usable: true, gpus: true },
+    );
+    render(<InferencePage />);
+    const pulled = await screen.findByTestId("container-image", {}, { timeout: 5000 });
+    expect(pulled).toHaveTextContent("Container image: vLLM 0.33.0");
+    expect(pulled).toHaveTextContent("before it: 0.32.0");
+  });
+
+  it("says why the container cannot run here, with the fix", async () => {
+    engines(
+      { installable: false, reason: "This account may not use Docker: permission denied" },
+      {
+        kind: "docker",
+        usable: false,
+        gpus: false,
+        error: "This account may not use Docker: permission denied",
+        fix: "Add this account to the docker group, then restart Eugene.",
+      },
+    );
+    render(<InferencePage />);
+    const line = await screen.findByTestId("container-runtime", {}, { timeout: 5000 });
+    expect(line).toHaveTextContent("This account may not use Docker");
+    expect(line).toHaveTextContent("Add this account to the docker group");
+    expect(screen.queryByRole("button", { name: "Install vLLM container" })).toBeNull();
+  });
+
+  it("an untested image is offered and labelled", async () => {
+    engines(
+      { installable: true, untested: true, variant: "rocm" },
+      { kind: "docker", version: "27.3.1", usable: true, gpus: false },
+    );
+    render(<InferencePage />);
+    expect(
+      await screen.findByTestId("container-untested", {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Install vLLM container" })).toBeEnabled();
+    expect(screen.getByTestId("container-runtime")).toHaveTextContent(
+      "Docker 27.3.1, no GPUs reach containers",
+    );
+  });
+});
