@@ -7433,6 +7433,17 @@ export interface components {
             loadProgress?: components["schemas"]["LoadProgress"];
             speculation?: components["schemas"]["RuntimeSpeculation"];
             promptCache?: components["schemas"]["RuntimePromptCache"];
+            /**
+             * @description Requests occupying the engine now, from every client of it, as the
+             *     engine counts them (row 14, M4-LOAD). Only vLLM says: its `GET /load`
+             *     answers `{"server_load": n}`, read every 2 s while the runtime is
+             *     `ready`. llama.cpp has no such number, so the field is null there, and
+             *     null when the engine did not answer the last read or is not `ready`.
+             *     It is never a 0 for an engine that said nothing. A gateway counts only
+             *     its own requests, so this is where another door's use shows. Observed,
+             *     never declared.
+             */
+            readonly engineLoad?: number | null;
         };
         /**
          * @description Strata's applied launch settings, read from the launch configuration
