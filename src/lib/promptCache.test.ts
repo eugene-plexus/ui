@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ACTS_WHEN_UNSET } from "./speculation";
-import { PROMPT_CACHE_KEYS, promptCacheLine } from "./promptCache";
+import { PROMPT_CACHE_KEYS, diskPromptCacheLine, promptCacheLine } from "./promptCache";
 
 const GIB = 1024 ** 3;
 
@@ -81,5 +81,38 @@ describe("the profile editor and an unset cache setting", () => {
       expect(PROMPT_CACHE_KEYS.has(key)).toBe(true);
       expect(ACTS_WHEN_UNSET.has(key)).toBe(true);
     }
+  });
+});
+
+describe("a running model's prompt cache on disk (row 15)", () => {
+  const MIB = 1024 ** 2;
+
+  it("says what is saved for its next start", () => {
+    expect(diskPromptCacheLine({ saving: true, conversations: 2, bytes: 340 * MIB })).toEqual({
+      text: "Prompt cache on disk: 2 saved conversations, 340 MiB.",
+      note: null,
+    });
+    expect(diskPromptCacheLine({ saving: true, conversations: 1, bytes: 3 * GIB })?.text).toBe(
+      "Prompt cache on disk: 1 saved conversation, 3 GiB.",
+    );
+  });
+
+  it("says when nothing is saved yet", () => {
+    expect(diskPromptCacheLine({ saving: true, conversations: 0, bytes: 0 })?.text).toBe(
+      "Prompt cache on disk: on, nothing saved yet.",
+    );
+  });
+
+  it("says it is off, and why, in the agent's words", () => {
+    const note = "Off in this machine's settings.";
+    expect(diskPromptCacheLine({ saving: false, conversations: 0, bytes: 0, note })).toEqual({
+      text: "Prompt cache on disk: off.",
+      note,
+    });
+  });
+
+  it("shows nothing for a model with no such cache", () => {
+    expect(diskPromptCacheLine(null)).toBeNull();
+    expect(diskPromptCacheLine(undefined)).toBeNull();
   });
 });

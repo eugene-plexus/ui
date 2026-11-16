@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ConfigFieldInput } from "@/components/ConfigField";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { PromptCacheOnDisk } from "@/components/PromptCacheOnDisk";
 import { ApiError, api, describeError } from "@/lib/api";
 import {
   configGroups,
@@ -756,6 +757,7 @@ export function ConfigEditor({
           />
         ))}
         {category === "modelStorage" && <ClearModelCopies target={target} />}
+        {category === "promptCache" && <PromptCacheOnDisk target={target} />}
       </section>
     ));
   }

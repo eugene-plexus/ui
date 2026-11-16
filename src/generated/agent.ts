@@ -3400,6 +3400,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/prompt-cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What this machine keeps of its engines' prompt caches on disk.
+         * @description Row 15 (DI2, `docs/design/deepinfer-lessons.md`; call DI-C4). Before
+         *     the agent stops or restarts a llama.cpp runtime, it saves the
+         *     conversations the engine's slots hold to files in this machine's
+         *     private Eugene folder (`<config folder>/prompt-cache`), and reads
+         *     them back into the slots when the runtime is next ready, so the
+         *     next turn of each does not reread its whole prompt. A crash saves
+         *     nothing.
+         *
+         *     **The files are copies of people's chats** (the token ids and the
+         *     engine's state for them). They are never readable through any
+         *     route: this answers counts, sizes and dates only. They expire
+         *     `days` after they were saved (reading one back does not renew it),
+         *     the oldest go first above `capBytes`, a save never takes the disk
+         *     below `diskPromptCacheMinFreeGb`, a runtime's files go with the
+         *     runtime, and turning the setting off deletes them all. Every
+         *     regular file in the folder counts as the cache's, whatever its name.
+         *
+         *     **A file is read back only by the launch it was saved by:** the
+         *     same runtime, model file, engine build and command line (cache
+         *     type, context and slot layout included). Each launch gets its own
+         *     folder, keyed on those, so a mismatch is a miss and never a load.
+         *
+         *     Operator-only.
+         */
+        get: operations["getPromptCacheOnDisk"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete every saved conversation on this machine.
+         * @description Deletes every file of the prompt cache on disk. It stops nothing and
+         *     does not switch the setting off: a running model's conversations
+         *     stay in its memory and are saved again at its next planned stop.
+         *     Deleting nothing is a success. A file the system would not delete
+         *     is counted in `notDeleted`, and `reason` names the first cause.
+         *
+         *     Operator-only: it deletes files on this host.
+         */
+        delete: operations["clearPromptCacheOnDisk"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config": {
         parameters: {
             query?: never;
@@ -7433,6 +7485,7 @@ export interface components {
             loadProgress?: components["schemas"]["LoadProgress"];
             speculation?: components["schemas"]["RuntimeSpeculation"];
             promptCache?: components["schemas"]["RuntimePromptCache"];
+            diskPromptCache?: components["schemas"]["RuntimeDiskPromptCache"];
             /**
              * @description Requests occupying the engine now, from every client of it, as the
              *     engine counts them (row 14, M4-LOAD). Only vLLM says: its `GET /load`
@@ -7602,6 +7655,92 @@ export interface components {
          * @enum {string}
          */
         PromptCacheSource: "profile" | "engine_default" | "extra_args" | "off" | "unsupported";
+        /**
+         * @description The prompt cache on disk for this runtime (row 15,
+         *     `GET /v1/prompt-cache`): whether this run saves its conversations at
+         *     a planned stop and reads them back at its next start, read from the
+         *     command line it was started with and this machine's setting now, and
+         *     what is saved for it. Absent for a runtime that does not run on
+         *     llama.cpp, and for a search model.
+         */
+        RuntimeDiskPromptCache: {
+            /**
+             * @description True when a planned stop of this run saves its conversations and
+             *     its next start reads them back. False when the setting is off,
+             *     the engine was started without Eugene's folder (an older start,
+             *     a build without `--slot-save-path`, an engine other machines can
+             *     reach by its last `--host`, slot routes turned off or behind an
+             *     API key, or a folder set by hand), and `note` says which. While
+             *     it saves, `note` says why the last stop kept less than it held
+             *     (no room above the free-space floor or the cap, no time, the
+             *     engine's refusal). Never a path.
+             */
+            saving: boolean;
+            /**
+             * @description Saved conversations its next start would read back (the engine
+             *     reads back at most one per slot).
+             */
+            conversations: number;
+            /**
+             * Format: int64
+             * @description Their size on disk.
+             */
+            bytes: number;
+            /** @description Why it does not save, or what applies at the next start. */
+            note?: string | null;
+        };
+        /**
+         * @description What this machine keeps of its engines' prompt caches on disk, and
+         *     the limits it keeps them under (`GET /v1/prompt-cache`). Counts,
+         *     sizes and dates only; never what the conversations say.
+         */
+        PromptCacheOnDisk: {
+            /** @description The setting `diskPromptCache` now. Off deletes every file. */
+            enabled: boolean;
+            /** @description A file not used for this many days is deleted (`diskPromptCacheDays`). */
+            days: number;
+            /**
+             * Format: int64
+             * @description Above this size the least recently used files are deleted
+             *     (`diskPromptCacheGib`).
+             */
+            capBytes: number;
+            /** Format: int64 */
+            bytes: number;
+            /** @description Saved conversations, one file each. */
+            conversations: number;
+            /**
+             * Format: date-time
+             * @description When the oldest file was saved. Null with no files.
+             */
+            oldest?: string | null;
+            /**
+             * Format: date-time
+             * @description When the newest file was saved. Null with no files.
+             */
+            newest?: string | null;
+            /** @description The folder on this machine. Null when this agent has none. */
+            folder?: string | null;
+            /** @description One entry per runtime with saved conversations. */
+            runtimes: components["schemas"]["PromptCacheOnDiskRuntime"][];
+        };
+        PromptCacheOnDiskRuntime: {
+            runtime: string;
+            conversations: number;
+            /** Format: int64 */
+            bytes: number;
+        };
+        /** @description What `DELETE /v1/prompt-cache` deleted. */
+        PromptCacheOnDiskCleared: {
+            /** @description Files deleted. */
+            conversations: number;
+            /** Format: int64 */
+            bytesFreed: number;
+            /** @description Files the system would not delete. */
+            notDeleted: number;
+            /** @description The first cause a file was not deleted, as the system gave it. */
+            reason?: string | null;
+        };
         /**
          * @description Speculative decoding as this runtime was started with it, and how
          *     much of what it drafted the model kept (SD1,
@@ -14955,6 +15094,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelCopyClearResult"];
+                };
+            };
+        };
+    };
+    getPromptCacheOnDisk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The files kept now, and the limits they are kept under. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptCacheOnDisk"];
+                };
+            };
+        };
+    };
+    clearPromptCacheOnDisk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptCacheOnDiskCleared"];
                 };
             };
         };

@@ -94,7 +94,7 @@ export function settingSummary(field: ConfigField, value: unknown): string {
 
 // Common tasks first. Within a category the schema retains its field order.
 const ORDER: Record<string, readonly string[]> = {
-  agent: ["storage", "modelStorage", "node", "security", "engines", "ui", "setup"],
+  agent: ["storage", "modelStorage", "promptCache", "node", "security", "engines", "ui", "setup"],
   control: ["security", "replication", "topology", "ui", "logging", "setup"],
   gateway: ["generation", "lifecycle", "clients", "routing", "metrics", "logging"],
   library: ["library", "catalogue", "downloads", "guidance", "scanning", "logging"],
