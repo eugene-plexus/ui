@@ -325,7 +325,10 @@ export function UseFromAppsCard({
     setError(null);
     try {
       await api.put(where.target, `/v1/auth/client-keys/${encodeURIComponent(editingKey)}/limits`, {
-        limits: cleanClientLimits(editLimits),
+        limits: cleanClientLimits(
+          editLimits,
+          (keys ?? []).find((k) => k.id === editingKey)?.limits ?? undefined,
+        ),
       });
       setEditingKey(null);
       await load();

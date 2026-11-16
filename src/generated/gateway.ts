@@ -4216,11 +4216,11 @@ export interface components {
         ProviderModelPrice: {
             input_per_million_micros: number;
             output_per_million_micros: number;
-            /** @description Where the driver read it (`openrouter`, or `table` for Eugene's price table of OpenAI, Anthropic and Gemini). */
+            /** @description Where the driver read it (`openrouter`, the provider's own listing). */
             source?: string;
             /**
              * Format: date
-             * @description The date the price was read or the table was made.
+             * @description The day the price was read.
              */
             as_of?: string;
         };

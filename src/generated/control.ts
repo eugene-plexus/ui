@@ -269,9 +269,10 @@ export interface paths {
          *     administrator (row 39) sees people and groups but no keys: one who
          *     may manage people or groups sees all of them, one who manages the
          *     membership of some groups sees those groups and their members. Active
-         *     root only. Day counters are kept for 62 days and month counters for
-         *     13 months; a period older than that answers zero, and `kept` says
-         *     how long counters are kept.
+         *     root only. Each subject keeps its newest 62 days and 13 months with
+         *     use; an older period answers zero, and `kept` says how many are kept.
+         *     Allowances are always reported for the current UTC day and month,
+         *     whatever `day` and `month` ask for.
          */
         get: operations["getUsage"];
         put?: never;
@@ -298,7 +299,8 @@ export interface paths {
          *     Under the issuer, beside `userinfo`, because an app reaches the root
          *     there. Answers only for the person the token names. `subjects` holds
          *     one `person` subject and one `group` subject for each of their groups
-         *     that sets an allowance.
+         *     that sets an allowance. A group's totals carry no breakdown by model
+         *     (`models` is empty): what the other members used is theirs.
          */
         get: operations["getOwnUsage"];
         put?: never;
@@ -3898,7 +3900,12 @@ export interface components {
              */
             maxQueuedRequests?: number;
             /**
-             * @description Row 40: how many tokens (in and out) this key's lineage may use in
+             * @description **On an edit (`PUT .../limits`), an allowance left out keeps the
+             *     key's current one and `null` clears it**, so a console a release
+             *     behind, which knows none of the three, never clears them. Every
+             *     other limit is replaced whole, as before.
+             *
+             *     Row 40: how many tokens (in and out) this key's lineage may use in
              *     one UTC day, across every gateway. A request is refused before it
              *     runs once the day's tokens reach it (429, `insufficient_quota`,
              *     `X-Eugene-Refusal-Reason: allowance`); a request that crosses the
@@ -3907,18 +3914,19 @@ export interface components {
              *     authority writes it only when it is set. Not part of the policy a
              *     running request is bound to, and never sent in an admission answer.
              */
-            tokensPerDay?: number;
-            /** @description Row 40. As `tokensPerDay`, for one calendar month (UTC). Absent means no limit. */
-            tokensPerMonth?: number;
+            tokensPerDay?: number | null;
+            /** @description Row 40. As `tokensPerDay`, for one calendar month (UTC). Absent means no limit; on an edit, absent keeps and null clears. */
+            tokensPerMonth?: number | null;
             /**
              * @description Row 40: how much this key's lineage may spend in one calendar month
              *     (UTC), in millionths of a US dollar, at the install's prices (the
              *     owner's rate for a model, else its provider's published price, else
              *     nothing for a local model). A model with no price is refused while
              *     this is set, because its cost cannot be counted. `0` allows only
-             *     models that cost nothing. Absent means no limit.
+             *     models that cost nothing. Absent means no limit; on an edit,
+             *     absent keeps and null clears.
              */
-            costPerMonthMicros?: number;
+            costPerMonthMicros?: number | null;
         };
         ClientKeyUpdateRequest: {
             limits: components["schemas"]["ClientKeyLimits"];
@@ -4051,13 +4059,23 @@ export interface components {
         /**
          * @description Row 40: what one served request used, as the gateway that served it
          *     measured it. `model` is the model that served it (a fallback's, not
-         *     the one asked for), and `price` that model's hint.
+         *     the one asked for), and `price` that model's hint. When the serving
+         *     model has no price at the authority, the request is priced at the
+         *     model its lease was acquired for.
          */
         AdmissionUsage: {
             model: string;
             promptTokens: number;
             completionTokens: number;
             price: components["schemas"]["ModelPriceHint"];
+            /**
+             * @description True when the tokens are the gateway's estimate, not the backend's
+             *     count: the backend reported none, or the answer was cut before its
+             *     end (the client hung up, the backend failed after its first token,
+             *     the gateway stopped a repetition). The prompt is the estimate the
+             *     queue made of it; the answer is what was forwarded. Absent is false.
+             */
+            estimated?: boolean;
         };
         ClientKey: {
             id: string;
@@ -5980,11 +5998,12 @@ export interface components {
             /** @default [] */
             permissions: components["schemas"]["PersonPermission"][];
             /**
-             * @description The group's policies, replaced whole: a `null` or absent policy
-             *     inside is not set. Omitted from a replace, the group keeps its
-             *     current policies, so a console that predates policies never
-             *     clears them. Omitted from a create, the group sets none. An
-             *     older root refuses this field (`additionalProperties: false`).
+             * @description The group's policies: a policy set inside is set, a `null` one is
+             *     cleared, and an absent one keeps its current value (row 40), so a
+             *     console that predates a policy never clears it. Omitted from a
+             *     replace, the group keeps every current policy. Omitted from a
+             *     create, the group sets none. An older root refuses this field
+             *     (`additionalProperties: false`).
              */
             policies?: components["schemas"]["GroupPolicies"];
         };

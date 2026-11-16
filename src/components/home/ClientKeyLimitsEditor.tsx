@@ -346,7 +346,14 @@ export type ClientKeyLimitsBody = Omit<
 > &
   Partial<Pick<ClientKeyLimits, "band" | "maxQueuedRequests" | "readMetrics">>;
 
-export function cleanClientLimits(value: ClientKeyLimits): ClientKeyLimitsBody {
+/** The limits as they are sent. `before` is the key's limits now, on an edit:
+ * an allowance it has that the editor emptied is sent as null, which clears it
+ * (row 40 review S2); one it never had is left out, which a root a release
+ * behind, refusing fields it does not know, needs. */
+export function cleanClientLimits(
+  value: ClientKeyLimits,
+  before?: ClientKeyLimits,
+): ClientKeyLimitsBody {
   const {
     band,
     maxQueuedRequests,
@@ -358,10 +365,22 @@ export function cleanClientLimits(value: ClientKeyLimits): ClientKeyLimitsBody {
   } = value;
   return {
     ...rest,
-    // Row 40: sent only when set, as `readMetrics` is.
-    ...(tokensPerDay != null ? { tokensPerDay } : {}),
-    ...(tokensPerMonth != null ? { tokensPerMonth } : {}),
-    ...(costPerMonthMicros != null ? { costPerMonthMicros } : {}),
+    // Row 40: sent when set, null when the key had one and it was emptied.
+    ...(tokensPerDay != null
+      ? { tokensPerDay }
+      : before?.tokensPerDay != null
+        ? { tokensPerDay: null }
+        : {}),
+    ...(tokensPerMonth != null
+      ? { tokensPerMonth }
+      : before?.tokensPerMonth != null
+        ? { tokensPerMonth: null }
+        : {}),
+    ...(costPerMonthMicros != null
+      ? { costPerMonthMicros }
+      : before?.costPerMonthMicros != null
+        ? { costPerMonthMicros: null }
+        : {}),
     allowedModels:
       value.allowedModels == null
         ? null

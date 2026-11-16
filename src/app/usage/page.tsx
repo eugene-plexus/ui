@@ -285,9 +285,10 @@ export default function UsagePage() {
               Prices
             </h2>
             <p className="text-sm text-[color:var(--muted)]">
-              Your rate for a model wins over its provider&rsquo;s price, from the next request.
-              Eugene does not guess what a local model costs you in power or hardware: set a rate to
-              count it.
+              Your rate for a model wins over its provider&rsquo;s price, from the next request. A
+              request answered under another name that has no price is counted at the model it asked
+              for. Eugene keeps no price list of its own and does not guess what a local model costs
+              you in power or hardware: set a rate to count it.
             </p>
             <ul className="divide-y divide-[color:var(--border)]">
               {served.map((m) => (

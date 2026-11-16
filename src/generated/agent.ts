@@ -5993,7 +5993,12 @@ export interface components {
              */
             maxQueuedRequests?: number;
             /**
-             * @description Row 40: how many tokens (in and out) this key's lineage may use in
+             * @description **On an edit (`PUT .../limits`), an allowance left out keeps the
+             *     key's current one and `null` clears it**, so a console a release
+             *     behind, which knows none of the three, never clears them. Every
+             *     other limit is replaced whole, as before.
+             *
+             *     Row 40: how many tokens (in and out) this key's lineage may use in
              *     one UTC day, across every gateway. A request is refused before it
              *     runs once the day's tokens reach it (429, `insufficient_quota`,
              *     `X-Eugene-Refusal-Reason: allowance`); a request that crosses the
@@ -6002,18 +6007,19 @@ export interface components {
              *     authority writes it only when it is set. Not part of the policy a
              *     running request is bound to, and never sent in an admission answer.
              */
-            tokensPerDay?: number;
-            /** @description Row 40. As `tokensPerDay`, for one calendar month (UTC). Absent means no limit. */
-            tokensPerMonth?: number;
+            tokensPerDay?: number | null;
+            /** @description Row 40. As `tokensPerDay`, for one calendar month (UTC). Absent means no limit; on an edit, absent keeps and null clears. */
+            tokensPerMonth?: number | null;
             /**
              * @description Row 40: how much this key's lineage may spend in one calendar month
              *     (UTC), in millionths of a US dollar, at the install's prices (the
              *     owner's rate for a model, else its provider's published price, else
              *     nothing for a local model). A model with no price is refused while
              *     this is set, because its cost cannot be counted. `0` allows only
-             *     models that cost nothing. Absent means no limit.
+             *     models that cost nothing. Absent means no limit; on an edit,
+             *     absent keeps and null clears.
              */
-            costPerMonthMicros?: number;
+            costPerMonthMicros?: number | null;
         };
         ClientKeyUpdateRequest: {
             limits: components["schemas"]["ClientKeyLimits"];
@@ -9750,13 +9756,23 @@ export interface components {
         /**
          * @description Row 40: what one served request used, as the gateway that served it
          *     measured it. `model` is the model that served it (a fallback's, not
-         *     the one asked for), and `price` that model's hint.
+         *     the one asked for), and `price` that model's hint. When the serving
+         *     model has no price at the authority, the request is priced at the
+         *     model its lease was acquired for.
          */
         AdmissionUsage: {
             model: string;
             promptTokens: number;
             completionTokens: number;
             price: components["schemas"]["ModelPriceHint"];
+            /**
+             * @description True when the tokens are the gateway's estimate, not the backend's
+             *     count: the backend reported none, or the answer was cut before its
+             *     end (the client hung up, the backend failed after its first token,
+             *     the gateway stopped a repetition). The prompt is the estimate the
+             *     queue made of it; the answer is what was forwarded. Absent is false.
+             */
+            estimated?: boolean;
         };
         /**
          * @description Which requests wait or are turned away first when the machines are

@@ -207,3 +207,15 @@ describe("a key's usage allowances (row 40)", () => {
     );
   });
 });
+
+describe("clearing a key's allowance (row 40 review S2)", () => {
+  it("sends null for one the key had, and nothing for one it never had", () => {
+    const before = { ...DEFAULT_CLIENT_LIMITS, tokensPerDay: 1000 };
+    const emptied = { ...DEFAULT_CLIENT_LIMITS, tokensPerDay: undefined };
+    const sent = cleanClientLimits(emptied, before);
+    expect(sent).toHaveProperty("tokensPerDay", null);
+    expect(sent).not.toHaveProperty("tokensPerMonth");
+    expect(sent).not.toHaveProperty("costPerMonthMicros");
+    expect(cleanClientLimits(emptied)).not.toHaveProperty("tokensPerDay");
+  });
+});
