@@ -248,75 +248,78 @@ export default function UsagePage() {
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <section className="section-panel flex flex-col gap-3" aria-labelledby="usage-heading">
-          <h2 id="usage-heading" className="section-heading mb-0 text-base font-semibold">
-            Usage
-          </h2>
-          <p className="text-sm text-[color:var(--muted)]">
-            Tokens and spend on every gateway, for {day} and {month} (UTC). Set allowances on a key
-            under Connect apps and on a group under People.
-          </p>
-          {failure && (
-            <p role="alert" className="status-error text-sm">
-              Usage could not be read: {failure}
+      {/* The shell is h-dvh with overflow hidden, so the page owns its scroll. */}
+      <main className="relative z-10 min-h-0 flex-1 overflow-y-auto">
+        <div className="flex flex-col gap-4">
+          <section className="section-panel flex flex-col gap-3" aria-labelledby="usage-heading">
+            <h2 id="usage-heading" className="section-heading mb-0 text-base font-semibold">
+              Usage
+            </h2>
+            <p className="text-sm text-[color:var(--muted)]">
+              Tokens and spend on every gateway, for {day} and {month} (UTC). Set allowances on a
+              key under Connect apps and on a group under People.
             </p>
-          )}
-          {report &&
-            (["key", "group", "person"] as const).map(
-              (kind) =>
-                grouped[kind].length > 0 && (
-                  <div key={kind} className="flex flex-col gap-2">
-                    <h3 className="text-sm font-semibold">{KIND_HEADINGS[kind]}</h3>
-                    {grouped[kind].map((s) => (
-                      <Subject key={`${s.kind}-${s.id}`} subject={s} />
-                    ))}
-                  </div>
-                ),
+            {failure && (
+              <p role="alert" className="status-error text-sm">
+                Usage could not be read: {failure}
+              </p>
             )}
-          {report && report.subjects.length === 0 && (
-            <p className="text-sm">No keys, people or groups yet.</p>
-          )}
-        </section>
-        <section className="section-panel flex flex-col gap-2" aria-labelledby="prices-heading">
-          <h2 id="prices-heading" className="section-heading mb-0 text-base font-semibold">
-            Prices
-          </h2>
-          <p className="text-sm text-[color:var(--muted)]">
-            Your rate for a model wins over its provider&rsquo;s price, from the next request.
-            Eugene does not guess what a local model costs you in power or hardware: set a rate to
-            count it.
-          </p>
-          <ul className="divide-y divide-[color:var(--border)]">
-            {served.map((m) => (
-              <PriceRow
-                key={`${m.id}-${owners.get(m.id)?.inputPerMillionMicros ?? ""}-${owners.get(m.id)?.outputPerMillionMicros ?? ""}`}
-                model={m.id}
-                provider={m.x_eugene_plexus?.provider_price ?? null}
-                owner={owners.get(m.id) ?? null}
-                local={m.x_eugene_plexus?.locality === "local"}
-                onSave={async (price) => {
-                  setPrices(
-                    await api.put<ModelPriceList>("control", "/v1/usage/prices", {
-                      model: m.id,
-                      price,
-                    }),
-                  );
-                }}
-              />
-            ))}
-            {[...owners.values()]
-              .filter((p) => !served.some((m) => m.id === p.model))
-              .map((p) => (
-                <li key={p.model} className="py-2 text-sm">
-                  <span className="font-mono">{p.model}</span>: your rate $
-                  {microsToDollars(p.inputPerMillionMicros)} in, $
-                  {microsToDollars(p.outputPerMillionMicros)} out (not served now)
-                </li>
+            {report &&
+              (["key", "group", "person"] as const).map(
+                (kind) =>
+                  grouped[kind].length > 0 && (
+                    <div key={kind} className="flex flex-col gap-2">
+                      <h3 className="text-sm font-semibold">{KIND_HEADINGS[kind]}</h3>
+                      {grouped[kind].map((s) => (
+                        <Subject key={`${s.kind}-${s.id}`} subject={s} />
+                      ))}
+                    </div>
+                  ),
+              )}
+            {report && report.subjects.length === 0 && (
+              <p className="text-sm">No keys, people or groups yet.</p>
+            )}
+          </section>
+          <section className="section-panel flex flex-col gap-2" aria-labelledby="prices-heading">
+            <h2 id="prices-heading" className="section-heading mb-0 text-base font-semibold">
+              Prices
+            </h2>
+            <p className="text-sm text-[color:var(--muted)]">
+              Your rate for a model wins over its provider&rsquo;s price, from the next request.
+              Eugene does not guess what a local model costs you in power or hardware: set a rate to
+              count it.
+            </p>
+            <ul className="divide-y divide-[color:var(--border)]">
+              {served.map((m) => (
+                <PriceRow
+                  key={`${m.id}-${owners.get(m.id)?.inputPerMillionMicros ?? ""}-${owners.get(m.id)?.outputPerMillionMicros ?? ""}`}
+                  model={m.id}
+                  provider={m.x_eugene_plexus?.provider_price ?? null}
+                  owner={owners.get(m.id) ?? null}
+                  local={m.x_eugene_plexus?.locality === "local"}
+                  onSave={async (price) => {
+                    setPrices(
+                      await api.put<ModelPriceList>("control", "/v1/usage/prices", {
+                        model: m.id,
+                        price,
+                      }),
+                    );
+                  }}
+                />
               ))}
-          </ul>
-        </section>
-      </div>
+              {[...owners.values()]
+                .filter((p) => !served.some((m) => m.id === p.model))
+                .map((p) => (
+                  <li key={p.model} className="py-2 text-sm">
+                    <span className="font-mono">{p.model}</span>: your rate $
+                    {microsToDollars(p.inputPerMillionMicros)} in, $
+                    {microsToDollars(p.outputPerMillionMicros)} out (not served now)
+                  </li>
+                ))}
+            </ul>
+          </section>
+        </div>
+      </main>
     </AppShell>
   );
 }

@@ -257,6 +257,15 @@ export const SCREENS: readonly Screen[] = [
     blurb: "What the gateway served, per request and per attempt.",
   },
   {
+    // Row 40: tokens and spend per key, person and group, and each model's price.
+    href: "/usage",
+    label: "Usage",
+    icon: "KeyRound",
+    layer: "gateway",
+    spans: [],
+    blurb: "What each key, person and group used, their allowances, and each model's price.",
+  },
+  {
     href: "/routing",
     label: "Routing",
     icon: "Route",
