@@ -30,6 +30,8 @@ export const HOST_WINDOWS: { label: string; hours: number }[] = [
   { label: "Last 24 hours", hours: 24 },
   { label: "Last 7 days", hours: 24 * 7 },
   { label: "Last 30 days", hours: 24 * 30 },
+  // Row 38: the hour buckets an agent keeps by default reach 90 days.
+  { label: "Last 90 days", hours: 24 * 90 },
 ];
 
 /** What a fleet row draws, and nothing else: the row reads every machine. */

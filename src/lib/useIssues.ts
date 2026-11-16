@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
+import type { AlertsView } from "./alerts";
 import { api, describeError, onWrite } from "./api";
 import { isLockedError } from "./controlUnlock";
 import {
@@ -279,7 +280,7 @@ export function useRefreshWithIssues(load: () => Promise<void>): void {
 async function readSources(token: string): Promise<IssueSources> {
   const options = reads(token);
 
-  const [routing, drivers, local, roster, rootAuth] = await Promise.all([
+  const [routing, drivers, local, roster, rootAuth, alerts] = await Promise.all([
     api.get<RoutingTableView>("gateway", "/v1/admin/routing", options).catch(() => null),
     api.get<DriversInfo>("gateway", "/v1/admin/drivers", options).catch(() => null),
     readIdentity("agent", options),
@@ -288,6 +289,8 @@ async function readSources(token: string): Promise<IssueSources> {
     api
       .get<{ passphraseFile?: "matches" | "old" | "none" }>("control", "/v1/auth/status", options)
       .catch(() => null),
+    // Row 38: what the root's alert rules fired (an older root has no route).
+    api.get<AlertsView>("control", "/v1/alerts", options).catch(() => null),
   ]);
 
   // The local node's name is what tells the others apart from it, and
@@ -330,6 +333,7 @@ async function readSources(token: string): Promise<IssueSources> {
     routing,
     drivers: drivers?.drivers ?? null,
     controlPassphraseFile: rootAuth?.passphraseFile ?? null,
+    alerts,
   };
 }
 

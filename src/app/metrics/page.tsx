@@ -57,7 +57,15 @@ import { MetricsExportPanel } from "@/components/MetricsExport";
 import { More } from "@/components/Help";
 import { ModelName } from "@/components/ModelName";
 import { ApiError, api, describeError } from "@/lib/api";
-import { compact, hourlyPoints, msLabel, tilesFrom } from "@/lib/metricsCharts";
+import {
+  compact,
+  dailyPoints,
+  dayLabel,
+  hourlyPoints,
+  msLabel,
+  tilesFrom,
+  totalsFromHours,
+} from "@/lib/metricsCharts";
 import { withContext } from "@/lib/modelContext";
 import { labelOf } from "@/lib/nodeLabels";
 import type { ClientUsageSummary, PersonList, RoutingTableView } from "@/lib/types";
@@ -220,7 +228,14 @@ const WINDOWS: { label: string; hours: number }[] = [
   { label: "Last hour", hours: 1 },
   { label: "Last 24 hours", hours: 24 },
   { label: "Last 7 days", hours: 24 * 7 },
+  // Row 38: past the gateway's retention the hours come from its stored
+  // rollups, which keep counts and means, and are drawn by the day.
+  { label: "Last 30 days", hours: 24 * 30 },
+  { label: "Last 90 days", hours: 24 * 90 },
 ];
+
+/** Windows longer than this are drawn by the day, from counts and means. */
+const LONG_HOURS = 24 * 7;
 
 const POLL_MS = 15_000;
 
@@ -536,10 +551,30 @@ export default function MetricsPage() {
   // refetch is in flight — no skeleton, no layout jump.
   usePolling(load, POLL_MS);
 
-  const tiles = useMemo(() => (totals ? tilesFrom(totals.groups) : null), [totals]);
+  const long = hours > LONG_HOURS;
+  const tiles = useMemo(() => {
+    const kept = totals ? tilesFrom(totals.groups) : null;
+    if (!long || !hourly) return kept;
+    // A long window's counts are the hours' sums, rollups included; its
+    // first token and decode speed are the kept requests' medians.
+    const sums = totalsFromHours(hourly.groups);
+    return {
+      requests: sums.requests,
+      errors: sums.errors,
+      cascaded: sums.cascaded,
+      swappedIn: sums.swappedIn,
+      latencyP50: sums.latencyMean,
+      ttftP50: kept?.ttftP50 ?? null,
+      decodeP50: kept?.decodeP50 ?? null,
+      decodeSamples: kept?.decodeSamples ?? 0,
+    };
+  }, [totals, hourly, long]);
   const points = useMemo(
-    () => (hourly ? hourlyPoints(hourly.groups, hourly.windowStart, hourly.windowEnd) : []),
-    [hourly],
+    () =>
+      hourly
+        ? (long ? dailyPoints : hourlyPoints)(hourly.groups, hourly.windowStart, hourly.windowEnd)
+        : [],
+    [hourly, long],
   );
   const models = useMemo(() => {
     const names = new Set<string>();
@@ -754,9 +789,19 @@ export default function MetricsPage() {
                   keep up, so these numbers are a sample. Inference was not affected.
                 </p>
               )}
-              {summary.truncated && (
+              {summary.truncated && !long && (
                 <p className="font-ui mb-4 text-sm text-[color:var(--muted)]">
                   Part of this window is older than the retention setting, so it is not included.
+                </p>
+              )}
+              {summary.truncated && long && (
+                <p
+                  data-testid="metrics-long-window"
+                  className="font-ui mb-4 text-sm text-[color:var(--muted)]"
+                >
+                  Hours older than the retention setting come from hourly totals: counts and mean
+                  latency, no percentiles. First token, decode speed and the tables below cover the
+                  requests kept whole.
                 </p>
               )}
 
@@ -787,7 +832,7 @@ export default function MetricsPage() {
                     sub="tried more than one backend"
                   />
                   <StatTile
-                    label="Median latency"
+                    label={long ? "Mean latency" : "Median latency"}
                     value={tiles.latencyP50 !== null ? ms(tiles.latencyP50) : null}
                     sub="whole request"
                   />
@@ -817,12 +862,18 @@ export default function MetricsPage() {
                 <DashboardSection
                   id="history"
                   title="Performance over time"
-                  description="Hourly buckets · edge buckets may be partial · local time"
+                  description={
+                    long
+                      ? "Daily buckets · counts summed, latency is the mean · local time"
+                      : "Hourly buckets · edge buckets may be partial · local time"
+                  }
                 >
                   <div aria-label="History" className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                     <HourChart
                       title="Requests"
                       points={points}
+                      timeLabel={long ? dayLabel : undefined}
+                      per={long ? "day" : "hour"}
                       kind="bars"
                       format={(v) => compact(Math.round(v))}
                       series={[{ name: "Requests", value: (p) => p.requests, color: SERIES }]}
@@ -831,21 +882,38 @@ export default function MetricsPage() {
                       title="Failed"
                       caption="requests no backend served"
                       points={points}
+                      timeLabel={long ? dayLabel : undefined}
+                      per={long ? "day" : "hour"}
                       kind="bars"
                       format={(v) => compact(Math.round(v))}
                       series={[{ name: "Failed", value: (p) => p.errors, color: SERIES_ERROR }]}
                     />
-                    <HourChart
-                      title="Latency"
-                      caption="whole request, per hour"
-                      points={points}
-                      kind="lines"
-                      format={(v) => msLabel(v)}
-                      series={[
-                        { name: "p50", value: (p) => p.latencyP50, color: SERIES },
-                        { name: "p90", value: (p) => p.latencyP90, color: SERIES_SOFT },
-                      ]}
-                    />
+                    {long ? (
+                      <HourChart
+                        title="Latency"
+                        caption="whole request, mean per day"
+                        points={points}
+                        timeLabel={dayLabel}
+                        per="day"
+                        kind="lines"
+                        format={(v) => msLabel(v)}
+                        series={[
+                          { name: "mean", value: (p) => p.latencyMean ?? null, color: SERIES },
+                        ]}
+                      />
+                    ) : (
+                      <HourChart
+                        title="Latency"
+                        caption="whole request, per hour"
+                        points={points}
+                        kind="lines"
+                        format={(v) => msLabel(v)}
+                        series={[
+                          { name: "p50", value: (p) => p.latencyP50, color: SERIES },
+                          { name: "p90", value: (p) => p.latencyP90, color: SERIES_SOFT },
+                        ]}
+                      />
+                    )}
                     {anyDecode ? (
                       <HourChart
                         title="Decode speed"
@@ -878,8 +946,10 @@ export default function MetricsPage() {
                     )}
                     <HourChart
                       title="Failovers & cold starts"
-                      caption="requests per hour"
+                      caption={long ? "requests per day" : "requests per hour"}
                       points={points}
+                      timeLabel={long ? dayLabel : undefined}
+                      per={long ? "day" : "hour"}
                       kind="lines"
                       format={(v) => compact(Math.round(v))}
                       series={[

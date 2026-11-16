@@ -3192,6 +3192,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What is firing now, what fired lately, and how each SLO stands
+         * @description Row 38 (`docs/design/rows/row-38.md`). The active root evaluates the
+         *     alert rules once a minute: it reads the gateway's metrics summary,
+         *     each machine's host history and its own record of which machines
+         *     answer. This is what it found, from this root's memory: a root that
+         *     took over starts with an empty history, and a rule fires again there
+         *     after its `forMinutes`.
+         *
+         *     The owner's session reads everything. A person with an operations
+         *     power (row 39) reads it with their administration session, read
+         *     only: alerts about the machines their powers reach and about models,
+         *     and SLOs set on a model. SLOs set on a client key, and the alerts
+         *     they raise, stay the owner's, as do the rules and the webhook
+         *     (`GET /v1/alerting`).
+         */
+        get: operations["getAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The alert rules, the SLO targets and whether a webhook is set
+         * @description Row 38. The owner only. Until the owner saves rules, `defaults` is
+         *     true and `rules` is the built-in set the evaluator uses: a machine
+         *     that does not answer for 5 minutes, a disk over 90% for 10 minutes,
+         *     a GPU over 85 °C for 5 minutes, failures over 5% for 10 minutes,
+         *     and an SLO budget burning 14.4 times too fast for 5 minutes. The
+         *     webhook address is a secret: only its host is shown back.
+         */
+        get: operations["getAlerting"];
+        /**
+         * Replace the alert rules and SLO targets, and set or remove the webhook
+         * @description Row 38. The owner only. One `setAlerting` entry (log version 2):
+         *     the rules and targets replace the ones held. `webhookUrl` absent
+         *     keeps the webhook; null or empty removes it; a URL sets it, sealed
+         *     under the master key and never shown back. Only `http` and `https`
+         *     addresses are taken. Refused (409) on a standby, and while the
+         *     install's standby applies a log version below 2: update the standby
+         *     first.
+         */
+        put: operations["setAlerting"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerting/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post a test alert to the webhook now
+         * @description Row 38. The owner only. Posts one `AlertWebhookPost` with
+         *     `state: test` to the webhook that is set, once, without retries,
+         *     and answers with what happened. 409 when no webhook is set.
+         */
+        post: operations["testAlertWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5092,7 +5181,12 @@ export interface components {
             at?: string;
         };
         /**
-         * @description **`retireOidcKeys` (row 5, log version 1)** keeps only the sign-in
+         * @description **`setModelPrice` (row 40, log version 3)** sets (`price` an object)
+         *     or clears (`price` null) the owner's rate for one model:
+         *     `{model, price}`. Log version 3, not 2: row 38's `setAlerting` is 2,
+         *     and a standby with row 38 alone must not be sent row 40's op.
+         *
+         *     **`retireOidcKeys` (row 5, log version 1)** keeps only the sign-in
          *     keys named in `keep` (`{keep: [kid]}`, at least one held key) and
          *     drops the others, so every token they signed stops verifying. It
          *     follows a `putOidcKey` when the owner ends every app sign-in after
@@ -5103,7 +5197,8 @@ export interface components {
          *     holds every value the old master key sealed, sealed again under
          *     the new one by the writer (`signingKey`, `controlKey`,
          *     `recoveryKey`, `installCaKey`, `oidcKeys` by `kid`, and
-         *     `externalProviders` by id). It must name exactly the sealed values
+         *     `externalProviders` by id, and `alertWebhook` when a webhook is set).
+         *     It must name exactly the sealed values
          *     the state holds, no more and no fewer, or it does not apply. Every
          *     root that applies it writes a snapshot and drops every entry
          *     before it, so no value sealed under the old key stays in the log;
@@ -5111,6 +5206,11 @@ export interface components {
          *     every entry that carries a sealed value (`putOidcKey`,
          *     `rotateSigningKey`, `setInstallCa`, `putExternalProvider`,
          *     `changePassphrase`) only while the salt is the one it sealed under.
+         *
+         *     **`setAlerting` (row 38, log version 2)** replaces the alert rules
+         *     and SLO targets (`{rules, slos, sealedWebhookUrl, webhookHost}`).
+         *     The webhook address is sealed under the master key, and the
+         *     writer appends it only while the salt is the one it sealed under.
          *
          *     **`setNodeCertificateNames` (LT2, 2026-10-20)** replaces the names
          *     the owner listed for one node's client certificate (`{name,
@@ -5178,7 +5278,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames" | "retireOidcKeys" | "changePassphrase" | "setModelPrice";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames" | "retireOidcKeys" | "changePassphrase" | "setModelPrice" | "setAlerting";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -5363,6 +5463,8 @@ export interface components {
              *     passphrase-derived key as `sealedSigningKey` is.
              */
             oidcKeys?: components["schemas"]["SnapshotOidcKey"][];
+            /** @description What `setAlerting` wrote; null until the owner saves alert settings (row 38). */
+            alerting?: components["schemas"]["SnapshotAlerting"] | null;
             /** @description Sign-ins revoked at `/oidc/revoke` and not yet expired, by their `jti`. */
             revokedSignIns?: components["schemas"]["RevokedSession"][];
         };
@@ -6149,6 +6251,198 @@ export interface components {
         /** @description All permission groups in the central directory. */
         PermissionGroupList: {
             groups: components["schemas"]["PermissionGroup"][];
+        };
+        /**
+         * @description What a rule watches, and what its `threshold` means:
+         *
+         *     - `machine-down`: an enrolled machine this root cannot reach. No
+         *       threshold.
+         *     - `disk-full`: a model or engine folder's volume, percent used.
+         *     - `gpu-hot`: a GPU's temperature, °C. A GPU that does not report
+         *       its temperature is never hot.
+         *     - `failure-rate`: failed requests, percent of the requests over the
+         *       last `forMinutes` (at least 10 requests).
+         *     - `slo-burn`: an SLO's error budget spent this many times faster
+         *       than its window allows, over the last hour.
+         * @enum {string}
+         */
+        AlertRuleKind: "machine-down" | "disk-full" | "gpu-hot" | "failure-rate" | "slo-burn";
+        AlertRule: {
+            id: string;
+            kind: components["schemas"]["AlertRuleKind"];
+            /** @default true */
+            enabled: boolean;
+            /**
+             * @description What `kind` says. Ignored by `machine-down`.
+             * @default 0
+             */
+            threshold: number;
+            /**
+             * @description How long the condition must hold before the alert fires, and how
+             *     long it must be clear before it resolves, so a value that flaps
+             *     does not post every minute.
+             * @default 5
+             */
+            forMinutes: number;
+            /** @description One machine by name; null is every machine. Machine kinds only. */
+            machine?: string | null;
+            /** @description One model; null is every model together. `failure-rate` only. */
+            model?: string | null;
+            /** @description One SLO; null is every SLO. `slo-burn` only. */
+            sloId?: string | null;
+        };
+        /** @enum {integer} */
+        SloFirstTokenPercentile: 50 | 90 | 99;
+        /**
+         * @description A target for one model, one client key or the whole install, over a
+         *     rolling window. Success is computed from the gateway's hourly
+         *     rollups, so a window may reach 90 days. A first-token target is read
+         *     as a percentile over the requests the gateway still keeps whole
+         *     (`metricsRetentionDays`), and says so; a client key's target has
+         *     success only, over the same kept requests.
+         */
+        SloTarget: {
+            id: string;
+            name?: string | null;
+            /** @description Null is every model. */
+            model?: string | null;
+            /** @description One client key. Set with model null. */
+            clientKeyId?: string | null;
+            /** @default 30 */
+            windowDays: number;
+            /** @description The share of requests that must be served. */
+            successPercent: number;
+            firstTokenSeconds?: number | null;
+            /** @description With `firstTokenSeconds`, "this share of first tokens within that time". */
+            firstTokenPercentile?: components["schemas"]["SloFirstTokenPercentile"] | null;
+        };
+        AlertWebhookView: {
+            configured: boolean;
+            /** @description The webhook's host only. The address is a secret and is never shown back. */
+            host?: string | null;
+        };
+        AlertingSettings: {
+            rules: components["schemas"]["AlertRule"][];
+            slos: components["schemas"]["SloTarget"][];
+            webhook: components["schemas"]["AlertWebhookView"];
+            /** @description True until the owner saves rules; `rules` is then the built-in set in effect. */
+            defaults: boolean;
+        };
+        AlertingUpdate: {
+            rules: components["schemas"]["AlertRule"][];
+            slos: components["schemas"]["SloTarget"][];
+            /** @description Absent keeps the webhook; null or empty removes it. */
+            webhookUrl?: string | null;
+        };
+        /** @enum {string} */
+        AlertState: "firing" | "resolved";
+        Alert: {
+            /** @description One alert: the rule and what it is about. */
+            id: string;
+            ruleId: string;
+            kind: components["schemas"]["AlertRuleKind"];
+            state: components["schemas"]["AlertState"];
+            /** @description One line, state first: "GPU 0 on nas is at 88 °C". */
+            message: string;
+            value?: number | null;
+            threshold?: number | null;
+            machine?: string | null;
+            model?: string | null;
+            sloId?: string | null;
+            /** @description The console page that shows it. */
+            link?: string | null;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            resolvedAt?: string | null;
+        };
+        /**
+         * @description `at-risk`: met, with less than a quarter of the error budget left,
+         *     or the first-token target not met. `missed`: no budget left.
+         * @enum {string}
+         */
+        SloState: "met" | "at-risk" | "missed" | "no-data";
+        SloFirstTokenStatus: {
+            percentile: components["schemas"]["SloFirstTokenPercentile"];
+            targetSeconds: number;
+            /** @description The percentile over the kept requests that streamed; null when none did. */
+            measuredSeconds?: number | null;
+            met?: boolean | null;
+            /** @description The days of whole requests the percentile is read over (the window, or less). */
+            keptDays: number;
+        };
+        SloStatus: {
+            id: string;
+            name?: string | null;
+            model?: string | null;
+            clientKeyId?: string | null;
+            clientKeyName?: string | null;
+            windowDays: number;
+            /** @description The target. */
+            successPercent: number;
+            requests: number;
+            failures: number;
+            /** @description Served over requests in the window; null with no requests. */
+            measuredPercent?: number | null;
+            /** @description The allowed failures not yet spent, percent; below zero when overspent. */
+            budgetLeftPercent?: number | null;
+            /** @description The last hour's failure share over the share the target allows; 1 spends the budget exactly over the window. */
+            burnRate?: number | null;
+            /** @description The days the gateway's records reach back over this window. */
+            coveredDays?: number;
+            firstToken?: components["schemas"]["SloFirstTokenStatus"] | null;
+            state: components["schemas"]["SloState"];
+        };
+        /** @enum {string} */
+        AlertWebhookState: "off" | "ok" | "failing";
+        AlertWebhookStatus: {
+            state: components["schemas"]["AlertWebhookState"];
+            /** Format: date-time */
+            lastAttemptAt?: string | null;
+            /** Format: date-time */
+            lastSuccessAt?: string | null;
+            /** @description Why the last post failed, after three tries: "connection refused", "HTTP 404". */
+            lastError?: string | null;
+        };
+        /**
+         * @description What the root posts to the webhook, as JSON, for each alert that
+         *     fires or resolves. Slack, Discord, ntfy and Home Assistant take it
+         *     (`text` and `content` carry the line for the chat ones).
+         */
+        AlertWebhookPost: {
+            rule: string;
+            /** @enum {string} */
+            state: "firing" | "resolved" | "test";
+            value?: number | null;
+            threshold?: number | null;
+            machine?: string | null;
+            model?: string | null;
+            url?: string | null;
+            /** Format: date-time */
+            at: string;
+            text: string;
+            content?: string;
+        };
+        AlertsView: {
+            /** @description False on a standby, and on a root that is locked. */
+            evaluating: boolean;
+            /** Format: date-time */
+            evaluatedAt?: string | null;
+            /** @description Reads the last evaluation could not make, each with its cause: "Gateway metrics: connection refused". */
+            problems: string[];
+            firing: components["schemas"]["Alert"][];
+            /** @description Resolved alerts, newest first, at most 100. */
+            recent: components["schemas"]["Alert"][];
+            slos: components["schemas"]["SloStatus"][];
+            webhook: components["schemas"]["AlertWebhookStatus"];
+        };
+        /** @description What `setAlerting` wrote (row 38). */
+        SnapshotAlerting: {
+            rules: Record<string, never>[];
+            slos: Record<string, never>[];
+            /** @description The webhook address, sealed under the passphrase-derived key. */
+            sealedWebhookUrl?: string | null;
+            webhookHost?: string | null;
         };
         /**
          * @description Where a model runs, as the gateway's `ModelLocality` says it (row 40).
@@ -12703,6 +12997,105 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getAlerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The alert state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertsView"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getAlerting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings in effect. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertingSettings"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    setAlerting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertingUpdate"];
+            };
+        };
+        responses: {
+            /** @description The settings now in effect. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertingSettings"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    testAlertWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the webhook answered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertWebhookStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
 }

@@ -2918,7 +2918,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-key reported usage on this gateway (operator only; retained raw rows). */
+        /**
+         * Per-key reported usage on this gateway (operator only; retained raw rows).
+         * @description The owner, and the control root's own service token (row 38: SLOs
+         *     set on a client key). Not a person with an operations power.
+         */
         get: operations["getClientUsage"];
         put?: never;
         post?: never;
@@ -2961,10 +2965,11 @@ export interface paths {
          *     emitted none. Treat absence as a per-request fact, not a
          *     property of a backend kind.
          *
-         *     Operator-only. No component needs this, so a service token is
-         *     refused rather than accepted for reads as elsewhere; and
-         *     model names plus traffic volumes are not nothing on a shared
-         *     tailnet.
+         *     The owner, a person with an operations power (row 39), and the
+         *     control root's own service token (row 38: the active root reads
+         *     it once a minute to evaluate alert rules and SLOs). Any other
+         *     service token is refused: model names plus traffic volumes are
+         *     not nothing on a shared tailnet.
          */
         get: operations["getMetrics"];
         put?: never;
@@ -7320,8 +7325,11 @@ export interface components {
         MetricsGroup: {
             source?: components["schemas"]["MetricsSource"];
             /**
-             * @description Mean request latency in milliseconds, from the stored sums. Present
-             *     on a `source: rollup` group, which has no percentiles.
+             * @description Mean request latency in milliseconds. On a `source: rollup` group,
+             *     which has no percentiles, from the stored sums; on a raw group
+             *     (row 38) beside `latencyMs`, so a chart can join hours inside
+             *     retention with the hours past it. Absent from a raw group of a
+             *     gateway older than metrics v16.
              */
             latencyMeanMs?: number;
             /** @description The slowest request of the hour. Present on a `source: rollup` group. */
@@ -7369,6 +7377,14 @@ export interface components {
              *     way to see what it costs.
              */
             swappedIn: number;
+            /**
+             * @description Row 38: the milliseconds the `swappedIn` requests waited for
+             *     their runtime to start, summed, so a wake's cost adds up across
+             *     hours and backends. On a `source: rollup` group from an hour
+             *     rolled up before metrics v16 it is 0 while `swappedIn` is not:
+             *     that wait was not kept. Absent from a gateway older than v16.
+             */
+            waitedMsSum?: number;
             /** @description Absent on a `source: rollup` group, which has `latencyMeanMs` and `latencyMaxMs` instead. */
             latencyMs?: components["schemas"]["Percentiles"];
             /**

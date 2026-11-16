@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Bell,
   Blocks,
   Cloud,
   Cpu,
@@ -10,6 +11,7 @@ import {
   HardDrive,
   KeyRound,
   Laptop,
+  LayoutDashboard,
   Monitor,
   Plug,
   Radio,
@@ -65,6 +67,8 @@ const ICONS: Record<IconName, LucideIcon> = {
   Blocks,
   ScrollText,
   Users,
+  LayoutDashboard,
+  Bell,
 };
 
 export function LayerIcon({

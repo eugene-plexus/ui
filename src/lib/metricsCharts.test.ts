@@ -11,7 +11,14 @@
 import { describe, expect, it } from "vitest";
 
 import { segments } from "@/components/MetricsCharts";
-import { compact, hourlyPoints, niceMax, tilesFrom } from "./metricsCharts";
+import {
+  compact,
+  dailyPoints,
+  hourlyPoints,
+  niceMax,
+  tilesFrom,
+  totalsFromHours,
+} from "./metricsCharts";
 
 const g = (bucketStart: string, over: Record<string, unknown> = {}) => ({
   bucketStart,
@@ -105,5 +112,60 @@ describe("axis helpers", () => {
     expect(compact(1284)).toBe("1,284");
     expect(compact(12900)).toBe("12.9K");
     expect(compact(4_200_000)).toBe("4.2M");
+  });
+});
+
+describe("dailyPoints (row 38)", () => {
+  it("adds the hours of a day, rollups and raw alike, and weights their means", () => {
+    const day = new Date(2026, 9, 1, 0, 0, 0).getTime();
+    const at = (h: number) => new Date(day + h * 3600_000).toISOString();
+    const points = dailyPoints(
+      [
+        {
+          bucketStart: at(1),
+          requests: 3,
+          errors: 1,
+          cascaded: 0,
+          swappedIn: 1,
+          latencyMeanMs: 1000,
+          source: "rollup",
+        },
+        {
+          bucketStart: at(5),
+          requests: 1,
+          errors: 0,
+          cascaded: 1,
+          swappedIn: 0,
+          latencyMeanMs: 5000,
+          source: "rollup",
+        },
+        {
+          bucketStart: at(30),
+          requests: 2,
+          errors: 0,
+          cascaded: 0,
+          swappedIn: 0,
+          latencyMs: { p50: 9, p90: 9, max: 9 },
+          source: "raw",
+        },
+      ],
+      at(0),
+      at(47),
+    );
+    expect(points).toHaveLength(2);
+    expect(points[0]).toMatchObject({ requests: 4, errors: 1, cascaded: 1, swappedIn: 1 });
+    // (3 * 1000 + 1 * 5000) / 4: weighted by requests, never an average of means.
+    expect(points[0]!.latencyMean).toBe(2000);
+    // A raw hour from a gateway older than v16 has no mean: the day says none.
+    expect(points[1]).toMatchObject({ requests: 2, latencyMean: null, latencyP50: null });
+  });
+
+  it("totals a long window from its hours", () => {
+    expect(
+      totalsFromHours([
+        { requests: 3, errors: 1, cascaded: 0, swappedIn: 2, latencyMeanMs: 1000 },
+        { requests: 1, errors: 0, cascaded: 1, swappedIn: 0, latencyMeanMs: 5000 },
+      ]),
+    ).toEqual({ requests: 4, errors: 1, cascaded: 1, swappedIn: 2, latencyMean: 2000 });
   });
 });
