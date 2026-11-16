@@ -2789,25 +2789,64 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Schedule a process restart so `requiresRestart` config takes effect.
+         * Restart the gateway once the answers in flight finish, so `requiresRestart` config takes effect.
          * @description Some config keys (driver list, ports, etc.) carry
          *     `requiresRestart: true` because the gateway only reads them
-         *     at startup. Calling this endpoint tells the gateway to
-         *     exit shortly after responding; an external supervisor (systemd,
-         *     docker, deploy launcher) brings it back up with the new config
-         *     in effect. The endpoint returns *before* the exit so the HTTP
-         *     response has time to flush.
+         *     at startup. Calling this endpoint starts the gateway's drain
+         *     (`POST /v1/admin/drain`, row 13): new inference requests are
+         *     refused `shutting_down`, the line's waiters too, and the answers
+         *     in flight finish, for up to `shutdownDrainSeconds`. Then the
+         *     process exits 0 and its supervisor (the agent, systemd, docker)
+         *     brings it back with the new config in effect. Until row 13 it
+         *     exited after 500 ms and cut every stream.
          *
-         *     v0.1 personal-use installations without a supervisor will
-         *     require a manual relaunch. The UI should make this clear in the
-         *     confirmation dialog.
-         *
-         *     ## Auth note (v0.1)
-         *
-         *     Unauthenticated, same as the rest of the v0.1 admin surface
-         *     (assumed Tailscale tailnet). Auth lands in v0.2.
+         *     Operator session only.
          */
         post: operations["restart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/drain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the gateway is draining, and how many answers it waits for.
+         * @description The same credentials as the POST.
+         */
+        get: operations["getGatewayDrain"];
+        put?: never;
+        /**
+         * Finish the answers in flight, refuse new ones, then exit (row 13).
+         * @description 1. New inference requests get the queue's `shutting_down` (503,
+         *        `Retry-After: 5`), and so does every request waiting in line.
+         *     2. The answers in flight finish, for up to `shutdownDrainSeconds`.
+         *     3. A stream still open at that limit gets its door's error frame:
+         *        "Cut: Eugene's gateway restarted after waiting 120 s for this
+         *        answer. Ask again." Its metrics row's outcome is `cut`.
+         *     4. The process exits 0.
+         *
+         *     Config, health and admin routes answer throughout. A second call
+         *     returns the drain already running.
+         *
+         *     **Accepts an operator session, or the drain token this machine's
+         *     own agent mints (`sub: gateway-drain`, addressed to this machine,
+         *     living at most 5 minutes)**: the agent drains its gateway before
+         *     every stop, which works where a console signal cannot be sent (the
+         *     Windows service). Not the agent's own `sub: agent` token, no other
+         *     machine's token, and no other component's.
+         *
+         *     Once the drain is over, connections still open (a client that
+         *     stopped reading, a download) get 10 s, then end, so the process
+         *     always exits.
+         */
+        post: operations["drainGateway"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3080,6 +3119,12 @@ export interface paths {
          *       conversation, and never less than this.
          *     * **`idleCheckSeconds`** (`duration`) — how often the gateway
          *       checks each runtime's idle timeout.
+         *     * **`shutdownDrainSeconds`** (`duration`, default 120, 0 to 900;
+         *       row 13, R13-DRAIN) — how long a restart or a stop lets the
+         *       answers in flight finish. Past it a stream gets its door's
+         *       error frame and the row's outcome is `cut`. The agent waits
+         *       this long plus 5 s before it ends a gateway that has not
+         *       exited, and at most 20 s when the agent itself is stopping.
          *     * **`controlUrl`** (`url`, optional) — the control root, when
          *       the gateway should not work it out itself. Unset, the gateway
          *       asks its own agent on every refresh: the control root the
@@ -7483,10 +7528,34 @@ export interface components {
         /**
          * @description `refused` (row 11, schema v14): the queue turned the request away
          *     before any backend was asked, for the `refusal` the row names.
+         *     `cut` (row 13): the gateway was draining to restart or stop, and
+         *     the answer was still running when `shutdownDrainSeconds` ran out.
          *     Named rather than inline, so a new value cannot rename an enum.
          * @enum {string}
          */
-        MetricOutcome: "served" | "error" | "refused";
+        MetricOutcome: "served" | "error" | "refused" | "cut";
+        /**
+         * @description `serving`: no drain. `draining`: new inference refused, answers in
+         *     flight finishing. `exiting`: done; the process is exiting.
+         * @enum {string}
+         */
+        GatewayDrainState: "serving" | "draining" | "exiting";
+        /** @description The gateway's own drain (row 13). */
+        GatewayDrain: {
+            state: components["schemas"]["GatewayDrainState"];
+            /** @description Inference requests in flight on this gateway now. */
+            running: number;
+            /** Format: date-time */
+            startedAt?: string;
+            /**
+             * Format: date-time
+             * @description When the answers still running are cut.
+             */
+            deadline?: string;
+            /** @description Answers cut at the deadline. */
+            cut?: number;
+            message?: string;
+        };
         /** @description One backend touched by one request, in the order tried. */
         MetricAttempt: {
             /**
@@ -12999,7 +13068,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Restart scheduled. */
+            /** @description The drain started; the process exits when it ends. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -13008,6 +13077,48 @@ export interface operations {
                     "application/json": components["schemas"]["RestartResult"];
                 };
             };
+        };
+    };
+    getGatewayDrain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The drain state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayDrain"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    drainGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The drain, as it stands. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayDrain"];
+                };
+            };
+            401: components["responses"]["Problem"];
         };
     };
     getPrometheusMetrics: {

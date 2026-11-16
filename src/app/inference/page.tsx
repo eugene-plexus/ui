@@ -45,12 +45,15 @@ import { promptCacheLine } from "@/lib/promptCache";
 import { sameAnswerLine } from "@/lib/sameAnswer";
 import { speculationLine } from "@/lib/speculation";
 import { expertHint } from "@/lib/vocabulary";
+import { drainLine, engineBuildLine, rolloutActive } from "@/lib/engineRollout";
 import type {
   ComponentPlacementList,
   DriversInfo,
   EngineDescriptor,
   EngineInstall,
   EngineList,
+  EngineRollout,
+  EngineRolloutChoice,
   ExecTrust,
   RoutingTableView,
   Runtime,
@@ -112,6 +115,7 @@ const INSTALL_POLL_MS = 1000;
 
 const STATUS_TONE: Record<RuntimeStatus, string> = {
   ready: "var(--status-success-fg)",
+  draining: "var(--status-warn-fg)",
   copying: "var(--status-warn-fg)",
   loading: "var(--status-warn-fg)",
   starting: "var(--status-warn-fg)",
@@ -122,6 +126,8 @@ const STATUS_TONE: Record<RuntimeStatus, string> = {
 
 const STATUS_HELP: Record<RuntimeStatus, string> = {
   ready: "Loaded and answering. The only state apps can reach.",
+  draining:
+    "Out of routing while the answers it is running finish: an engine update, a check, or a drain you asked for. New requests go to its other copies, or wait for it.",
   copying: "Copying the model onto this machine's disk. The engine starts when the copy lands.",
   loading: "Answering, but still reading the model into memory.",
   starting: "Started, and not answering yet.",
@@ -1024,6 +1030,11 @@ function RowView({
             unreachable
           </span>
         )}
+        {row.runtime && own?.drain && (
+          <div className="text-status-warn text-[0.6875rem]" data-testid="drain-line">
+            {drainLine(own.drain, now)}
+          </div>
+        )}
         {sentence && !missingEngine && (
           <div className="text-[0.6875rem]" data-testid="status-sentence">
             {sentence.text}
@@ -1468,13 +1479,23 @@ function EngineManagement({
   }, [load, reachable, readAgain]);
 
   const installing = Object.values(installs).some((i) => i != null && inFlight(i.state));
+  // Row 13: an engine update in flight on this machine, read with the engines.
+  const updating = (engines ?? []).some((e) => rolloutActive(e.rollout));
+  const asking = (engines ?? []).some((e) => e.rollout?.state === "asking");
   const needsAttention =
     installing ||
+    asking ||
     Object.values(installs).some((i) => i?.state === "failed") ||
     Object.values(installErrors).some(Boolean);
   useEffect(() => {
     if (needsAttention) setExpanded(true);
   }, [needsAttention]);
+
+  useEffect(() => {
+    if (!updating) return;
+    const id = setInterval(() => void load(), POLL_MS);
+    return () => clearInterval(id);
+  }, [updating, load]);
 
   useEffect(() => {
     if (!installing) return;
@@ -1509,6 +1530,53 @@ function EngineManagement({
       // chosen it is a refusal of THAT build, and the only place it can
       // be read is here.
       if (err instanceof ApiError && err.status === 422 && !variant) return;
+      setInstallErrors((prev) => ({ ...prev, [engine]: describeError(err) }));
+    } finally {
+      setPosting(null);
+    }
+  }
+
+  /** Row 13: move this machine's models to a build, checked, one at a
+   * time. No version: the staged build, else the newest (installed first). */
+  async function rollout(engine: string, version?: string) {
+    setPosting(engine);
+    setInstallErrors((prev) => ({ ...prev, [engine]: "" }));
+    try {
+      await api.post<EngineRollout>(
+        target,
+        `/v1/engines/${encodeURIComponent(engine)}/rollout`,
+        version ? { version } : {},
+      );
+      await load();
+    } catch (err) {
+      setInstallErrors((prev) => ({ ...prev, [engine]: describeError(err) }));
+    } finally {
+      setPosting(null);
+    }
+  }
+
+  async function answerRollout(engine: string, choice: EngineRolloutChoice) {
+    setPosting(engine);
+    try {
+      await api.post<EngineRollout>(
+        target,
+        `/v1/engines/${encodeURIComponent(engine)}/rollout/answer`,
+        { choice },
+      );
+      await load();
+    } catch (err) {
+      setInstallErrors((prev) => ({ ...prev, [engine]: describeError(err) }));
+    } finally {
+      setPosting(null);
+    }
+  }
+
+  async function cancelRollout(engine: string) {
+    setPosting(engine);
+    try {
+      await api.delete<EngineRollout>(target, `/v1/engines/${encodeURIComponent(engine)}/rollout`);
+      await load();
+    } catch (err) {
       setInstallErrors((prev) => ({ ...prev, [engine]: describeError(err) }));
     } finally {
       setPosting(null);
@@ -1556,7 +1624,11 @@ function EngineManagement({
         <span className="ml-3 text-xs text-[color:var(--muted)]">Install, update and setup</span>
         {needsAttention && (
           <span className="text-status-warn ml-3 text-xs">
-            {installing ? "Installation in progress" : "Needs attention"}
+            {installing
+              ? "Installation in progress"
+              : asking
+                ? "Update waiting for you"
+                : "Needs attention"}
           </span>
         )}
       </summary>
@@ -1592,15 +1664,28 @@ function EngineManagement({
               </div>
               {e.available && (
                 <div className="space-y-1 text-xs text-[color:var(--muted)]">
-                  <p>
-                    Version <span className="font-mono">{e.version ?? "unknown"}</span>
-                  </p>
+                  {e.managed ? (
+                    <p data-testid="engine-build-line">{engineBuildLine(e.managed, e.rollout)}</p>
+                  ) : (
+                    <p>
+                      Version <span className="font-mono">{e.version ?? "unknown"}</span>
+                    </p>
+                  )}
                   {e.managed?.variant && (
                     <p data-testid="engine-variant" className="font-mono">
                       {e.managed.variant}
                     </p>
                   )}
                 </div>
+              )}
+              {e.managed && (
+                <EngineUpdate
+                  engine={e}
+                  busy={posting !== null}
+                  onRollout={(version) => void rollout(e.engine, version)}
+                  onAnswer={(choice) => void answerRollout(e.engine, choice)}
+                  onCancel={() => void cancelRollout(e.engine)}
+                />
               )}
               {busyInstall ? (
                 <p
@@ -1655,8 +1740,12 @@ function EngineManagement({
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() => void install(e.engine)}
-                          disabled={posting !== null}
+                          onClick={() =>
+                            void (e.managed && !builds[e.engine] && !failed
+                              ? rollout(e.engine)
+                              : install(e.engine))
+                          }
+                          disabled={posting !== null || rolloutActive(e.rollout)}
                           aria-label={`${posting === e.engine ? "Starting" : failed ? "Try again" : e.managed && !builds[e.engine] ? "Update" : "Install"} ${engineWord(e.engine)}`}
                           className={smallButton}
                         >
@@ -1780,6 +1869,121 @@ function engineWord(engine: string): string {
 /** "downloading 42% of 1.2 GB" while there are bytes to count; the state
  * word alone otherwise. The record carries both numbers, and "downloading…"
  * for minutes said nothing about whether it was moving. */
+/**
+ * Row 13: a managed engine's update. While one runs, where it stands and
+ * how to stop it; while it asks, the three answers; after it, how it ended,
+ * the models held on their old build and why, and the way back to the
+ * build used before ("Use b11719 again").
+ */
+function EngineUpdate({
+  engine,
+  busy,
+  onRollout,
+  onAnswer,
+  onCancel,
+}: {
+  engine: EngineDescriptor;
+  busy: boolean;
+  onRollout: (version?: string) => void;
+  onAnswer: (choice: EngineRolloutChoice) => void;
+  onCancel: () => void;
+}) {
+  const managed = engine.managed;
+  if (!managed) return null;
+  const rollout = engine.rollout ?? null;
+  const active = rolloutActive(rollout);
+  const held = managed.heldRuntimes ?? [];
+  const ended = rollout && !active && rollout.message ? rollout : null;
+  return (
+    <div className="space-y-2 text-xs" data-testid="engine-update">
+      {rollout?.state === "asking" ? (
+        <div role="status" className="space-y-2">
+          <p>{rollout.question ?? `${rollout.version} is ready. Switch now, or when idle?`}</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={smallButton}
+              disabled={busy}
+              onClick={() => onAnswer("switch_now")}
+            >
+              Switch now
+            </button>
+            <button
+              type="button"
+              className={smallButton}
+              disabled={busy}
+              onClick={() => onAnswer("switch_idle")}
+            >
+              When idle
+            </button>
+            <button
+              type="button"
+              className={smallButton}
+              disabled={busy}
+              onClick={() => onAnswer("keep")}
+            >
+              Keep {rollout.from ?? managed.version}
+            </button>
+          </div>
+        </div>
+      ) : active && rollout ? (
+        <div className="flex flex-wrap items-center gap-2" role="status">
+          {rollout.message && <span>{rollout.message}</span>}
+          <button type="button" className={smallButton} disabled={busy} onClick={onCancel}>
+            Stop the update
+          </button>
+        </div>
+      ) : null}
+      {ended && (
+        <p
+          data-testid="engine-update-ended"
+          className={
+            rollout?.state === "failed" || rollout?.state === "kept"
+              ? "text-status-warn"
+              : "text-[color:var(--muted)]"
+          }
+        >
+          {ended.message}
+        </p>
+      )}
+      {held.length > 0 && (
+        <ul className="text-status-warn space-y-1" data-testid="engine-held">
+          {held.map((h) => (
+            <li key={h.runtime}>
+              {h.runtime} stays on {h.version}: {h.reason}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!active && (
+        <div className="flex flex-wrap gap-2">
+          {managed.stagedVersion && (
+            <button
+              type="button"
+              className={smallButton}
+              disabled={busy}
+              onClick={() => onRollout(managed.stagedVersion)}
+            >
+              Use {managed.stagedVersion}
+            </button>
+          )}
+          {managed.previousVersion && (
+            <button
+              type="button"
+              className={smallButton}
+              disabled={busy}
+              title="Moves this machine's models back to the build used before, one at a time, with no download."
+              onClick={() => onRollout(managed.previousVersion)}
+            >
+              Use {managed.previousVersion} again
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function installProgress(state: EngineInstall): string {
   const total = state.bytesTotal ?? 0;
   if (state.state === "downloading" && total > 0) {

@@ -839,6 +839,62 @@ const TWO_REPLICAS_SPLIT = runtimes(
     '"modelAlias":"gemma-3-27b","status":"ready","engineVersion":"b10990"}]}',
 );
 
+// Row 13: a checked engine update moves runtimes one at a time, so a mixed
+// fleet while it runs is the update's work, not a person's; a runtime the
+// new build could not run is held on its old build, which needs a person.
+function llamaWith(extra: string): EngineList {
+  return body<EngineList>(
+    '{"engines":[{"engine":"llama_cpp","available":true,"version":"b10990",' +
+      '"modelFormats":["gguf"],"acquisition":{"policy":"managed","installable":true},' +
+      extra +
+      "}]}",
+  );
+}
+
+describe("a checked engine update (row 13)", () => {
+  const managed =
+    '"managed":{"version":"b10990","binaryPath":"/e/llama-server","variant":"cpu",' +
+    '"installedAt":"2026-11-01T00:00:00Z","sizeBytes":1';
+
+  it("is not a stale build while it moves the models", () => {
+    const node = facts({
+      name: "Amish_Station",
+      label: "Amish_Station",
+      engines: llamaWith(
+        managed +
+          '},"rollout":{"id":"x","engine":"llama_cpp","version":"b10990","from":"b10948",' +
+          '"state":"switching","switch":"auto","startedAt":"2026-11-15T00:00:00Z",' +
+          '"runtimes":[{"name":"gemma-a","state":"waiting"}],"check":{"models":[]}}',
+      ),
+      runtimes: TWO_REPLICAS_SPLIT,
+    });
+    expect(kinds(issuesFrom({ ...NOTHING, perNode: [node] }))).not.toContain("engine-build-stale");
+  });
+
+  it("says why a model stays on its old build, and not that it is stale", () => {
+    const node = facts({
+      name: "Amish_Station",
+      label: "Amish_Station",
+      engines: llamaWith(
+        managed +
+          ',"heldRuntimes":[{"runtime":"gemma-a","version":"b10948",' +
+          '"reason":"b10990 could not run gemma-3-27b: unknown tensor type"}]}',
+      ),
+      runtimes: runtimes(
+        '{"runtimes":[{"name":"gemma-a","engine":"llama_cpp",' +
+          '"modelPath":"/models/gemma-27b-Q6_K_L.gguf","modelAlias":"gemma-3-27b",' +
+          '"status":"ready","engineVersion":"b10948"}]}',
+      ),
+    });
+    const issues = issuesFrom({ ...NOTHING, perNode: [node] });
+    expect(kinds(issues)).toEqual(["engine-build-held"]);
+    expect(issues[0]!.title).toBe("gemma-3-27b stays on llama.cpp b10948 on Amish_Station");
+    expect(issues[0]!.detail).toBe(
+      "b10990 could not run gemma-3-27b: unknown tensor type. The next update tries it again.",
+    );
+  });
+});
+
 describe("a model left on an older engine build", () => {
   it("names the model, the build it is on and the one installed", () => {
     const node = facts({
@@ -857,7 +913,9 @@ describe("a model left on an older engine build", () => {
     expect(issue!.title).toBe(
       "gemma-3-27b is running on llama.cpp b10948, not the b10990 that is installed",
     );
-    expect(issue!.detail).toContain("Restarting them picks up the new build");
+    // Row 13 review #10: the build a restart picks up is the build in use, which
+    // may be older than the one a stopped update left a model running on.
+    expect(issue!.detail).toBe("Restarting them starts them on b10990, the build in use.");
   });
 
   it("counts them when there is more than one", () => {
@@ -875,7 +933,7 @@ describe("a model left on an older engine build", () => {
     });
     const [issue] = issuesFrom({ ...NOTHING, perNode: [node] });
     expect(issue!.title).toBe(
-      "2 models on Amish_Station are running on an older llama.cpp than the b10990 that is installed",
+      "2 models on Amish_Station are running on another llama.cpp build than the b10990 in use",
     );
   });
 

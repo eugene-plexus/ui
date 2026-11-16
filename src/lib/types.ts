@@ -136,6 +136,10 @@ export type RuntimeCapabilities = AgentComponents["schemas"]["RuntimeCapabilitie
 export type EngineKind = AgentComponents["schemas"]["EngineKind"];
 export type EngineList = AgentComponents["schemas"]["EngineList"];
 export type EngineDescriptor = AgentComponents["schemas"]["EngineDescriptor"];
+// Row 13: checked engine updates and the runtime drain.
+export type EngineRollout = AgentComponents["schemas"]["EngineRollout"];
+export type EngineRolloutChoice = AgentComponents["schemas"]["EngineRolloutChoice"];
+export type RuntimeDrain = AgentComponents["schemas"]["RuntimeDrain"];
 // What Eugene's own account did not run, and an owner's approvals (row 8c).
 export type ExecTrust = AgentComponents["schemas"]["ExecTrust"];
 export type ExecApproval = AgentComponents["schemas"]["ExecApproval"];
