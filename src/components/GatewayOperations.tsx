@@ -14,7 +14,13 @@ import {
 import type { ReactNode } from "react";
 import { MetricDial } from "@/components/MetricDial";
 
-import { capacityBackends, durationLabel, percentage } from "@/lib/gatewayDashboard";
+import {
+  capacityBackends,
+  durationLabel,
+  percentage,
+  wakeCost,
+  type WakeGroup,
+} from "@/lib/gatewayDashboard";
 import { compact, msLabel } from "@/lib/metricsCharts";
 import { labelOf } from "@/lib/nodeLabels";
 import type { RoutingTableView } from "@/lib/types";
@@ -370,5 +376,94 @@ export function GatewayEfficiency({ total }: { total: OperationalGroup | undefin
         </div>
       </div>
     </DashboardSection>
+  );
+}
+
+/**
+ * What waking models cost (row 38): per model, how often a request had to
+ * start it, how long people waited, and about what energy the waits drew.
+ * The costliest first, each with the way to keep it loaded.
+ */
+export function WakeCost({
+  groups,
+  powerWatts,
+}: {
+  groups: WakeGroup[];
+  powerWatts: Record<string, number | null | undefined>;
+}) {
+  const rows = wakeCost(groups, powerWatts);
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-[color:var(--muted)]">
+        No request had to wait for a model to start.
+      </p>
+    );
+  }
+  return (
+    <div className="section-panel overflow-x-auto">
+      <table aria-label="Wake cost by model" className="font-ui w-full text-left text-sm">
+        <thead className="text-xs text-[color:var(--muted)]">
+          <tr>
+            <th className="py-2 pr-3 font-medium">Model</th>
+            <th className="py-2 pr-3 font-medium">Starts</th>
+            <th className="py-2 pr-3 font-medium">Waited in all</th>
+            <th className="py-2 pr-3 font-medium">Mean wait</th>
+            <th className="py-2 pr-3 font-medium">Energy</th>
+            <th className="py-2 font-medium">
+              <span className="sr-only">Action</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const node = row.places.find((p) => p.node)?.node ?? null;
+            return (
+              <tr key={row.model} className="border-t border-[color:var(--border)]">
+                <td className="py-2 pr-3">{row.model}</td>
+                <td className="py-2 pr-3 font-mono tabular-nums">{compact(row.starts)}</td>
+                <td
+                  className="py-2 pr-3 font-mono tabular-nums"
+                  title={
+                    row.unknownStarts
+                      ? `${row.unknownStarts} start(s) in hours rolled up before the gateway kept the wait are not in this.`
+                      : row.estimated
+                        ? "This gateway is older than the wake sum: starts times the median wait."
+                        : undefined
+                  }
+                >
+                  {msLabel(row.waitMs)}
+                  {row.unknownStarts || row.estimated ? " *" : ""}
+                </td>
+                <td className="py-2 pr-3 font-mono tabular-nums">
+                  {row.meanWaitMs === null ? "unreported" : msLabel(row.meanWaitMs)}
+                </td>
+                <td
+                  className="py-2 pr-3 font-mono tabular-nums"
+                  title="The wait times the GPUs' mean power on that machine over the window."
+                >
+                  {row.energyWh === null ? "not reported" : `about ${row.energyWh} Wh`}
+                </td>
+                <td className="py-2 text-right">
+                  {node && (
+                    <Link
+                      href={`/inference?sel=${encodeURIComponent(`backends:node:${node}`)}`}
+                      className="inline-flex items-center gap-1 underline"
+                      aria-label={`Keep ${row.model} loaded on ${labelOf(node) ?? node}`}
+                    >
+                      Keep loaded
+                      <ArrowUpRight size={14} aria-hidden />
+                    </Link>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="mt-3 text-xs text-[color:var(--muted)]">
+        Keep loaded: turn off unloading when idle for its runtime, so the next request does not
+        wait.
+      </p>
+    </div>
   );
 }
