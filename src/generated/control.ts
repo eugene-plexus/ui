@@ -282,7 +282,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/usage/me": {
+    "/oidc/usage": {
         parameters: {
             query?: never;
             header?: never;
@@ -295,8 +295,9 @@ export interface paths {
          *     apply to them (their own groups'), for an app such as Workbench to
          *     show. Authenticated with the person's access token from this root
          *     (`Authorization: Bearer`, as `/oidc/userinfo`); no other credential.
-         *     Answers only for the person the token names. `subjects` holds one
-         *     `person` subject and one `group` subject for each of their groups
+         *     Under the issuer, beside `userinfo`, because an app reaches the root
+         *     there. Answers only for the person the token names. `subjects` holds
+         *     one `person` subject and one `group` subject for each of their groups
          *     that sets an allowance.
          */
         get: operations["getOwnUsage"];
@@ -6038,7 +6039,7 @@ export interface components {
         UsageSubjectKind: "key" | "person" | "group";
         /** @enum {string} */
         UsageAllowanceKind: "tokensPerDay" | "tokensPerMonth" | "costPerMonth";
-        /** @description Row 40, `GET /v1/usage` and `GET /v1/usage/me`. */
+        /** @description Row 40, `GET /v1/usage` and `GET /oidc/usage`. */
         UsageReport: {
             /**
              * Format: date
