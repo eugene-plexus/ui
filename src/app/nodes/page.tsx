@@ -817,7 +817,8 @@ export default function NodesPage() {
           {!locked && nodes && nodes.length > 0 && (
             <section className="section-panel mb-6" data-testid="node-versions">
               <h2 className="section-heading font-ui text-base font-semibold">Versions</h2>
-              <UpdateAllPanel onChanged={refreshVersions} />
+              {/* Update all is the owner's (row 39 review S1). */}
+              {!inOperationsMode() && <UpdateAllPanel onChanged={refreshVersions} />}
               {difference && (
                 <div
                   data-testid="version-difference"

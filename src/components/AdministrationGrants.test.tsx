@@ -56,6 +56,8 @@ it("gives operations powers on chosen machines and says what never comes with th
   );
   expect(screen.getByText(/Never: secrets, chats, sign-in keys/)).toBeVisible();
   expect(screen.getByText(/read machine logs/)).toBeVisible();
+  // Review S7: how long a removed power can last, truly (10 + 5 of clock leeway).
+  expect(screen.getByText(/up to 15 minutes/)).toBeVisible();
   await user.click(screen.getByRole("checkbox", { name: /^Models/ }));
   await user.click(screen.getByRole("radio", { name: "Only the machines I choose" }));
   await user.click(screen.getByLabelText("Allow running Big GPU"));

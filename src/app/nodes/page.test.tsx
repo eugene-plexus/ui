@@ -866,6 +866,22 @@ describe("versions, and updating a machine from here (2026-09-27)", () => {
     await waitFor(() => expect(amish).toHaveAttribute("data-state", "running"));
   });
 
+  it("shows Update all to the owner only (row 39 review S1)", async () => {
+    const { unmount } = render(<NodesPage />);
+    await card("Amish_Station");
+    expect(screen.getByTestId("update-all-panel")).toBeInTheDocument();
+    unmount();
+    sessionStorage.removeItem("eugene-session-token");
+    sessionStorage.setItem(
+      "eugene-operations-session",
+      JSON.stringify({ token: "named", name: "Dana", powers: ["operate-machines"] }),
+    );
+    render(<NodesPage />);
+    await screen.findByTestId("node-versions");
+    expect(screen.queryByTestId("update-all-panel")).toBeNull();
+    sessionStorage.removeItem("eugene-operations-session");
+  });
+
   it("uses the newest target at confirmation instead of the one displayed earlier", async () => {
     const user = userEvent.setup();
     render(<NodesPage />);

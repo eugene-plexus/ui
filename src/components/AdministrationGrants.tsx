@@ -225,8 +225,8 @@ export function AdministrationGrants({
               Never: secrets, chats, sign-in keys. Provider keys, people, adding and removing
               machines, Job Sites, routing, client keys, folder access and settings stay with the
               owner. Each change is recorded on the machine&rsquo;s page with this person&rsquo;s
-              name. A machine that cannot reach the root may honour a removed power for up to 10
-              minutes.
+              name. A machine that cannot reach the root may honour a removed power for up to 15
+              minutes: a token lasts 10, and machines allow 5 for clocks that disagree.
             </p>
           </fieldset>
           <p className="text-xs text-[color:var(--muted)]">

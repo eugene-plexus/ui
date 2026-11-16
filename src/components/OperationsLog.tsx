@@ -23,7 +23,10 @@ export function operationSentence(row: OperationRow): string {
   const when = new Date(row.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const what = [row.action, row.target].filter(Boolean).join(" ");
   const failed = row.status >= 400 ? ` (refused, ${row.status})` : "";
-  return `${row.name}: ${what}, ${when}${failed}`;
+  // Who, from the `owner` flag and never from the name alone: a person may
+  // be called "Owner" (row 39 review).
+  const who = row.owner ? "The owner" : `${row.name} (delegated)`;
+  return `${who}: ${what}, ${when}${failed}`;
 }
 
 /**
