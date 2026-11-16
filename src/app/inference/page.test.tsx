@@ -1558,3 +1558,44 @@ describe("a running model's prompt cache (row 9)", () => {
     expect(within(row).queryByTestId("prompt-cache")).toBeNull();
   });
 });
+
+describe("a running model's prompt cache on disk (row 15)", () => {
+  it("says what it keeps for its next start", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: {
+        runtimes: [
+          nodeRuntime({
+            diskPromptCache: { saving: true, conversations: 2, bytes: 340 * 1024 ** 2 },
+          }),
+        ],
+      },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    expect(await within(row).findByTestId("disk-prompt-cache")).toHaveTextContent(
+      "Prompt cache on disk: 2 saved conversations, 340 MiB.",
+    );
+  });
+
+  it("says why it keeps none", async () => {
+    handlers.set("GET agent/v1/runtimes", () => ({
+      status: 200,
+      body: {
+        runtimes: [
+          nodeRuntime({
+            diskPromptCache: {
+              saving: false,
+              conversations: 0,
+              bytes: 0,
+              note: "Turned on after this run started: it applies at the next start.",
+            },
+          }),
+        ],
+      },
+    }));
+    const row = await rowFor("gemma-3-27b");
+    const line = await within(row).findByTestId("disk-prompt-cache");
+    expect(line).toHaveTextContent("Prompt cache on disk: off.");
+    expect(line).toHaveTextContent("it applies at the next start");
+  });
+});

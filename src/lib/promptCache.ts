@@ -22,7 +22,7 @@ const MIB = 1024 ** 2;
 const GIB = 1024 ** 3;
 
 /** `8 GiB`, `1.5 GiB`, `512 MiB`: binary, as memory is quoted. */
-function size(bytes: number): string {
+export function size(bytes: number): string {
   if (bytes >= GIB) {
     const gib = bytes / GIB;
     return `${Number.isInteger(gib) ? gib : Number(gib.toFixed(1))} GiB`;
@@ -53,4 +53,23 @@ export function promptCacheLine(
     text: `Prompt cache: ${size(cache.bytes)} of system memory, ${WHERE[cache.source]}.`,
     note,
   };
+}
+
+type RuntimeDiskPromptCache = NonNullable<Runtime["diskPromptCache"]>;
+
+/**
+ * Row 15 (DI2): what a running llama.cpp model keeps on disk for its next start, as a fact.
+ * The agent reads it from the command line the model was started with and the setting now,
+ * so the line never says it saves when it does not; `note` is the agent's reason.
+ */
+export function diskPromptCacheLine(
+  cache: RuntimeDiskPromptCache | null | undefined,
+): { text: string; note: string | null } | null {
+  if (!cache) return null;
+  const note = cache.note ?? null;
+  if (!cache.saving) return { text: "Prompt cache on disk: off.", note };
+  if (cache.conversations === 0)
+    return { text: "Prompt cache on disk: on, nothing saved yet.", note };
+  const count = `${cache.conversations} saved conversation${cache.conversations === 1 ? "" : "s"}`;
+  return { text: `Prompt cache on disk: ${count}, ${size(cache.bytes)}.`, note };
 }

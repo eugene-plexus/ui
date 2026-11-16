@@ -41,7 +41,7 @@ import { useIssues } from "@/lib/useIssues";
 import { useServedContexts } from "@/lib/useServedContexts";
 import { usePolling } from "@/lib/usePolling";
 import { stopReasonWords } from "@/lib/runningModel";
-import { promptCacheLine } from "@/lib/promptCache";
+import { diskPromptCacheLine, promptCacheLine } from "@/lib/promptCache";
 import { sameAnswerLine } from "@/lib/sameAnswer";
 import { speculationLine } from "@/lib/speculation";
 import { expertHint } from "@/lib/vocabulary";
@@ -897,6 +897,8 @@ function RowView({
   const drafting = speculationLine(own?.speculation);
   // PC7: the prompt cache it was started with, from its command line (settings never lie).
   const promptCache = promptCacheLine(own?.promptCache);
+  // Row 15: what it keeps on disk for its next start, from its command line and the setting.
+  const diskCache = diskPromptCacheLine(own?.diskPromptCache);
   const sameAnswer = sameAnswerLine(own);
   const prefix = `${row.node ?? ""}/${row.runtime ?? ""}:`;
   // What a row's buttons say they act on, for a screen reader that hears
@@ -1155,6 +1157,15 @@ function RowView({
           <div className="text-[0.6875rem] text-[color:var(--muted)]" data-testid="prompt-cache">
             {promptCache.text}
             {promptCache.note && <div className="text-status-warn">{promptCache.note}</div>}
+          </div>
+        )}
+        {diskCache && (
+          <div
+            className="text-[0.6875rem] text-[color:var(--muted)]"
+            data-testid="disk-prompt-cache"
+          >
+            {diskCache.text}
+            {diskCache.note && <div>{diskCache.note}</div>}
           </div>
         )}
         {compute && (
