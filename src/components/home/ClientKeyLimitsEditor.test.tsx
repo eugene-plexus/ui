@@ -171,3 +171,51 @@ describe("the May read metrics switch (row 12)", () => {
     );
   });
 });
+
+describe("a key's usage allowances (row 40)", () => {
+  it("are shown only where a root counts them, and sent only when set", () => {
+    const { unmount } = render(<Harness start={DEFAULT_CLIENT_LIMITS} seen={[]} />);
+    expect(screen.queryByTestId("key-allowances")).toBeNull();
+    unmount();
+    const seen: ClientKeyLimits[] = [];
+    function WithAllowances() {
+      const [value, setValue] = useState(DEFAULT_CLIENT_LIMITS);
+      return (
+        <ClientKeyLimitsEditor
+          allowances
+          value={value}
+          onChange={(next) => {
+            seen.push(next);
+            setValue(next);
+          }}
+        />
+      );
+    }
+    render(<WithAllowances />);
+    expect(cleanClientLimits(DEFAULT_CLIENT_LIMITS)).not.toHaveProperty("tokensPerDay");
+    fireEvent.change(screen.getByLabelText("Tokens a day"), { target: { value: "1000" } });
+    fireEvent.change(screen.getByLabelText("Spend a month"), { target: { value: "4.50" } });
+    const last = seen[seen.length - 1] as ClientKeyLimits;
+    expect(cleanClientLimits(last)).toMatchObject({
+      tokensPerDay: 1000,
+      costPerMonthMicros: 4_500_000,
+    });
+    expect(describeClientLimits(last)).toContain("1,000 tokens a day · $4.50 a month");
+    fireEvent.change(screen.getByLabelText("Tokens a day"), { target: { value: "" } });
+    expect(cleanClientLimits(seen[seen.length - 1] as ClientKeyLimits)).not.toHaveProperty(
+      "tokensPerDay",
+    );
+  });
+});
+
+describe("clearing a key's allowance (row 40 review S2)", () => {
+  it("sends null for one the key had, and nothing for one it never had", () => {
+    const before = { ...DEFAULT_CLIENT_LIMITS, tokensPerDay: 1000 };
+    const emptied = { ...DEFAULT_CLIENT_LIMITS, tokensPerDay: undefined };
+    const sent = cleanClientLimits(emptied, before);
+    expect(sent).toHaveProperty("tokensPerDay", null);
+    expect(sent).not.toHaveProperty("tokensPerMonth");
+    expect(sent).not.toHaveProperty("costPerMonthMicros");
+    expect(cleanClientLimits(emptied)).not.toHaveProperty("tokensPerDay");
+  });
+});

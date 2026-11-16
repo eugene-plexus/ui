@@ -5992,6 +5992,34 @@ export interface components {
              *     `queueBand`.
              */
             maxQueuedRequests?: number;
+            /**
+             * @description **On an edit (`PUT .../limits`), an allowance left out keeps the
+             *     key's current one and `null` clears it**, so a console a release
+             *     behind, which knows none of the three, never clears them. Every
+             *     other limit is replaced whole, as before.
+             *
+             *     Row 40: how many tokens (in and out) this key's lineage may use in
+             *     one UTC day, across every gateway. A request is refused before it
+             *     runs once the day's tokens reach it (429, `insufficient_quota`,
+             *     `X-Eugene-Refusal-Reason: allowance`); a request that crosses the
+             *     line while it runs finishes. **Absent means no limit**, and no
+             *     default is declared on purpose, as for `readMetrics`: the
+             *     authority writes it only when it is set. Not part of the policy a
+             *     running request is bound to, and never sent in an admission answer.
+             */
+            tokensPerDay?: number | null;
+            /** @description Row 40. As `tokensPerDay`, for one calendar month (UTC). Absent means no limit; on an edit, absent keeps and null clears. */
+            tokensPerMonth?: number | null;
+            /**
+             * @description Row 40: how much this key's lineage may spend in one calendar month
+             *     (UTC), in millionths of a US dollar, at the install's prices (the
+             *     owner's rate for a model, else its provider's published price, else
+             *     nothing for a local model). A model with no price is refused while
+             *     this is set, because its cost cannot be counted. `0` allows only
+             *     models that cost nothing. Absent means no limit; on an edit,
+             *     absent keeps and null clears.
+             */
+            costPerMonthMicros?: number | null;
         };
         ClientKeyUpdateRequest: {
             limits: components["schemas"]["ClientKeyLimits"];
@@ -6025,6 +6053,21 @@ export interface components {
             purpose: "inference" | "logs" | "catalog" | "search" | "metrics";
             model?: string;
             /**
+             * @description Row 40, `acquire` only: how the gateway sees the requested model's
+             *     price, so the authority can tell whether a money allowance can
+             *     count it. An authority before row 40 refuses the field (422) and
+             *     the gateway asks again without it.
+             */
+            price?: components["schemas"]["ModelPriceHint"];
+            /**
+             * @description Row 40, `release` only: what the request used. The authority counts
+             *     it for the key's lineage, the person it verified at `acquire`, and
+             *     that person's groups. Absent (a request that was never served, or a
+             *     gateway before row 40) counts nothing. An authority before row 40
+             *     refuses the field (422) and the gateway releases again without it.
+             */
+            usage?: components["schemas"]["AdmissionUsage"];
+            /**
              * @description Root-issued OIDC access token carried alongside the app key in
              *     X-Eugene-Person-Token. The root checks its signature, session,
              *     current person access and exact registered app owner on every check,
@@ -6033,6 +6076,13 @@ export interface components {
              */
             personToken?: string;
         };
+        /**
+         * @description Row 37: an agent or gateway from before row 37 refuses an answer that
+         *     carries `roleRouting`, `routingGroup` or `modelLimits` (its model
+         *     forbids unknown fields), so a person whose groups set them is refused
+         *     there until that machine is updated: it fails closed, never open.
+         *     The root sends them only when a group sets them.
+         */
         ClientAdmissionResult: {
             keyId: string;
             keyName: string;
@@ -6059,17 +6109,50 @@ export interface components {
              *     install's default, applies. Never taken from the caller.
              */
             queueBand?: components["schemas"]["QueueBand"];
+            /**
+             * @description The verified person's routing by model role (row 37), from their
+             *     active group (`Person.activeGroup`). Present only when the root
+             *     verified a person and that group routes at least one role. A
+             *     request for `role:<role>` that this names tries these models in
+             *     order, after the gateway drops every model outside the allowed
+             *     set (`modelLimits` and the key's list); a role it does not name
+             *     uses the install's slot. Absent: the
+             *     install's routing for every role, as before row 37. Never taken
+             *     from the caller.
+             */
+            roleRouting?: components["schemas"]["RoleRouting"];
+            /**
+             * @description The group `roleRouting` comes from (row 37): the person's active
+             *     group. Present with `roleRouting`.
+             */
+            routingGroup?: components["schemas"]["ModelGroup"];
+            /**
+             * @description Row 37 (call R37-SELF, Choice 3): the model list of every group
+             *     the verified person is in that sets one, sorted by group name. A
+             *     model is allowed only when the key's own `allowedModels` and
+             *     every list here allow it, for the model asked for, every fallback
+             *     and every model a server-run tool calls; the person's choice of
+             *     active group never widens it. A `role:<role>` name is not checked
+             *     against these lists: the role's models are. Absent when no group
+             *     of theirs sets a list: no limit beyond the key's.
+             */
+            modelLimits?: components["schemas"]["GroupModelLimit"][];
         };
         /**
          * @description Why an `acquire` was refused with a 429, in its
          *     `X-Eugene-Refusal-Reason` header (row 11): `concurrency`, the key
          *     already runs `maxConcurrentRequests` requests; `rate`, its
-         *     `requestsPerMinute` are used. An agent that forwards the root's
+         *     `requestsPerMinute` are used; `allowance` (row 40), a token or money
+         *     allowance of the key, the person or one of their groups is spent, or
+         *     the model has no price while a money allowance applies. An
+         *     `allowance` refusal is final until the allowance resets: its
+         *     `Retry-After` is the seconds until then, and its `detail` is the
+         *     sentence the caller is shown. An agent that forwards the root's
          *     answer passes the header on, and a standalone agent sets it the same
          *     way.
          * @enum {string}
          */
-        AdmissionRefusalReason: "concurrency" | "rate";
+        AdmissionRefusalReason: "concurrency" | "rate" | "allowance";
         ClientKey: {
             id: string;
             name: string;
@@ -9678,6 +9761,55 @@ export interface components {
             retryAfterSeconds?: number;
         };
         /**
+         * @description Where a model runs, as the gateway's `ModelLocality` says it (row 40).
+         * @enum {string}
+         */
+        ModelPriceLocality: "local" | "external" | "unknown";
+        /**
+         * @description Row 40: a model's rate, in millionths of a US dollar for each million
+         *     tokens. One micro-dollar for a million tokens is one pico-dollar a
+         *     token, so a request's cost is a whole number of pico-dollars:
+         *     `promptTokens * inputPerMillionMicros + completionTokens *
+         *     outputPerMillionMicros`. Integers, so every sum is exact.
+         */
+        ModelPrice: {
+            inputPerMillionMicros: number;
+            outputPerMillionMicros: number;
+        };
+        /**
+         * @description Row 40: what a gateway knows about a model's price from its drivers.
+         *     `locality` is the model's `ModelLocality` (`local` only when every
+         *     backend serving it is local). `providerPrice` is the price its
+         *     provider publishes, as its driver reported it; absent when no driver
+         *     reported one, or when two backends report different prices and one
+         *     of them has none. The authority's owner rate wins over both.
+         */
+        ModelPriceHint: {
+            locality: components["schemas"]["ModelPriceLocality"];
+            providerPrice?: components["schemas"]["ModelPrice"];
+        };
+        /**
+         * @description Row 40: what one served request used, as the gateway that served it
+         *     measured it. `model` is the model that served it (a fallback's, not
+         *     the one asked for), and `price` that model's hint. When the serving
+         *     model has no price at the authority, the request is priced at the
+         *     model its lease was acquired for.
+         */
+        AdmissionUsage: {
+            model: string;
+            promptTokens: number;
+            completionTokens: number;
+            price: components["schemas"]["ModelPriceHint"];
+            /**
+             * @description True when the tokens are the gateway's estimate, not the backend's
+             *     count: the backend reported none, or the answer was cut before its
+             *     end (the client hung up, the backend failed after its first token,
+             *     the gateway stopped a repetition). The prompt is the estimate the
+             *     queue made of it; the answer is what was forwarded. Absent is false.
+             */
+            estimated?: boolean;
+        };
+        /**
          * @description Which requests wait or are turned away first when the machines are
          *     busy. From highest to lowest: `interactive` (a person waiting at a
          *     chat), `background` (work nobody watches), `sheddable` (refused first
@@ -9685,6 +9817,26 @@ export interface components {
          * @enum {string}
          */
         QueueBand: "interactive" | "background" | "sheddable";
+        /**
+         * @description Row 37: for each model role, the models a person's requests for
+         *     `role:<role>` try, in order. A role not named here uses the
+         *     install's slot (`modelSlots`). The keys are `ModelRole` values
+         *     (`components/common.yaml`); a root refuses any other.
+         */
+        RoleRouting: {
+            [key: string]: string[];
+        };
+        /** @description A permission group, as a refusal names it (row 37). */
+        ModelGroup: {
+            id: string;
+            name: string;
+        };
+        /** @description One group's model list, as it limits a person (row 37). */
+        GroupModelLimit: {
+            group: components["schemas"]["ModelGroup"];
+            /** @description Exact ids or patterns with `*`, at most 8 `*` in one entry. Empty allows none. */
+            models: string[];
+        };
         /**
          * @description Issued on successful login. The UI stores `sessionToken` as a
          *     Secure / HttpOnly / SameSite=Strict cookie or in memory; every

@@ -27,7 +27,7 @@ import { ExternalSignIn, PersonSignIn } from "@/components/ExternalSignIn";
 import { PeopleDirectory } from "@/components/PeopleDirectory";
 import { AccessAudit } from "@/components/AccessAudit";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { PermissionGroups, PersonGroups } from "@/components/PermissionGroups";
+import { ActiveGroup, PermissionGroups, PersonGroups } from "@/components/PermissionGroups";
 import { CopyButton } from "@/components/CopyButton";
 import { PassphraseChange } from "@/components/PassphraseChange";
 import { SignInKey } from "@/components/SignInKey";
@@ -394,6 +394,14 @@ function PersonRow({
               onSave={(groups) => change(() => api.patch("control", path, { groups }))}
             />
           )}
+          {groups !== null && person.policiesInEffect !== undefined && (
+            <ActiveGroup
+              key={`${JSON.stringify(person.groups)}-${person.activeGroup ?? ""}`}
+              person={person}
+              groups={groups}
+              onSave={(activeGroup) => change(() => api.patch("control", path, { activeGroup }))}
+            />
+          )}
           {person.groups == null && (
             <div className="space-y-5 border-t border-[color:var(--border)] pt-4">
               <ChooseApps
@@ -497,6 +505,14 @@ function PoliciesLines({ person, groups }: { person: Person; groups: PermissionG
       <p className="text-sm break-words" data-testid={`person-summary-${person.name}`}>
         <span className="text-[color:var(--muted)]">Summarise long chats at: </span>
         {summary.summary}
+      </p>
+      <p className="text-sm break-words" data-testid={`person-models-${person.name}`}>
+        <span className="text-[color:var(--muted)]">Models: </span>
+        {summary.models}
+      </p>
+      <p className="text-sm break-words" data-testid={`person-routing-${person.name}`}>
+        <span className="text-[color:var(--muted)]">Routing by role: </span>
+        {summary.routing}
       </p>
     </>
   );

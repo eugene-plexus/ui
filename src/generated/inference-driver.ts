@@ -2076,7 +2076,36 @@ export interface components {
                 [key: string]: string;
             };
             capabilities?: components["schemas"]["Capabilities"];
+            /**
+             * @description Row 40: the price the provider itself reports for this model's
+             *     tokens, when its listing carries one: an OpenRouter account reads
+             *     `pricing.prompt` and `pricing.completion` (dollars a token). Absent
+             *     for a local engine and for every provider whose listing carries no
+             *     price: Eugene keeps no price table of its own, because a list
+             *     written down once shows yesterday's prices as facts. The owner's
+             *     own rate, kept at the control root, wins over it.
+             */
+            price?: components["schemas"]["DriverModelPrice"];
         };
+        /**
+         * @description Millionths of a US dollar for each million tokens (one pico-dollar a
+         *     token). A provider price finer than that is rounded up.
+         */
+        DriverModelPrice: {
+            inputPerMillionMicros: number;
+            outputPerMillionMicros: number;
+            source: components["schemas"]["DriverPriceSource"];
+            /**
+             * Format: date
+             * @description The day the listing was read.
+             */
+            asOf?: string;
+        };
+        /**
+         * @description Where a driver read a model's price (row 40). Only a provider's own listing.
+         * @enum {string}
+         */
+        DriverPriceSource: "openrouter";
         /**
          * @description Present only on a **provider account**, and its presence is what
          *     makes the gateway prefix this driver's model ids. Says where the

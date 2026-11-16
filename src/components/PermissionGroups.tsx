@@ -2,23 +2,32 @@
 
 import { useId, useState } from "react";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { DollarInput } from "@/components/home/ClientKeyLimitsEditor";
 import { api, describeError } from "@/lib/api";
+import { ROLE_LABELS } from "@/lib/modelRoles";
 import {
+  activeGroupChoices,
   groupPoliciesBody,
   JOB_SITE_PERMISSIONS,
+  modelLines,
+  modelsLabel,
   QUEUE_BANDS,
   queueBandLabel,
+  rootKnowsModels,
   rootKnowsPolicies,
+  routingLabel,
   summaryPercentChoices,
   summaryPercentLabel,
 } from "@/lib/people";
 import type {
+  ModelRole,
   OidcClient,
   PermissionGroup,
   PermissionGroupWrite,
   Person,
   QueueBand,
 } from "@/lib/types";
+import { type Allowances, describeAllowances, rootKnowsAllowances } from "@/lib/usage";
 
 const button =
   "action-button rounded-[var(--radius)] border border-[color:var(--border)] px-3 py-1.5 text-sm disabled:opacity-40";
@@ -50,6 +59,8 @@ export function PermissionGroups({
   // An older root has no policies and refuses the field: offer them only
   // when its records show it knows them (row 70).
   const knowsPolicies = rootKnowsPolicies(groups, people);
+  // Row 37: offered and sent only to a root whose groups answer them.
+  const knowsModels = rootKnowsModels(groups);
   return (
     <section className="section-panel flex flex-col gap-4" aria-labelledby="groups-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -85,6 +96,8 @@ export function PermissionGroups({
           <GroupForm
             clients={clients}
             withPolicies={knowsPolicies}
+            withAllowances={rootKnowsAllowances(groups)}
+            withModels={knowsModels}
             onSave={async (body) => {
               await api.post("control", "/v1/permission-groups", body, { bearer });
               await onChanged();
@@ -154,6 +167,22 @@ export function PermissionGroups({
               <p className="text-sm" data-testid={`group-summary-${group.id}`}>
                 Summarise long chats at: {summaryPercentLabel(group.policies.summaryContextPercent)}
               </p>
+              {"tokensPerDay" in group.policies && (
+                <p className="text-sm" data-testid={`group-allowances-${group.id}`}>
+                  Usage allowances for the whole group:{" "}
+                  {describeAllowances(group.policies) || "No limit"}
+                </p>
+              )}
+              {"allowedModels" in group.policies && (
+                <>
+                  <p className="text-sm break-words" data-testid={`group-models-${group.id}`}>
+                    Models: {modelsLabel(group.policies.allowedModels)}
+                  </p>
+                  <p className="text-sm break-words" data-testid={`group-routing-${group.id}`}>
+                    Routing by role: {routingLabel(group.policies.roleRouting)}
+                  </p>
+                </>
+              )}
               {workbenchSettings && (
                 <p className="text-sm" data-testid={`group-memory-servers-${group.id}`}>
                   Memory servers for this group:{" "}
@@ -178,6 +207,8 @@ export function PermissionGroups({
               group={group}
               clients={clients}
               withPolicies={group.policies !== undefined}
+              withAllowances={group.policies != null && "tokensPerDay" in group.policies}
+              withModels={knowsModels}
               onSave={async (body) => {
                 await api.put(
                   "control",
@@ -193,7 +224,7 @@ export function PermissionGroups({
       ))}
       <p className="text-xs text-[color:var(--muted)]">
         Changes apply at the next sign-in or token refresh. Workbench refreshes within ten minutes.
-        Job-site permissions use the current policy.
+        Job-site permissions, models and routing by role apply to each person&rsquo;s next request.
       </p>
     </section>
   );
@@ -203,12 +234,18 @@ function GroupForm({
   group,
   clients,
   withPolicies,
+  withAllowances = false,
+  withModels,
   onSave,
 }: {
   group?: PermissionGroup;
   clients: OidcClient[];
   /** Show and send the Policies section: only to a root that knows them. */
   withPolicies: boolean;
+  /** Row 40: the usage allowances, only to a root that knows them. */
+  withAllowances?: boolean;
+  /** Row 37: show and send Models and Routing by role: only to a root that knows them. */
+  withModels: boolean;
   onSave: (body: PermissionGroupWrite) => Promise<void>;
 }) {
   const [name, setName] = useState(group?.name ?? "");
@@ -223,9 +260,29 @@ function GroupForm({
   const [percent, setPercent] = useState<number | null>(
     group?.policies?.summaryContextPercent ?? null,
   );
+  const [allowances, setAllowances] = useState<Allowances>({
+    tokensPerDay: group?.policies?.tokensPerDay ?? null,
+    tokensPerMonth: group?.policies?.tokensPerMonth ?? null,
+    costPerMonthMicros: group?.policies?.costPerMonthMicros ?? null,
+  });
+  // Row 37: offered only by a root that answers these policies (null when not set).
+  const [limitModels, setLimitModels] = useState(group?.policies?.allowedModels != null);
+  const [modelsText, setModelsText] = useState((group?.policies?.allowedModels ?? []).join("\n"));
+  const [routing, setRouting] = useState<Partial<Record<ModelRole, string>>>(() =>
+    Object.fromEntries(
+      Object.entries(group?.policies?.roleRouting ?? {}).map(([role, models]) => [
+        role,
+        models.join(", "),
+      ]),
+    ),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const count = (raw: string): number | null => {
+    const n = Number(raw);
+    return raw.trim() === "" || !Number.isFinite(n) ? null : n;
+  };
   return (
     <form
       className="mt-3 flex max-w-xl flex-col gap-3"
@@ -241,7 +298,25 @@ function GroupForm({
             description,
             apps: all ? null : apps,
             permissions,
-            ...(withPolicies ? { policies: groupPoliciesBody(band, percent) } : {}),
+            ...(withPolicies
+              ? {
+                  policies: groupPoliciesBody(
+                    {
+                      band,
+                      percent,
+                      allowedModels: limitModels ? modelLines(modelsText) : null,
+                      roleRouting: Object.fromEntries(
+                        Object.entries(routing).map(([role, text]) => [
+                          role,
+                          modelLines(text ?? ""),
+                        ]),
+                      ),
+                    },
+                    withModels,
+                    withAllowances ? allowances : undefined,
+                  ),
+                }
+              : {}),
           });
           setSaved(true);
         } catch (e) {
@@ -370,6 +445,117 @@ function GroupForm({
                 Workbench summarises a chat when it fills this much of the model&rsquo;s context.
               </span>
             </div>
+            {withAllowances && (
+              <div className="flex flex-col gap-1" data-testid="group-allowance-fields">
+                <span className="font-semibold">Usage allowances for the whole group</span>
+                <div className="flex flex-wrap gap-3">
+                  <label className="flex flex-col gap-1">
+                    Tokens a day
+                    <input
+                      className={input}
+                      type="number"
+                      min={1}
+                      placeholder="No limit"
+                      value={allowances.tokensPerDay ?? ""}
+                      onChange={(e) =>
+                        setAllowances({ ...allowances, tokensPerDay: count(e.target.value) })
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    Tokens a month
+                    <input
+                      className={input}
+                      type="number"
+                      min={1}
+                      placeholder="No limit"
+                      value={allowances.tokensPerMonth ?? ""}
+                      onChange={(e) =>
+                        setAllowances({ ...allowances, tokensPerMonth: count(e.target.value) })
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    Spend a month, US$
+                    <DollarInput
+                      label="Spend a month"
+                      className={input}
+                      micros={allowances.costPerMonthMicros}
+                      onChange={(micros) =>
+                        setAllowances({ ...allowances, costPerMonthMicros: micros ?? null })
+                      }
+                    />
+                  </label>
+                </div>
+                <span className="text-xs text-[color:var(--muted)]">
+                  One allowance shared by every member, for requests made as them (from Workbench,
+                  for example). A person in several groups that set one is refused only when all of
+                  them are used up. For one person&rsquo;s own limit, make a group of one.
+                </span>
+              </div>
+            )}
+            {withModels && (
+              <>
+                <fieldset className="flex flex-col gap-2">
+                  <legend className="mb-1 font-semibold">Models</legend>
+                  <label className="flex gap-2">
+                    <input
+                      type="radio"
+                      name={`${hints}-models`}
+                      checked={!limitModels}
+                      onChange={() => setLimitModels(false)}
+                    />
+                    All models
+                  </label>
+                  <label className="flex gap-2">
+                    <input
+                      type="radio"
+                      name={`${hints}-models`}
+                      checked={limitModels}
+                      onChange={() => setLimitModels(true)}
+                    />
+                    Only these models
+                  </label>
+                  {limitModels && (
+                    <label className="flex flex-col gap-1">
+                      Models this group may use
+                      <textarea
+                        className={input}
+                        rows={3}
+                        value={modelsText}
+                        aria-describedby={`${hints}-models-hint`}
+                        onChange={(e) => setModelsText(e.target.value)}
+                      />
+                    </label>
+                  )}
+                  <span id={`${hints}-models-hint`} className="text-xs text-[color:var(--muted)]">
+                    One model per line. Use * for any text, such as qwen3-*. A person in several
+                    groups uses only models that every one of their groups&rsquo; lists allows, and
+                    an app key&rsquo;s own model list still applies. With no model listed, members
+                    can use no model.
+                  </span>
+                </fieldset>
+                <fieldset className="flex flex-col gap-2">
+                  <legend className="mb-1 font-semibold">Routing by role</legend>
+                  <span className="text-xs text-[color:var(--muted)]">
+                    The models to try for each role, in order, separated by commas. Empty: the
+                    install&rsquo;s default. A person in several groups uses the group they work
+                    from.
+                  </span>
+                  {(Object.keys(ROLE_LABELS) as ModelRole[]).map((role) => (
+                    <label key={role} className="flex flex-col gap-1">
+                      {ROLE_LABELS[role]}
+                      <input
+                        className={input}
+                        placeholder="Install default"
+                        value={routing[role] ?? ""}
+                        onChange={(e) => setRouting({ ...routing, [role]: e.target.value })}
+                      />
+                    </label>
+                  ))}
+                </fieldset>
+              </>
+            )}
           </fieldset>
         )}
         <button className={`${button} self-start`} disabled={!name.trim()}>
@@ -461,5 +647,64 @@ export function PersonGroups({
         {busy ? "Saving…" : "Save access"}
       </button>
     </fieldset>
+  );
+}
+
+/**
+ * Row 37 (R37-FIRST): which of their groups a person works from. Their
+ * models and routing by role come from that group alone; with no choice,
+ * from the first of their groups. Shown only when they are in two or more.
+ */
+export function ActiveGroup({
+  person,
+  groups,
+  onSave,
+}: {
+  person: Person;
+  groups: PermissionGroup[];
+  onSave: (activeGroup: string | null) => Promise<unknown>;
+}) {
+  const choices = activeGroupChoices(person, groups);
+  const [value, setValue] = useState(person.activeGroup ?? "");
+  const [busy, setBusy] = useState(false);
+  const hint = useId();
+  if (choices.length < 3) return null;
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <label className="flex flex-col gap-1">
+        Works with
+        <select
+          className={input}
+          value={value}
+          disabled={busy}
+          aria-describedby={hint}
+          onChange={(e) => setValue(e.target.value)}
+        >
+          {choices.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span id={hint} className="text-xs text-[color:var(--muted)]">
+        Their routing by role comes from this group, from their next request. Every group&rsquo;s
+        model list still applies.
+      </span>
+      <button
+        className={`${button} self-start`}
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onSave(value || null);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Saving…" : "Save group choice"}
+      </button>
+    </div>
   );
 }

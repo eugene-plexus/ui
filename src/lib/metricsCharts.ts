@@ -33,6 +33,12 @@ export interface ChartGroup {
   tokensPerSecond?: { p50: number; p90?: number; samples: number } | null;
   decodeTokensPerSecond?: { p50: number; p90?: number; samples: number } | null;
   waitedMs?: { p50: number; p90: number; max: number } | null;
+  /** Row 38: the hour's mean latency; the only latency a `source: rollup`
+   * hour has. Absent from a gateway older than metrics v16 on raw hours. */
+  latencyMeanMs?: number | null;
+  /** Row 38: what the woken requests waited, summed (metrics v16). */
+  waitedMsSum?: number | null;
+  source?: "raw" | "rollup" | null;
 }
 
 /** Anything on a time axis. The gateway's charts plot hours; host
@@ -56,6 +62,8 @@ export interface HourPoint {
   latencyP90: number | null;
   ttftP50: number | null;
   decodeP50: number | null;
+  /** Row 38: mean latency, on the day buckets of a 30- or 90-day window. */
+  latencyMean?: number | null;
 }
 
 function floorHour(iso: string): number {
@@ -184,4 +192,102 @@ export function hourLabel(iso: string, spanHours: number): string {
   const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   if (spanHours <= 24) return time;
   return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
+}
+
+const DAY = 24 * HOUR;
+
+/** Local midnight at or before `ms`. */
+function floorDay(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/**
+ * Day buckets for a 30- or 90-day window (row 38), from the gateway's hourly
+ * groups: hours inside retention (`source: raw`) and the stored rollups past
+ * it (`source: rollup`). Counts add up. Percentiles do not, so a day carries
+ * no p50: it carries the request-weighted mean of its hours' means, and is
+ * null when no hour in it said one (a gateway older than metrics v16).
+ */
+export function dailyPoints(
+  groups: ChartGroup[],
+  windowStart: string,
+  windowEnd: string,
+): HourPoint[] {
+  const start = floorDay(Date.parse(windowStart));
+  const end = floorDay(Date.parse(windowEnd));
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return [];
+  const days: { point: HourPoint; weighted: number; weight: number }[] = [];
+  const index = new Map<number, number>();
+  // Two hours past a day's length, floored, is the next midnight even across
+  // a daylight-saving change; 100 days bounds a malformed window.
+  for (let t = start; t <= end && days.length < 100; t = floorDay(t + DAY + 2 * HOUR)) {
+    index.set(t, days.length);
+    days.push({
+      point: {
+        t: new Date(t).toISOString(),
+        requests: 0,
+        errors: 0,
+        cascaded: 0,
+        swappedIn: 0,
+        latencyP50: null,
+        latencyP90: null,
+        ttftP50: null,
+        decodeP50: null,
+        latencyMean: null,
+      },
+      weighted: 0,
+      weight: 0,
+    });
+  }
+  for (const g of groups) {
+    if (!g.bucketStart) continue;
+    const at = index.get(floorDay(Date.parse(g.bucketStart)));
+    if (at === undefined) continue;
+    const day = days[at]!;
+    day.point.requests += g.requests;
+    day.point.errors += g.errors;
+    day.point.cascaded = (day.point.cascaded ?? 0) + g.cascaded;
+    day.point.swappedIn = (day.point.swappedIn ?? 0) + g.swappedIn;
+    if (g.latencyMeanMs != null && g.requests > 0) {
+      day.weighted += g.latencyMeanMs * g.requests;
+      day.weight += g.requests;
+    }
+  }
+  return days.map(({ point, weighted, weight }) => ({
+    ...point,
+    latencyMean: weight > 0 ? Math.round(weighted / weight) : null,
+  }));
+}
+
+/** Day label for the x axis and tooltips: local date. */
+export function dayLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** The headline counts of a long window, summed from its hourly groups, and
+ * the request-weighted mean latency. Percentiles come from the requests the
+ * gateway still keeps whole, read apart (`tilesFrom` over `groupBy=total`). */
+export function totalsFromHours(groups: ChartGroup[]): {
+  requests: number;
+  errors: number;
+  cascaded: number;
+  swappedIn: number;
+  latencyMean: number | null;
+} {
+  let weighted = 0;
+  let weight = 0;
+  const out = { requests: 0, errors: 0, cascaded: 0, swappedIn: 0 };
+  for (const g of groups) {
+    out.requests += g.requests;
+    out.errors += g.errors;
+    out.cascaded += g.cascaded;
+    out.swappedIn += g.swappedIn;
+    if (g.latencyMeanMs != null && g.requests > 0) {
+      weighted += g.latencyMeanMs * g.requests;
+      weight += g.requests;
+    }
+  }
+  return { ...out, latencyMean: weight > 0 ? Math.round(weighted / weight) : null };
 }

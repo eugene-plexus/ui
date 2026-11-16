@@ -52,7 +52,9 @@ export type IconName =
   | "Blocks"
   | "ScrollText"
   | "Search"
-  | "Users";
+  | "Users"
+  | "LayoutDashboard"
+  | "Bell";
 
 /**
  * A colour *role*, not a colour. `left` and `right` resolve to the
@@ -257,6 +259,26 @@ export const SCREENS: readonly Screen[] = [
     blurb: "What the gateway served, per request and per attempt.",
   },
   {
+    // Row 38: the administrator's dashboards. Filed under the gateway beside
+    // Metrics, whose 90-day history it shares; spans the machines and the
+    // control root, whose SLOs it shows.
+    href: "/dashboards",
+    label: "Dashboards",
+    icon: "LayoutDashboard",
+    layer: "gateway",
+    spans: ["hardware", "control"],
+    blurb: "Every machine together, what waking models costs, and how each SLO stands.",
+  },
+  {
+    // Row 40: tokens and spend per key, person and group, and each model's price.
+    href: "/usage",
+    label: "Usage",
+    icon: "KeyRound",
+    layer: "gateway",
+    spans: [],
+    blurb: "What each key, person and group used, their allowances, and each model's price.",
+  },
+  {
     href: "/routing",
     label: "Routing",
     icon: "Route",
@@ -331,6 +353,16 @@ export const SCREENS: readonly Screen[] = [
     layer: "control",
     spans: ["agent"],
     blurb: "The machines in this install, their versions, and the token a new one joins with.",
+  },
+  {
+    // Row 38: what the control root's alert rules fired, then the rules,
+    // the SLO targets and the webhook. Filed under the root, which evaluates.
+    href: "/alerts",
+    label: "Alerts",
+    icon: "Bell",
+    layer: "control",
+    spans: ["gateway", "hardware"],
+    blurb: "What fired and when, the rules that watch the install, and where alerts are sent.",
   },
   {
     // Job sites (job-sites-own-enrollment.md §2.9): machines that are their

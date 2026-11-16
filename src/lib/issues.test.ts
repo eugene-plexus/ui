@@ -1807,3 +1807,60 @@ describe("the control root's passphrase file (row 5)", () => {
       expect(issuesFrom({ ...NOTHING, controlPassphraseFile: fine })).toEqual([]);
   });
 });
+
+// --- alerts (row 38) ----------------------------------------------------
+
+describe("alerts the control root fired", () => {
+  const alerts = {
+    evaluating: true,
+    evaluatedAt: "2026-11-16T12:00:00Z",
+    problems: [],
+    firing: [
+      {
+        id: "gpu-hot:nas:gpu:cuda:0",
+        ruleId: "gpu-hot",
+        kind: "gpu-hot" as const,
+        state: "firing" as const,
+        message: "RTX 5090 on nas is at 88 °C",
+        value: 88,
+        threshold: 85,
+        machine: "nas",
+        link: "/hosts?node=nas",
+        startedAt: "2026-11-16T11:55:00Z",
+      },
+      {
+        id: "machine-down:tower",
+        ruleId: "machine-down",
+        kind: "machine-down" as const,
+        state: "firing" as const,
+        message: "tower does not answer",
+        machine: "tower",
+        startedAt: "2026-11-16T11:50:00Z",
+      },
+    ],
+    recent: [],
+    slos: [],
+    webhook: { state: "failing" as const, lastError: "connection refused" },
+  };
+
+  it("lists each firing alert with its fix, and the webhook that does not answer", () => {
+    const found = issuesFrom({ ...NOTHING, alerts });
+    const hot = found.find((i) => i.id === "alert:gpu-hot:nas:gpu:cuda:0");
+    expect(hot).toMatchObject({
+      kind: "alert-firing",
+      severity: "warning",
+      title: "RTX 5090 on nas is at 88 °C.",
+      detail: "Check its cooling and its power limit.",
+      href: "/hosts?node=nas",
+      node: "nas",
+    });
+    const hook = found.find((i) => i.kind === "alert-webhook-failing");
+    expect(hook?.title).toBe("The alert webhook did not answer: connection refused.");
+    expect(hook?.href).toBe("/alerts");
+  });
+
+  it("leaves a machine that does not answer to the machine's own issue", () => {
+    const found = issuesFrom({ ...NOTHING, alerts });
+    expect(found.some((i) => i.id === "alert:machine-down:tower")).toBe(false);
+  });
+});

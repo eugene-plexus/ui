@@ -230,6 +230,9 @@ const PAGES: Record<string, PageRef[]> = {
     // Address, keys and model names for apps (CX5).
     { id: "connect", label: "Connect apps", route: "/connect", icon: "Plug" },
     { id: "metrics", label: "Metrics", route: "/metrics", icon: "Radio" },
+    // Row 40: what each key, person and group used, their allowances, and
+    // each served model's price.
+    { id: "usage", label: "Usage", route: "/usage", icon: "KeyRound" },
     // The priority lists (`modelSlots`) as their own page rather than a
     // JSON field on Config: they grow with the install, and their real
     // failure mode — a misspelled target — needs the routing table on

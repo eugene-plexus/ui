@@ -58,7 +58,8 @@ export async function changeRole(
 
 export type Finding = "yes" | "no" | "unknown";
 
-const ROLE_LABELS: Record<ModelRole, string> = {
+/** The console's name for each model role, in the contract's order. */
+export const ROLE_LABELS: Record<ModelRole, string> = {
   chat: "Chat",
   agentic: "Agentic",
   vision: "Sees images",

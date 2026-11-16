@@ -2918,7 +2918,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-key reported usage on this gateway (operator only; retained raw rows). */
+        /**
+         * Per-key reported usage on this gateway (operator only; retained raw rows).
+         * @description The owner, and the control root's own service token (row 38: SLOs
+         *     set on a client key). Not a person with an operations power.
+         */
         get: operations["getClientUsage"];
         put?: never;
         post?: never;
@@ -2961,10 +2965,11 @@ export interface paths {
          *     emitted none. Treat absence as a per-request fact, not a
          *     property of a backend kind.
          *
-         *     Operator-only. No component needs this, so a service token is
-         *     refused rather than accepted for reads as elsewhere; and
-         *     model names plus traffic volumes are not nothing on a shared
-         *     tailnet.
+         *     The owner, a person with an operations power (row 39), and the
+         *     control root's own service token (row 38: the active root reads
+         *     it once a minute to evaluate alert rules and SLOs). Any other
+         *     service token is refused: model names plus traffic volumes are
+         *     not nothing on a shared tailnet.
          */
         get: operations["getMetrics"];
         put?: never;
@@ -3035,6 +3040,23 @@ export interface paths {
          *       `model_not_found` and a message naming the role and where to
          *       assign one, for example: "No model has the role Reads pages.
          *       Give one that role under Routing > Model roles."
+         *
+         *       **A person's group routing (row 37).** For a request with a
+         *       verified person, the root's admission answer may carry the
+         *       person's `roleRouting` (their active group's) and `modelLimits`
+         *       (every group of theirs that sets a model list). A role it routes
+         *       resolves to the group's list instead of this slot's; a role it
+         *       does not route uses this slot. Either way every model outside the
+         *       allowed set (the key's `allowedModels` and every one of the
+         *       person's lists) is dropped before any is tried, fallbacks and server-run tools' models included, and a
+         *       group list that keeps none falls back to this slot's list,
+         *       filtered. A model one of the person's groups leaves out is refused
+         *       403 with `code` `model_not_allowed`, on the Responses door too:
+         *       "Your group Sales does not include m3. Ask the owner, or choose
+         *       another model." A role with nothing left is a 404: "No model your
+         *       groups allow has the role Chat." A model name over 256 characters
+         *       is never matched against a list. `GET /v1/models` with a person's token lists only the
+         *       models they may reach and the `role:*` entries they can use.
          *     * **`geminiModelNames`** (`model_slots`, default `[]`, label
          *       **Gemini model names**) — live mappings on the Gemini door.
          *       Each entry is a `GeminiModelNameMapping`: `{model, targets}`,
@@ -4102,6 +4124,17 @@ export interface components {
             /** @description For a `video` model, at least one backend takes an `input_reference`. */
             video_first_frame?: boolean;
             /**
+             * @description Row 40: what the model's provider publishes for its tokens, as its
+             *     drivers report it (`DriverModel.price`), so the console can show it
+             *     beside the owner's rate. **Listed only when every backend serving
+             *     the model reports a price**, and the highest when they differ.
+             *     Absent for a local model and for a cloud model none of whose
+             *     drivers knows a price: *no price listed*, never free. The owner's
+             *     rate, kept at the control root (`GET /v1/usage/prices`), wins over
+             *     it when the root counts a request.
+             */
+            provider_price?: components["schemas"]["ProviderModelPrice"];
+            /**
              * @description For a `video` model: the provider's price list, as its driver
              *     reads it (OpenRouter's `pricing_skus`), so a client can say
              *     what a job will cost before it sends one. **Listed only when
@@ -4197,6 +4230,21 @@ export interface components {
              *     at least one declared `startOnDemand`.
              */
             on_demand?: boolean;
+        };
+        /**
+         * @description A model's token price, in millionths of a US dollar per million
+         *     tokens (one pico-dollar a token), as its provider publishes it.
+         */
+        ProviderModelPrice: {
+            input_per_million_micros: number;
+            output_per_million_micros: number;
+            /** @description Where the driver read it (`openrouter`, the provider's own listing). */
+            source?: string;
+            /**
+             * Format: date
+             * @description The day the price was read.
+             */
+            as_of?: string;
         };
         /**
          * @description What one unit of a `VideoPrice` is: a second of video made, one
@@ -7294,8 +7342,11 @@ export interface components {
         MetricsGroup: {
             source?: components["schemas"]["MetricsSource"];
             /**
-             * @description Mean request latency in milliseconds, from the stored sums. Present
-             *     on a `source: rollup` group, which has no percentiles.
+             * @description Mean request latency in milliseconds. On a `source: rollup` group,
+             *     which has no percentiles, from the stored sums; on a raw group
+             *     (row 38) beside `latencyMs`, so a chart can join hours inside
+             *     retention with the hours past it. Absent from a raw group of a
+             *     gateway older than metrics v16.
              */
             latencyMeanMs?: number;
             /** @description The slowest request of the hour. Present on a `source: rollup` group. */
@@ -7343,6 +7394,14 @@ export interface components {
              *     way to see what it costs.
              */
             swappedIn: number;
+            /**
+             * @description Row 38: the milliseconds the `swappedIn` requests waited for
+             *     their runtime to start, summed, so a wake's cost adds up across
+             *     hours and backends. On a `source: rollup` group from an hour
+             *     rolled up before metrics v16 it is 0 while `swappedIn` is not:
+             *     that wait was not kept. Absent from a gateway older than v16.
+             */
+            waitedMsSum?: number;
             /** @description Absent on a `source: rollup` group, which has `latencyMeanMs` and `latencyMaxMs` instead. */
             latencyMs?: components["schemas"]["Percentiles"];
             /**
@@ -7571,12 +7630,15 @@ export interface components {
          */
         QueueBand: "interactive" | "background" | "sheddable";
         /**
-         * @description Why the queue refused a request (row 11), on its
+         * @description `insufficient_quota` (row 40): a usage allowance is spent, as the
+         *     root said.
+         *
+         *     Why the queue refused a request (row 11), on its
          *     `X-Eugene-Refusal-Reason` header and its metrics row. "Waiting in
          *     line" in this document's description has the table.
          * @enum {string}
          */
-        QueueRefusalCode: "key_queue_full" | "queue_full" | "set_aside" | "key_queue_timeout" | "queue_timeout" | "still_starting" | "shutting_down" | "rate_limited";
+        QueueRefusalCode: "key_queue_full" | "queue_full" | "set_aside" | "key_queue_timeout" | "queue_timeout" | "still_starting" | "shutting_down" | "rate_limited" | "insufficient_quota";
         /**
          * @description `refused` (row 11, schema v14): the queue turned the request away
          *     before any backend was asked, for the `refusal` the row names.

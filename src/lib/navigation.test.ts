@@ -95,9 +95,10 @@ describe("the registry agrees with the website", () => {
 });
 
 describe("every screen resolves", () => {
-  it("has fifteen navigable screens", () => {
-    // Connect apps joined the gateway's screens with CX5 (2026-10-20).
-    expect(SCREENS).toHaveLength(15);
+  it("has eighteen navigable screens", () => {
+    // Connect apps joined the gateway's screens with CX5 (2026-10-20);
+    // Dashboards and Alerts with row 38, Usage with row 40.
+    expect(SCREENS).toHaveLength(18);
   });
 
   it("puts Home at the root and the playground beside it, both under Your tools", () => {
@@ -166,14 +167,20 @@ describe("every screen resolves", () => {
     expect(new Set(library.map((s) => s.icon)).size).toBe(2);
   });
 
-  it("gives the three Gateway screens three icons: Connect apps, Metrics, Routing", () => {
+  it("gives the five Gateway screens five icons: Connect apps, Metrics, Dashboards, Usage, Routing", () => {
     // Routing (2026-09-21): the priority lists as their own screen. It
     // files under the gateway — the lists are the gateway's own config —
     // and spans drivers, because every row resolves to the drivers
     // serving a model id.
     const gateway = SCREENS.filter((s) => s.layer === "gateway");
-    expect(gateway.map((s) => s.href)).toEqual(["/connect", "/metrics", "/routing"]);
-    expect(new Set(gateway.map((s) => s.icon)).size).toBe(3);
+    expect(gateway.map((s) => s.href)).toEqual([
+      "/connect",
+      "/metrics",
+      "/dashboards",
+      "/usage",
+      "/routing",
+    ]);
+    expect(new Set(gateway.map((s) => s.icon)).size).toBe(5);
     expect(SCREENS.find((s) => s.href === "/routing")?.spans).toEqual(["drivers"]);
   });
 });
@@ -195,6 +202,8 @@ describe("the groups are the page's two halves", () => {
       "/apps",
       "/connect",
       "/metrics",
+      "/dashboards",
+      "/usage",
       "/routing",
       "/inference",
       "/hosts",
@@ -205,6 +214,7 @@ describe("the groups are the page's two halves", () => {
       "/config",
       "/logs",
       "/nodes",
+      "/alerts",
       "/sites",
       "/people",
     ]);

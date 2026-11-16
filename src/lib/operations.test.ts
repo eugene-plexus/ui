@@ -66,7 +66,16 @@ describe("the console for a person who is not the owner", () => {
   it("shows a person with Models only the pages Models uses", () => {
     const allowed = SCREENS.filter((s) => allowedPath(s.href, powersOf({ operateModels: true })));
     expect(allowed.map((s) => s.label).sort()).toEqual(
-      ["Discover", "Home", "Hosts", "Library", "Machines", "Metrics"].sort(),
+      [
+        "Alerts",
+        "Dashboards",
+        "Discover",
+        "Home",
+        "Hosts",
+        "Library",
+        "Machines",
+        "Metrics",
+      ].sort(),
     );
     for (const owners of ["/config", "/people", "/routing", "/inference", "/sites", "/logs"]) {
       expect(allowedPath(owners, [MODELS])).toBe(false);

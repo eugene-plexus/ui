@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   appsSummary,
+  activeGroupChoices,
   groupPoliciesBody,
   jobSitesSummary,
+  modelLines,
+  modelsLabel,
+  rootKnowsModels,
+  routingLabel,
   installedByAgent,
   newPersonProblem,
   ownerLabel,
@@ -186,7 +191,7 @@ describe("group policies (row 70)", () => {
         },
         groups,
       ),
-    ).toEqual({
+    ).toMatchObject({
       queue: "Interactive (from Desk, Night shift)",
       // A group the page has not loaded is named by its id, never dropped.
       summary: "85% (from g-gone)",
@@ -194,7 +199,7 @@ describe("group policies (row 70)", () => {
   });
 
   it("says Not set for a policy no group sets, and nothing for an older root", () => {
-    expect(policiesSummary({ policiesInEffect: {} }, groups)).toEqual({
+    expect(policiesSummary({ policiesInEffect: {} }, groups)).toMatchObject({
       queue: "Not set",
       summary: "Not set",
     });
@@ -219,11 +224,50 @@ describe("group policies (row 70)", () => {
   });
 
   it("sends every policy, null when not set", () => {
-    expect(groupPoliciesBody("", null)).toEqual({ queueBand: null, summaryContextPercent: null });
-    expect(groupPoliciesBody("background", 70)).toEqual({
+    const unset = { band: "" as const, percent: null, allowedModels: null, roleRouting: {} };
+    expect(groupPoliciesBody(unset)).toEqual({
+      queueBand: null,
+      summaryContextPercent: null,
+      roleRouting: null,
+      allowedModels: null,
+    });
+    expect(
+      groupPoliciesBody({
+        band: "background",
+        percent: 70,
+        allowedModels: ["m1", "qwen3-*"],
+        roleRouting: { chat: ["m2", "m1"], embeddings: [] },
+      }),
+    ).toEqual({
       queueBand: "background",
       summaryContextPercent: 70,
+      roleRouting: { chat: ["m2", "m1"] },
+      allowedModels: ["m1", "qwen3-*"],
     });
+  });
+
+  it("leaves routing and models out for a root from row 70, which refuses them", () => {
+    const form = { band: "" as const, percent: 70, allowedModels: ["m1"], roleRouting: {} };
+    expect(groupPoliciesBody(form, false)).toEqual({
+      queueBand: null,
+      summaryContextPercent: 70,
+    });
+    expect(rootKnowsModels([{ policies: { queueBand: null, summaryContextPercent: null } }])).toBe(
+      false,
+    );
+    expect(
+      rootKnowsModels([
+        {
+          policies: {
+            queueBand: null,
+            summaryContextPercent: null,
+            roleRouting: null,
+            allowedModels: null,
+          },
+        },
+      ]),
+    ).toBe(true);
+    expect(rootKnowsModels([])).toBe(false);
   });
 });
 
@@ -234,5 +278,83 @@ describe("where a group's memory servers are set (row 70c)", () => {
     );
     expect(workbenchGroupsHref("https://wb.example")).toBe("https://wb.example/settings#groups");
     expect(workbenchGroupsHref(null)).toBeNull();
+  });
+});
+
+describe("models and routing per group (row 37)", () => {
+  const groups = [
+    { id: "g-sales", name: "Sales" },
+    { id: "g-ops", name: "Ops" },
+  ];
+
+  it("reads one model or pattern per line, once each", () => {
+    expect(modelLines(" m1 \n\nqwen3-*\nm1\n")).toEqual(["m1", "qwen3-*"]);
+    expect(modelLines("")).toEqual([]);
+  });
+
+  it("says All models for no limit and No models for an empty list", () => {
+    expect(modelsLabel(null)).toBe("All models");
+    expect(modelsLabel(undefined)).toBe("All models");
+    expect(modelsLabel([])).toBe("No models");
+    expect(modelsLabel(["m1", "qwen3-*"])).toBe("m1, qwen3-*");
+  });
+
+  it("names each routed role with its models in order", () => {
+    expect(routingLabel(null)).toBe("Install default for every role");
+    expect(routingLabel({})).toBe("Install default for every role");
+    expect(routingLabel({ embeddings: ["e1"], chat: ["m2", "m1"] })).toBe(
+      "Chat: m2, then m1. Embeddings: e1. Other roles: install default",
+    );
+  });
+
+  it("says a person's models and routing, and the group they come from", () => {
+    expect(
+      policiesSummary(
+        {
+          policiesInEffect: {
+            activeGroup: "g-ops",
+            modelLimits: [{ group: { id: "g-ops", name: "Ops" }, models: ["m3"] }],
+            roleRouting: { chat: ["m3"] },
+            setBy: { roleRouting: ["g-ops"] },
+          },
+        },
+        groups,
+      ),
+    ).toMatchObject({
+      models: "m3 (from Ops)",
+      routing: "Chat: m3. Other roles: install default (from Ops)",
+    });
+    expect(policiesSummary({ policiesInEffect: {} }, groups)).toMatchObject({
+      models: "All models",
+      routing: "Install default for every role",
+    });
+  });
+
+  it("says every group's list when several narrow a person (R37-SELF)", () => {
+    expect(
+      policiesSummary(
+        {
+          policiesInEffect: {
+            modelLimits: [
+              { group: { id: "g-night", name: "Night" }, models: ["m2", "m3"] },
+              { group: { id: "g-sales", name: "Sales" }, models: [] },
+            ],
+          },
+        },
+        groups,
+      ),
+    ).toMatchObject({
+      models: "Only models in every list: m2, m3 (Night); No models (Sales)",
+    });
+  });
+
+  it("offers the person's own groups, and the first of them as the default", () => {
+    expect(activeGroupChoices({ groups: ["g-ops", "g-sales", "g-gone"] }, groups)).toEqual([
+      { id: "", label: "The first of their groups (Ops)" },
+      { id: "g-ops", label: "Ops" },
+      { id: "g-sales", label: "Sales" },
+    ]);
+    expect(activeGroupChoices({ groups: null }, groups)).toEqual([]);
+    expect(activeGroupChoices({ groups: [] }, groups)).toEqual([]);
   });
 });

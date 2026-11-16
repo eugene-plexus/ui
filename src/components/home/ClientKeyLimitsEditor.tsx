@@ -1,9 +1,10 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 
 import type { ClientKeyLimits } from "@/lib/types";
+import { describeAllowances, dollarsToMicros, microsToDollars } from "@/lib/usage";
 
 export const DEFAULT_CLIENT_LIMITS: ClientKeyLimits = {
   localOnly: false,
@@ -52,14 +53,58 @@ function whole(raw: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** A dollar amount typed as text and kept as whole micro-dollars (row 40).
+ * What is typed stays on screen while it is being typed ("4."); what is kept
+ * is exact, never a float. */
+export function DollarInput({
+  micros,
+  onChange,
+  label,
+  className,
+}: {
+  micros: number | null | undefined;
+  onChange: (micros: number | undefined) => void;
+  label: string;
+  className: string;
+}) {
+  const [text, setText] = useState(micros == null ? "" : microsToDollars(micros));
+  const parsed = dollarsToMicros(text);
+  return (
+    <>
+      <input
+        aria-label={label}
+        aria-invalid={parsed === null}
+        className={className}
+        inputMode="decimal"
+        value={text}
+        placeholder="No limit"
+        onChange={(e) => {
+          setText(e.target.value);
+          const next = dollarsToMicros(e.target.value);
+          if (next !== null) onChange(next);
+        }}
+      />
+      {parsed === null && (
+        <span role="alert" className="status-error block">
+          Give an amount in dollars, such as 4.00, with at most six places.
+        </span>
+      )}
+    </>
+  );
+}
+
 export function ClientKeyLimitsEditor({
   value,
   onChange,
   disabled = false,
+  allowances = false,
 }: {
   value: ClientKeyLimits;
   onChange: (value: ClientKeyLimits) => void;
   disabled?: boolean;
+  /** Row 40: offer the usage allowances. Only an install's root counts them,
+   * so a machine that joined none does not show them. */
+  allowances?: boolean;
 }) {
   const id = useId();
   const selected = value.allowedModels != null;
@@ -244,6 +289,51 @@ export function ClientKeyLimitsEditor({
         each person in turn. A request past this many waiting is refused; 0 refuses at once. A
         signed-in person&rsquo;s groups can set their own priority.
       </p>
+      {allowances && (
+        <>
+          {/* Row 40: counted by the root across every gateway; empty is no limit. */}
+          <div className="flex flex-wrap gap-3" data-testid="key-allowances">
+            <label>
+              Tokens a day{" "}
+              <input
+                aria-label="Tokens a day"
+                className={`${field} w-32`}
+                type="number"
+                min={1}
+                value={value.tokensPerDay ?? ""}
+                placeholder="No limit"
+                onChange={(e) => onChange({ ...value, tokensPerDay: whole(e.target.value) })}
+              />
+            </label>
+            <label>
+              Tokens a month{" "}
+              <input
+                aria-label="Tokens a month"
+                className={`${field} w-36`}
+                type="number"
+                min={1}
+                value={value.tokensPerMonth ?? ""}
+                placeholder="No limit"
+                onChange={(e) => onChange({ ...value, tokensPerMonth: whole(e.target.value) })}
+              />
+            </label>
+            <label>
+              Spend a month, US${" "}
+              <DollarInput
+                label="Spend a month"
+                className={`${field} w-28`}
+                micros={value.costPerMonthMicros}
+                onChange={(micros) => onChange({ ...value, costPerMonthMicros: micros })}
+              />
+            </label>
+          </div>
+          <p className="text-[color:var(--muted)]">
+            Tokens in and out, and spend at the prices on the Usage page, counted on every gateway.
+            Days are UTC; a month starts on the 1st. A request is refused once an allowance is used
+            up; one already running finishes. With a spend limit, a model with no price is refused.
+          </p>
+        </>
+      )}
     </fieldset>
   );
 }
@@ -256,10 +346,41 @@ export type ClientKeyLimitsBody = Omit<
 > &
   Partial<Pick<ClientKeyLimits, "band" | "maxQueuedRequests" | "readMetrics">>;
 
-export function cleanClientLimits(value: ClientKeyLimits): ClientKeyLimitsBody {
-  const { band, maxQueuedRequests, readMetrics, ...rest } = value;
+/** The limits as they are sent. `before` is the key's limits now, on an edit:
+ * an allowance it has that the editor emptied is sent as null, which clears it
+ * (row 40 review S2); one it never had is left out, which a root a release
+ * behind, refusing fields it does not know, needs. */
+export function cleanClientLimits(
+  value: ClientKeyLimits,
+  before?: ClientKeyLimits,
+): ClientKeyLimitsBody {
+  const {
+    band,
+    maxQueuedRequests,
+    readMetrics,
+    tokensPerDay,
+    tokensPerMonth,
+    costPerMonthMicros,
+    ...rest
+  } = value;
   return {
     ...rest,
+    // Row 40: sent when set, null when the key had one and it was emptied.
+    ...(tokensPerDay != null
+      ? { tokensPerDay }
+      : before?.tokensPerDay != null
+        ? { tokensPerDay: null }
+        : {}),
+    ...(tokensPerMonth != null
+      ? { tokensPerMonth }
+      : before?.tokensPerMonth != null
+        ? { tokensPerMonth: null }
+        : {}),
+    ...(costPerMonthMicros != null
+      ? { costPerMonthMicros }
+      : before?.costPerMonthMicros != null
+        ? { costPerMonthMicros: null }
+        : {}),
     allowedModels:
       value.allowedModels == null
         ? null
@@ -285,5 +406,6 @@ export function describeClientLimits(value?: ClientKeyLimits | null): string {
   const band = value.band && value.band !== "interactive" ? ` · ${BAND_LABELS[value.band]}` : "";
   const waiting = value.maxQueuedRequests ?? 8;
   const line = waiting === 0 ? "none may wait" : `${waiting} may wait`;
-  return `${models}${value.localOnly ? " · Local-only" : ""}${search}${logs}${metrics}${band} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute · ${line}`;
+  const allowed = describeAllowances(value);
+  return `${models}${value.localOnly ? " · Local-only" : ""}${search}${logs}${metrics}${band} · ${value.maxConcurrentRequests ?? 2} concurrent · ${value.requestsPerMinute ?? 60}/minute · ${line}${allowed ? ` · ${allowed}` : ""}`;
 }

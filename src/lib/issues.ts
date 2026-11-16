@@ -58,6 +58,7 @@ import { labelOf } from "@/lib/nodeLabels";
 import type { HostHistory } from "./hostHistory";
 import { recentlyBusy, throttleText } from "./hardware";
 import { rolloutActive } from "./engineRollout";
+import { RULE_KINDS, type AlertsView } from "./alerts";
 
 export type IssueKind =
   | "gpu-link-narrow"
@@ -82,7 +83,9 @@ export type IssueKind =
   | "versions-differ"
   | "account-list-failed"
   | "routing-target-unserved"
-  | "passphrase-file-old";
+  | "passphrase-file-old"
+  | "alert-firing"
+  | "alert-webhook-failing";
 
 /**
  * `blocking` means the install is not doing its job right now;
@@ -201,6 +204,8 @@ export interface IssueSources {
    * at each start, every hour and after a change. Absent when unknown.
    */
   controlPassphraseFile?: "matches" | "old" | "none" | null;
+  /** Row 38: what the control root's alert rules fired; null when it did not answer. */
+  alerts?: AlertsView | null;
 }
 
 /**
@@ -238,6 +243,7 @@ export function issuesFrom(sources: IssueSources): Issue[] {
     ...clockSkewIssues(sources.perNode),
     ...accountListIssues(sources.drivers),
     ...unservedTargetIssues(sources.routing),
+    ...alertIssues(sources.alerts),
   ];
   issues.push(...sources.perNode.flatMap(updateIssues), ...versionsDifferIssues(sources.perNode));
   for (const node of sources.perNode) {
@@ -322,6 +328,37 @@ function hardwareIssues(node: NodeFacts): Issue[] {
     });
   }
   return result;
+}
+
+/**
+ * Row 38: each alert the root fired, and a webhook that stopped answering.
+ * A machine that does not answer is left to `nodeDownIssues`, which says the
+ * same thing from the node list and must not be said twice.
+ */
+export function alertIssues(alerts: AlertsView | null | undefined): Issue[] {
+  // A body that is not an alerts view (an older root, a stand-in) says nothing.
+  if (!alerts || !Array.isArray(alerts.firing)) return [];
+  const out: Issue[] = alerts.firing
+    .filter((a) => a.kind !== "machine-down")
+    .map((a) => ({
+      id: `alert:${a.id}`,
+      kind: "alert-firing" as const,
+      severity: "warning" as const,
+      title: `${a.message}.`,
+      detail: RULE_KINDS[a.kind]?.fix ?? "See it on the Alerts page.",
+      href: a.link ?? "/alerts",
+      node: a.machine ?? null,
+    }));
+  if (alerts.webhook?.state === "failing")
+    out.push({
+      id: "alert-webhook-failing",
+      kind: "alert-webhook-failing",
+      severity: "warning",
+      title: `The alert webhook did not answer: ${alerts.webhook.lastError ?? "no cause given"}.`,
+      detail: "Alerts still show here. Check the webhook's address on the Alerts page.",
+      href: "/alerts",
+    });
+  return out;
 }
 
 export function worstSeverity(issues: Issue[]): IssueSeverity | null {

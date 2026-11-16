@@ -250,6 +250,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Usage and allowances per key, person and group (row 40)
+         * @description What each key lineage, person and permission group used, across every
+         *     gateway of the install, in one UTC day, one calendar month and an
+         *     optional range of days, with the allowances that apply and what is
+         *     left of them. Costs are at the install's prices (`GET
+         *     /v1/usage/prices`) as they were when each request was counted.
+         *
+         *     The owner sees every key, person and group. A directory
+         *     administrator (row 39) sees people and groups but no keys: one who
+         *     may manage people or groups sees all of them, one who manages the
+         *     membership of some groups sees those groups and their members. Active
+         *     root only. Each subject keeps its newest 62 days and 13 months with
+         *     use; an older period answers zero, and `kept` says how many are kept.
+         *     Allowances are always reported for the current UTC day and month,
+         *     whatever `day` and `month` ask for.
+         */
+        get: operations["getUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A signed-in person's own usage (row 40)
+         * @description The caller's own usage today and this month, and the allowances that
+         *     apply to them (their own groups'), for an app such as Workbench to
+         *     show. Authenticated with the person's access token from this root
+         *     (`Authorization: Bearer`, as `/oidc/userinfo`); no other credential.
+         *     Under the issuer, beside `userinfo`, because an app reaches the root
+         *     there. Answers only for the person the token names. `subjects` holds
+         *     one `person` subject and one `group` subject for each of their groups
+         *     that sets an allowance. A group's totals carry no breakdown by model
+         *     (`models` is empty): what the other members used is theirs.
+         */
+        get: operations["getOwnUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/usage/prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The owner's price for each served model (row 40)
+         * @description The rates the owner set. Owner or directory administrator. A model
+         *     not listed has no owner rate: a cloud model is counted at its
+         *     provider's published price (the gateway's `/v1/models` lists it as
+         *     `provider_price`), a local model costs nothing, and a cloud model
+         *     with neither has an unknown cost.
+         */
+        get: operations["getModelPrices"];
+        /**
+         * Set or clear the owner's price for one model (owner only, row 40)
+         * @description Sets the rate a model is counted at from the next request; requests
+         *     already counted keep the cost they had. `price: null` clears the
+         *     owner's rate, and the model falls back to its provider's price or to
+         *     free for a local model. Replicated (`setModelPrice`).
+         */
+        put: operations["setModelPrice"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/client-keys/{keyId}/limits": {
         parameters: {
             query?: never;
@@ -548,6 +640,41 @@ export interface paths {
         get: operations["oidcGroups"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oidc/active-group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which of their groups a person works from (row 37)
+         * @description A bearer access token from `/oidc/token`, as `/oidc/userinfo`. The
+         *     person's groups and the one whose models and routing they work
+         *     from. An app (Workbench Settings) shows it as "Work with".
+         */
+        get: operations["oidcActiveGroup"];
+        put?: never;
+        /**
+         * Choose the group a person works from (row 37)
+         * @description A bearer access token from `/oidc/token`: the person chooses for
+         *     themselves. A POST, as every other write under `/oidc`, so it
+         *     passes through a machine's agent as they do. `group` is one of their groups, or null for the first in
+         *     their list. The gateway applies it to their next request; the
+         *     sign-in claims do not carry it (they keep the row 70 policies only).
+         *     A person changes it at most once a minute: sooner is a 429 with
+         *     `Retry-After`, because each change is a record in the replicated
+         *     log. Their routing by role follows it; their model limits do not:
+         *     every group's model list applies whichever group they work from
+         *     (call R37-SELF).
+         */
+        post: operations["oidcSetActiveGroup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3100,6 +3227,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What is firing now, what fired lately, and how each SLO stands
+         * @description Row 38 (`docs/design/rows/row-38.md`). The active root evaluates the
+         *     alert rules once a minute: it reads the gateway's metrics summary,
+         *     each machine's host history and its own record of which machines
+         *     answer. This is what it found, from this root's memory: a root that
+         *     took over starts with an empty history, and a rule fires again there
+         *     after its `forMinutes`.
+         *
+         *     The owner's session reads everything. A person with an operations
+         *     power (row 39) reads it with their administration session, read
+         *     only: alerts about the machines their powers reach and about models,
+         *     and SLOs set on a model. SLOs set on a client key, and the alerts
+         *     they raise, stay the owner's, as do the rules and the webhook
+         *     (`GET /v1/alerting`).
+         */
+        get: operations["getAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The alert rules, the SLO targets and whether a webhook is set
+         * @description Row 38. The owner only. Until the owner saves rules, `defaults` is
+         *     true and `rules` is the built-in set the evaluator uses: a machine
+         *     that does not answer for 5 minutes, a disk over 90% for 10 minutes,
+         *     a GPU over 85 °C for 5 minutes, failures over 5% for 10 minutes,
+         *     and an SLO budget burning 14.4 times too fast for 5 minutes. The
+         *     webhook address is a secret: only its host is shown back.
+         */
+        get: operations["getAlerting"];
+        /**
+         * Replace the alert rules and SLO targets, and set or remove the webhook
+         * @description Row 38. The owner only. One `setAlerting` entry (log version 2):
+         *     the rules and targets replace the ones held. `webhookUrl` absent
+         *     keeps the webhook; null or empty removes it; a URL sets it, sealed
+         *     under the master key and never shown back. Only `http` and `https`
+         *     addresses are taken. Refused (409) on a standby, and while the
+         *     install's standby applies a log version below 2: update the standby
+         *     first.
+         */
+        put: operations["setAlerting"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerting/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post a test alert to the webhook now
+         * @description Row 38. The owner only. Posts one `AlertWebhookPost` with
+         *     `state: test` to the webhook that is set, once, without retries,
+         *     and answers with what happened. 409 when no webhook is set.
+         */
+        post: operations["testAlertWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3807,6 +4023,34 @@ export interface components {
              *     `queueBand`.
              */
             maxQueuedRequests?: number;
+            /**
+             * @description **On an edit (`PUT .../limits`), an allowance left out keeps the
+             *     key's current one and `null` clears it**, so a console a release
+             *     behind, which knows none of the three, never clears them. Every
+             *     other limit is replaced whole, as before.
+             *
+             *     Row 40: how many tokens (in and out) this key's lineage may use in
+             *     one UTC day, across every gateway. A request is refused before it
+             *     runs once the day's tokens reach it (429, `insufficient_quota`,
+             *     `X-Eugene-Refusal-Reason: allowance`); a request that crosses the
+             *     line while it runs finishes. **Absent means no limit**, and no
+             *     default is declared on purpose, as for `readMetrics`: the
+             *     authority writes it only when it is set. Not part of the policy a
+             *     running request is bound to, and never sent in an admission answer.
+             */
+            tokensPerDay?: number | null;
+            /** @description Row 40. As `tokensPerDay`, for one calendar month (UTC). Absent means no limit; on an edit, absent keeps and null clears. */
+            tokensPerMonth?: number | null;
+            /**
+             * @description Row 40: how much this key's lineage may spend in one calendar month
+             *     (UTC), in millionths of a US dollar, at the install's prices (the
+             *     owner's rate for a model, else its provider's published price, else
+             *     nothing for a local model). A model with no price is refused while
+             *     this is set, because its cost cannot be counted. `0` allows only
+             *     models that cost nothing. Absent means no limit; on an edit,
+             *     absent keeps and null clears.
+             */
+            costPerMonthMicros?: number | null;
         };
         ClientKeyUpdateRequest: {
             limits: components["schemas"]["ClientKeyLimits"];
@@ -3840,6 +4084,21 @@ export interface components {
             purpose: "inference" | "logs" | "catalog" | "search" | "metrics";
             model?: string;
             /**
+             * @description Row 40, `acquire` only: how the gateway sees the requested model's
+             *     price, so the authority can tell whether a money allowance can
+             *     count it. An authority before row 40 refuses the field (422) and
+             *     the gateway asks again without it.
+             */
+            price?: components["schemas"]["ModelPriceHint"];
+            /**
+             * @description Row 40, `release` only: what the request used. The authority counts
+             *     it for the key's lineage, the person it verified at `acquire`, and
+             *     that person's groups. Absent (a request that was never served, or a
+             *     gateway before row 40) counts nothing. An authority before row 40
+             *     refuses the field (422) and the gateway releases again without it.
+             */
+            usage?: components["schemas"]["AdmissionUsage"];
+            /**
              * @description Root-issued OIDC access token carried alongside the app key in
              *     X-Eugene-Person-Token. The root checks its signature, session,
              *     current person access and exact registered app owner on every check,
@@ -3848,6 +4107,13 @@ export interface components {
              */
             personToken?: string;
         };
+        /**
+         * @description Row 37: an agent or gateway from before row 37 refuses an answer that
+         *     carries `roleRouting`, `routingGroup` or `modelLimits` (its model
+         *     forbids unknown fields), so a person whose groups set them is refused
+         *     there until that machine is updated: it fails closed, never open.
+         *     The root sends them only when a group sets them.
+         */
         ClientAdmissionResult: {
             keyId: string;
             keyName: string;
@@ -3874,6 +4140,34 @@ export interface components {
              *     install's default, applies. Never taken from the caller.
              */
             queueBand?: components["schemas"]["QueueBand"];
+            /**
+             * @description The verified person's routing by model role (row 37), from their
+             *     active group (`Person.activeGroup`). Present only when the root
+             *     verified a person and that group routes at least one role. A
+             *     request for `role:<role>` that this names tries these models in
+             *     order, after the gateway drops every model outside the allowed
+             *     set (`modelLimits` and the key's list); a role it does not name
+             *     uses the install's slot. Absent: the
+             *     install's routing for every role, as before row 37. Never taken
+             *     from the caller.
+             */
+            roleRouting?: components["schemas"]["RoleRouting"];
+            /**
+             * @description The group `roleRouting` comes from (row 37): the person's active
+             *     group. Present with `roleRouting`.
+             */
+            routingGroup?: components["schemas"]["ModelGroup"];
+            /**
+             * @description Row 37 (call R37-SELF, Choice 3): the model list of every group
+             *     the verified person is in that sets one, sorted by group name. A
+             *     model is allowed only when the key's own `allowedModels` and
+             *     every list here allow it, for the model asked for, every fallback
+             *     and every model a server-run tool calls; the person's choice of
+             *     active group never widens it. A `role:<role>` name is not checked
+             *     against these lists: the role's models are. Absent when no group
+             *     of theirs sets a list: no limit beyond the key's.
+             */
+            modelLimits?: components["schemas"]["GroupModelLimit"][];
         };
         /**
          * @description Which requests wait or are turned away first when the machines are
@@ -3884,15 +4178,84 @@ export interface components {
          */
         QueueBand: "interactive" | "background" | "sheddable";
         /**
+         * @description Row 37: for each model role, the models a person's requests for
+         *     `role:<role>` try, in order. A role not named here uses the
+         *     install's slot (`modelSlots`). The keys are `ModelRole` values
+         *     (`components/common.yaml`); a root refuses any other.
+         */
+        RoleRouting: {
+            [key: string]: string[];
+        };
+        /** @description A permission group, as a refusal names it (row 37). */
+        ModelGroup: {
+            id: string;
+            name: string;
+        };
+        /** @description One group's model list, as it limits a person (row 37). */
+        GroupModelLimit: {
+            group: components["schemas"]["ModelGroup"];
+            /** @description Exact ids or patterns with `*`, at most 8 `*` in one entry. Empty allows none. */
+            models: string[];
+        };
+        /**
          * @description Why an `acquire` was refused with a 429, in its
          *     `X-Eugene-Refusal-Reason` header (row 11): `concurrency`, the key
          *     already runs `maxConcurrentRequests` requests; `rate`, its
-         *     `requestsPerMinute` are used. An agent that forwards the root's
+         *     `requestsPerMinute` are used; `allowance` (row 40), a token or money
+         *     allowance of the key, the person or one of their groups is spent, or
+         *     the model has no price while a money allowance applies. An
+         *     `allowance` refusal is final until the allowance resets: its
+         *     `Retry-After` is the seconds until then, and its `detail` is the
+         *     sentence the caller is shown. An agent that forwards the root's
          *     answer passes the header on, and a standalone agent sets it the same
          *     way.
          * @enum {string}
          */
-        AdmissionRefusalReason: "concurrency" | "rate";
+        AdmissionRefusalReason: "concurrency" | "rate" | "allowance";
+        /**
+         * @description Row 40: a model's rate, in millionths of a US dollar for each million
+         *     tokens. One micro-dollar for a million tokens is one pico-dollar a
+         *     token, so a request's cost is a whole number of pico-dollars:
+         *     `promptTokens * inputPerMillionMicros + completionTokens *
+         *     outputPerMillionMicros`. Integers, so every sum is exact.
+         */
+        ModelPrice: {
+            inputPerMillionMicros: number;
+            outputPerMillionMicros: number;
+        };
+        /**
+         * @description Row 40: what a gateway knows about a model's price from its drivers.
+         *     `locality` is the model's `ModelLocality` (`local` only when every
+         *     backend serving it is local). `providerPrice` is the price its
+         *     provider publishes, as its driver reported it; absent when no driver
+         *     reported one, or when two backends report different prices and one
+         *     of them has none. The authority's owner rate wins over both.
+         */
+        ModelPriceHint: {
+            locality: components["schemas"]["ModelPriceLocality"];
+            providerPrice?: components["schemas"]["ModelPrice"];
+        };
+        /**
+         * @description Row 40: what one served request used, as the gateway that served it
+         *     measured it. `model` is the model that served it (a fallback's, not
+         *     the one asked for), and `price` that model's hint. When the serving
+         *     model has no price at the authority, the request is priced at the
+         *     model its lease was acquired for.
+         */
+        AdmissionUsage: {
+            model: string;
+            promptTokens: number;
+            completionTokens: number;
+            price: components["schemas"]["ModelPriceHint"];
+            /**
+             * @description True when the tokens are the gateway's estimate, not the backend's
+             *     count: the backend reported none, or the answer was cut before its
+             *     end (the client hung up, the backend failed after its first token,
+             *     the gateway stopped a repetition). The prompt is the estimate the
+             *     queue made of it; the answer is what was forwarded. Absent is false.
+             */
+            estimated?: boolean;
+        };
         ClientKey: {
             id: string;
             name: string;
@@ -4830,7 +5193,9 @@ export interface components {
              *     Absent until it has pulled since this root started. Log
              *     version 1 adds `retireOidcKeys` and `changePassphrase`: this
              *     root refuses to write either while its standby reports less,
-             *     because the standby's copy would stop there.
+             *     because the standby's copy would stop there. Log version 4
+             *     (row 37) adds `setPersonActiveGroup`, and the group and person
+             *     fields of row 37, under the same rule.
              */
             logVersion?: number;
         };
@@ -4908,7 +5273,22 @@ export interface components {
             at?: string;
         };
         /**
-         * @description **`retireOidcKeys` (row 5, log version 1)** keeps only the sign-in
+         * @description **`setModelPrice` (row 40, log version 3)** sets (`price` an object)
+         *     or clears (`price` null) the owner's rate for one model:
+         *     `{model, price}`. Log version 3, not 2: row 38's `setAlerting` is 2,
+         *     and a standby with row 38 alone must not be sent row 40's op.
+         *
+         *     **`setPersonActiveGroup` (row 37, log version 4)** sets one
+         *     person's `activeGroup` and nothing else of their record: `{id,
+         *     activeGroup}`, where `activeGroup` is one of their groups or null.
+         *     It is how a person's own choice at `/oidc/active-group` is written,
+         *     applied to the record as it is then, so a choice cannot write back
+         *     anything the owner changed meanwhile. Log version 4 also covers a
+         *     group record that sets `roleRouting` or `allowedModels` and a person
+         *     record with `activeGroup`: the root refuses to write any of them
+         *     (409) while its standby reports a log version below 4.
+         *
+         *     **`retireOidcKeys` (row 5, log version 1)** keeps only the sign-in
          *     keys named in `keep` (`{keep: [kid]}`, at least one held key) and
          *     drops the others, so every token they signed stops verifying. It
          *     follows a `putOidcKey` when the owner ends every app sign-in after
@@ -4919,7 +5299,8 @@ export interface components {
          *     holds every value the old master key sealed, sealed again under
          *     the new one by the writer (`signingKey`, `controlKey`,
          *     `recoveryKey`, `installCaKey`, `oidcKeys` by `kid`, and
-         *     `externalProviders` by id). It must name exactly the sealed values
+         *     `externalProviders` by id, and `alertWebhook` when a webhook is set).
+         *     It must name exactly the sealed values
          *     the state holds, no more and no fewer, or it does not apply. Every
          *     root that applies it writes a snapshot and drops every entry
          *     before it, so no value sealed under the old key stays in the log;
@@ -4927,6 +5308,11 @@ export interface components {
          *     every entry that carries a sealed value (`putOidcKey`,
          *     `rotateSigningKey`, `setInstallCa`, `putExternalProvider`,
          *     `changePassphrase`) only while the salt is the one it sealed under.
+         *
+         *     **`setAlerting` (row 38, log version 2)** replaces the alert rules
+         *     and SLO targets (`{rules, slos, sealedWebhookUrl, webhookHost}`).
+         *     The webhook address is sealed under the master key, and the
+         *     writer appends it only while the salt is the one it sealed under.
          *
          *     **`setNodeCertificateNames` (LT2, 2026-10-20)** replaces the names
          *     the owner listed for one node's client certificate (`{name,
@@ -4994,7 +5380,7 @@ export interface components {
          *     writes it that way now: a revocation is one `revokeNode`.
          * @enum {string}
          */
-        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames" | "retireOidcKeys" | "changePassphrase";
+        LogOp: "enrollNode" | "updateNode" | "revokeNode" | "putComponent" | "deleteComponent" | "putRuntime" | "deleteRuntime" | "patchConfig" | "putClientKey" | "revokeClientKey" | "setClientKeyLimits" | "rotateClientKey" | "touchClientKey" | "putClientAdmission" | "rotateSigningKey" | "revokeSession" | "promote" | "putPerson" | "putPermissionGroup" | "deletePermissionGroup" | "putNodeHelper" | "setPersonPassword" | "deletePerson" | "putOidcClient" | "deleteOidcClient" | "putOidcKey" | "revokeSignIn" | "setOidcClientRedirects" | "enrollSite" | "removeSite" | "setSiteHost" | "setSiteDevGrants" | "setStandby" | "putExternalProvider" | "deleteExternalProvider" | "putSignInInvitation" | "deleteSignInInvitation" | "linkExternalIdentity" | "deleteExternalIdentity" | "putBrowserSignIn" | "deleteBrowserSignIn" | "labelNode" | "setInstallCa" | "setNodeCertificateNames" | "retireOidcKeys" | "changePassphrase" | "setModelPrice" | "setAlerting" | "setPersonActiveGroup";
         /**
          * @description Applied state as of `index`, for bootstrapping a standby or
          *     recovering one that fell behind compaction.
@@ -5025,6 +5411,25 @@ export interface components {
                 [key: string]: unknown;
             };
             accessAudit?: components["schemas"]["AccessAuditEvent"][];
+            /**
+             * @description Row 40: the usage counters per key lineage, person and group, per
+             *     UTC day (62 kept) and calendar month (13 kept), and the subjects
+             *     of each running request a person was verified for (`open`, by
+             *     request id), so its release counts for them. Written by
+             *     `putClientAdmission` entries (`usageOpen` at an acquire, `usage`
+             *     at a release). A root before row 40 ignores it.
+             */
+            clientUsage?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Row 40: the owner's price for each model, by model id, as
+             *     `setModelPrice` wrote it (`{model, price}`; `price: null`
+             *     removes it).
+             */
+            modelPrices?: {
+                [key: string]: components["schemas"]["ModelPrice"];
+            };
             clientKeys?: components["schemas"]["ClientKey"][];
             /** Format: int64 */
             index: number;
@@ -5160,6 +5565,8 @@ export interface components {
              *     passphrase-derived key as `sealedSigningKey` is.
              */
             oidcKeys?: components["schemas"]["SnapshotOidcKey"][];
+            /** @description What `setAlerting` wrote; null until the owner saves alert settings (row 38). */
+            alerting?: components["schemas"]["SnapshotAlerting"] | null;
             /** @description Sign-ins revoked at `/oidc/revoke` and not yet expired, by their `jti`. */
             revokedSignIns?: components["schemas"]["RevokedSession"][];
         };
@@ -5176,6 +5583,13 @@ export interface components {
             devGrants?: components["schemas"]["SiteDevGrant"][];
         };
         SnapshotPerson: {
+            /**
+             * @description Row 37: the one of their `groups` whose `roleRouting` applies to
+             *     them (every group's `allowedModels` applies, call R37-SELF).
+             *     Absent is the first in their list. Kept only when set; a standby from before row 37 cannot
+             *     apply a person who has one. Cleared when they leave the group.
+             */
+            activeGroup?: string;
             administration?: components["schemas"]["AdministrationGrants"];
             /** @description Absent is zero. Increased on delegation, disable/enable and password changes to invalidate administration sessions. */
             administrationVersion?: number;
@@ -5228,6 +5642,13 @@ export interface components {
          */
         Person: {
             administration?: components["schemas"]["AdministrationGrants"];
+            /**
+             * @description Row 37: the one of their `groups` whose `roleRouting` applies to
+             *     them (every group's `allowedModels` applies, call R37-SELF).
+             *     Absent is the first in their list. Kept only when set; a standby from before row 37 cannot
+             *     apply a person who has one. Cleared when they leave the group.
+             */
+            activeGroup?: string;
             /** @description Null or absent keeps individual access. A list uses only the union of these groups; an empty list grants no access. Individual app/permission settings are retained but inactive in group mode. */
             groups?: string[] | null;
             /** @description Stable; the `sub` in their ID tokens. */
@@ -5383,6 +5804,12 @@ export interface components {
             permissions?: components["schemas"]["PersonPermission"][] | null;
         };
         PersonUpdateRequest: {
+            /**
+             * @description Row 37, owner only: the group whose routing by role the person
+             *     works from, one of their groups after this change; null for the
+             *     first in their list. A group they are not in is refused (422).
+             */
+            activeGroup?: string | null;
             /** @description Null or absent keeps individual access. A list uses only the union of these groups; an empty list grants no access. Individual app/permission settings are retained but inactive in group mode. */
             groups?: string[] | null;
             displayName?: string;
@@ -5795,11 +6222,12 @@ export interface components {
             /** @default [] */
             permissions: components["schemas"]["PersonPermission"][];
             /**
-             * @description The group's policies, replaced whole: a `null` or absent policy
-             *     inside is not set. Omitted from a replace, the group keeps its
-             *     current policies, so a console that predates policies never
-             *     clears them. Omitted from a create, the group sets none. An
-             *     older root refuses this field (`additionalProperties: false`).
+             * @description The group's policies: a policy set inside is set, a `null` one is
+             *     cleared, and an absent one keeps its current value (rows 37 and 40), so a
+             *     console that predates a policy never clears it. Omitted from a
+             *     replace, the group keeps every current policy. Omitted from a
+             *     create, the group sets none. An older root refuses this field
+             *     (`additionalProperties: false`).
              */
             policies?: components["schemas"]["GroupPolicies"];
         };
@@ -5807,34 +6235,402 @@ export interface components {
          * @description Policies a permission group sets for its members (row 70). Not set
          *     is no policy: a person whose groups set none gets the install's
          *     default. A person in several groups gets the most generous value of
-         *     each: the highest queue band, the larger percent.
+         *     each: the highest queue band, the larger percent. `roleRouting`
+         *     (row 37) is not combined: it comes from the person's active group
+         *     alone (`Person.activeGroup`). `allowedModels` narrows: a model must
+         *     be in the list of every group of theirs that sets one (call
+         *     R37-SELF, Choice 3).
+         *
+         *     In a write, a policy left out keeps the group's current value and
+         *     `null` clears it (rows 37 and 40), so a console that predates a
+         *     policy never clears it. The root refuses to write a group that sets
+         *     `roleRouting` or `allowedModels` while its standby reports a log
+         *     version below 4 (row 37).
          */
         GroupPolicies: {
+            /**
+             * @description Row 37: the models the members' requests for each role try, in
+             *     order. A role not named, or null, uses the install's routing.
+             *     Every model listed must be in this group's own `allowedModels`
+             *     when it sets one (a write that breaks this is a 422). Models
+             *     outside a member's allowed set are dropped when a request runs;
+             *     a role whose list keeps none uses the install's list, filtered.
+             */
+            roleRouting?: components["schemas"]["RoleRouting"] | null;
+            /**
+             * @description Row 37: the models the members may reach: exact ids or patterns
+             *     with `*` (at most 8 in one entry). Null is every model. A member
+             *     in several groups reaches only models every such list allows, and
+             *     an app key's own `allowedModels` still applies too. Changes apply
+             *     to a member's next request.
+             */
+            allowedModels?: string[] | null;
             /** @description Queue priority for the members' requests. The root returns it in the admission check of a verified person. */
             queueBand?: components["schemas"]["QueueBand"] | null;
             /** @description The percent of a model's context at which Workbench starts summarising a long chat. With no policy, Workbench uses 80. */
             summaryContextPercent?: number | null;
+            /**
+             * @description Row 40: how many tokens (in and out) the group's members may use
+             *     together in one UTC day, across every gateway: one allowance for
+             *     the whole group, counted from each request of a member that the
+             *     root verified (an app such as Workbench sends the person's token).
+             *     A person whose groups set it is refused while every one of those
+             *     groups has spent it (the most generous applies). A person's own
+             *     limit is a group of one. Never in `PoliciesInEffect`. An older
+             *     root refuses it, and an older standby stops at a group that sets
+             *     it until it is updated.
+             */
+            tokensPerDay?: number | null;
+            /** @description Row 40. As `tokensPerDay`, for one calendar month (UTC). */
+            tokensPerMonth?: number | null;
+            /**
+             * @description Row 40: how much the group's members may spend together in one
+             *     calendar month (UTC), in millionths of a US dollar, at the
+             *     install's prices. While it is the only allowance that admits a
+             *     member, a model with no price is refused to them.
+             */
+            costPerMonthMicros?: number | null;
+        };
+        /** @description The owner's price for each model that has one (row 40). */
+        ModelPriceList: {
+            prices: components["schemas"]["OwnerModelPrice"][];
+        };
+        OwnerModelPrice: {
+            model: string;
+            inputPerMillionMicros: number;
+            outputPerMillionMicros: number;
+        };
+        ModelPriceWrite: {
+            model: string;
+            /** @description The rate, or null to clear the owner's rate. */
+            price: components["schemas"]["ModelPrice"] | null;
+        };
+        /** @enum {string} */
+        UsageSubjectKind: "key" | "person" | "group";
+        /** @enum {string} */
+        UsageAllowanceKind: "tokensPerDay" | "tokensPerMonth" | "costPerMonth";
+        /** @description Row 40, `GET /v1/usage` and `GET /oidc/usage`. */
+        UsageReport: {
+            /**
+             * Format: date
+             * @description The UTC day each subject's `day` reports.
+             */
+            day: string;
+            /** @description The calendar month (`YYYY-MM`) each subject's `month` reports. */
+            month: string;
+            /** Format: date */
+            from?: string;
+            /** Format: date */
+            to?: string;
+            /** @description How many days and months of counters the root keeps. */
+            kept: {
+                days: number;
+                months: number;
+            };
+            subjects: components["schemas"]["UsageSubject"][];
+        };
+        UsageSubject: {
+            kind: components["schemas"]["UsageSubjectKind"];
+            /** @description A key's lineage (its first key's id), a person's id, or a group's id. */
+            id: string;
+            /** @description The key's, person's or group's name now. A subject that no longer exists keeps its id as its name. */
+            name: string;
+            day: components["schemas"]["UsageTotals"];
+            month: components["schemas"]["UsageTotals"];
+            range?: components["schemas"]["UsageTotals"];
+            allowances: components["schemas"]["UsageAllowance"][];
+        };
+        UsageTotals: {
+            requests: number;
+            promptTokens: number;
+            completionTokens: number;
+            tokens: number;
+            /**
+             * @description US dollars, exact: a decimal with twelve places (one pico-dollar).
+             *     A string, so no reader rounds it through a float.
+             */
+            costUsd: string;
+            /** @description Requests whose model had no price when they were counted. Their cost is unknown and is not in `costUsd`. */
+            unpricedRequests: number;
+            /** @description The same counts by the model that served each request. Past 32 models in one period, the rest are under `*`. */
+            models: components["schemas"]["UsageModelTotals"][];
+        };
+        UsageModelTotals: {
+            model: string;
+            requests: number;
+            promptTokens: number;
+            completionTokens: number;
+            costUsd: string;
+            unpricedRequests: number;
+        };
+        /**
+         * @description One allowance that applies to the subject, and how much of it is
+         *     used. `limit`, `used` and `left` are token counts for a token
+         *     allowance and exact US dollar strings (twelve places) for
+         *     `costPerMonth`.
+         */
+        UsageAllowance: {
+            kind: components["schemas"]["UsageAllowanceKind"];
+            limit: string;
+            used: string;
+            left: string;
+            /** @description True when the next request is refused for it. */
+            spent: boolean;
+            /** Format: date-time */
+            resetsAt: string;
+            /** @description For a person, the id of the group that sets it. Absent for a key's or a group's own allowance. */
+            setBy?: string;
         };
         /**
          * @description The policies that apply to a person now (row 70), from the groups
          *     they are in: the most generous value of each. An absent value is no
-         *     policy. Individual access (`groups` null) sets none. The same object
-         *     is the `eugene_policies` sign-in claim.
+         *     policy. Individual access (`groups` null) sets none. The
+         *     `eugene_policies` sign-in claim is this object without the row 37
+         *     fields (`activeGroup`, `roleRouting`, `modelLimits` and their
+         *     `setBy`): an app reads its routing from the gateway, and a
+         *     Workbench from before row 37 refuses a claim with fields it does
+         *     not know.
          */
         PoliciesInEffect: {
             queueBand?: components["schemas"]["QueueBand"];
             summaryContextPercent?: number;
+            /**
+             * @description Row 37: the group `roleRouting` comes from: the person's chosen
+             *     `activeGroup`, else the first of their `groups` that exists.
+             *     Present only when that group routes a role; `/oidc/active-group`
+             *     always says which group is in effect.
+             */
+            activeGroup?: string;
+            /** @description Row 37. The active group's routing by role. Absent is the install's. */
+            roleRouting?: components["schemas"]["RoleRouting"];
+            /**
+             * @description Row 37 (call R37-SELF, Choice 3): each group of theirs that sets a
+             *     model list, with its list, sorted by group name. A model must be
+             *     in every one. Absent is every model.
+             */
+            modelLimits?: components["schemas"]["GroupModelLimit"][];
             setBy?: components["schemas"]["PoliciesSetBy"];
         };
         /** @description For each policy value in effect, the ids of the groups that set that value, sorted by group name. */
         PoliciesSetBy: {
             queueBand?: string[];
             summaryContextPercent?: string[];
+            /** @description Row 37. The active group, when it routes a role. */
+            roleRouting?: string[];
+        };
+        ActiveGroupRequest: {
+            /** @description One of the person's groups, or null for the first in their list. */
+            group: string | null;
+        };
+        ActiveGroupState: {
+            /** @description The person's groups, in the order the owner lists them. */
+            groups: components["schemas"]["OidcGroup"][];
+            /** @description The group they chose; null when they chose none. */
+            activeGroup?: string | null;
+            /** @description The group whose models and routing apply now; null with no group. */
+            inEffect?: string | null;
         };
         /** @description All permission groups in the central directory. */
         PermissionGroupList: {
             groups: components["schemas"]["PermissionGroup"][];
         };
+        /**
+         * @description What a rule watches, and what its `threshold` means:
+         *
+         *     - `machine-down`: an enrolled machine this root cannot reach. No
+         *       threshold.
+         *     - `disk-full`: a model or engine folder's volume, percent used.
+         *     - `gpu-hot`: a GPU's temperature, °C. A GPU that does not report
+         *       its temperature is never hot.
+         *     - `failure-rate`: failed requests, percent of the requests over the
+         *       last `forMinutes` (at least 10 requests).
+         *     - `slo-burn`: an SLO's error budget spent this many times faster
+         *       than its window allows, over the last hour.
+         * @enum {string}
+         */
+        AlertRuleKind: "machine-down" | "disk-full" | "gpu-hot" | "failure-rate" | "slo-burn";
+        AlertRule: {
+            id: string;
+            kind: components["schemas"]["AlertRuleKind"];
+            /** @default true */
+            enabled: boolean;
+            /**
+             * @description What `kind` says. Ignored by `machine-down`.
+             * @default 0
+             */
+            threshold: number;
+            /**
+             * @description How long the condition must hold before the alert fires, and how
+             *     long it must be clear before it resolves, so a value that flaps
+             *     does not post every minute.
+             * @default 5
+             */
+            forMinutes: number;
+            /** @description One machine by name; null is every machine. Machine kinds only. */
+            machine?: string | null;
+            /** @description One model; null is every model together. `failure-rate` only. */
+            model?: string | null;
+            /** @description One SLO; null is every SLO. `slo-burn` only. */
+            sloId?: string | null;
+        };
+        /** @enum {integer} */
+        SloFirstTokenPercentile: 50 | 90 | 99;
+        /**
+         * @description A target for one model, one client key or the whole install, over a
+         *     rolling window. Success is computed from the gateway's hourly
+         *     rollups, so a window may reach 90 days. A first-token target is read
+         *     as a percentile over the requests the gateway still keeps whole
+         *     (`metricsRetentionDays`), and says so; a client key's target has
+         *     success only, over the same kept requests.
+         */
+        SloTarget: {
+            id: string;
+            name?: string | null;
+            /** @description Null is every model. */
+            model?: string | null;
+            /** @description One client key. Set with model null. */
+            clientKeyId?: string | null;
+            /** @default 30 */
+            windowDays: number;
+            /** @description The share of requests that must be served. */
+            successPercent: number;
+            firstTokenSeconds?: number | null;
+            /** @description With `firstTokenSeconds`, "this share of first tokens within that time". */
+            firstTokenPercentile?: components["schemas"]["SloFirstTokenPercentile"] | null;
+        };
+        AlertWebhookView: {
+            configured: boolean;
+            /** @description The webhook's host only. The address is a secret and is never shown back. */
+            host?: string | null;
+        };
+        AlertingSettings: {
+            rules: components["schemas"]["AlertRule"][];
+            slos: components["schemas"]["SloTarget"][];
+            webhook: components["schemas"]["AlertWebhookView"];
+            /** @description True until the owner saves rules; `rules` is then the built-in set in effect. */
+            defaults: boolean;
+        };
+        AlertingUpdate: {
+            rules: components["schemas"]["AlertRule"][];
+            slos: components["schemas"]["SloTarget"][];
+            /** @description Absent keeps the webhook; null or empty removes it. */
+            webhookUrl?: string | null;
+        };
+        /** @enum {string} */
+        AlertState: "firing" | "resolved";
+        Alert: {
+            /** @description One alert: the rule and what it is about. */
+            id: string;
+            ruleId: string;
+            kind: components["schemas"]["AlertRuleKind"];
+            state: components["schemas"]["AlertState"];
+            /** @description One line, state first: "GPU 0 on nas is at 88 °C". */
+            message: string;
+            value?: number | null;
+            threshold?: number | null;
+            machine?: string | null;
+            model?: string | null;
+            sloId?: string | null;
+            /** @description The console page that shows it. */
+            link?: string | null;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            resolvedAt?: string | null;
+        };
+        /**
+         * @description `at-risk`: met, with less than a quarter of the error budget left,
+         *     or the first-token target not met. `missed`: no budget left.
+         * @enum {string}
+         */
+        SloState: "met" | "at-risk" | "missed" | "no-data";
+        SloFirstTokenStatus: {
+            percentile: components["schemas"]["SloFirstTokenPercentile"];
+            targetSeconds: number;
+            /** @description The percentile over the kept requests that streamed; null when none did. */
+            measuredSeconds?: number | null;
+            met?: boolean | null;
+            /** @description The days of whole requests the percentile is read over (the window, or less). */
+            keptDays: number;
+        };
+        SloStatus: {
+            id: string;
+            name?: string | null;
+            model?: string | null;
+            clientKeyId?: string | null;
+            clientKeyName?: string | null;
+            windowDays: number;
+            /** @description The target. */
+            successPercent: number;
+            requests: number;
+            failures: number;
+            /** @description Served over requests in the window; null with no requests. */
+            measuredPercent?: number | null;
+            /** @description The allowed failures not yet spent, percent; below zero when overspent. */
+            budgetLeftPercent?: number | null;
+            /** @description The last hour's failure share over the share the target allows; 1 spends the budget exactly over the window. */
+            burnRate?: number | null;
+            /** @description The days the gateway's records reach back over this window. */
+            coveredDays?: number;
+            firstToken?: components["schemas"]["SloFirstTokenStatus"] | null;
+            state: components["schemas"]["SloState"];
+        };
+        /** @enum {string} */
+        AlertWebhookState: "off" | "ok" | "failing";
+        AlertWebhookStatus: {
+            state: components["schemas"]["AlertWebhookState"];
+            /** Format: date-time */
+            lastAttemptAt?: string | null;
+            /** Format: date-time */
+            lastSuccessAt?: string | null;
+            /** @description Why the last post failed, after three tries: "connection refused", "HTTP 404". */
+            lastError?: string | null;
+        };
+        /**
+         * @description What the root posts to the webhook, as JSON, for each alert that
+         *     fires or resolves. Slack, Discord, ntfy and Home Assistant take it
+         *     (`text` and `content` carry the line for the chat ones).
+         */
+        AlertWebhookPost: {
+            rule: string;
+            /** @enum {string} */
+            state: "firing" | "resolved" | "test";
+            value?: number | null;
+            threshold?: number | null;
+            machine?: string | null;
+            model?: string | null;
+            url?: string | null;
+            /** Format: date-time */
+            at: string;
+            text: string;
+            content?: string;
+        };
+        AlertsView: {
+            /** @description False on a standby, and on a root that is locked. */
+            evaluating: boolean;
+            /** Format: date-time */
+            evaluatedAt?: string | null;
+            /** @description Reads the last evaluation could not make, each with its cause: "Gateway metrics: connection refused". */
+            problems: string[];
+            firing: components["schemas"]["Alert"][];
+            /** @description Resolved alerts, newest first, at most 100. */
+            recent: components["schemas"]["Alert"][];
+            slos: components["schemas"]["SloStatus"][];
+            webhook: components["schemas"]["AlertWebhookStatus"];
+        };
+        /** @description What `setAlerting` wrote (row 38). */
+        SnapshotAlerting: {
+            rules: Record<string, never>[];
+            slos: Record<string, never>[];
+            /** @description The webhook address, sealed under the passphrase-derived key. */
+            sealedWebhookUrl?: string | null;
+            webhookHost?: string | null;
+        };
+        /**
+         * @description Where a model runs, as the gateway's `ModelLocality` says it (row 40).
+         * @enum {string}
+         */
+        ModelPriceLocality: "local" | "external" | "unknown";
         /**
          * @description Error response shape, modeled on RFC 7807 (problem+json). Every
          *     Eugene Plexus component returns this for 4xx / 5xx responses.
@@ -7879,7 +8675,11 @@ export interface operations {
              * @description Shared concurrency/rate allowance exhausted. `X-Eugene-Refusal-Reason`
              *     says which (row 11): the gateway keeps a request refused for
              *     `concurrency` in its queue and asks again, and refuses one refused
-             *     for `rate`.
+             *     for `rate`. Row 40: `allowance`, a token or money
+             *     allowance of the key, the person or one of their groups is spent
+             *     (or the model has no price under a money allowance); `detail` is
+             *     the sentence for the caller and `Retry-After` the seconds until
+             *     the allowance resets. The gateway refuses the request.
              */
             429: {
                 headers: {
@@ -7896,6 +8696,110 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getUsage: {
+        parameters: {
+            query?: {
+                /** @description The UTC day. Absent, today. */
+                day?: string;
+                /** @description The calendar month, `YYYY-MM`. Absent, this month. */
+                month?: string;
+                /** @description First day of a range, with `to`. Both or neither. */
+                from?: string;
+                /** @description Last day of the range (included). At most 62 days after `from`. */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The usage report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageReport"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getOwnUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The person's usage. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageReport"];
+                };
+            };
+            /** @description No valid access token from this root, or the person's sign-in ended. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getModelPrices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The owner's prices. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelPriceList"];
+                };
+            };
+        };
+    };
+    setModelPrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelPriceWrite"];
+            };
+        };
+        responses: {
+            /** @description The owner's prices after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelPriceList"];
+                };
+            };
+            422: components["responses"]["Problem"];
         };
     };
     setClientKeyLimits: {
@@ -8378,6 +9282,122 @@ export interface operations {
                 };
             };
             /** @description `temporarily_unavailable`: the root is a standby; ask the active one. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+        };
+    };
+    oidcActiveGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The person's groups and the group in effect. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveGroupState"];
+                };
+            };
+            /** @description `invalid_token`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `temporarily_unavailable`: the root is a standby; ask the active one. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+        };
+    };
+    oidcSetActiveGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActiveGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description Chosen. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveGroupState"];
+                };
+            };
+            /** @description `invalid_request`: the body is not `{group}`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `invalid_token`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `not_a_member`: the person is not in that group. `not_a_person`: the token is the owner's, who is in no group. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `temporarily_unavailable`: the install's standby runs an older Eugene and could not copy the choice; the owner updates it first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `slow_down`: they changed it less than a minute ago. `Retry-After` says when they may again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthError"];
+                };
+            };
+            /** @description `temporarily_unavailable`: the root is a standby, or locked. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -12275,6 +13295,105 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getAlerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The alert state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertsView"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getAlerting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings in effect. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertingSettings"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    setAlerting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertingUpdate"];
+            };
+        };
+        responses: {
+            /** @description The settings now in effect. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertingSettings"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    testAlertWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the webhook answered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertWebhookStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
 }

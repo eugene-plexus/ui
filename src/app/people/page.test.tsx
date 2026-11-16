@@ -620,6 +620,61 @@ describe("shared permission groups", () => {
     );
   });
 
+  it("shows a person's models and routing and saves the group they work from (row 37)", async () => {
+    const desk = { ...group, id: "g-desk", name: "Desk" };
+    handlers.set("GET control/v1/permission-groups", () => ({
+      status: 200,
+      body: {
+        groups: [
+          { ...group, policies: { queueBand: null, summaryContextPercent: null } },
+          {
+            ...desk,
+            policies: {
+              queueBand: null,
+              summaryContextPercent: null,
+              allowedModels: ["m3"],
+              roleRouting: { chat: ["m3"] },
+            },
+          },
+        ],
+      },
+    }));
+    handlers.set("GET control/v1/people", () => ({
+      status: 200,
+      body: {
+        people: [
+          {
+            ...ADA,
+            groups: [group.id, desk.id],
+            activeGroup: desk.id,
+            appsInEffect: [],
+            permissionsInEffect: [],
+            policiesInEffect: {
+              activeGroup: desk.id,
+              modelLimits: [{ group: { id: desk.id, name: "Desk" }, models: ["m3"] }],
+              roleRouting: { chat: ["m3"] },
+              setBy: { roleRouting: [desk.id] },
+            },
+          },
+        ],
+      },
+    }));
+    render(<PeoplePage />);
+    await openAda();
+    const row = within(await screen.findByTestId("person-Ada"));
+    expect(row.getByTestId("person-models-Ada")).toHaveTextContent("Models: m3 (from Desk)");
+    expect(row.getByTestId("person-routing-Ada")).toHaveTextContent(
+      "Routing by role: Chat: m3. Other roles: install default (from Desk)",
+    );
+    const works = row.getByLabelText("Works with");
+    expect(works).toHaveDisplayValue("Desk");
+    await userEvent.selectOptions(works, "The first of their groups (Builders)");
+    await userEvent.click(row.getByRole("button", { name: "Save group choice" }));
+    await waitFor(() =>
+      expect(sent("PATCH control/v1/people/p-ada")).toEqual([{ activeGroup: null }]),
+    );
+  });
+
   it("says Not set when no group of theirs sets a policy", async () => {
     handlers.set("GET control/v1/people", () => ({
       status: 200,

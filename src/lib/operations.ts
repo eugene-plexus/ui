@@ -99,10 +99,12 @@ export function operationsLine(session: OperationsSession): string {
 
 /**
  * The console pages each power uses. Every power reads Home, the
- * machines (and their updates), host history, metrics and the model
- * list; Models adds Discover; Updates and restarts adds Logs.
+ * machines (and their updates), host history, metrics, the model list,
+ * the dashboards and the alerts (row 38: read only; the rules, the SLO
+ * targets and the webhook stay the owner's); Models adds Discover;
+ * Updates and restarts adds Logs.
  */
-const READ_PAGES = ["/", "/nodes", "/hosts", "/metrics", "/library"];
+const READ_PAGES = ["/", "/nodes", "/hosts", "/metrics", "/library", "/dashboards", "/alerts"];
 const POWER_PAGES: Record<Power, string[]> = {
   "operate-models": ["/discover"],
   "operate-machines": ["/logs"],
