@@ -232,6 +232,55 @@ export interface components {
              */
             answer: "install" | "skip";
         };
+        /**
+         * ChatTemplateFallback
+         * @description A reviewed template Eugene can supply for this model family when
+         *     its header confirms both the architecture and that it has no
+         *     embedded chat template. Absent when that evidence is unknown,
+         *     when the file embeds a template, or when Eugene has no reviewed
+         *     fallback for this variant. A filename or a catalogue name alone
+         *     is not evidence.
+         *
+         *     This is availability, not the template in effect. The model page
+         *     can say "This model ships no chat template; Eugene supplies
+         *     DeepSeek V4's" and name the engines below, while keeping
+         *     `ModelCapabilities.chatTemplate` false. The running agent reports
+         *     the effective template separately as `Runtime.chatTemplate`.
+         *
+         *     Default precedence is an explicit operator override, then the
+         *     file's embedded template, then this fallback on an engine listed
+         *     below, then the engine's own behaviour. The override is exposed
+         *     through the engine's GUI flag schema. Missing fallback information
+         *     does not block a launch: engine eligibility is still decided by
+         *     the existing eligibility API, and untested engines remain eligible
+         *     under that API's rules.
+         */
+        ChatTemplateFallback: {
+            /**
+             * Id
+             * @description Eugene's template identifier; distinct variants have distinct ids.
+             */
+            id: string;
+            /**
+             * Name
+             * @description Human-readable template name for the model page.
+             */
+            name: string;
+            /**
+             * Engines
+             * @description Engines whose Eugene adapters can apply this fallback. This
+             *     is not a list of engines proved to load the model; consult
+             *     eligibility for that. No engine is rejected because it is
+             *     absent from this list.
+             */
+            engines: components["schemas"]["EngineKind"][];
+            /**
+             * Sourceurl
+             * Format: uri
+             * @description Published upstream format or template used for the review.
+             */
+            sourceUrl: string;
+        };
         /** Checkpoint */
         Checkpoint: {
             /** Lease */
@@ -702,6 +751,7 @@ export interface components {
              */
             projectorPath?: string | null;
             speculation?: components["schemas"]["GgufSpeculation"] | null;
+            chatTemplateFallback?: components["schemas"]["ChatTemplateFallback"] | null;
             recommendedSampling?: components["schemas"]["RecommendedSampling"] | null;
             /**
              * Metadata
@@ -1112,6 +1162,10 @@ export interface components {
              * @description The file embeds its own chat template. When false, something
              *     has to supply one at launch, and a model answering strangely
              *     with no template is a common and confusing failure.
+             *
+             *     An available Eugene fallback (`GgufDetail.chatTemplateFallback`
+             *     or `CataloguePreflight.chatTemplateFallback`) never changes
+             *     this to true. Unknown metadata leaves this field absent.
              */
             chatTemplate?: boolean | null;
             /**
@@ -1394,21 +1448,59 @@ export interface components {
         };
         /**
          * PreparationIntent
-         * @description Prepare the model for an engine before running it (LS5). Asked for,
-         *     never implied: Run without it picks an engine that runs the model as it is.
+         * @description Prepare the model for an engine before running it. Asked for,
+         *     never implied: Run without it picks an engine that runs the model
+         *     as it is. This is the source schema for the durable run protocol's
+         *     PreparationIntent; regenerate openapi/run-operations.json from the
+         *     Library after adopting this schema, rather than editing its copy.
+         *     The Strata choices use the same keys as that engine's profile
+         *     flags. Unsupported or ignored choices must name the observed
+         *     cause; no requested value may be reported as applied by default.
          */
         PreparationIntent: {
             engine: components["schemas"]["EngineKind"];
             /**
              * Contextsize
-             * @description The context the engine prepares for. Absent: the engine's own recommendation for the node.
+             * @description The context to prepare for. Absent uses the engine's recommendation for the node.
              */
             contextSize?: number | null;
             /**
              * @description Image encoder placement. Off preserves text-only preparation.
              * @default off
              */
-            vision: components["schemas"]["PreparationVisionMode"];
+            vision: components["schemas"]["PreparationVisionMode"] | null;
+            /**
+             * @description Changes answers when on; experimental. Off preserves stock model behavior.
+             * @default off
+             */
+            speedProjection: components["schemas"]["SpeedProjectionMode"] | null;
+            /**
+             * Gpus
+             * @description Ordered card ordinals from this node's ComputeDevice inventory;
+             *     the main card is first. The node validates each selected card
+             *     against its current inventory and resolves process visibility at
+             *     every preparation and launch. Two or more cards share the model.
+             *     Omission in a preparation keeps the existing automatic single-card
+             *     selection. Omission in a profile preserves the prepared selection.
+             *     An empty list is not automatic selection.
+             *     This inventory has kind and index, not row 43's stable UUIDs;
+             *     ordinals are local to the selected node and must not be treated
+             *     as stable identities or silently replaced by another card.
+             */
+            gpus?: components["schemas"]["StrataGpuSelectionItem"][] | null;
+            /**
+             * Layersplit
+             * @description auto places layers using the selected cards' free memory and
+             *     expert profile. An expert can give the first layer of each later
+             *     card, as comma-separated rising integers: 16,32 for three cards.
+             *     These are boundaries, not a count of layers per card. The node
+             *     checks one boundary per card after the first, each at least 2,
+             *     strictly rising and below the model's layer count. An explicit
+             *     boundary requires several selected cards. With one card there
+             *     is no layer split.
+             * @default auto
+             */
+            layerSplit: string | null;
         };
         /**
          * PreparationStatus
@@ -1979,6 +2071,20 @@ export interface components {
              */
             recommendedSampling?: components["schemas"]["RecommendedSampling"] | null;
         };
+        /**
+         * SpeedProjectionMode
+         * @description Changes the model's answers when on; experimental and off by default.
+         *     Strata's bundled refusal-direction projection reduces refusals and
+         *     also changes ordinary predictions. Upstream measures a 0.2-0.4%
+         *     cost per token on identical text, not a guaranteed speed-up.
+         *     Preparation uses --experimental-speed-projection on|off. Launch
+         *     applies the prepared control vector and reports the applied mode;
+         *     a requested mode alone is not evidence that it took effect.
+         * @enum {string}
+         */
+        SpeedProjectionMode: "off" | "on";
+        /** StrataGpuSelectionItem */
+        StrataGpuSelectionItem: number;
         /** ValidationError */
         ValidationError: {
             /** Location */
